@@ -1,7 +1,7 @@
 type Tone = "default" | "success" | "warning" | "danger" | "insight";
 
 const toneClasses: Record<Tone, string> = {
-  default: "bg-surface-overlay text-text-secondary",
+  default: "bg-surface-overlay text-fg-secondary",
   success: "bg-success/15 text-success",
   warning: "bg-warning/15 text-warning",
   danger: "bg-danger/15 text-danger",
@@ -9,7 +9,7 @@ const toneClasses: Record<Tone, string> = {
 };
 
 const dotColors: Record<Tone, string> = {
-  default: "bg-text-tertiary",
+  default: "bg-fg-tertiary",
   success: "bg-success",
   warning: "bg-warning",
   danger: "bg-danger",

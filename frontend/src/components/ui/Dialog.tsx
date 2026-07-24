@@ -68,11 +68,11 @@ export default function Dialog({
         className="bg-surface-raised border border-border-strong rounded-xl p-6 max-w-md w-full mx-4 shadow-xl outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 id={titleId} className="text-lg font-semibold text-text-primary">
+        <h3 id={titleId} className="text-lg font-semibold text-fg-primary">
           {title}
         </h3>
         {description && (
-          <p id={descId} className="text-sm text-text-secondary mt-2">
+          <p id={descId} className="text-sm text-fg-secondary mt-2">
             {description}
           </p>
         )}

@@ -26,9 +26,9 @@ const CATEGORY_META: Record<string, { label: string; icon: typeof User; descript
 
 function confidenceLevel(score: number): { color: string; label: string; pct: number } {
   const pct = Math.round(score * 100);
-  if (pct >= 80) return { color: "bg-emerald-500", label: "高可信", pct };
-  if (pct >= 50) return { color: "bg-amber-500", label: "中等可信", pct };
-  return { color: "bg-red-500", label: "低可信", pct };
+  if (pct >= 80) return { color: "bg-success", label: "高可信", pct };
+  if (pct >= 50) return { color: "bg-warning", label: "中等可信", pct };
+  return { color: "bg-danger", label: "低可信", pct };
 }
 
 /** Portrait content — embedded as a Memories tab; also used by tests. */
@@ -40,7 +40,7 @@ export function PortraitPanel({ compact = false }: { compact?: boolean }) {
   if (loading) {
     return (
       <div className={`flex items-center justify-center ${compact ? "py-16" : "h-full"}`}>
-        <div className="flex flex-col items-center gap-3 text-gray-400">
+        <div className="flex flex-col items-center gap-3 text-fg-secondary">
           <Loader2 size={32} className="animate-spin" />
           <p className="text-sm">正在生成你的 AI 画像…</p>
         </div>
@@ -51,12 +51,12 @@ export function PortraitPanel({ compact = false }: { compact?: boolean }) {
   if (error && !data) {
     return (
       <div className={`flex items-center justify-center ${compact ? "py-16" : "h-full"}`}>
-        <div className="flex flex-col items-center gap-3 text-gray-400">
-          <AlertCircle size={32} className="text-red-400" />
+        <div className="flex flex-col items-center gap-3 text-fg-secondary">
+          <AlertCircle size={32} className="text-danger" />
           <p className="text-sm">{error}</p>
           <button
             onClick={() => void refetch()}
-            className="flex items-center gap-2 px-4 py-2 mt-2 text-sm bg-emerald-600/20 text-emerald-400 rounded-lg hover:bg-emerald-600/30 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 mt-2 text-sm bg-surface-overlay hover:bg-border-strong text-white rounded-lg transition-colors"
           >
             <RefreshCw size={14} />
             重试
@@ -73,14 +73,14 @@ export function PortraitPanel({ compact = false }: { compact?: boolean }) {
   return (
     <div className={compact ? "" : "h-full overflow-y-auto"}>
       {!compact && (
-        <div className="p-6 border-b border-gray-800">
+        <div className="p-6 border-b border-border-subtle">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-emerald-600/20 flex items-center justify-center">
-              <User size={24} className="text-emerald-400" />
+            <div className="w-12 h-12 rounded-xl bg-insight/20 flex items-center justify-center">
+              <User size={24} className="text-insight" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white">AI 画像</h1>
-              <p className="text-sm text-gray-400 mt-1">AI 对你的理解——包含 {totalItems} 项洞察</p>
+              <h1 className="text-xl font-bold text-fg-primary">AI 画像</h1>
+              <p className="text-sm text-fg-secondary mt-1">AI 对你的理解——包含 {totalItems} 项洞察</p>
             </div>
           </div>
         </div>
@@ -88,11 +88,11 @@ export function PortraitPanel({ compact = false }: { compact?: boolean }) {
 
       <div className={compact ? "space-y-8" : "p-6 space-y-8"}>
         {compact && (
-          <p className="text-sm text-gray-500">AI 对你的理解——包含 {totalItems} 项洞察</p>
+          <p className="text-sm text-fg-tertiary">AI 对你的理解——包含 {totalItems} 项洞察</p>
         )}
 
         {error && data && (
-          <div className="flex items-center gap-2 text-sm text-amber-400 bg-amber-950/20 border border-amber-900/40 rounded-lg px-3 py-2">
+          <div className="flex items-center gap-2 text-sm text-warning bg-warning/10 border border-warning/30 rounded-lg px-3 py-2">
             <AlertCircle size={14} />
             刷新失败：{error}
             <button type="button" onClick={() => void refetch()} className="underline ml-auto">
@@ -102,11 +102,11 @@ export function PortraitPanel({ compact = false }: { compact?: boolean }) {
         )}
 
         {totalItems === 0 && (
-          <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
-            <AlertCircle size={20} className="text-amber-400 shrink-0 mt-0.5" />
+          <div className="flex items-start gap-3 p-4 rounded-xl bg-warning/10 border border-warning/20">
+            <AlertCircle size={20} className="text-warning shrink-0 mt-0.5" />
             <div>
-              <p className="text-amber-300 text-sm font-medium">画像尚未建立</p>
-              <p className="text-amber-400/70 text-xs mt-1">
+              <p className="text-warning text-sm font-medium">画像尚未建立</p>
+              <p className="text-warning/70 text-xs mt-1">
                 与 AI 多聊几次后，它会逐渐了解你的偏好、习惯和目标。
                 <br />
                 新用户通常在 5 分钟内看到自己的初始画像。
@@ -117,8 +117,8 @@ export function PortraitPanel({ compact = false }: { compact?: boolean }) {
 
         {profileEntries.length > 0 && (
           <section>
-            <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-              <User size={20} className="text-emerald-400" />
+            <h2 className="text-lg font-semibold text-fg-primary mb-4 flex items-center gap-2">
+              <User size={20} className="text-insight" />
               用户画像
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -134,32 +134,32 @@ export function PortraitPanel({ compact = false }: { compact?: boolean }) {
                 return (
                   <div
                     key={category}
-                    className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-4 hover:border-gray-600/50 transition-colors"
+                    className="bg-surface-overlay/50 border border-border-strong/50 rounded-xl p-4 hover:border-border-strong transition-colors"
                   >
                     <div className="flex items-center gap-2 mb-3">
-                      <Icon size={18} className="text-emerald-400" />
-                      <h3 className="text-sm font-medium text-white">{meta.label}</h3>
+                      <Icon size={18} className="text-insight" />
+                      <h3 className="text-sm font-medium text-fg-primary">{meta.label}</h3>
                     </div>
                     <div className="space-y-2">
                       {Object.entries(item.data).map(([key, value]) => (
                         <div key={key} className="text-sm">
-                          <span className="text-gray-500">{key}：</span>
-                          <span className="text-gray-200">{String(value)}</span>
+                          <span className="text-fg-tertiary">{key}：</span>
+                          <span className="text-fg-primary">{String(value)}</span>
                         </div>
                       ))}
                       {Object.keys(item.data).length === 0 && (
-                        <p className="text-xs text-gray-500">暂无数据</p>
+                        <p className="text-xs text-fg-tertiary">暂无数据</p>
                       )}
                     </div>
-                    <div className="mt-3 pt-3 border-t border-gray-700/50">
+                    <div className="mt-3 pt-3 border-t border-border-strong/50">
                       <div className="flex items-center gap-2">
-                        <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                        <div className="flex-1 h-1.5 bg-border-strong rounded-full overflow-hidden">
                           <div
                             className={`h-full rounded-full transition-all ${conf.color}`}
                             style={{ width: `${conf.pct}%` }}
                           />
                         </div>
-                        <span className="text-xs text-gray-500">{conf.pct}%</span>
+                        <span className="text-xs text-fg-tertiary">{conf.pct}%</span>
                       </div>
                     </div>
                   </div>
@@ -171,8 +171,8 @@ export function PortraitPanel({ compact = false }: { compact?: boolean }) {
 
         {(data?.habits?.length ?? 0) > 0 && (
           <section>
-            <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-              <RefreshCw size={20} className="text-blue-400" />
+            <h2 className="text-lg font-semibold text-fg-primary mb-4 flex items-center gap-2">
+              <RefreshCw size={20} className="text-insight" />
               习惯
             </h2>
             <div className="space-y-2">
@@ -181,17 +181,17 @@ export function PortraitPanel({ compact = false }: { compact?: boolean }) {
                 return (
                   <div
                     key={habit.id}
-                    className="flex items-start gap-4 bg-gray-800/50 border border-gray-700/50 rounded-xl p-4 hover:border-gray-600/50 transition-colors"
+                    className="flex items-start gap-4 bg-surface-overlay/50 border border-border-strong/50 rounded-xl p-4 hover:border-border-strong transition-colors"
                   >
-                    <ChevronRight size={18} className="text-blue-400 mt-0.5 shrink-0" />
+                    <ChevronRight size={18} className="text-insight mt-0.5 shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-200">{habit.content}</p>
+                      <p className="text-sm text-fg-primary">{habit.content}</p>
                       <div className="flex items-center gap-3 mt-2">
                         <div className="flex items-center gap-1.5">
                           <div className={`w-2 h-2 rounded-full ${conf.color}`} />
-                          <span className="text-xs text-gray-500">{conf.label}</span>
+                          <span className="text-xs text-fg-tertiary">{conf.label}</span>
                         </div>
-                        <span className="text-xs text-gray-600">
+                        <span className="text-xs text-fg-disabled">
                           {habit.origin === "self_report" ? "来自你的告知" : "AI 推断"}
                         </span>
                       </div>
@@ -205,32 +205,32 @@ export function PortraitPanel({ compact = false }: { compact?: boolean }) {
 
         {(data?.goals?.length ?? 0) > 0 && (
           <section>
-            <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-              <Target size={20} className="text-purple-400" />
+            <h2 className="text-lg font-semibold text-fg-primary mb-4 flex items-center gap-2">
+              <Target size={20} className="text-insight" />
               当前目标
             </h2>
             <div className="space-y-3">
               {data!.goals.map((goal) => (
                 <div
                   key={goal.id}
-                  className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-4 hover:border-gray-600/50 transition-colors"
+                  className="bg-surface-overlay/50 border border-border-strong/50 rounded-xl p-4 hover:border-border-strong transition-colors"
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium text-white">{goal.title}</h3>
-                    <span className="text-xs text-purple-400">
+                    <h3 className="text-sm font-medium text-fg-primary">{goal.title}</h3>
+                    <span className="text-xs text-insight">
                       {goal.progress > 0 ? `${goal.progress}%` : "待开始"}
                     </span>
                   </div>
                   {goal.progress > 0 && (
-                    <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-border-strong rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-purple-500 rounded-full transition-all"
+                        className="h-full bg-insight rounded-full transition-all"
                         style={{ width: `${goal.progress}%` }}
                       />
                     </div>
                   )}
                   {goal.deadline && (
-                    <p className="text-xs text-gray-500 mt-2">截止: {goal.deadline}</p>
+                    <p className="text-xs text-fg-tertiary mt-2">截止: {goal.deadline}</p>
                   )}
                 </div>
               ))}

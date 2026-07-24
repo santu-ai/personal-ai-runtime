@@ -21,11 +21,11 @@
   --color-border-subtle: #1f2937; /* gray-800 — default card borders */
   --color-border-strong: #374151; /* gray-700 — hover borders, dividers */
 
-  /* —— Text —— */
-  --color-text-primary: #f3f4f6; /* gray-100 — headings, primary content */
-  --color-text-secondary: #9ca3af; /* gray-400 — default body */
-  --color-text-tertiary: #6b7280; /* gray-500 — captions, meta */
-  --color-text-disabled: #4b5563; /* gray-600 — disabled, faint */
+  /* —— Foreground text (named fg-* so utilities read as text-fg-primary, not text-text-primary) —— */
+  --color-fg-primary: #f3f4f6; /* gray-100 — headings, primary content */
+  --color-fg-secondary: #9ca3af; /* gray-400 — default body */
+  --color-fg-tertiary: #6b7280; /* gray-500 — captions, meta */
+  --color-fg-disabled: #4b5563; /* gray-600 — disabled, faint */
 
   /* —— Semantic colors (values unchanged from current usage) —— */
   --color-success: #10b981; /* emerald-500 — completed / safe */

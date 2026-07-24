@@ -6,15 +6,15 @@ const variantClasses: Record<Variant, string> = {
   // Primary: neutral emphasis. "Approve/confirm" is a decision, not "safe".
   // Green (success) is reserved for completed/safe states, not main actions.
   primary:
-    "bg-surface-overlay hover:bg-border-strong text-white disabled:bg-surface-overlay disabled:text-text-disabled",
+    "bg-surface-overlay hover:bg-border-strong text-white disabled:bg-surface-overlay disabled:text-fg-disabled",
   secondary:
-    "bg-surface-raised hover:bg-surface-overlay text-text-primary border border-border-subtle disabled:opacity-50",
+    "bg-surface-raised hover:bg-surface-overlay text-fg-primary border border-border-subtle disabled:opacity-50",
   // Subtle: ghost, but with a faint background — for tertiary inline actions.
-  subtle: "bg-transparent hover:bg-surface-overlay text-text-secondary disabled:opacity-50",
-  ghost: "bg-transparent hover:bg-surface-overlay text-text-secondary disabled:opacity-50",
+  subtle: "bg-transparent hover:bg-surface-overlay text-fg-secondary disabled:opacity-50",
+  ghost: "bg-transparent hover:bg-surface-overlay text-fg-secondary disabled:opacity-50",
   // Danger: irreversible delete/failure only. NOT for "reject" (rejecting is safe).
   danger:
-    "bg-danger hover:bg-danger/90 text-white disabled:bg-surface-overlay disabled:text-text-disabled",
+    "bg-danger hover:bg-danger/90 text-white disabled:bg-surface-overlay disabled:text-fg-disabled",
 };
 
 const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base";
