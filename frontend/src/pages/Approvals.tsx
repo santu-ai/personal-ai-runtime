@@ -164,9 +164,9 @@ export default function ApprovalsPage() {
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-2xl font-semibold text-gray-100">审批管理</h2>
-            <p className="text-sm text-gray-500 mt-1">管理所有需要人工确认的高风险操作</p>
-            <p className="text-xs text-gray-600 mt-1">
+            <h2 className="text-2xl font-semibold text-fg-primary">审批管理</h2>
+            <p className="text-sm text-fg-tertiary mt-1">管理所有需要人工确认的高风险操作</p>
+            <p className="text-xs text-fg-disabled mt-1">
               对话来源的审批可「批准并续写」：执行工具、生成一次回复续写并打开对话；完整多步工具循环不会在服务重启后自动恢复。
             </p>
           </div>
@@ -185,16 +185,16 @@ export default function ApprovalsPage() {
         </div>
 
         {loading && approvals.length === 0 ? (
-          <div className="flex items-center justify-center py-20 text-gray-500">
+          <div className="flex items-center justify-center py-20 text-fg-tertiary">
             <RefreshCw size={20} className="animate-spin mr-2" />
             加载中...
           </div>
         ) : approvals.length === 0 ? (
           <Card className="py-16 text-center">
-            <div className="text-gray-500 mb-2">
-              <Check size={40} className="mx-auto mb-3 text-emerald-600" />
-              <p className="text-lg font-medium text-gray-400">暂无待审批项</p>
-              <p className="text-sm text-gray-600 mt-1">所有高风险操作已处理完毕</p>
+            <div className="text-fg-tertiary mb-2">
+              <Check size={40} className="mx-auto mb-3 text-success" />
+              <p className="text-lg font-medium text-fg-secondary">暂无待审批项</p>
+              <p className="text-sm text-fg-disabled mt-1">所有高风险操作已处理完毕</p>
             </div>
           </Card>
         ) : (
@@ -249,15 +249,15 @@ function ApprovalCard({
   const canContinue = Boolean(item.conversation_id && item.tool_call_id);
 
   return (
-    <Card className="p-4 hover:border-gray-700 transition-colors">
+    <Card className="p-4 hover:border-border-strong transition-colors">
       <div className="flex items-start gap-4">
-        <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center shrink-0 mt-0.5">
-          <ActionIcon size={20} className="text-gray-400" />
+        <div className="w-10 h-10 rounded-lg bg-surface-overlay flex items-center justify-center shrink-0 mt-0.5">
+          <ActionIcon size={20} className="text-fg-secondary" />
         </div>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="text-sm font-medium text-gray-200">{meta.label}</span>
+            <span className="text-sm font-medium text-fg-primary">{meta.label}</span>
             <Badge tone={FLOW_TONE[item.flow_type] || "default"}>{item.flow_type}</Badge>
             {isExpiringSoon && (
               <Badge tone="danger">
@@ -267,15 +267,15 @@ function ApprovalCard({
             )}
           </div>
 
-          <div className="text-xs text-gray-400 mb-1">
-            来源：<span className="text-gray-300">{item.flow_label || "—"}</span>
+          <div className="text-xs text-fg-secondary mb-1">
+            来源：<span className="text-fg-primary">{item.flow_label || "—"}</span>
           </div>
 
-          <div className="text-xs text-gray-500 font-mono bg-gray-950 rounded px-2 py-1 mt-1 mb-2 truncate max-w-full">
+          <div className="text-xs text-fg-tertiary font-mono bg-surface-sunken rounded px-2 py-1 mt-1 mb-2 truncate max-w-full">
             {paramsSummary(item.params)}
           </div>
 
-          <div className="flex items-center gap-4 text-xs text-gray-600 flex-wrap">
+          <div className="flex items-center gap-4 text-xs text-fg-disabled flex-wrap">
             <span className="flex items-center gap-1">
               <Clock size={12} />
               <span title={item.created_at ? formatTime(item.created_at) : "—"}>
@@ -283,13 +283,13 @@ function ApprovalCard({
               </span>
             </span>
             {item.expires_at && (
-              <span className={`${isExpiringSoon ? "text-red-400" : ""}`}>
+              <span className={`${isExpiringSoon ? "text-danger" : ""}`}>
                 过期：{formatTime(item.expires_at)}
               </span>
             )}
             {item.proposed_by && <span>发起：{item.proposed_by}</span>}
             {item.correlation_id && (
-              <span className="text-gray-700 truncate max-w-[200px]" title={item.correlation_id}>
+              <span className="text-fg-disabled truncate max-w-[200px]" title={item.correlation_id}>
                 ID: {item.correlation_id}
               </span>
             )}
@@ -297,10 +297,11 @@ function ApprovalCard({
         </div>
 
         <div className="flex items-center gap-2 shrink-0 self-center">
+          {/* Phase 2 preview: 批准 = 中性强调（批准 ≠ 安全），拒绝 = 克制 secondary（拒绝是安全可逆的） */}
           <button
             onClick={onApprove}
             disabled={resolving}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/40 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-surface-overlay hover:bg-border-strong text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             title={canContinue ? "批准、续写回复并打开对话" : "批准此操作"}
           >
             {canContinue ? <MessageSquare size={14} /> : <Check size={14} />}
@@ -309,7 +310,7 @@ function ApprovalCard({
           <button
             onClick={onReject}
             disabled={resolving}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-red-600/20 text-red-400 hover:bg-red-600/40 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-transparent hover:bg-surface-overlay text-fg-secondary border border-border-subtle disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             title="拒绝此操作"
           >
             <X size={14} />

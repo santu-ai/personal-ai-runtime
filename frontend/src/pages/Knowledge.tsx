@@ -81,13 +81,13 @@ export default function KnowledgePage() {
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-xl font-semibold text-gray-200">知识库</h2>
-            <p className="text-sm text-gray-500 mt-0.5">上传文档，让 AI 搜索你的知识</p>
+            <h2 className="text-xl font-semibold text-fg-primary">知识库</h2>
+            <p className="text-sm text-fg-tertiary mt-0.5">上传文档，让 AI 搜索你的知识</p>
           </div>
         </div>
 
         {displayError && (
-          <div className="bg-red-900/20 border border-red-700/50 rounded-lg p-3 mb-4 text-sm text-red-400">
+          <div className="bg-danger/10 border border-danger/30 rounded-lg p-3 mb-4 text-sm text-danger">
             {displayError}
             <button onClick={() => setError("")} className="ml-2 text-xs underline">
               关闭
@@ -96,14 +96,14 @@ export default function KnowledgePage() {
         )}
 
         {/* Upload zone */}
-        <div className="bg-gray-900 border border-gray-800 border-dashed rounded-xl p-8 mb-6 text-center">
-          <Upload size={32} className="mx-auto mb-3 text-gray-600" />
-          <p className="text-sm text-gray-400 mb-3">拖拽文件到此处，或点击上传</p>
-          <p className="text-xs text-gray-600 mb-4">
+        <div className="bg-surface-raised border border-border-subtle border-dashed rounded-xl p-8 mb-6 text-center">
+          <Upload size={32} className="mx-auto mb-3 text-fg-disabled" />
+          <p className="text-sm text-fg-secondary mb-3">拖拽文件到此处，或点击上传</p>
+          <p className="text-xs text-fg-disabled mb-4">
             支持 PDF / Markdown / TXT / JSON / CSV（最大 10 MB）
           </p>
           <label className="inline-block">
-            <span className="inline-flex px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-sm font-medium cursor-pointer transition-colors">
+            <span className="inline-flex px-4 py-2 bg-surface-overlay hover:bg-border-strong rounded-lg text-sm font-medium text-white cursor-pointer transition-colors">
               {uploading ? (
                 <>
                   <Loader2 size={14} className="animate-spin mr-2" />
@@ -127,20 +127,20 @@ export default function KnowledgePage() {
         {/* Search */}
         <div className="flex gap-2 mb-6">
           <div className="flex-1 relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-disabled" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSearch()}
               placeholder="在知识库中搜索…"
-              className="w-full bg-gray-900 border border-gray-800 rounded-lg pl-9 pr-4 py-2 text-sm text-gray-300 placeholder-gray-600 focus:border-emerald-500 focus:outline-none"
+              className="w-full bg-surface-raised border border-border-subtle rounded-lg pl-9 pr-4 py-2 text-sm text-fg-primary placeholder:text-fg-tertiary focus:border-focus-ring focus:outline-none"
             />
           </div>
           <button
             onClick={handleSearch}
             disabled={searching || !searchQuery.trim()}
-            className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-sm transition-colors disabled:opacity-50"
+            className="px-4 py-2 bg-surface-overlay hover:bg-border-strong text-fg-primary rounded-lg text-sm transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
           >
             {searching ? <Loader2 size={14} className="animate-spin" /> : "搜索"}
           </button>
@@ -149,16 +149,16 @@ export default function KnowledgePage() {
         {/* Search results */}
         {searchResults.length > 0 && (
           <div className="mb-6">
-            <h3 className="text-sm font-medium text-gray-400 mb-3">
+            <h3 className="text-sm font-medium text-fg-secondary mb-3">
               搜索结果 ({searchResults.length})
             </h3>
             <div className="space-y-2">
               {searchResults.map((r) => (
-                <div key={r.id} className="bg-gray-900 border border-gray-800 rounded-lg p-3">
-                  <div className="text-sm text-gray-300 mb-1">
+                <div key={r.id} className="bg-surface-raised border border-border-subtle rounded-lg p-3">
+                  <div className="text-sm text-fg-primary mb-1">
                     {r.content.length > 200 ? r.content.substring(0, 200) + "…" : r.content}
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-gray-600">
+                  <div className="flex items-center gap-2 text-xs text-fg-disabled">
                     <span>
                       {r.metadata?.source_file ? String(r.metadata.source_file) : "未知文件"}
                     </span>
@@ -174,29 +174,29 @@ export default function KnowledgePage() {
         {/* Document list */}
         {loading ? (
           <div className="flex justify-center py-8">
-            <Loader2 size={20} className="text-gray-400 animate-spin" />
+            <Loader2 size={20} className="text-fg-secondary animate-spin" />
           </div>
         ) : documents.length === 0 ? (
           <div className="text-center py-8">
-            <BookOpen size={32} className="mx-auto mb-3 text-gray-700" />
-            <p className="text-gray-500 text-sm">还没有上传任何文档</p>
+            <BookOpen size={32} className="mx-auto mb-3 text-fg-disabled" />
+            <p className="text-fg-tertiary text-sm">还没有上传任何文档</p>
           </div>
         ) : (
           <div>
-            <h3 className="text-sm font-medium text-gray-400 mb-3">
+            <h3 className="text-sm font-medium text-fg-secondary mb-3">
               已上传文档 ({documents.length})
             </h3>
             <div className="space-y-2">
               {documents.map((doc) => (
                 <div
                   key={doc.id}
-                  className="flex items-center justify-between bg-gray-900 border border-gray-800 rounded-lg p-3 group"
+                  className="flex items-center justify-between bg-surface-raised border border-border-subtle rounded-lg p-3 group"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <FileText size={18} className="text-gray-500 shrink-0" />
+                    <FileText size={18} className="text-fg-tertiary shrink-0" />
                     <div className="min-w-0">
-                      <div className="text-sm text-gray-300 truncate">{doc.filename}</div>
-                      <div className="text-xs text-gray-600">
+                      <div className="text-sm text-fg-primary truncate">{doc.filename}</div>
+                      <div className="text-xs text-fg-disabled">
                         {formatSize(doc.size)} · {doc.chunks} 个分块 ·{" "}
                         {doc.uploaded_at
                           ? new Date(doc.uploaded_at).toLocaleDateString("zh-CN")
@@ -206,7 +206,7 @@ export default function KnowledgePage() {
                   </div>
                   <button
                     onClick={() => handleDelete(doc.id)}
-                    className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-all shrink-0 ml-3"
+                    className="opacity-0 group-hover:opacity-100 text-fg-tertiary hover:text-danger transition-all shrink-0 ml-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
                     title="删除文档"
                   >
                     <Trash2 size={14} />

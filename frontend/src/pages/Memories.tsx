@@ -163,7 +163,7 @@ export default function MemoriesPage() {
   }, [viewMode, graphData, addError]);
 
   if (loading) {
-    return <div className="flex-1 flex items-center justify-center text-gray-500">加载中…</div>;
+    return <div className="flex-1 flex items-center justify-center text-fg-tertiary">加载中…</div>;
   }
 
   return (
@@ -171,17 +171,17 @@ export default function MemoriesPage() {
       <div className="max-w-4xl mx-auto space-y-8">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold mb-2">AI 对你的理解</h2>
-            <p className="text-sm text-gray-500">
+            <h2 className="text-2xl font-bold mb-2 text-fg-primary">AI 对你的理解</h2>
+            <p className="text-sm text-fg-tertiary">
               这些是我从我们的对话中记住的。{memories.length > 0 && `共 ${memories.length} 条。`}
               每一条都让我更好地帮助你。
             </p>
           </div>
-          <div className="flex gap-1 bg-gray-800 rounded-lg p-1">
+          <div className="flex gap-1 bg-surface-overlay rounded-lg p-1">
             <button
               onClick={() => setViewMode("list")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors ${
-                viewMode === "list" ? "bg-gray-700 text-white" : "text-gray-400 hover:text-gray-200"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                viewMode === "list" ? "bg-border-strong text-white" : "text-fg-secondary hover:text-fg-primary"
               }`}
             >
               <List size={14} />
@@ -189,10 +189,10 @@ export default function MemoriesPage() {
             </button>
             <button
               onClick={() => setViewMode("graph")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
                 viewMode === "graph"
-                  ? "bg-gray-700 text-white"
-                  : "text-gray-400 hover:text-gray-200"
+                  ? "bg-border-strong text-white"
+                  : "text-fg-secondary hover:text-fg-primary"
               }`}
             >
               <Network size={14} />
@@ -200,10 +200,10 @@ export default function MemoriesPage() {
             </button>
             <button
               onClick={() => setViewMode("portrait")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
                 viewMode === "portrait"
-                  ? "bg-gray-700 text-white"
-                  : "text-gray-400 hover:text-gray-200"
+                  ? "bg-border-strong text-white"
+                  : "text-fg-secondary hover:text-fg-primary"
               }`}
             >
               <User size={14} />
@@ -221,13 +221,13 @@ export default function MemoriesPage() {
                 value={newContent}
                 onChange={(e) => setNewContent(e.target.value)}
                 placeholder="告诉我一件关于你的事，我会记住..."
-                className="flex-1 bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-600"
+                className="flex-1 bg-surface-raised border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary placeholder:text-fg-tertiary outline-none focus:border-focus-ring"
                 onKeyDown={(e) => e.key === "Enter" && handleCreate()}
               />
               <button
                 onClick={handleCreate}
                 disabled={!newContent.trim()}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-700 rounded-lg text-sm"
+                className="px-4 py-2 bg-surface-overlay hover:bg-border-strong disabled:bg-surface-overlay disabled:text-fg-disabled rounded-lg text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               >
                 记住
               </button>
@@ -236,7 +236,7 @@ export default function MemoriesPage() {
             {Object.keys(grouped).length === 0 ? (
               <div className="text-center py-12">
                 <div className="text-4xl mb-3">🧠</div>
-                <p className="text-gray-500 text-sm">
+                <p className="text-fg-tertiary text-sm">
                   我还没有记住任何事。开始一段对话，或者在上方告诉我关于你的事情。
                 </p>
               </div>
@@ -245,10 +245,10 @@ export default function MemoriesPage() {
                 const meta = getCategoryMeta(category);
                 return (
                   <section key={category}>
-                    <h3 className="text-sm font-semibold text-gray-400 mb-3 flex items-center gap-1.5">
+                    <h3 className="text-sm font-semibold text-fg-secondary mb-3 flex items-center gap-1.5">
                       <span>{meta.icon}</span>
                       <span>{meta.title}</span>
-                      <span className="text-gray-600">({items.length})</span>
+                      <span className="text-fg-disabled">({items.length})</span>
                     </h3>
                     <ul className="space-y-2">
                       {items.map((m) => (
@@ -271,15 +271,15 @@ export default function MemoriesPage() {
           </>
         ) : (
           /* Graph View */
-          <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+          <div className="bg-surface-raised border border-border-subtle rounded-lg p-4">
             {graphLoading ? (
-              <div className="flex items-center justify-center h-96 text-gray-500">
+              <div className="flex items-center justify-center h-96 text-fg-tertiary">
                 加载记忆图谱...
               </div>
             ) : graphData && graphData.nodes.length > 0 ? (
               <MemoryGraphView graph={graphData} />
             ) : (
-              <div className="flex items-center justify-center h-96 text-gray-500">
+              <div className="flex items-center justify-center h-96 text-fg-tertiary">
                 暂无记忆数据可显示
               </div>
             )}
@@ -303,28 +303,28 @@ export default function MemoriesPage() {
           onClick={() => setEditTarget(null)}
         >
           <div
-            className="bg-gray-800 border border-gray-700 rounded-xl p-6 w-96 max-w-[90vw] space-y-4"
+            className="bg-surface-raised border border-border-strong rounded-xl p-6 w-96 max-w-[90vw] space-y-4 outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-semibold text-white">编辑记忆</h3>
-            <p className="text-xs text-gray-500">更新会保留旧版本——可在"来源"查看完整版本演进</p>
+            <h3 className="text-lg font-semibold text-fg-primary">编辑记忆</h3>
+            <p className="text-xs text-fg-tertiary">更新会保留旧版本——可在"来源"查看完整版本演进</p>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-gray-400 mb-1 block">内容</label>
+                <label className="text-xs text-fg-secondary mb-1 block">内容</label>
                 <input
                   value={editContent}
                   onChange={(e) => setEditContent(e.target.value)}
-                  className="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm text-white border border-gray-600"
+                  className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary outline-none focus:border-focus-ring"
                   placeholder="记忆内容"
                   autoFocus
                 />
               </div>
               <div>
-                <label className="text-xs text-gray-400 mb-1 block">分类</label>
+                <label className="text-xs text-fg-secondary mb-1 block">分类</label>
                 <input
                   value={editCategory}
                   onChange={(e) => setEditCategory(e.target.value)}
-                  className="w-full bg-gray-700 rounded-lg px-3 py-2 text-sm text-white border border-gray-600"
+                  className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary outline-none focus:border-focus-ring"
                   placeholder="如 fact, preference, habit"
                 />
               </div>
@@ -332,13 +332,13 @@ export default function MemoriesPage() {
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => setEditTarget(null)}
-                className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm"
+                className="px-3 py-1.5 bg-surface-overlay hover:bg-border-strong rounded-lg text-sm text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               >
                 取消
               </button>
               <button
                 onClick={confirmEdit}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-sm"
+                className="px-3 py-1.5 bg-surface-overlay hover:bg-border-strong rounded-lg text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               >
                 保存
               </button>

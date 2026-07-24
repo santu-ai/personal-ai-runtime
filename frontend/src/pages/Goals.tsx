@@ -177,16 +177,16 @@ export default function GoalsPage() {
   return (
     <div className="flex h-full">
       {/* Goal list panel */}
-      <div className="w-80 border-r border-gray-800 overflow-y-auto shrink-0">
-        <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">目标</h2>
+      <div className="w-80 border-r border-border-subtle overflow-y-auto shrink-0">
+        <div className="p-4 border-b border-border-subtle flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-fg-primary">目标</h2>
           <Button size="sm" onClick={() => setShowCreate(true)}>
             + 新建
           </Button>
         </div>
 
         {showCreate && (
-          <div className="p-3 border-b border-gray-800">
+          <div className="p-3 border-b border-border-subtle">
             <Input
               autoFocus
               value={newTitle}
@@ -248,9 +248,9 @@ export default function GoalsPage() {
           />
         ) : selectedGoal ? (
           <div className="max-w-2xl">
-            <div className="flex items-start justify-between mb-6">
+                <div className="flex items-start justify-between mb-6">
               <div>
-                <h2 className="text-2xl font-bold">{selectedGoal.title}</h2>
+                <h2 className="text-2xl font-bold text-fg-primary">{selectedGoal.title}</h2>
                 <div className="flex items-center gap-2 mt-2">
                   <Badge
                     tone={
@@ -266,13 +266,13 @@ export default function GoalsPage() {
                   {isStagnant(selectedGoal.last_activity_at, selectedGoal.created_at) &&
                     selectedGoal.status === "active" && <Badge tone="warning">已停滞</Badge>}
                 </div>
-                <div className="mt-3 h-2 bg-gray-800 rounded-full overflow-hidden max-w-xs">
+                <div className="mt-3 h-2 bg-surface-overlay rounded-full overflow-hidden max-w-xs">
                   <div
-                    className="h-full bg-emerald-600 rounded-full transition-all"
+                    className="h-full bg-insight rounded-full transition-all"
                     style={{ width: `${Math.min(selectedGoal.progress, 100)}%` }}
                   />
                 </div>
-                <p className="text-xs text-gray-500 mt-1">进度 {selectedGoal.progress}%</p>
+                <p className="text-xs text-fg-tertiary mt-1">进度 {selectedGoal.progress}%</p>
               </div>
               <div className="flex gap-2">
                 <Button size="sm" onClick={() => handleStartChatAboutGoal(selectedGoal)}>
@@ -282,13 +282,13 @@ export default function GoalsPage() {
                   <>
                     <button
                       onClick={() => handleUpdateStatus(selectedGoal.id, "paused")}
-                      className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded"
+                      className="px-3 py-1.5 text-xs bg-surface-overlay hover:bg-border-strong text-fg-primary rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                     >
                       暂停
                     </button>
                     <button
                       onClick={() => handleUpdateStatus(selectedGoal.id, "completed")}
-                      className="px-3 py-1.5 text-xs bg-emerald-700 hover:bg-emerald-600 rounded"
+                      className="px-3 py-1.5 text-xs bg-surface-overlay hover:bg-border-strong text-fg-primary rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                     >
                       完成
                     </button>
@@ -297,7 +297,7 @@ export default function GoalsPage() {
                 {selectedGoal.status === "paused" && (
                   <button
                     onClick={() => handleUpdateStatus(selectedGoal.id, "active")}
-                    className="px-3 py-1.5 text-xs bg-emerald-700 hover:bg-emerald-600 rounded"
+                    className="px-3 py-1.5 text-xs bg-surface-overlay hover:bg-border-strong text-fg-primary rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                   >
                     恢复
                   </button>
@@ -309,19 +309,19 @@ export default function GoalsPage() {
             </div>
 
             {selectedGoal.description && (
-              <p className="text-gray-400 mb-6">{selectedGoal.description}</p>
+              <p className="text-fg-secondary mb-6">{selectedGoal.description}</p>
             )}
 
             {/* Actions */}
             <div className="mb-6">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-gray-300">
+                <h3 className="text-sm font-semibold text-fg-secondary">
                   行动步骤 ({selectedGoal.actions?.length || 0})
                 </h3>
                 <button
                   onClick={handleDecomposeGoal}
                   disabled={decomposing}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-purple-700/30 hover:bg-purple-700/50 text-purple-300 rounded-lg border border-purple-700/50 disabled:opacity-50 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-insight/15 hover:bg-insight/25 text-insight rounded-lg border border-insight/30 disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 >
                   <Sparkles size={12} />
                   {decomposing ? "AI 拆解中..." : "AI 拆解"}
@@ -330,26 +330,26 @@ export default function GoalsPage() {
 
               {/* AI Suggested Steps */}
               {suggestedSteps.length > 0 && (
-                <div className="mb-4 p-3 bg-purple-900/20 border border-purple-700/30 rounded-lg">
+                <div className="mb-4 p-3 bg-insight/10 border border-insight/30 rounded-lg">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-purple-300 font-medium">
+                    <span className="text-xs text-insight font-medium">
                       ✨ AI 建议的行动步骤
                     </span>
                     <button
                       onClick={handleAddAllSuggestedSteps}
-                      className="text-xs px-2 py-1 bg-purple-700/50 hover:bg-purple-700/70 rounded text-purple-200"
+                      className="text-xs px-2 py-1 bg-insight/30 hover:bg-insight/40 rounded text-insight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                     >
                       全部添加
                     </button>
                   </div>
                   <div className="space-y-1.5">
                     {suggestedSteps.map((step, idx) => (
-                      <div key={idx} className="flex items-center gap-2 text-sm text-gray-300">
-                        <span className="text-purple-400">•</span>
+                      <div key={idx} className="flex items-center gap-2 text-sm text-fg-primary">
+                        <span className="text-insight">•</span>
                         <span className="flex-1">{step}</span>
                         <button
                           onClick={() => handleAddSuggestedStep(step)}
-                          className="text-xs px-2 py-0.5 bg-gray-700 hover:bg-gray-600 rounded text-gray-300"
+                          className="text-xs px-2 py-0.5 bg-surface-overlay hover:bg-border-strong rounded text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                         >
                           添加
                         </button>
@@ -363,16 +363,16 @@ export default function GoalsPage() {
                 {(selectedGoal.actions || []).map((action) => (
                   <div
                     key={action.id}
-                    className="flex items-center gap-3 p-3 bg-gray-800/50 rounded-lg"
+                    className="flex items-center gap-3 p-3 bg-surface-overlay/50 rounded-lg"
                   >
                     <input
                       type="checkbox"
                       checked={action.status === "completed"}
                       onChange={() => handleToggleAction(selectedGoal.id, action.id, action.status)}
-                      className="w-4 h-4 rounded border-gray-600 bg-gray-700 accent-emerald-600"
+                      className="w-4 h-4 rounded border-border-strong bg-surface-overlay accent-success"
                     />
                     <span
-                      className={`text-sm flex-1 ${action.status === "completed" ? "line-through text-gray-500" : ""}`}
+                      className={`text-sm flex-1 ${action.status === "completed" ? "line-through text-fg-tertiary" : "text-fg-primary"}`}
                     >
                       {action.title}
                     </span>
@@ -385,11 +385,11 @@ export default function GoalsPage() {
             {/* Events */}
             {selectedGoal.events && selectedGoal.events.length > 0 && (
               <div>
-                <h3 className="text-sm font-semibold text-gray-300 mb-3">相关事件</h3>
+                <h3 className="text-sm font-semibold text-fg-secondary mb-3">相关事件</h3>
                 <div className="space-y-2">
                   {selectedGoal.events.map((event) => (
-                    <div key={event.id} className="flex items-center gap-2 text-xs text-gray-500">
-                      <span className="text-gray-600">
+                    <div key={event.id} className="flex items-center gap-2 text-xs text-fg-tertiary">
+                      <span className="text-fg-disabled">
                         {new Date(event.timestamp).toLocaleString("zh-CN")}
                       </span>
                       <span>{event.summary}</span>
@@ -438,12 +438,12 @@ function NewActionInput({ onAdd }: { onAdd: (title: string) => void }) {
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
         placeholder="添加行动步骤..."
-        className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-600"
+        className="flex-1 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary placeholder:text-fg-tertiary outline-none focus:border-focus-ring"
       />
       <button
         onClick={handleSubmit}
         disabled={!value.trim()}
-        className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm disabled:opacity-50"
+        className="px-3 py-2 bg-surface-overlay hover:bg-border-strong rounded-lg text-sm text-fg-primary disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
       >
         添加
       </button>
@@ -475,7 +475,7 @@ function GoalGroupedList({
       ))}
       {completed.length > 0 && (
         <>
-          <div className="pt-3 pb-1 px-1 text-xs text-gray-500 font-medium uppercase tracking-wider">
+          <div className="pt-3 pb-1 px-1 text-xs text-fg-tertiary font-medium uppercase tracking-wider">
             已完成 ({completed.length})
           </div>
           {completed.map((goal) => (
@@ -506,39 +506,39 @@ function GoalListItem({
       onClick={() => onSelect(goal.id)}
       className={`p-3 rounded-lg cursor-pointer transition-colors ${
         selected
-          ? "bg-gray-800 border border-gray-700"
-          : "hover:bg-gray-800/50 border border-transparent"
+          ? "bg-surface-overlay border border-border-strong"
+          : "hover:bg-surface-overlay/50 border border-transparent"
       }`}
     >
       <div className="flex items-center gap-2">
         <span
           className={`w-2 h-2 rounded-full shrink-0 ${
             goal.status === "active"
-              ? "bg-emerald-500"
+              ? "bg-success"
               : goal.status === "completed"
-                ? "bg-blue-500"
-                : "bg-gray-500"
+                ? "bg-insight"
+                : "bg-fg-tertiary"
           } ${
             isStagnant(goal.last_activity_at, goal.created_at) && goal.status === "active"
-              ? "ring-2 ring-amber-500"
+              ? "ring-2 ring-warning"
               : ""
           }`}
         />
-        <span className="text-sm font-medium truncate flex-1">{goal.title}</span>
+        <span className="text-sm font-medium text-fg-primary truncate flex-1">{goal.title}</span>
       </div>
       {goal.last_activity_at && (
-        <div className="text-xs text-gray-600 mt-1 ml-4">
+        <div className="text-xs text-fg-disabled mt-1 ml-4">
           上次活动: {timeAgo(goal.last_activity_at)}
         </div>
       )}
       {goal.deadline && (
-        <div className="text-xs text-gray-500 mt-1 ml-4">
+        <div className="text-xs text-fg-tertiary mt-1 ml-4">
           截止: {new Date(goal.deadline).toLocaleDateString("zh-CN")}
         </div>
       )}
-      <div className="mt-2 ml-4 h-1 bg-gray-800 rounded-full overflow-hidden">
+      <div className="mt-2 ml-4 h-1 bg-surface-overlay rounded-full overflow-hidden">
         <div
-          className="h-full bg-emerald-600 rounded-full"
+          className="h-full bg-insight rounded-full"
           style={{ width: `${Math.min(goal.progress, 100)}%` }}
         />
       </div>
