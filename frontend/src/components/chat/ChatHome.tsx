@@ -18,7 +18,7 @@ interface ProactiveNudge {
   action: string;
   prompt?: string;
   title: string;
-  tone: "warning" | "info" | "success";
+  tone: "warning" | "insight" | "success";
   /** If set, navigate here instead of starting a chat. */
   href?: string;
 }
@@ -112,7 +112,7 @@ export default function ChatHome() {
       action: "帮我看看",
       prompt: "帮我看看收件箱里有什么重要的邮件，总结一下需要我处理的",
       title: "收件箱摘要",
-      tone: "info",
+      tone: "insight",
     });
   }
 
@@ -137,7 +137,7 @@ export default function ChatHome() {
       action: "规划目标",
       prompt: "根据你对我的了解，建议一个我这周可以完成的目标",
       title: "目标规划",
-      tone: "info",
+      tone: "insight",
     });
   }
 

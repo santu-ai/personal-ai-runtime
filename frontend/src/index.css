@@ -1,18 +1,10 @@
 @import "tailwindcss";
+@import "./theme/tokens.css";
 
 @layer base {
-  :root {
-    --color-surface-base: #030712;
-    --color-surface-raised: #111827;
-    --color-surface-overlay: #1f2937;
-    --color-primary: #059669;
-    --color-warning: #f59e0b;
-    --color-danger: #ef4444;
-  }
-
   * {
     scrollbar-width: thin;
-    scrollbar-color: #374151 transparent;
+    scrollbar-color: var(--color-border-strong) transparent;
   }
 
   *::-webkit-scrollbar {
@@ -24,8 +16,15 @@
   }
 
   *::-webkit-scrollbar-thumb {
-    background-color: #374151;
+    background-color: var(--color-border-strong);
     border-radius: 3px;
+  }
+
+  /* Unified keyboard focus ring — replaces per-component emerald focus borders */
+  :focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+    border-radius: 4px;
   }
 }
 
@@ -84,7 +83,7 @@
     opacity: 1;
   }
   50% {
-    opacity: 0;
+    opacity: 0.5;
   }
 }
 

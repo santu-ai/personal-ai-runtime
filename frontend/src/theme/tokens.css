@@ -1,0 +1,38 @@
+/**
+ * Design tokens — single source of truth for color, surfaced as Tailwind v4 utilities.
+ *
+ * Loaded via @theme inline so Tailwind generates matching utility classes:
+ *   --color-surface-raised  →  bg-surface-raised / text-surface-raised / border-surface-raised
+ *   --color-success         →  bg-success / text-success / border-success
+ *
+ * Phase 1a keeps all values identical to the existing hard-coded grays,
+ * so swapping gray-* → surface-* in components is visually a no-op.
+ * Semantic re-coloring (primary button, focus rings) is deferred to Phase 1b.
+ */
+
+@theme inline {
+  /* —— Surface layers (graphite ramp, aliases of existing gray values) —— */
+  --color-surface-base: #030712; /* gray-950 — app background */
+  --color-surface-raised: #111827; /* gray-900 — cards, sidebar */
+  --color-surface-overlay: #1f2937; /* gray-800 — hover, inputs */
+  --color-surface-sunken: #030712; /* gray-950 — wells, code blocks */
+
+  /* —— Borders —— */
+  --color-border-subtle: #1f2937; /* gray-800 — default card borders */
+  --color-border-strong: #374151; /* gray-700 — hover borders, dividers */
+
+  /* —— Text —— */
+  --color-text-primary: #f3f4f6; /* gray-100 — headings, primary content */
+  --color-text-secondary: #9ca3af; /* gray-400 — default body */
+  --color-text-tertiary: #6b7280; /* gray-500 — captions, meta */
+  --color-text-disabled: #4b5563; /* gray-600 — disabled, faint */
+
+  /* —— Semantic colors (values unchanged from current usage) —— */
+  --color-success: #10b981; /* emerald-500 — completed / safe */
+  --color-warning: #f59e0b; /* amber-500 — needs your decision */
+  --color-danger: #ef4444; /* red-500 — irreversible / failure */
+  --color-insight: #6366f1; /* indigo-500 — memory & insight */
+
+  /* —— Focus ring (new in Phase 1a; applied globally) —— */
+  --color-focus-ring: #6366f1; /* matches insight — calm, non-emerald */
+}

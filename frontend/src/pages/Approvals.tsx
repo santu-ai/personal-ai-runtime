@@ -40,8 +40,8 @@ const ACTION_META: Record<
 };
 
 /** 流程类型对应的 Badge 色调 */
-const FLOW_TONE: Record<string, "info" | "success" | "warning" | "default" | "danger"> = {
-  对话: "info",
+const FLOW_TONE: Record<string, "insight" | "success" | "warning" | "default" | "danger"> = {
+  对话: "insight",
   任务: "success",
   定时任务: "warning",
   测试: "default",

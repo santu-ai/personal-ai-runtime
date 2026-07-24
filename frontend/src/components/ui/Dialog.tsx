@@ -65,14 +65,14 @@ export default function Dialog({
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
-        className="bg-gray-900 border border-gray-700 rounded-xl p-6 max-w-md w-full mx-4 shadow-xl outline-none"
+        className="bg-surface-raised border border-border-strong rounded-xl p-6 max-w-md w-full mx-4 shadow-xl outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 id={titleId} className="text-lg font-semibold text-gray-100">
+        <h3 id={titleId} className="text-lg font-semibold text-text-primary">
           {title}
         </h3>
         {description && (
-          <p id={descId} className="text-sm text-gray-400 mt-2">
+          <p id={descId} className="text-sm text-text-secondary mt-2">
             {description}
           </p>
         )}

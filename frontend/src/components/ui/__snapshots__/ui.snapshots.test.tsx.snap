@@ -3,17 +3,17 @@
 exports[`UI component snapshots > Badge tones 1`] = `
 <div>
   <span
-    class="inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-300 "
+    class="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-surface-overlay text-text-secondary "
   >
     默认
   </span>
   <span
-    class="inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-emerald-900/50 text-emerald-400 "
+    class="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-success/15 text-success "
   >
     成功
   </span>
   <span
-    class="inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-amber-900/50 text-amber-400 "
+    class="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-warning/15 text-warning "
   >
     警告
   </span>
@@ -22,7 +22,7 @@ exports[`UI component snapshots > Badge tones 1`] = `
 
 exports[`UI component snapshots > Button danger sm 1`] = `
 <button
-  class="rounded-lg font-medium transition-colors px-3 py-1.5 text-xs bg-red-700 hover:bg-red-600 text-white disabled:opacity-50 "
+  class="inline-flex items-center justify-center rounded-lg font-medium transition-colors px-3 py-1.5 text-xs gap-1.5 bg-danger hover:bg-danger/90 text-white disabled:bg-surface-overlay disabled:text-text-disabled focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base disabled:cursor-not-allowed "
 >
   删除
 </button>
@@ -30,7 +30,7 @@ exports[`UI component snapshots > Button danger sm 1`] = `
 
 exports[`UI component snapshots > Button primary 1`] = `
 <button
-  class="rounded-lg font-medium transition-colors px-4 py-2 text-sm bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-gray-700 disabled:text-gray-500 "
+  class="inline-flex items-center justify-center rounded-lg font-medium transition-colors px-4 py-2 text-sm gap-2 bg-surface-overlay hover:bg-border-strong text-white disabled:bg-surface-overlay disabled:text-text-disabled focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base disabled:cursor-not-allowed "
 >
   保存
 </button>
@@ -38,7 +38,7 @@ exports[`UI component snapshots > Button primary 1`] = `
 
 exports[`UI component snapshots > Card 1`] = `
 <div
-  class="bg-gray-900 border border-gray-800 rounded-xl p-4 "
+  class="border rounded-xl bg-surface-raised border-border-subtle p-4 "
 >
   <p>
     内容
@@ -64,7 +64,7 @@ exports[`UI component snapshots > EmptyState 1`] = `
     class="mt-6"
   >
     <button
-      class="rounded-lg font-medium transition-colors px-4 py-2 text-sm bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-gray-700 disabled:text-gray-500 "
+      class="inline-flex items-center justify-center rounded-lg font-medium transition-colors px-4 py-2 text-sm gap-2 bg-surface-overlay hover:bg-border-strong text-white disabled:bg-surface-overlay disabled:text-text-disabled focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base disabled:cursor-not-allowed "
     >
       新建
     </button>

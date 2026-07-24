@@ -257,7 +257,7 @@ export default function GoalsPage() {
                       selectedGoal.status === "active"
                         ? "success"
                         : selectedGoal.status === "completed"
-                          ? "info"
+                          ? "success"
                           : "default"
                     }
                   >
