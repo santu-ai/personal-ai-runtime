@@ -76,28 +76,28 @@ export default function PromptEditor() {
   };
 
   if (isLoading && !hydrated) {
-    return <p className="text-xs text-gray-600">加载人设中…</p>;
+    return <p className="text-xs text-fg-disabled">加载人设中…</p>;
   }
 
   return (
     <div className="space-y-4">
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-xs text-gray-400">
-            身份定义 {isCustomIdentity && <span className="text-emerald-400">(已自定义)</span>}
+          <label className="text-xs text-fg-secondary">
+            身份定义 {isCustomIdentity && <span className="text-insight">(已自定义)</span>}
           </label>
           <div className="flex gap-2">
             <button
               onClick={() => handleReset("identity")}
               disabled={saving || !isCustomIdentity}
-              className="text-xs text-gray-600 hover:text-gray-400 disabled:opacity-30"
+              className="text-xs text-fg-disabled hover:text-fg-tertiary disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
             >
               重置
             </button>
             <button
               onClick={() => handleSave("identity")}
               disabled={saving}
-              className="text-xs px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 rounded text-white disabled:opacity-50"
+              className="text-xs px-2 py-0.5 bg-surface-overlay hover:bg-border-strong rounded text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             >
               保存
             </button>
@@ -107,27 +107,27 @@ export default function PromptEditor() {
           value={identity}
           onChange={(e) => setIdentity(e.target.value)}
           rows={6}
-          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-300 font-mono focus:border-emerald-500 focus:outline-none resize-y"
+          className="w-full bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary font-mono focus:border-focus-ring focus:outline-none resize-y placeholder:text-fg-tertiary"
           placeholder="定义 AI 的身份、性格、行为准则..."
         />
       </div>
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-xs text-gray-400">
-            代码规则 {isCustomCodingRules && <span className="text-emerald-400">(已自定义)</span>}
+          <label className="text-xs text-fg-secondary">
+            代码规则 {isCustomCodingRules && <span className="text-insight">(已自定义)</span>}
           </label>
           <div className="flex gap-2">
             <button
               onClick={() => handleReset("coding_rules")}
               disabled={saving || !isCustomCodingRules}
-              className="text-xs text-gray-600 hover:text-gray-400 disabled:opacity-30"
+              className="text-xs text-fg-disabled hover:text-fg-tertiary disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
             >
               重置
             </button>
             <button
               onClick={() => handleSave("coding_rules")}
               disabled={saving}
-              className="text-xs px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 rounded text-white disabled:opacity-50"
+              className="text-xs px-2 py-0.5 bg-surface-overlay hover:bg-border-strong rounded text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             >
               保存
             </button>
@@ -137,12 +137,12 @@ export default function PromptEditor() {
           value={codingRules}
           onChange={(e) => setCodingRules(e.target.value)}
           rows={6}
-          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-300 font-mono focus:border-emerald-500 focus:outline-none resize-y"
+          className="w-full bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary font-mono focus:border-focus-ring focus:outline-none resize-y placeholder:text-fg-tertiary"
           placeholder="定义 AI 编码时的行为规则..."
         />
       </div>
       {message && (
-        <p className={`text-xs ${message.includes("失败") ? "text-red-400" : "text-emerald-400"}`}>
+        <p className={`text-xs ${message.includes("失败") ? "text-danger" : "text-success"}`}>
           {message}
         </p>
       )}

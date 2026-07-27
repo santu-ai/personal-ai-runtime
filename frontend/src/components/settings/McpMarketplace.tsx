@@ -41,29 +41,29 @@ export default function McpMarketplace() {
   };
 
   if (isLoading || !isFetched) {
-    return <p className="text-xs text-gray-600">加载市场中…</p>;
+    return <p className="text-xs text-fg-disabled">加载市场中…</p>;
   }
 
   return (
     <div className="space-y-2 max-h-60 overflow-y-auto">
       {servers.length === 0 ? (
-        <p className="text-xs text-gray-600">暂无可用 MCP 服务器</p>
+        <p className="text-xs text-fg-disabled">暂无可用 MCP 服务器</p>
       ) : (
         servers.map((s) => (
           <div
             key={s.name}
-            className="flex items-center justify-between bg-gray-800/50 rounded-lg p-2.5"
+            className="flex items-center justify-between bg-surface-overlay/50 rounded-lg p-2.5"
           >
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-gray-300">{s.name}</span>
-                <span className="text-xs px-1.5 py-0.5 bg-gray-700 rounded text-gray-500">
+                <span className="text-xs font-medium text-fg-primary">{s.name}</span>
+                <span className="text-xs px-1.5 py-0.5 bg-surface-overlay rounded text-fg-tertiary">
                   {CATEGORIES[s.category] || s.category}
                 </span>
               </div>
-              <p className="text-xs text-gray-600 mt-0.5 truncate">{s.description}</p>
+              <p className="text-xs text-fg-disabled mt-0.5 truncate">{s.description}</p>
               {Object.keys(s.env_vars || {}).length > 0 && (
-                <p className="text-xs text-gray-700 mt-0.5">
+                <p className="text-xs text-fg-disabled mt-0.5">
                   需要: {Object.keys(s.env_vars).join(", ")}
                 </p>
               )}
@@ -73,8 +73,8 @@ export default function McpMarketplace() {
               disabled={installing === s.name || s.installed}
               className={
                 s.installed
-                  ? "shrink-0 ml-3 px-3 py-1 text-xs bg-gray-800 text-gray-600 rounded cursor-not-allowed"
-                  : "shrink-0 ml-3 px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition-colors disabled:opacity-50"
+                  ? "shrink-0 ml-3 px-3 py-1 text-xs bg-surface-overlay text-fg-disabled rounded cursor-not-allowed"
+                  : "shrink-0 ml-3 px-3 py-1 text-xs bg-surface-overlay hover:bg-border-strong text-fg-primary rounded transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               }
             >
               {installing === s.name ? "安装中…" : s.installed ? "已安装" : "安装"}

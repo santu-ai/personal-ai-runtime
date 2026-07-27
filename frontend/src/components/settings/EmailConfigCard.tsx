@@ -77,14 +77,14 @@ export default function EmailConfigCard({ email, onSaved }: Props) {
 
   return (
     <Card>
-      <h3 className="text-sm font-medium text-gray-300 mb-3">Gmail 邮箱配置</h3>
-      <p className="text-xs text-gray-500 mb-4">
+      <h3 className="text-sm font-medium text-fg-secondary mb-3">Gmail 邮箱配置</h3>
+      <p className="text-xs text-fg-tertiary mb-4">
         {email.help || "使用 Gmail 应用专用密码连接 IMAP/SMTP。"}
       </p>
 
       <div className="space-y-3">
         <div>
-          <label className="text-xs text-gray-500 block mb-1">Gmail 地址</label>
+          <label className="text-xs text-fg-tertiary block mb-1">Gmail 地址</label>
           <Input
             type="email"
             value={emailUser}
@@ -93,7 +93,7 @@ export default function EmailConfigCard({ email, onSaved }: Props) {
           />
         </div>
         <div>
-          <label className="text-xs text-gray-500 block mb-1">应用专用密码</label>
+          <label className="text-xs text-fg-tertiary block mb-1">应用专用密码</label>
           <PasswordInput
             value={emailPass}
             isSavedSecret={emailPass === MASKED_SECRET}
@@ -101,7 +101,7 @@ export default function EmailConfigCard({ email, onSaved }: Props) {
             placeholder="16 位应用专用密码"
           />
           {emailPass === MASKED_SECRET && (
-            <p className="text-xs text-gray-600 mt-1">已保存密码，留空则不修改</p>
+            <p className="text-xs text-fg-disabled mt-1">已保存密码，留空则不修改</p>
           )}
         </div>
       </div>

@@ -132,15 +132,15 @@ export default function DataSovereigntyCard({ onAfterImport }: Props) {
 
   return (
     <Card>
-      <h3 className="text-sm font-medium text-gray-300 mb-3">数据主权</h3>
-      <p className="text-sm text-gray-500 mb-4">导出完整个人数据快照，或从备份文件导入。</p>
-      {statusMessage && <p className="text-xs text-emerald-400 mb-3">{statusMessage}</p>}
+      <h3 className="text-sm font-medium text-fg-secondary mb-3">数据主权</h3>
+      <p className="text-sm text-fg-tertiary mb-4">导出完整个人数据快照，或从备份文件导入。</p>
+      {statusMessage && <p className="text-xs text-success mb-3">{statusMessage}</p>}
       <div className="flex flex-wrap gap-3 items-center">
         <Button onClick={handleExport} disabled={exporting}>
           {exporting ? "导出中…" : "导出全部数据"}
         </Button>
         <label className="inline-block">
-          <span className="inline-flex px-4 py-2 text-sm rounded-lg font-medium bg-gray-700 hover:bg-gray-600 text-gray-100 cursor-pointer">
+          <span className="inline-flex px-4 py-2 text-sm rounded-lg font-medium bg-surface-overlay hover:bg-border-strong text-fg-primary cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring">
             {importing ? "导入中…" : "导入备份（只读）"}
           </span>
           <input
@@ -161,10 +161,10 @@ export default function DataSovereigntyCard({ onAfterImport }: Props) {
         />
         <label className="shrink-0">
           <span
-            className={`inline-flex px-3 py-1.5 text-xs rounded-lg font-medium cursor-pointer ${
+            className={`inline-flex px-3 py-1.5 text-xs rounded-lg font-medium cursor-pointer transition-colors ${
               importing || importConfirm !== "DESTROY_AND_IMPORT"
-                ? "bg-gray-800 text-gray-600 cursor-not-allowed"
-                : "bg-red-700 hover:bg-red-600 text-white"
+                ? "bg-surface-overlay text-fg-disabled cursor-not-allowed"
+                : "bg-danger hover:bg-danger/90 text-white"
             }`}
           >
             覆盖导入
@@ -178,9 +178,9 @@ export default function DataSovereigntyCard({ onAfterImport }: Props) {
           />
         </label>
       </div>
-      <hr className="mt-4 border-gray-800" />
+      <hr className="mt-4 border-border-subtle" />
       <div className="mt-4">
-        <h4 className="text-xs font-medium text-gray-400 mb-2">加密备份（端到端加密）</h4>
+        <h4 className="text-xs font-medium text-fg-secondary mb-2">加密备份（端到端加密）</h4>
         <div className="flex flex-wrap gap-3 items-end">
           <Input
             value={encryptPassword}
@@ -193,7 +193,7 @@ export default function DataSovereigntyCard({ onAfterImport }: Props) {
           </Button>
           <label className="inline-block">
             <span
-              className={`inline-flex px-4 py-2 text-sm rounded-lg font-medium cursor-pointer ${encryptImporting || !encryptPassword ? "bg-gray-800 text-gray-600" : "bg-gray-700 hover:bg-gray-600 text-gray-100"}`}
+              className={`inline-flex px-4 py-2 text-sm rounded-lg font-medium cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${encryptImporting || !encryptPassword ? "bg-surface-overlay text-fg-disabled" : "bg-surface-overlay hover:bg-border-strong text-fg-primary"}`}
             >
               {encryptImporting ? "导入中…" : "加密导入"}
             </span>
@@ -207,17 +207,17 @@ export default function DataSovereigntyCard({ onAfterImport }: Props) {
           </label>
         </div>
       </div>
-      <hr className="mt-4 border-gray-800" />
+      <hr className="mt-4 border-border-subtle" />
       <div className="mt-4">
-        <h4 className="text-xs font-medium text-red-400 mb-2">危险操作</h4>
+        <h4 className="text-xs font-medium text-danger mb-2">危险操作</h4>
         <Button
+          variant="danger"
           onClick={handleDestroy}
           disabled={destroying}
-          className="bg-red-700 hover:bg-red-600 text-white text-sm"
         >
           {destroying ? "销毁中…" : "销毁全部数据"}
         </Button>
-        <p className="text-xs text-gray-600 mt-1">永久删除所有对话、记忆、目标和事件。不可恢复。</p>
+        <p className="text-xs text-fg-disabled mt-1">永久删除所有对话、记忆、目标和事件。不可恢复。</p>
       </div>
     </Card>
   );
