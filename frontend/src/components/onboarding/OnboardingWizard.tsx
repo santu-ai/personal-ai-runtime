@@ -146,11 +146,11 @@ export default function OnboardingWizard({ onComplete }: Props) {
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 p-4">
       <Card className="max-w-md w-full">
-        <div className="text-xs text-emerald-500 mb-2">
+        <div className="text-xs text-insight mb-2">
           首次引导 {step + 1}/{STEPS.length}
         </div>
-        <h2 className="text-xl font-semibold text-gray-100">{current.title}</h2>
-        <p className="text-sm text-gray-400 mt-2">{current.description}</p>
+        <h2 className="text-xl font-semibold text-fg-primary">{current.title}</h2>
+        <p className="text-sm text-fg-secondary mt-2">{current.description}</p>
 
         {step < 2 && (
           <div className="mt-4">
@@ -163,13 +163,13 @@ export default function OnboardingWizard({ onComplete }: Props) {
               {checking ? "检查中…" : "运行检查"}
             </Button>
             {message && (
-              <p className={`text-xs mt-2 ${messageOk ? "text-emerald-400" : "text-red-400"}`}>
+              <p className={`text-xs mt-2 ${messageOk ? "text-success" : "text-danger"}`}>
                 {message}
               </p>
             )}
             {step === 1 && !messageOk && !checking && (
-              <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                <p className="text-xs text-amber-300 mb-2">
+              <div className="mt-3 p-3 bg-warning/10 border border-warning/30 rounded-lg">
+                <p className="text-xs text-warning mb-2">
                   推荐使用 DeepSeek（注册即送免费额度），或在设置中添加你想用的任何兼容 OpenAI API
                   的模型。
                 </p>
@@ -183,26 +183,26 @@ export default function OnboardingWizard({ onComplete }: Props) {
 
         {step === 2 && (
           <div className="mt-4 space-y-2">
-            <p className="text-xs text-gray-500 mb-3">一切就绪。选一个开始——你的 AI 会立即响应：</p>
+            <p className="text-xs text-fg-tertiary mb-3">一切就绪。选一个开始——你的 AI 会立即响应：</p>
             {STARTER_PROMPTS.map((sp) => (
               <button
                 key={sp.label}
                 type="button"
                 onClick={() => launchConversation(sp.prompt, sp.title)}
                 disabled={launching}
-                className="w-full flex items-center gap-3 p-3 bg-gray-800/50 hover:bg-gray-800 border border-gray-700/50 hover:border-emerald-600/40 rounded-lg text-left transition-colors disabled:opacity-50"
+                className="w-full flex items-center gap-3 p-3 bg-surface-overlay/50 hover:bg-surface-overlay border border-border-subtle hover:border-border-strong rounded-lg text-left transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               >
                 <span className="text-xl">{sp.icon}</span>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm text-gray-200">{sp.label}</div>
+                  <div className="text-sm text-fg-primary">{sp.label}</div>
                   {sp.prompt && (
-                    <div className="text-xs text-gray-500 truncate mt-0.5">{sp.prompt}</div>
+                    <div className="text-xs text-fg-tertiary truncate mt-0.5">{sp.prompt}</div>
                   )}
                 </div>
               </button>
             ))}
             {launching && (
-              <p className="text-xs text-emerald-400 text-center pt-2">正在开启对话…</p>
+              <p className="text-xs text-success text-center pt-2">正在开启对话…</p>
             )}
           </div>
         )}

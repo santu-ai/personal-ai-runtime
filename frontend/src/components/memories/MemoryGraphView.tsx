@@ -97,10 +97,10 @@ function useForceLayout(
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
-  fact: "#10b981",
-  preference: "#8b5cf6",
-  event: "#f59e0b",
-  goal: "#3b82f6",
+  fact: "#10b981", // success — 关于你的事实（已验证）
+  preference: "#6366f1", // insight — 偏好（AI 洞察）
+  event: "#f59e0b", // warning — 经历过的事件（需要回忆）
+  goal: "#6366f1", // insight — 目标（AI 追踪）
 };
 
 export default function MemoryGraphView({ graph }: { graph: MemoryGraph }) {
@@ -133,7 +133,7 @@ export default function MemoryGraphView({ graph }: { graph: MemoryGraph }) {
               y1={source.y}
               x2={target.x}
               y2={target.y}
-              stroke={isHighlighted ? "#60a5fa" : "#374151"}
+              stroke={isHighlighted ? "#818cf8" : "#374151"}
               strokeWidth={isHighlighted ? 2 : 1}
               strokeOpacity={isHighlighted ? 0.8 : 0.3}
             />
@@ -158,7 +158,7 @@ export default function MemoryGraphView({ graph }: { graph: MemoryGraph }) {
                 cy={pos.y}
                 r={isHovered ? 12 : 8}
                 fill={color}
-                stroke={isHovered ? "#fff" : "none"}
+                stroke={isHovered ? "#f3f4f6" : "none"}
                 strokeWidth={2}
               />
               {isHovered && (
@@ -166,7 +166,7 @@ export default function MemoryGraphView({ graph }: { graph: MemoryGraph }) {
                   x={pos.x}
                   y={pos.y - 20}
                   textAnchor="middle"
-                  fill="#fff"
+                  fill="#f3f4f6"
                   fontSize={11}
                   className="pointer-events-none"
                 >
@@ -180,10 +180,10 @@ export default function MemoryGraphView({ graph }: { graph: MemoryGraph }) {
       </svg>
 
       {/* Legend */}
-      <div className="absolute top-4 right-4 bg-gray-800/80 rounded-lg p-3 text-xs">
-        <div className="font-medium text-gray-300 mb-2">类别</div>
+      <div className="absolute top-4 right-4 bg-surface-overlay/80 rounded-lg p-3 text-xs">
+        <div className="font-medium text-fg-primary mb-2">类别</div>
         {Object.entries(CATEGORY_COLORS).map(([cat, color]) => (
-          <div key={cat} className="flex items-center gap-2 text-gray-400">
+          <div key={cat} className="flex items-center gap-2 text-fg-secondary">
             <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
             {cat}
           </div>
@@ -191,7 +191,7 @@ export default function MemoryGraphView({ graph }: { graph: MemoryGraph }) {
       </div>
 
       {/* Stats */}
-      <div className="absolute bottom-4 left-4 text-xs text-gray-500">
+      <div className="absolute bottom-4 left-4 text-xs text-fg-tertiary">
         {graph.nodes.length} 个记忆 · {graph.edges.length} 条关联
       </div>
     </div>

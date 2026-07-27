@@ -90,13 +90,13 @@ export default function QuickCaptureDialog() {
       }}
     >
       <div
-        className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-[28rem] max-w-[90vw] overflow-hidden"
+        className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[28rem] max-w-[90vw] overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-800">
-          <Zap size={14} className="text-amber-400" />
-          <span className="text-sm font-medium text-gray-200">快速捕获</span>
-          <span className="text-xs text-gray-600 ml-auto">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-border-subtle">
+          <Zap size={14} className="text-warning" />
+          <span className="text-sm font-medium text-fg-primary">快速捕获</span>
+          <span className="text-xs text-fg-disabled ml-auto">
             {saved ? "已保存 ✓" : "⌘/Ctrl + Enter 保存"}
           </span>
         </div>
@@ -106,25 +106,25 @@ export default function QuickCaptureDialog() {
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKey}
           placeholder="想到什么，立刻记下来..."
-          className="w-full bg-transparent text-gray-100 text-sm px-4 py-3 outline-none resize-none h-28 placeholder:text-gray-600"
+          className="w-full bg-transparent text-fg-primary text-sm px-4 py-3 outline-none resize-none h-28 placeholder:text-fg-tertiary"
           disabled={saving || saved}
         />
-        <div className="flex items-center justify-between px-4 py-2 border-t border-gray-800 bg-gray-950/50">
-          <span className="text-xs text-gray-600">保存为 quick_note 记忆</span>
+        <div className="flex items-center justify-between px-4 py-2 border-t border-border-subtle bg-surface-sunken/50">
+          <span className="text-xs text-fg-disabled">保存为 quick_note 记忆</span>
           <div className="flex gap-2">
             <button
               onClick={() => {
                 setOpen(false);
                 setText("");
               }}
-              className="px-3 py-1 text-xs text-gray-400 hover:text-gray-200"
+              className="px-3 py-1 text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
             >
               取消
             </button>
             <button
               onClick={handleSave}
               disabled={!text.trim() || saving || saved}
-              className="px-3 py-1 text-xs bg-amber-600 hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed rounded text-white"
+              className="px-3 py-1 text-xs bg-surface-overlay hover:bg-border-strong disabled:opacity-40 disabled:cursor-not-allowed rounded text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             >
               {saving ? "保存中..." : saved ? "已保存" : "保存"}
             </button>
