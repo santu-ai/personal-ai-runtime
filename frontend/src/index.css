@@ -51,28 +51,28 @@
     @apply mb-1;
   }
   .markdown-content code:not(pre code) {
-    @apply bg-gray-800 px-1.5 py-0.5 rounded text-sm text-emerald-400;
+    @apply bg-surface-overlay px-1.5 py-0.5 rounded text-sm text-insight;
   }
   .markdown-content pre {
-    @apply bg-gray-900 rounded-lg p-4 mb-3 overflow-x-auto;
+    @apply bg-surface-sunken rounded-lg p-4 mb-3 overflow-x-auto;
   }
   .markdown-content pre code {
     @apply text-sm;
   }
   .markdown-content blockquote {
-    @apply border-l-4 border-emerald-600 pl-4 italic text-gray-400 mb-2;
+    @apply border-l-4 border-border-strong pl-4 italic text-fg-secondary mb-2;
   }
   .markdown-content a {
-    @apply text-emerald-400 underline hover:text-emerald-300;
+    @apply text-insight underline hover:text-insight/80;
   }
   .markdown-content table {
     @apply w-full mb-3 border-collapse;
   }
   .markdown-content th {
-    @apply border border-gray-700 px-3 py-2 text-left bg-gray-800;
+    @apply border border-border-strong px-3 py-2 text-left bg-surface-overlay;
   }
   .markdown-content td {
-    @apply border border-gray-700 px-3 py-2;
+    @apply border border-border-strong px-3 py-2;
   }
 }
 
@@ -90,5 +90,5 @@
 .typing-cursor::after {
   content: "▍";
   animation: blink 1s infinite;
-  @apply text-emerald-400;
+  @apply text-fg-secondary;
 }
