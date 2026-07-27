@@ -51,12 +51,12 @@ exports[`UI component snapshots > EmptyState 1`] = `
   class="flex flex-col items-center justify-center py-12 text-center"
 >
   <h3
-    class="text-lg font-medium text-gray-300"
+    class="text-lg font-medium text-fg-primary"
   >
     暂无数据
   </h3>
   <p
-    class="text-sm text-gray-500 mt-2 max-w-sm"
+    class="text-sm text-fg-tertiary mt-2 max-w-sm"
   >
     创建第一个目标开始使用
   </p>

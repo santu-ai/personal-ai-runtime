@@ -52,48 +52,48 @@ export default function NotificationBell() {
             setOpen(!open);
             if (!open) void refetch();
           }}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-gray-800/50 transition-colors"
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-fg-secondary hover:bg-surface-overlay/50 hover:text-fg-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
           aria-label="通知"
         >
           <Bell size={18} />
           <span>通知</span>
           {unread > 0 && (
-            <span className="ml-auto bg-emerald-600 text-white text-xs px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+            <span className="ml-auto bg-insight text-white text-xs px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
               {unread}
             </span>
           )}
         </button>
 
         {open && (
-          <div className="absolute bottom-full left-2 right-2 mb-1 bg-gray-900 border border-gray-700 rounded-xl shadow-xl max-h-64 overflow-y-auto z-50">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800">
-              <span className="text-xs text-gray-500">最近通知</span>
+          <div className="absolute bottom-full left-2 right-2 mb-1 bg-surface-raised border border-border-strong rounded-xl shadow-xl max-h-64 overflow-y-auto z-50">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-border-subtle">
+              <span className="text-xs text-fg-tertiary">最近通知</span>
               {unread > 0 && (
                 <button
                   type="button"
                   onClick={handleMarkAllRead}
-                  className="text-xs text-emerald-400 hover:text-emerald-300"
+                  className="text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
                 >
                   全部已读
                 </button>
               )}
             </div>
             {notifications.length === 0 ? (
-              <p className="text-xs text-gray-500 p-4 text-center">暂无通知</p>
+              <p className="text-xs text-fg-disabled p-4 text-center">暂无通知</p>
             ) : (
               notifications.map((n) => (
                 <button
                   key={n.id}
                   type="button"
                   onClick={() => handleOpenDetail(n)}
-                  className={`w-full text-left p-3 hover:bg-gray-800 border-b border-gray-800 last:border-0 ${
+                  className={`w-full text-left p-3 hover:bg-surface-overlay border-b border-border-subtle last:border-0 ${
                     n.read ? "opacity-60" : ""
                   }`}
                 >
-                  <p className={`text-sm ${n.read ? "text-gray-400" : "text-emerald-400"}`}>
+                  <p className={`text-sm ${n.read ? "text-fg-secondary" : "text-fg-primary"}`}>
                     {n.title}
                   </p>
-                  <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                  <p className="text-xs text-fg-tertiary mt-1 line-clamp-2">
                     {notificationPreview(n.content)}
                   </p>
                 </button>

@@ -52,7 +52,7 @@ function isDataRoute(pathname: string) {
 function NavBadge({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <span className="ml-auto text-[10px] min-w-[1.25rem] h-5 px-1.5 rounded-full bg-amber-600/30 text-amber-300 flex items-center justify-center font-medium">
+    <span className="ml-auto text-[10px] min-w-[1.25rem] h-5 px-1.5 rounded-full bg-warning/20 text-warning flex items-center justify-center font-medium">
       {count > 99 ? "99+" : count}
     </span>
   );
@@ -81,13 +81,13 @@ export default function Sidebar({
   };
 
   return (
-    <aside className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col shrink-0">
-      <div className="p-4 border-b border-gray-800">
-        <h1 className="text-lg font-bold text-emerald-400">Personal AI Runtime</h1>
-        <p className="text-xs text-gray-500 mt-1">你的第二大脑</p>
+    <aside className="w-64 bg-surface-raised border-r border-border-subtle flex flex-col shrink-0">
+      <div className="p-4 border-b border-border-subtle">
+        <h1 className="text-lg font-bold text-fg-primary">Personal AI Runtime</h1>
+        <p className="text-xs text-fg-tertiary mt-1">你的第二大脑</p>
       </div>
 
-      <nav className="px-2 py-2 border-b border-gray-800">
+      <nav className="px-2 py-2 border-b border-border-subtle">
         {PRIMARY_NAV.map((item) => {
           const Icon = item.icon;
           const active = isChatRoute(location.pathname);
@@ -96,8 +96,8 @@ export default function Sidebar({
               key={item.path}
               to={item.path}
               end={item.path === "/"}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm mb-1 transition-colors ${
-                active ? "bg-emerald-600/20 text-emerald-400" : "text-gray-400 hover:bg-gray-800/50"
+              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm mb-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                active ? "bg-surface-overlay text-fg-primary" : "text-fg-secondary hover:bg-surface-overlay/50 hover:text-fg-primary"
               }`}
             >
               <Icon size={18} className="shrink-0" />
@@ -112,7 +112,7 @@ export default function Sidebar({
             {approvalCount > 0 && (
               <NavLink
                 to="/approvals"
-                className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-amber-300/90 hover:bg-amber-900/20 transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-warning hover:bg-warning/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               >
                 <ShieldCheck size={14} className="shrink-0" />
                 <span>待审批</span>
@@ -122,7 +122,7 @@ export default function Sidebar({
             {inboxCount > 0 && (
               <NavLink
                 to="/inbox"
-                className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-blue-300/90 hover:bg-blue-900/20 transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-insight hover:bg-insight/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               >
                 <Mail size={14} className="shrink-0" />
                 <span>待处理邮件</span>
@@ -137,7 +137,7 @@ export default function Sidebar({
         <>
           <button
             onClick={onNewChat}
-            className="mx-3 mt-3 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-sm font-medium transition-colors"
+            className="mx-3 mt-3 px-4 py-2 bg-surface-overlay hover:bg-border-strong text-white rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
           >
             + 新对话
           </button>
@@ -149,14 +149,14 @@ export default function Sidebar({
                 onClick={() => onSelectConversation(conv.id)}
                 className={`group flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer mb-1 transition-colors ${
                   activeConversationId === conv.id
-                    ? "bg-gray-800 text-white"
-                    : "text-gray-400 hover:bg-gray-800/50 hover:text-gray-200"
+                    ? "bg-surface-overlay text-fg-primary"
+                    : "text-fg-secondary hover:bg-surface-overlay/50 hover:text-fg-primary"
                 }`}
               >
                 <div className="min-w-0 flex-1">
                   <span className="truncate text-sm block">{conv.title || "新对话"}</span>
                   {conv.summary && (
-                    <span className="truncate text-xs text-gray-600 block">{conv.summary}</span>
+                    <span className="truncate text-xs text-fg-disabled block">{conv.summary}</span>
                   )}
                 </div>
                 <button
@@ -164,7 +164,7 @@ export default function Sidebar({
                     e.stopPropagation();
                     onDeleteChat(conv.id);
                   }}
-                  className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-all ml-2 shrink-0"
+                  className="opacity-0 group-hover:opacity-100 text-fg-tertiary hover:text-danger transition-all ml-2 shrink-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
                   title="删除对话"
                   aria-label="删除对话"
                 >
@@ -173,7 +173,7 @@ export default function Sidebar({
               </div>
             ))}
             {conversations.length === 0 && (
-              <p className="text-gray-600 text-sm text-center mt-8">暂无对话</p>
+              <p className="text-fg-disabled text-sm text-center mt-8">暂无对话</p>
             )}
           </div>
         </>
@@ -183,7 +183,7 @@ export default function Sidebar({
         <div className="px-2 py-2 flex-1 overflow-y-auto">
           <button
             onClick={() => setDataExpanded(!dataExpanded)}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-500 hover:text-gray-400 transition-colors uppercase tracking-wide"
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-fg-tertiary hover:text-fg-secondary transition-colors uppercase tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
           >
             {dataExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             <FolderOpen size={14} />
@@ -199,10 +199,10 @@ export default function Sidebar({
                     key={item.path}
                     to={item.path}
                     className={({ isActive }) =>
-                      `w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm mb-1 transition-colors ${
+                      `w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm mb-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
                         isActive
-                          ? "bg-emerald-600/20 text-emerald-400"
-                          : "text-gray-400 hover:bg-gray-800/50"
+                          ? "bg-surface-overlay text-fg-primary"
+                          : "text-fg-secondary hover:bg-surface-overlay/50 hover:text-fg-primary"
                       }`
                     }
                   >
@@ -217,7 +217,7 @@ export default function Sidebar({
         </div>
       )}
 
-      <div className="border-t border-gray-800 px-2 py-2 mt-auto">
+      <div className="border-t border-border-subtle px-2 py-2 mt-auto">
         {SYSTEM_NAV.map((item) => {
           const Icon = item.icon;
           return (
@@ -225,10 +225,10 @@ export default function Sidebar({
               key={item.path}
               to={item.path}
               className={({ isActive }) =>
-                `w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                `w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
                   isActive
-                    ? "bg-emerald-600/20 text-emerald-400"
-                    : "text-gray-400 hover:bg-gray-800/50"
+                    ? "bg-surface-overlay text-fg-primary"
+                    : "text-fg-secondary hover:bg-surface-overlay/50 hover:text-fg-primary"
                 }`
               }
             >

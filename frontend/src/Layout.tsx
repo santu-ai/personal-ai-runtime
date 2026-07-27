@@ -78,7 +78,7 @@ export default function Layout() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-950 text-gray-100">
+    <div className="flex h-screen bg-surface-base text-fg-primary">
       <Sidebar
         conversations={conversations}
         activeConversationId={activeConversationId}
@@ -89,16 +89,16 @@ export default function Layout() {
       />
 
       {authRequired && !isAuthConfigured() && (
-        <div className="fixed top-0 left-64 right-0 z-50 bg-amber-900/50 border-b border-amber-700/50 px-4 py-2 text-center">
-          <span className="text-amber-300 text-sm">
+        <div className="fixed top-0 left-64 right-0 z-50 bg-warning/20 border-b border-warning/40 px-4 py-2 text-center">
+          <span className="text-warning text-sm">
             后端已启用认证，请在 .env 中设置 VITE_AUTH_TOKEN（与 AUTH_TOKEN 保持一致）后重启前端
           </span>
         </div>
       )}
 
       {backendUnavailable && (
-        <div className="fixed top-0 left-64 right-0 z-50 bg-red-900/50 border-b border-red-700/50 px-4 py-2 text-center">
-          <span className="text-red-400 text-sm">无法连接到后端服务，请确认后端已启动</span>
+        <div className="fixed top-0 left-64 right-0 z-50 bg-danger/20 border-b border-danger/40 px-4 py-2 text-center">
+          <span className="text-danger text-sm">无法连接到后端服务，请确认后端已启动</span>
         </div>
       )}
 
@@ -106,7 +106,7 @@ export default function Layout() {
         {toasts.map((t) => (
           <div
             key={t.id}
-            className="bg-gray-900 border border-emerald-700/50 rounded-lg p-3 shadow-lg group relative"
+            className="bg-surface-raised border border-border-strong rounded-lg p-3 shadow-lg group relative"
           >
             <div
               className="cursor-pointer flex-1"
@@ -120,8 +120,8 @@ export default function Layout() {
                 })
               }
             >
-              <div className="text-sm font-medium text-emerald-400">{t.title}</div>
-              <div className="text-xs text-gray-400 mt-1 line-clamp-2">{t.content}</div>
+              <div className="text-sm font-medium text-fg-primary">{t.title}</div>
+              <div className="text-xs text-fg-secondary mt-1 line-clamp-2">{t.content}</div>
             </div>
             <button
               type="button"
@@ -129,7 +129,7 @@ export default function Layout() {
                 e.stopPropagation();
                 dismissToast(t.id);
               }}
-              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-300 transition-opacity"
+              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-fg-tertiary hover:text-fg-primary transition-opacity"
               aria-label="关闭"
             >
               &#x2715;
@@ -139,13 +139,13 @@ export default function Layout() {
         {errors.map((err) => (
           <div
             key={err.id}
-            className="bg-gray-900 border border-red-700/50 rounded-lg p-3 shadow-lg group relative"
+            className="bg-surface-raised border border-danger/50 rounded-lg p-3 shadow-lg group relative"
           >
             <div className="cursor-pointer flex-1" onClick={() => dismissError(err.id)}>
-              <div className="text-sm font-medium text-red-400">
+              <div className="text-sm font-medium text-danger">
                 {err.source ? `[${err.source}] ` : ""}错误
               </div>
-              <div className="text-xs text-gray-400 mt-1 line-clamp-2">{err.message}</div>
+              <div className="text-xs text-fg-secondary mt-1 line-clamp-2">{err.message}</div>
             </div>
             <button
               type="button"
@@ -153,7 +153,7 @@ export default function Layout() {
                 e.stopPropagation();
                 dismissError(err.id);
               }}
-              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-300 transition-opacity"
+              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-fg-tertiary hover:text-fg-primary transition-opacity"
               aria-label="关闭"
             >
               &#x2715;
@@ -165,7 +165,7 @@ export default function Layout() {
       <main className="flex-1 flex flex-col min-w-0">
         <Suspense
           fallback={
-            <div className="flex-1 flex items-center justify-center text-gray-400 animate-pulse">
+            <div className="flex-1 flex items-center justify-center text-fg-secondary animate-pulse">
               加载中…
             </div>
           }
