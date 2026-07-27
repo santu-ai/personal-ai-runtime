@@ -23,6 +23,10 @@ vi.mock("../hooks/useInboxQuery", () => ({
   useInboxQuery: () => ({ data: { emails: [], digest: {} } }),
 }));
 
+vi.mock("../hooks/useGoalsQuery", () => ({
+  useGoalsQuery: () => ({ data: [] }),
+}));
+
 import { useDashboard } from "../hooks/useDashboard";
 import { useNotifications } from "../hooks/useNotifications";
 
@@ -95,9 +99,9 @@ describe("DashboardPage", () => {
     mockDashboardData();
   });
 
-  it("renders dashboard title", () => {
+  it("renders today title", () => {
     renderDashboard();
-    expect(screen.getAllByText("AI 概览")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Today")[0]).toBeInTheDocument();
   });
 
   it("shows loading state", () => {
@@ -114,13 +118,6 @@ describe("DashboardPage", () => {
     const retryButtons = screen.getAllByText("重试");
     fireEvent.click(retryButtons[0]);
     expect(mockRefresh).toHaveBeenCalledOnce();
-  });
-
-  it("renders memory overview section", () => {
-    renderDashboard();
-    expect(screen.getAllByText("AI 记住了")[0]).toBeInTheDocument();
-    expect(screen.getAllByText("条记忆")[0]).toBeInTheDocument();
-    expect(screen.getAllByText("habit: 30")[0]).toBeInTheDocument();
   });
 
   it("renders proactive reminders section", () => {
@@ -140,23 +137,35 @@ describe("DashboardPage", () => {
     expect(screen.getAllByText("暂无提醒")[0]).toBeInTheDocument();
   });
 
-  it("hides system diagnostics by default", () => {
+  it("hides health section by default", () => {
     renderDashboard();
     expect(screen.queryByText("LLM 成功率")).not.toBeInTheDocument();
   });
 
-  it("shows system diagnostics when expanded", () => {
+  it("shows health section when expanded", () => {
     renderDashboard();
-    fireEvent.click(screen.getByText("系统诊断（开发者用）"));
+    fireEvent.click(screen.getByText("运行状况"));
     expect(screen.getAllByText("LLM 成功率")[0]).toBeInTheDocument();
     expect(screen.getAllByText("95.2%")[0]).toBeInTheDocument();
   });
 
-  it("shows tool calls in diagnostics", () => {
+  it("shows memory section inside health when expanded", () => {
     renderDashboard();
-    fireEvent.click(screen.getByText("系统诊断（开发者用）"));
+    fireEvent.click(screen.getByText("运行状况"));
+    expect(screen.getAllByText("AI 记住了")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("habit: 30")[0]).toBeInTheDocument();
+  });
+
+  it("shows tool calls in health section when expanded", () => {
+    renderDashboard();
+    fireEvent.click(screen.getByText("运行状况"));
     expect(screen.getAllByText("工具调用 (7天)")[0]).toBeInTheDocument();
     expect(screen.getAllByText("搜索网页")[0]).toBeInTheDocument();
+  });
+
+  it("shows empty state when no actions", () => {
+    renderDashboard();
+    expect(screen.getAllByText("今天暂无紧急事项")[0]).toBeInTheDocument();
   });
 
   it("calls refresh on button click", () => {
