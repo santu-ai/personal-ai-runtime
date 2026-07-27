@@ -247,17 +247,17 @@ export default function ChatView({ conversationId }: Props) {
         <div className="flex-1 flex items-center justify-center px-4">
           <div className="max-w-lg w-full text-center">
             <div className="text-4xl mb-4">🧠</div>
-            <h2 className="text-xl font-semibold text-gray-200 mb-2">开始对话</h2>
-            <p className="text-sm text-gray-500 mb-4">
+            <h2 className="text-xl font-semibold text-fg-primary mb-2">开始对话</h2>
+            <p className="text-sm text-fg-tertiary mb-4">
               我是你的个人 AI 助手。所有数据保存在你的机器上，完全私有。
             </p>
 
             {/* 我记得你 —— 记忆驱动连续性 */}
             {recentMemories.length > 0 && (
-              <div className="mb-5 text-left bg-indigo-900/10 border border-indigo-700/30 rounded-xl p-4">
+              <div className="mb-5 text-left bg-insight/10 border border-insight/30 rounded-xl p-4">
                 <div className="flex items-center gap-1.5 mb-2">
                   <span className="text-sm">🧠</span>
-                  <span className="text-xs text-indigo-400 font-medium">我记得你</span>
+                  <span className="text-xs text-insight font-medium">我记得你</span>
                 </div>
                 <div className="space-y-1.5">
                   {recentMemories.map((m) => (
@@ -270,7 +270,7 @@ export default function ChatView({ conversationId }: Props) {
                         adjustTextareaHeight();
                         setTimeout(() => inputRef.current?.focus(), 0);
                       }}
-                      className="block w-full text-left text-xs text-gray-400 hover:text-indigo-300 transition-colors truncate"
+                      className="block w-full text-left text-xs text-fg-secondary hover:text-insight transition-colors truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
                       title={m.content}
                     >
                       · {m.content.slice(0, 60)}
@@ -291,7 +291,7 @@ export default function ChatView({ conversationId }: Props) {
                     adjustTextareaHeight();
                     setTimeout(() => inputRef.current?.focus(), 0);
                   }}
-                  className="flex items-center gap-1 text-xs px-2.5 py-1.5 bg-gray-800/60 hover:bg-gray-700 text-gray-400 hover:text-gray-200 rounded-full border border-gray-700/50 hover:border-emerald-500/30 transition-all"
+                  className="flex items-center gap-1 text-xs px-2.5 py-1.5 bg-surface-overlay/60 hover:bg-surface-overlay text-fg-secondary hover:text-fg-primary rounded-full border border-border-subtle hover:border-border-strong transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                   title={c.prompt}
                 >
                   <span>{c.icon}</span>
@@ -299,7 +299,7 @@ export default function ChatView({ conversationId }: Props) {
                 </button>
               ))}
             </div>
-            <p className="text-xs text-gray-600 mb-6">点击能力胶囊快速开始，或在下方直接输入</p>
+            <p className="text-xs text-fg-disabled mb-6">点击能力胶囊快速开始，或在下方直接输入</p>
             <div className="flex flex-wrap justify-center gap-2 mb-8">
               {suggestions.map((s) => {
                 const SIcon = getSuggestionIcon(s);
@@ -312,9 +312,9 @@ export default function ChatView({ conversationId }: Props) {
                       adjustTextareaHeight();
                       setTimeout(() => inputRef.current?.focus(), 0);
                     }}
-                    className="flex items-center gap-1.5 text-xs px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 rounded-full border border-gray-700 hover:border-emerald-500/30 transition-all"
+                    className="flex items-center gap-1.5 text-xs px-3 py-2 bg-surface-overlay hover:bg-border-strong text-fg-secondary hover:text-fg-primary rounded-full border border-border-subtle hover:border-border-strong transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                   >
-                    <SIcon size={13} className="text-emerald-400/70" />
+                    <SIcon size={13} className="text-fg-secondary" />
                     <span>{s.length > 50 ? s.slice(0, 50) + "…" : s}</span>
                   </button>
                 );
@@ -323,9 +323,9 @@ export default function ChatView({ conversationId }: Props) {
           </div>
         </div>
 
-        <div className="border-t border-gray-800 p-4">
+        <div className="border-t border-border-subtle p-4">
           <div className="max-w-3xl mx-auto">
-            <div className="flex gap-3 items-end bg-gray-900 rounded-xl border border-gray-700 focus-within:border-emerald-600 transition-colors p-3">
+            <div className="flex gap-3 items-end bg-surface-raised rounded-xl border border-border-strong focus-within:border-focus-ring transition-colors p-3">
               <VoiceInput
                 onTranscript={handleVoiceTranscript}
                 disabled={isLoading || !!pendingConfirmation}
@@ -338,17 +338,17 @@ export default function ChatView({ conversationId }: Props) {
                 onKeyDown={handleKeyDown}
                 placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
                 rows={1}
-                className="flex-1 bg-transparent border-none outline-none resize-none text-gray-100 placeholder-gray-500 min-h-[24px] max-h-[200px] py-1"
+                className="flex-1 bg-transparent border-none outline-none resize-none text-fg-primary placeholder:text-fg-tertiary min-h-[24px] max-h-[200px] py-1"
               />
               <button
                 onClick={handleSend}
                 disabled={!input.trim()}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors shrink-0"
+                className="px-4 py-2 bg-surface-overlay hover:bg-border-strong disabled:bg-surface-overlay disabled:text-fg-disabled rounded-lg text-sm font-medium text-white transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               >
                 发送
               </button>
             </div>
-            <p className="text-xs text-gray-600 mt-2 text-center">
+            <p className="text-xs text-fg-disabled mt-2 text-center">
               Personal AI Runtime 可能会犯错，请验证重要信息。
             </p>
           </div>
@@ -361,13 +361,13 @@ export default function ChatView({ conversationId }: Props) {
     <div className="flex-1 flex flex-row min-h-0 relative">
       <div className="flex-1 flex flex-col min-h-0">
         {memoryNotice && (
-          <div className="px-4 py-2 bg-indigo-900/20 border-b border-indigo-700/30 flex items-center gap-2 text-xs text-indigo-300 animate-pulse">
+          <div className="px-4 py-2 bg-insight/10 border-b border-insight/30 flex items-center gap-2 text-xs text-insight animate-pulse">
             <span>🧠</span>
             <span className="flex-1 truncate">{memoryNotice}</span>
             <button
               type="button"
               onClick={() => setMemoryNotice(null)}
-              className="text-indigo-500 hover:text-indigo-300 shrink-0"
+              className="text-insight/70 hover:text-insight shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
               aria-label="关闭"
             >
               ×
@@ -384,7 +384,7 @@ export default function ChatView({ conversationId }: Props) {
         </div>
 
         {pendingConfirmation && (
-          <div className="border-t border-amber-600/40 px-4 py-3 bg-gray-900/95 backdrop-blur-sm shrink-0">
+          <div className="border-t border-warning/40 px-4 py-3 bg-surface-raised/95 backdrop-blur-sm shrink-0">
             <ConfirmationDialog
               toolCall={pendingConfirmation.toolCall}
               onConfirm={handleConfirm}
@@ -393,7 +393,7 @@ export default function ChatView({ conversationId }: Props) {
           </div>
         )}
 
-        <div className="border-t border-gray-800 p-4">
+        <div className="border-t border-border-subtle p-4">
           <div className="max-w-3xl mx-auto">
             {suggestions.length > 0 && !isLoading && !pendingConfirmation && (
               <div className="flex flex-wrap gap-2 mb-3">
@@ -408,16 +408,16 @@ export default function ChatView({ conversationId }: Props) {
                         adjustTextareaHeight();
                         inputRef.current?.focus();
                       }}
-                      className="flex items-center gap-1 text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 rounded-full border border-gray-700 hover:border-emerald-500/30 transition-all"
+                      className="flex items-center gap-1 text-xs px-3 py-1.5 bg-surface-overlay hover:bg-border-strong text-fg-secondary hover:text-fg-primary rounded-full border border-border-subtle hover:border-border-strong transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                     >
-                      <SIcon size={12} className="text-emerald-400/70" />
+                      <SIcon size={12} className="text-fg-secondary" />
                       <span>{s.length > 50 ? s.slice(0, 50) + "…" : s}</span>
                     </button>
                   );
                 })}
               </div>
             )}
-            <div className="flex gap-3 items-end bg-gray-900 rounded-xl border border-gray-700 focus-within:border-emerald-600 transition-colors p-3">
+            <div className="flex gap-3 items-end bg-surface-raised rounded-xl border border-border-strong focus-within:border-focus-ring transition-colors p-3">
               <VoiceInput
                 onTranscript={handleVoiceTranscript}
                 disabled={isLoading || !!pendingConfirmation}
@@ -430,16 +430,16 @@ export default function ChatView({ conversationId }: Props) {
                 onKeyDown={handleKeyDown}
                 placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
                 rows={1}
-                className="flex-1 bg-transparent border-none outline-none resize-none text-gray-100 placeholder-gray-500 min-h-[24px] max-h-[200px] py-1"
+                className="flex-1 bg-transparent border-none outline-none resize-none text-fg-primary placeholder:text-fg-tertiary min-h-[24px] max-h-[200px] py-1"
                 disabled={isLoading || !!pendingConfirmation}
               />
               <button
                 onClick={handleSend}
                 disabled={isLoading || !input.trim() || !!pendingConfirmation}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors shrink-0 ${
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
                   isLoading
-                    ? "bg-emerald-600/30 text-emerald-300 cursor-not-allowed"
-                    : "bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-700 disabled:text-gray-500"
+                    ? "bg-surface-overlay/50 text-fg-secondary cursor-not-allowed"
+                    : "bg-surface-overlay hover:bg-border-strong disabled:bg-surface-overlay disabled:text-fg-disabled text-white"
                 }`}
               >
                 {isLoading ? (
@@ -467,7 +467,7 @@ export default function ChatView({ conversationId }: Props) {
                 )}
               </button>
             </div>
-            <p className="text-xs text-gray-600 mt-2 text-center">
+            <p className="text-xs text-fg-disabled mt-2 text-center">
               Personal AI Runtime 可能会犯错，请验证重要信息。
             </p>
           </div>

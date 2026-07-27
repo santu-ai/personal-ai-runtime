@@ -52,10 +52,10 @@ function ExpandableText({ text, className }: { text: string; className: string }
       <div className="whitespace-pre-wrap break-all">{preview}</div>
       {isTruncated && (
         <details className="mt-1">
-          <summary className="cursor-pointer text-gray-500 hover:text-gray-400">
+          <summary className="cursor-pointer text-fg-tertiary hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded">
             查看完整内容
           </summary>
-          <pre className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap break-all text-gray-400">
+          <pre className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap break-all text-fg-secondary">
             {text}
           </pre>
         </details>
@@ -70,11 +70,11 @@ function PatchPreview({ args }: { args: Record<string, unknown> }) {
   if (!oldString && !newString) return null;
 
   return (
-    <div className="mb-3 rounded border border-amber-700/40 bg-gray-950/80 p-2 text-xs font-mono">
-      <div className="mb-1 text-amber-400/70">变更预览</div>
-      {oldString && <ExpandableText text={`− ${oldString}`} className="text-red-300/90" />}
-      {newString && <ExpandableText text={`+ ${newString}`} className="text-green-300/90" />}
-      {args.replace_all === true && <div className="mt-1 text-gray-500">replace_all = true</div>}
+    <div className="mb-3 rounded border border-warning/40 bg-surface-sunken/80 p-2 text-xs font-mono">
+      <div className="mb-1 text-warning">变更预览</div>
+      {oldString && <ExpandableText text={`− ${oldString}`} className="text-danger/90" />}
+      {newString && <ExpandableText text={`+ ${newString}`} className="text-success/90" />}
+      {args.replace_all === true && <div className="mt-1 text-fg-tertiary">replace_all = true</div>}
     </div>
   );
 }
@@ -84,9 +84,9 @@ function WriteFilePreview({ args }: { args: Record<string, unknown> }) {
   if (!content) return null;
 
   return (
-    <div className="mb-3 rounded border border-amber-700/40 bg-gray-950/80 p-2 text-xs font-mono">
-      <div className="mb-1 text-amber-400/70">写入内容预览</div>
-      <ExpandableText text={content} className="text-amber-200/90" />
+    <div className="mb-3 rounded border border-warning/40 bg-surface-sunken/80 p-2 text-xs font-mono">
+      <div className="mb-1 text-warning">写入内容预览</div>
+      <ExpandableText text={content} className="text-warning/90" />
     </div>
   );
 }
@@ -103,11 +103,11 @@ export default function ConfirmationDialog({ toolCall, onConfirm, onDeny }: Prop
 
   // 高风险用红色，中风险用琥珀色
   const containerClass = isHighRisk
-    ? "bg-red-900/20 border border-red-600/50"
-    : "bg-amber-900/30 border border-amber-600/50";
-  const iconClass = isHighRisk ? "text-red-400" : "text-amber-400";
-  const titleClass = isHighRisk ? "text-red-300" : "text-amber-300";
-  const descClass = isHighRisk ? "text-red-400/60" : "text-amber-400/60";
+    ? "bg-danger/15 border border-danger/40"
+    : "bg-warning/15 border border-warning/40";
+  const iconClass = isHighRisk ? "text-danger" : "text-warning";
+  const titleClass = isHighRisk ? "text-danger/90" : "text-warning/90";
+  const descClass = isHighRisk ? "text-danger/70" : "text-warning/70";
 
   return (
     <div className={`${containerClass} rounded-lg p-4`}>
@@ -121,7 +121,7 @@ export default function ConfirmationDialog({ toolCall, onConfirm, onDeny }: Prop
             <p className={`text-xs ${descClass} mb-2 italic`}>{riskExplanation}</p>
           )}
 
-          <p className="text-xs text-gray-500 mb-2">
+          <p className="text-xs text-fg-tertiary mb-2">
             确认后将执行工具并自动续写一次回复；完整多步工具循环不会在服务重启后自动恢复，必要时请新开一轮对话。
           </p>
 
@@ -131,17 +131,17 @@ export default function ConfirmationDialog({ toolCall, onConfirm, onDeny }: Prop
           {isPatch && <PatchPreview args={args} />}
           {isWrite && <WriteFilePreview args={args} />}
           <details className="mb-3">
-            <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-400">
+            <summary className="text-xs text-fg-tertiary cursor-pointer hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded">
               查看详细参数
             </summary>
-            <pre className="bg-gray-950 p-2 mt-1 rounded text-xs text-gray-400 overflow-x-auto max-h-24 overflow-y-auto">
+            <pre className="bg-surface-sunken p-2 mt-1 rounded text-xs text-fg-secondary overflow-x-auto max-h-24 overflow-y-auto">
               {JSON.stringify(args, null, 2)}
             </pre>
           </details>
 
           {/* 信任选项 —— 中风险才显示（高风险每次都要确认） */}
           {!isHighRisk && (
-            <label className="flex items-center gap-2 mb-3 text-xs text-gray-400 cursor-pointer">
+            <label className="flex items-center gap-2 mb-3 text-xs text-fg-secondary cursor-pointer">
               <input
                 type="checkbox"
                 checked={trustSession}

@@ -75,7 +75,7 @@ export default function ContextPanel({ lastUserMessage, toolResults = [], open, 
     return (
       <button
         onClick={onToggle}
-        className="absolute top-3 right-3 z-10 px-2 py-1 text-xs bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-400 border border-gray-700"
+        className="absolute top-3 right-3 z-10 px-2 py-1 text-xs bg-surface-overlay hover:bg-border-strong rounded-lg text-fg-secondary border border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         title="展开上下文面板"
       >
         上下文
@@ -84,10 +84,10 @@ export default function ContextPanel({ lastUserMessage, toolResults = [], open, 
   }
 
   return (
-    <aside className="w-72 border-l border-gray-800 bg-gray-900/50 overflow-y-auto shrink-0 flex flex-col">
-      <div className="p-3 border-b border-gray-800 flex items-center justify-between">
-        <h3 className="text-sm font-medium text-gray-300">上下文</h3>
-        <button onClick={onToggle} className="text-xs text-gray-500 hover:text-gray-300">
+    <aside className="w-72 border-l border-border-subtle bg-surface-raised/50 overflow-y-auto shrink-0 flex flex-col">
+      <div className="p-3 border-b border-border-subtle flex items-center justify-between">
+        <h3 className="text-sm font-medium text-fg-primary">上下文</h3>
+        <button onClick={onToggle} className="text-xs text-fg-tertiary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded">
           收起
         </button>
       </div>
@@ -95,9 +95,9 @@ export default function ContextPanel({ lastUserMessage, toolResults = [], open, 
       <div className="p-3 space-y-4 flex-1">
         {approvals.length > 0 && (
           <section>
-            <h4 className="text-xs text-amber-400 mb-2">待审批 ({approvals.length})</h4>
+            <h4 className="text-xs text-warning mb-2">待审批 ({approvals.length})</h4>
             {approvals.map((a) => (
-              <div key={a.id} className="text-xs text-gray-400 p-2 bg-amber-900/20 rounded-lg mb-1">
+              <div key={a.id} className="text-xs text-fg-secondary p-2 bg-warning/10 rounded-lg mb-1">
                 {a.action || "未知操作"}
               </div>
             ))}
@@ -105,15 +105,15 @@ export default function ContextPanel({ lastUserMessage, toolResults = [], open, 
         )}
 
         <section>
-          <h4 className="text-xs text-gray-500 mb-2">活跃目标</h4>
+          <h4 className="text-xs text-fg-tertiary mb-2">活跃目标</h4>
           {goals.length === 0 ? (
-            <p className="text-xs text-gray-600">暂无活跃目标</p>
+            <p className="text-xs text-fg-disabled">暂无活跃目标</p>
           ) : (
             goals.map((g) => (
               <button
                 key={g.id}
                 onClick={() => navigate(`/goals/${g.id}`)}
-                className="block w-full text-left text-xs text-gray-300 p-2 hover:bg-gray-800 rounded-lg mb-1 truncate"
+                className="block w-full text-left text-xs text-fg-primary p-2 hover:bg-surface-overlay rounded-lg mb-1 truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               >
                 {g.title}
               </button>
@@ -123,11 +123,11 @@ export default function ContextPanel({ lastUserMessage, toolResults = [], open, 
 
         {memories.length > 0 && (
           <section>
-            <h4 className="text-xs text-gray-500 mb-2">相关记忆</h4>
+            <h4 className="text-xs text-fg-tertiary mb-2">相关记忆</h4>
             {memories.map((m) => (
               <div
                 key={m.id}
-                className="text-xs text-gray-400 p-2 bg-gray-800/50 rounded-lg mb-1 line-clamp-2"
+                className="text-xs text-fg-secondary p-2 bg-surface-overlay/50 rounded-lg mb-1 line-clamp-2"
               >
                 {m.content}
               </div>
@@ -137,11 +137,11 @@ export default function ContextPanel({ lastUserMessage, toolResults = [], open, 
 
         {recentTools.length > 0 && (
           <section>
-            <h4 className="text-xs text-gray-500 mb-2">最近工具</h4>
+            <h4 className="text-xs text-fg-tertiary mb-2">最近工具</h4>
             {recentTools.map((t, i) => (
               <div
                 key={`${t.tool_call_id}-${i}`}
-                className="text-xs text-gray-400 p-2 bg-gray-800/50 rounded-lg mb-1 truncate"
+                className="text-xs text-fg-secondary p-2 bg-surface-overlay/50 rounded-lg mb-1 truncate"
               >
                 {t.tool_name}
               </div>

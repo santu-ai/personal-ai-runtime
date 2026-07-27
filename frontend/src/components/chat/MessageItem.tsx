@@ -64,18 +64,18 @@ function InlineCode({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <code className="relative group bg-gray-800 px-1.5 py-0.5 rounded text-sm text-emerald-400">
+    <code className="relative group bg-surface-overlay px-1.5 py-0.5 rounded text-sm text-insight">
       {children}
       <button
         type="button"
         onClick={handleCopy}
-        className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 bg-gray-700 hover:bg-gray-600 rounded p-0.5 transition-opacity"
+        className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 bg-surface-overlay hover:bg-border-strong rounded p-0.5 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         title="复制"
       >
         {copied ? (
-          <Check size={10} className="text-emerald-400" />
+          <Check size={10} className="text-success" />
         ) : (
-          <Copy size={10} className="text-gray-400" />
+          <Copy size={10} className="text-fg-secondary" />
         )}
       </button>
     </code>
@@ -90,10 +90,10 @@ function SourceBadge({ source }: { source: SourceCitation }) {
     document: <FileText size={10} />,
   };
   const colorMap = {
-    memory: "bg-purple-900/30 text-purple-300 border-purple-700/50",
-    email: "bg-amber-900/30 text-amber-300 border-amber-700/50",
-    goal: "bg-green-900/30 text-green-300 border-green-700/50",
-    document: "bg-blue-900/30 text-blue-300 border-blue-700/50",
+    memory: "bg-insight/15 text-insight border-insight/30",
+    email: "bg-warning/15 text-warning border-warning/30",
+    goal: "bg-success/15 text-success border-success/30",
+    document: "bg-insight/15 text-insight border-insight/30",
   };
   const labelMap = {
     memory: "记忆",
@@ -104,7 +104,7 @@ function SourceBadge({ source }: { source: SourceCitation }) {
 
   return (
     <span
-      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border ${colorMap[source.type] || "bg-gray-800 text-gray-300 border-gray-600"}`}
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border ${colorMap[source.type] || "bg-surface-overlay text-fg-primary border-border-strong"}`}
       title={source.title}
     >
       {iconMap[source.type] || null}
@@ -115,18 +115,18 @@ function SourceBadge({ source }: { source: SourceCitation }) {
 
 function ThinkingPlaceholder() {
   return (
-    <div className="flex items-center gap-2 text-sm text-gray-400 py-0.5">
+    <div className="flex items-center gap-2 text-sm text-fg-secondary py-0.5">
       <span className="inline-flex gap-1">
         <span
-          className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce"
+          className="w-1.5 h-1.5 bg-fg-tertiary rounded-full animate-bounce"
           style={{ animationDelay: "0ms" }}
         />
         <span
-          className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce"
+          className="w-1.5 h-1.5 bg-fg-tertiary rounded-full animate-bounce"
           style={{ animationDelay: "150ms" }}
         />
         <span
-          className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce"
+          className="w-1.5 h-1.5 bg-fg-tertiary rounded-full animate-bounce"
           style={{ animationDelay: "300ms" }}
         />
       </span>
@@ -169,7 +169,7 @@ export default function MessageItem({ message }: Props) {
   return (
     <div className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
       {isAssistant && (
-        <div className="w-8 h-8 rounded-full bg-emerald-600/20 flex items-center justify-center shrink-0 mt-0.5">
+        <div className="w-8 h-8 rounded-full bg-surface-overlay flex items-center justify-center shrink-0 mt-0.5">
           <span className="text-sm">🧠</span>
         </div>
       )}
@@ -177,8 +177,8 @@ export default function MessageItem({ message }: Props) {
       <div
         className={`max-w-[80%] rounded-2xl px-4 py-3 ${
           isUser
-            ? "bg-emerald-600 text-white rounded-br-md"
-            : "bg-gray-800 text-gray-100 rounded-bl-md"
+            ? "bg-surface-overlay text-white rounded-br-md"
+            : "bg-surface-raised text-fg-primary rounded-bl-md"
         }`}
       >
         {/* Tool calls display */}
@@ -233,15 +233,15 @@ export default function MessageItem({ message }: Props) {
                 {message.isStreaming && (
                   <span className="inline-flex gap-0.5 ml-1 align-middle">
                     <span
-                      className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce"
+                      className="w-1.5 h-1.5 bg-fg-tertiary rounded-full animate-bounce"
                       style={{ animationDelay: "0ms" }}
                     />
                     <span
-                      className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce"
+                      className="w-1.5 h-1.5 bg-fg-tertiary rounded-full animate-bounce"
                       style={{ animationDelay: "150ms" }}
                     />
                     <span
-                      className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce"
+                      className="w-1.5 h-1.5 bg-fg-tertiary rounded-full animate-bounce"
                       style={{ animationDelay: "300ms" }}
                     />
                   </span>
@@ -253,15 +253,15 @@ export default function MessageItem({ message }: Props) {
 
         {/* Timestamp */}
         {message.created_at && (
-          <div className={`text-xs mt-2 ${isUser ? "text-emerald-200/60" : "text-gray-500"}`}>
+          <div className={`text-xs mt-2 ${isUser ? "text-fg-tertiary" : "text-fg-tertiary"}`}>
             {formatTimeAgo(message.created_at)}
           </div>
         )}
 
         {/* Source citations — memory + document references */}
         {isAssistant && message.sources && message.sources.length > 0 && !message.isStreaming && (
-          <div className="mt-3 pt-2 border-t border-gray-700/50">
-            <div className="flex items-center gap-1.5 text-xs text-purple-400 font-medium mb-2">
+          <div className="mt-3 pt-2 border-t border-border-strong/50">
+            <div className="flex items-center gap-1.5 text-xs text-insight font-medium mb-2">
               <Brain size={12} />
               <span>
                 {message.sources.some((s) => s.type === "document") ? "参考来源" : "我记得"}
@@ -277,7 +277,7 @@ export default function MessageItem({ message }: Props) {
       </div>
 
       {isUser && (
-        <div className="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center shrink-0 mt-0.5">
+        <div className="w-8 h-8 rounded-full bg-surface-overlay flex items-center justify-center shrink-0 mt-0.5">
           <span className="text-sm text-white font-medium">你</span>
         </div>
       )}

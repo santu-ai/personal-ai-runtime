@@ -126,7 +126,7 @@ export default function VoiceInput({ onTranscript, disabled }: VoiceInputProps) 
   return (
     <div className="flex items-center gap-1">
       {interimText && (
-        <span className="text-xs text-emerald-400 animate-pulse max-w-40 truncate">
+        <span className="text-xs text-fg-secondary animate-pulse max-w-40 truncate">
           {interimText}
         </span>
       )}
@@ -134,10 +134,10 @@ export default function VoiceInput({ onTranscript, disabled }: VoiceInputProps) 
         type="button"
         onClick={isListening ? stopListening : startListening}
         disabled={disabled}
-        className={`p-1.5 rounded-lg transition-colors ${
+        className={`p-1.5 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
           isListening
-            ? "bg-red-600/20 text-red-400 hover:bg-red-600/30"
-            : "text-gray-500 hover:text-emerald-400 hover:bg-emerald-600/10"
+            ? "bg-danger/15 text-danger hover:bg-danger/25"
+            : "text-fg-tertiary hover:text-fg-primary hover:bg-surface-overlay"
         } disabled:opacity-30`}
         title={isListening ? "停止录音" : "语音输入"}
       >

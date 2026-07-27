@@ -108,11 +108,11 @@ function cleanPreview(text: string): string {
 function InboxResultView({ data }: { data: { count: number; emails: EmailItem[] } }) {
   return (
     <div className="space-y-2">
-      <div className="text-gray-400 text-xs">共 {data.count} 封邮件</div>
-      <div className="overflow-x-auto rounded border border-gray-700">
+      <div className="text-fg-secondary text-xs">共 {data.count} 封邮件</div>
+      <div className="overflow-x-auto rounded border border-border-strong">
         <table className="w-full text-xs text-left">
           <thead>
-            <tr className="bg-gray-800 text-gray-400">
+            <tr className="bg-surface-overlay text-fg-secondary">
               <th className="px-2 py-1.5 font-medium whitespace-nowrap">时间</th>
               <th className="px-2 py-1.5 font-medium">发件人</th>
               <th className="px-2 py-1.5 font-medium">主题</th>
@@ -120,20 +120,20 @@ function InboxResultView({ data }: { data: { count: number; emails: EmailItem[] 
           </thead>
           <tbody>
             {data.emails.map((em, i) => (
-              <tr key={i} className="border-t border-gray-700/80 hover:bg-gray-800/50">
-                <td className="px-2 py-1.5 text-gray-500 whitespace-nowrap align-top">
+              <tr key={i} className="border-t border-border-strong/80 hover:bg-surface-overlay/50">
+                <td className="px-2 py-1.5 text-fg-tertiary whitespace-nowrap align-top">
                   {formatEmailDate(em.date)}
                 </td>
                 <td
-                  className="px-2 py-1.5 text-gray-300 align-top max-w-[120px] truncate"
+                  className="px-2 py-1.5 text-fg-primary align-top max-w-[120px] truncate"
                   title={em.from}
                 >
                   {shortenFrom(em.from)}
                 </td>
                 <td className="px-2 py-1.5 align-top">
-                  <div className="text-gray-200 font-medium">{em.subject || "(无主题)"}</div>
+                  <div className="text-fg-primary font-medium">{em.subject || "(无主题)"}</div>
                   {em.preview && (
-                    <div className="text-gray-500 mt-0.5 line-clamp-2">
+                    <div className="text-fg-tertiary mt-0.5 line-clamp-2">
                       {cleanPreview(em.preview)}
                     </div>
                   )}
@@ -155,13 +155,13 @@ function formatResult(content: string, toolName: string): ReactNode {
   try {
     const parsed = JSON.parse(content);
     return (
-      <pre className="bg-gray-950 p-2 rounded text-gray-300 overflow-x-auto">
+      <pre className="bg-surface-sunken p-2 rounded text-fg-primary overflow-x-auto">
         {JSON.stringify(parsed, null, 2)}
       </pre>
     );
   } catch {
     const text = content.length > 500 ? content.slice(0, 500) + "\n... [truncated]" : content;
-    return <pre className="bg-gray-950 p-2 rounded text-gray-300 overflow-x-auto">{text}</pre>;
+    return <pre className="bg-surface-sunken p-2 rounded text-fg-primary overflow-x-auto">{text}</pre>;
   }
 }
 
@@ -206,18 +206,18 @@ export default function ToolCallDisplay({
         return (
           <div
             key={tc.id || idx}
-            className="bg-gray-900/60 rounded-lg border border-gray-700 overflow-hidden"
+            className="bg-surface-raised/60 rounded-lg border border-border-strong overflow-hidden"
           >
             <button
               type="button"
               onClick={() => setExpandedCall(isExpanded ? null : idx)}
-              className="w-full text-left px-3 py-2 text-xs text-gray-400 hover:text-gray-200 transition-colors"
+              className="w-full text-left px-3 py-2 text-xs text-fg-secondary hover:text-fg-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             >
               <span>{getToolIcon(tc.function_name)}</span>
-              <span className="text-emerald-400 font-medium">{toolLabel(tc.function_name)}</span>
-              {argsSummary && <span className="text-gray-500 ml-1.5">{argsSummary}</span>}
+              <span className="text-fg-primary font-medium">{toolLabel(tc.function_name)}</span>
+              {argsSummary && <span className="text-fg-tertiary ml-1.5">{argsSummary}</span>}
               {result ? (
-                <span className="float-right text-emerald-500 mt-0.5">✓ 完成</span>
+                <span className="float-right text-success mt-0.5">✓ 完成</span>
               ) : (
                 <span className="float-right flex items-center gap-1 mt-0.5">
                   <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
@@ -255,22 +255,22 @@ export default function ToolCallDisplay({
             </button>
 
             {showInboxInline && inboxData && (
-              <div className="border-t border-gray-700 px-3 py-2">
+              <div className="border-t border-border-strong px-3 py-2">
                 <InboxResultView data={inboxData} />
               </div>
             )}
 
             {isExpanded && !showInboxInline && (
-              <div className="border-t border-gray-700 px-3 py-2 space-y-2 text-xs">
+              <div className="border-t border-border-strong px-3 py-2 space-y-2 text-xs">
                 <div>
-                  <div className="text-gray-500 mb-1">参数</div>
-                  <pre className="bg-gray-950 p-2 rounded text-gray-300 overflow-x-auto">
+                  <div className="text-fg-tertiary mb-1">参数</div>
+                  <pre className="bg-surface-sunken p-2 rounded text-fg-primary overflow-x-auto">
                     {formatArgs(tc.arguments)}
                   </pre>
                 </div>
                 {result && (
                   <div>
-                    <div className="text-gray-500 mb-1">结果</div>
+                    <div className="text-fg-tertiary mb-1">结果</div>
                     <div className="max-h-64 overflow-y-auto">
                       {formatResult(result.content, tc.function_name)}
                     </div>

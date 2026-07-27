@@ -174,8 +174,8 @@ export default function ChatHome() {
       <div className="max-w-2xl mx-auto space-y-5">
         <div className="text-center pt-8 pb-2">
           <div className="text-4xl mb-3">🧠</div>
-          <h2 className="text-2xl font-semibold text-gray-200">{greeting}</h2>
-          <p className="text-gray-500 mt-2 text-sm">{subtitle}</p>
+          <h2 className="text-2xl font-semibold text-fg-primary">{greeting}</h2>
+          <p className="text-fg-tertiary mt-2 text-sm">{subtitle}</p>
         </div>
 
         {!loading && (
@@ -183,16 +183,16 @@ export default function ChatHome() {
             {nudges.map((nudge, i) => {
               const toneClass =
                 nudge.tone === "warning"
-                  ? "border-amber-700/40 bg-amber-900/10"
+                  ? "border-warning/30 bg-warning/10"
                   : nudge.tone === "success"
-                    ? "border-emerald-700/40 bg-emerald-900/10"
-                    : "border-blue-700/40 bg-blue-900/10";
+                    ? "border-success/30 bg-success/10"
+                    : "border-insight/30 bg-insight/10";
               const actionClass =
                 nudge.tone === "warning"
-                  ? "bg-amber-700/30 hover:bg-amber-700/50 text-amber-300"
+                  ? "bg-warning/20 hover:bg-warning/30 text-warning"
                   : nudge.tone === "success"
-                    ? "bg-emerald-700/30 hover:bg-emerald-700/50 text-emerald-300"
-                    : "bg-blue-700/30 hover:bg-blue-700/50 text-blue-300";
+                    ? "bg-success/20 hover:bg-success/30 text-success"
+                    : "bg-insight/20 hover:bg-insight/30 text-insight";
               return (
                 <div
                   key={i}
@@ -200,11 +200,11 @@ export default function ChatHome() {
                 >
                   <span className="text-2xl shrink-0">{nudge.icon}</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-gray-300">{nudge.message}</p>
+                    <p className="text-sm text-fg-primary">{nudge.message}</p>
                   </div>
                   <button
                     onClick={() => handleNudge(nudge)}
-                    className={`shrink-0 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${actionClass}`}
+                    className={`shrink-0 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${actionClass}`}
                   >
                     {nudge.action}
                   </button>
@@ -216,28 +216,28 @@ export default function ChatHome() {
 
         {lastConversation && (
           <div
-            className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-emerald-600/30 transition-colors cursor-pointer"
+            className="bg-surface-raised border border-border-subtle rounded-xl p-4 hover:border-border-strong transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             onClick={() => handleContinueConversation(lastConversation)}
           >
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-sm text-gray-500">💬 继续上次</span>
+              <span className="text-sm text-fg-tertiary">💬 继续上次</span>
             </div>
-            <p className="text-sm text-gray-200">{lastConversation.title || "新对话"}</p>
+            <p className="text-sm text-fg-primary">{lastConversation.title || "新对话"}</p>
             {lastConversation.summary && (
-              <p className="text-xs text-gray-500 mt-1 line-clamp-1">{lastConversation.summary}</p>
+              <p className="text-xs text-fg-tertiary mt-1 line-clamp-1">{lastConversation.summary}</p>
             )}
-            <p className="text-xs text-gray-600 mt-2">{timeAgo(lastConversation.updated_at)}</p>
+            <p className="text-xs text-fg-disabled mt-2">{timeAgo(lastConversation.updated_at)}</p>
           </div>
         )}
 
         <div className="text-center pt-4 pb-8">
           <button
             onClick={handleNewChat}
-            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 rounded-xl text-white font-medium transition-colors"
+            className="px-6 py-3 bg-surface-overlay hover:bg-border-strong rounded-xl text-white font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
           >
             开始新对话
           </button>
-          <p className="text-xs text-gray-600 mt-3">或者直接在下方输入框告诉我你想做什么</p>
+          <p className="text-xs text-fg-disabled mt-3">或者直接在下方输入框告诉我你想做什么</p>
         </div>
       </div>
     </div>
