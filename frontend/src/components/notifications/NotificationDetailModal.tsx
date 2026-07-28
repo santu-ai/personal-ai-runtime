@@ -3,18 +3,11 @@ import type { Notification } from "../../api/client";
 import Button from "../ui/Button";
 import { notificationTargetPath, notificationTypeLabel } from "../../utils/notificationRoutes";
 import { notificationPreview } from "../../utils/notificationUtils";
+import { formatTime } from "../../utils/time";
 
 interface Props {
   notification: Notification | null;
   onClose: () => void;
-}
-
-function formatTime(value: string): string {
-  try {
-    return new Date(value).toLocaleString("zh-CN");
-  } catch {
-    return value;
-  }
 }
 
 export default function NotificationDetailModal({ notification, onClose }: Props) {

@@ -73,6 +73,8 @@ export interface Notification {
   content: string;
   created_at: string;
   read?: number;
+  /** server = HTTP pull; live = optimistic WebSocket push */
+  source?: "server" | "live";
 }
 
 export interface CostSummary {

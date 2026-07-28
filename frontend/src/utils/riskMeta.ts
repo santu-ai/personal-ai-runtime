@@ -1,16 +1,16 @@
 /**
- * 风险元数据 —— 工具操作的风险分级、可逆性、影响说明。
+ * 风险元数据 —— 工具操作的风险分级与展示色调。
  *
- * 约束（Plan 修正 5）：
- * - `reversible`、`impact_summary`、`reason` 必须由后端 Capability 确定性生成。
- * - 前端为空时不编造，显示 "—" 或 "未提供"。
- * - "本次会话信任" 须有服务端约束（前端仅展示，不发裸 trust 标志）。
+ * 风险等级以后端 CapabilityPolicy 为准；前端 RISK_EXPLANATIONS 仅提供文案。
+ * 未知 / 未加载策略时默认 medium（假定有风险），避免静默归为 low。
  */
+
+import type { CapabilityPolicy } from "../api/settings";
 
 /** 风险等级 */
 export type RiskLevel = "high" | "medium" | "low";
 
-/** 已知工具的风险说明 */
+/** 已知工具的风险说明（前端文案表） */
 export const RISK_EXPLANATIONS: Record<string, string> = {
   write_file: "写入文件是不可逆操作——文件内容会被覆盖。确认前请检查写入路径和内容。",
   apply_patch: "修改文件会改变现有内容。确认前请检查变更预览，尤其是删除的部分。",
@@ -20,19 +20,28 @@ export const RISK_EXPLANATIONS: Record<string, string> = {
   telegram_send: "发送 Telegram 消息后无法撤回。请确认内容和聊天对象。",
 };
 
-/** 高风险操作（需要红色警示） */
-export const HIGH_RISK_OPS = new Set(["shell_exec", "send_email", "telegram_send"]);
+/**
+ * 根据后端 CapabilityPolicy 判定风险等级。
+ * - forbidden / needs_user → high
+ * - auto_allow → low
+ * - 未注册 / 无策略 → medium
+ */
+export function getRiskLevelFromPolicy(
+  action: string,
+  policy?: CapabilityPolicy | null,
+): RiskLevel {
+  if (!policy) return "medium";
+  if (policy.forbidden.includes(action) || policy.needs_user.includes(action)) return "high";
+  if (policy.auto_allow.includes(action)) return "low";
+  return "medium";
+}
 
 /**
- * 判断工具操作的风险等级。
- * - high: shell_exec / send_email / telegram_send
- * - medium: write_file / apply_patch 等已知工具
- * - low: 只读/查询类工具（默认）
+ * @deprecated 请使用 getRiskLevelFromPolicy；无策略时默认 medium。
+ * 保留薄包装以兼容旧调用点，在过渡期结束后删除。
  */
 export function getRiskLevel(functionName: string): RiskLevel {
-  if (HIGH_RISK_OPS.has(functionName)) return "high";
-  if (functionName in RISK_EXPLANATIONS) return "medium";
-  return "low";
+  return getRiskLevelFromPolicy(functionName, null);
 }
 
 /**
@@ -65,31 +74,4 @@ export function getRiskTone(level: RiskLevel) {
         iconEmoji: "ℹ️",
       };
   }
-}
-
-/**
- * 判断工具操作的可逆性（后端未提供时的保守默认值）。
- * 注意：这是前端在没有后端 `reversible` 字段时的保守估计。
- * 一旦后端提供 `reversible`，应直接使用后端值。
- */
-export function guessReversible(functionName: string): boolean {
-  // 只读/查询类工具都是可逆的
-  const readOnly = new Set([
-    "get_current_time",
-    "read_file",
-    "list_directory",
-    "search_files",
-    "web_search",
-    "fetch_url",
-    "list_calendar_events",
-    "get_upcoming_events",
-    "check_inbox",
-    "read_inbox_email",
-    "get_clipboard",
-    "ocr_image",
-    "git_status",
-    "git_log",
-    "git_diff",
-  ]);
-  return readOnly.has(functionName);
 }

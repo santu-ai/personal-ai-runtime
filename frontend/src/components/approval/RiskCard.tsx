@@ -7,18 +7,22 @@
  * - 可复用于：Chat 弹窗、审批中心、历史详情、测试。
  *
  * 信息层级（按钮在最下方）：
- *   标题 + Badge → 为什么 → 影响 → 可撤销 → 有效期
+ *   标题 + Badge → 为什么 → 影响/可撤销（仅后端字段就绪时）→ 有效期
  *   → Patch/Write 预览（如有）→ ▾ 详细参数
- *   → trustSession 复选框（中风险）
  *   → {children} 操作按钮
  */
 
 import { type ReactNode } from "react";
 import { toolLabel, describeToolAction } from "../../utils/toolLabels";
-import { getRiskLevel, getRiskTone, RISK_EXPLANATIONS, type RiskLevel } from "../../utils/riskMeta";
+import {
+  getRiskLevelFromPolicy,
+  getRiskTone,
+  RISK_EXPLANATIONS,
+  type RiskLevel,
+} from "../../utils/riskMeta";
+import { formatTime, formatTimeAgo } from "../../utils/time";
+import type { CapabilityPolicy } from "../../api/settings";
 import Badge from "../ui/Badge";
-
-// ── 工具函数（从 ConfirmationDialog 抽取）──
 
 const PREVIEW_LIMIT = 400;
 
@@ -83,15 +87,15 @@ function WriteFilePreview({ args }: { args: Record<string, unknown> }) {
   );
 }
 
-// ── RiskCard Props ──
-
 export interface RiskCardProps {
   /** 工具函数名（如 "write_file"） */
   action: string;
   /** 工具参数 JSON 字符串 */
   args: string;
-  /** 风险等级（如未传，由 action 自动判定） */
+  /** 风险等级（如未传，由 policy / 默认判定） */
   riskLevel?: RiskLevel;
+  /** 后端 CapabilityPolicy —— 用于风险分级 */
+  policy?: CapabilityPolicy | null;
   /** 来源信息 */
   source?: {
     conversationId?: string;
@@ -103,7 +107,10 @@ export interface RiskCardProps {
     createdAt?: string;
     expiresAt?: string;
   };
-  /** 后端提供的确定性字段 —— 为空时显示 "—" */
+  /**
+   * 后端确定性字段。仅当至少有一个字段非 undefined 时才渲染整块；
+   * 契约未就绪时不要传，避免显示误导性的 "—"。
+   */
   reversible?: boolean | null;
   impactSummary?: string | null;
   /** 展示变体：inline（Chat 内联）vs panel（审批中心卡片） */
@@ -112,14 +119,13 @@ export interface RiskCardProps {
   expiringSoon?: boolean;
   /** 操作按钮由父组件注入 */
   children?: ReactNode;
-  /** trustSession 复选框区域（由父组件管理状态） */
-  trustSlot?: ReactNode;
 }
 
 export default function RiskCard({
   action,
   args: argsJson,
   riskLevel: explicitLevel,
+  policy,
   source,
   timing,
   reversible,
@@ -127,44 +133,23 @@ export default function RiskCard({
   variant = "inline",
   expiringSoon,
   children,
-  trustSlot,
 }: RiskCardProps) {
   const label = toolLabel(action);
   const parsedArgs = parseArgs(argsJson);
   const description = describeToolAction(action, parsedArgs);
-  const riskLevel = explicitLevel ?? getRiskLevel(action);
+  const riskLevel = explicitLevel ?? getRiskLevelFromPolicy(action, policy);
   const tone = getRiskTone(riskLevel);
   const riskExplanation = RISK_EXPLANATIONS[action];
   const isPatch = action === "apply_patch";
   const isWrite = action === "write_file";
-
-  // ── 失效期格式化 ──
-  const formatTime = (iso: string) => {
-    try {
-      return new Date(iso).toLocaleString("zh-CN", { hour12: false });
-    } catch {
-      return iso;
-    }
-  };
-
-  const formatTimeAgo = (iso: string) => {
-    const diff = Date.now() - new Date(iso).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return "刚刚";
-    if (mins < 60) return `${mins} 分钟前`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours} 小时前`;
-    return `${Math.floor(hours / 24)} 天前`;
-  };
+  const showBackendFields = reversible !== undefined || impactSummary !== undefined;
 
   return (
     <div className={`${tone.container} rounded-lg ${variant === "panel" ? "p-5" : "p-4"}`}>
       <div className="flex items-start gap-3">
-        {/* Icon */}
         <div className={`${tone.icon} text-xl mt-0.5 shrink-0`}>{tone.iconEmoji}</div>
 
         <div className="flex-1 min-w-0 space-y-2">
-          {/* ── 标题行 —— */}
           <div className="flex items-center gap-2 flex-wrap">
             <h4 className={`${tone.title} font-medium`}>确认{label}</h4>
             {riskLevel === "high" && <Badge tone="danger">高风险</Badge>}
@@ -172,35 +157,34 @@ export default function RiskCard({
             {source?.flowLabel && <Badge tone="insight">{source.flowLabel}</Badge>}
           </div>
 
-          {/* ── 为什么（风险解释）—— */}
           {riskExplanation && <p className={`text-xs ${tone.desc} italic`}>{riskExplanation}</p>}
 
-          {/* ── 影响（后端确定性字段）—— */}
-          {variant === "panel" && (
+          {variant === "panel" && showBackendFields && (
             <div className="text-xs space-y-1">
-              <div>
-                <span className="text-fg-tertiary">影响：</span>
-                <span className="text-fg-secondary">{impactSummary || "—"}</span>
-              </div>
-              <div>
-                <span className="text-fg-tertiary">可撤销：</span>
-                <span className="text-fg-secondary">
-                  {reversible === true ? "是" : reversible === false ? "否" : "—"}
-                </span>
-              </div>
+              {impactSummary !== undefined && (
+                <div>
+                  <span className="text-fg-tertiary">影响：</span>
+                  <span className="text-fg-secondary">{impactSummary || "—"}</span>
+                </div>
+              )}
+              {reversible !== undefined && (
+                <div>
+                  <span className="text-fg-tertiary">可撤销：</span>
+                  <span className="text-fg-secondary">
+                    {reversible === true ? "是" : reversible === false ? "否" : "—"}
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
-          {/* ── 操作描述 —— */}
           {description && (
             <p className={`${tone.desc} text-sm whitespace-pre-wrap`}>{description}</p>
           )}
 
-          {/* ── Patch / Write 预览 —— */}
           {isPatch && <PatchPreview args={parsedArgs} />}
           {isWrite && <WriteFilePreview args={parsedArgs} />}
 
-          {/* ── 详细参数（折叠）—— */}
           <details>
             <summary className="text-xs text-fg-tertiary cursor-pointer hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded">
               查看详细参数
@@ -210,7 +194,6 @@ export default function RiskCard({
             </pre>
           </details>
 
-          {/* ── 时间 / 来源信息 —— */}
           <div className="flex items-center gap-4 text-xs text-fg-disabled flex-wrap">
             {timing?.createdAt && (
               <span title={formatTime(timing.createdAt)}>{formatTimeAgo(timing.createdAt)}</span>
@@ -223,10 +206,6 @@ export default function RiskCard({
             {source?.proposedBy && <span>发起：{source.proposedBy}</span>}
           </div>
 
-          {/* ── Trust session 插槽 —— */}
-          {trustSlot}
-
-          {/* ── 操作按钮（父组件注入）—— */}
           {children && <div className="flex gap-2 pt-1">{children}</div>}
         </div>
       </div>

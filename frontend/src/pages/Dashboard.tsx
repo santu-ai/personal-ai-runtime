@@ -7,6 +7,7 @@ import { useApprovalsQuery } from "../hooks/useApprovalsQuery";
 import { useInboxQuery } from "../hooks/useInboxQuery";
 import { useGoalsQuery } from "../hooks/useGoalsQuery";
 import { toolLabel } from "../utils/toolLabels";
+import { formatTime } from "../utils/time";
 import NotificationDetailModal from "../components/notifications/NotificationDetailModal";
 import { notificationPreview } from "../utils/notificationUtils";
 import { TrustReportPanel } from "./TrustReport";
@@ -114,32 +115,29 @@ export default function DashboardPage() {
       ? (((cost.total_calls - cost.failed_calls) / cost.total_calls) * 100).toFixed(1)
       : "100";
 
-  const mergedNotifications = [...liveNotifications, ...notifications]
-    .reduce<typeof notifications>((acc, item) => {
-      const key = `${item.type}:${item.title}`;
-      if (!acc.some((n) => n.id === item.id || `${n.type}:${n.title}` === key)) {
-        acc.push(item);
-      }
-      return acc;
-    }, [])
-    .slice(0, 6);
+  // Prefer HTTP-pulled notifications; keep live WS items only when no server
+  // item shares the same type:title key (optimistic until refetch arrives).
+  const mergedNotifications = useMemo(() => {
+    const serverItems: Notification[] = notifications.map((n) => ({
+      ...n,
+      source: "server" as const,
+    }));
+    const serverKeys = new Set(serverItems.map((n) => `${n.type}:${n.title}`));
+    const liveOnly = liveNotifications
+      .filter((n) => n.source !== "server" && !serverKeys.has(`${n.type}:${n.title}`))
+      .map((n) => ({ ...n, source: "live" as const }));
+    return [...liveOnly, ...serverItems].slice(0, 6);
+  }, [liveNotifications, notifications]);
 
   const handleNotificationClick = async (n: Notification) => {
     setSelectedNotification(n);
-    if (!n.read) {
+    // Live optimistic ids are not persisted — skip mark-read to avoid 404.
+    if (!n.read && n.source !== "live" && !n.id.startsWith("live-")) {
       try {
         await markNotificationRead(n.id);
       } catch {
         // still show detail
       }
-    }
-  };
-
-  const formatTime = (iso: string) => {
-    try {
-      return new Date(iso).toLocaleString("zh-CN", { hour12: false });
-    } catch {
-      return iso;
     }
   };
 

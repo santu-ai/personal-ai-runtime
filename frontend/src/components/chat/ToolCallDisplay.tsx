@@ -1,18 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { toolLabel, toolIcon, describeToolAction } from "../../utils/toolLabels";
-
-interface ToolCall {
-  index: number;
-  id: string;
-  function_name: string;
-  arguments: string;
-}
-
-interface ToolResult {
-  tool_name: string;
-  tool_call_id: string;
-  content: string;
-}
+import { matchResultsByCallId } from "./matchToolResult";
+import { detectOutcome } from "./detectToolFailure";
+import type { ToolCall, ToolResult } from "./types";
 
 interface EmailItem {
   from: string;
@@ -176,23 +166,19 @@ export default function ToolCallDisplay({
   toolResults,
   defaultExpanded = false,
 }: Props) {
-  const hasAllResults = toolCalls.every((tc) =>
-    toolResults.some((r) => r.tool_call_id === tc.id || r.tool_name === tc.function_name),
-  );
+  const matchedResults = matchResultsByCallId(toolCalls, toolResults);
+  const hasAllResults = matchedResults.every(Boolean);
   const [expandedCall, setExpandedCall] = useState<number | null>(
     defaultExpanded && hasAllResults ? 0 : null,
   );
-
-  const getResult = (toolName: string, callId: string) => {
-    return toolResults.find((r) => r.tool_call_id === callId || r.tool_name === toolName);
-  };
 
   if (toolCalls.length === 0) return null;
 
   return (
     <div className="mb-3 space-y-2">
       {toolCalls.map((tc, idx) => {
-        const result = getResult(tc.function_name, tc.id);
+        const result = matchedResults[idx];
+        const outcome = detectOutcome(result);
         const isExpanded = expandedCall === idx;
         const inboxData =
           tc.function_name === "check_inbox" && result ? parseInboxResult(result.content) : null;
@@ -212,14 +198,17 @@ export default function ToolCallDisplay({
           >
             <button
               type="button"
+              aria-expanded={isExpanded}
               onClick={() => setExpandedCall(isExpanded ? null : idx)}
               className="w-full text-left px-3 py-2 text-xs text-fg-secondary hover:text-fg-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             >
               <span>{getToolIcon(tc.function_name)}</span>
               <span className="text-fg-primary font-medium">{toolLabel(tc.function_name)}</span>
               {argsSummary && <span className="text-fg-tertiary ml-1.5">{argsSummary}</span>}
-              {result ? (
+              {outcome === "done" ? (
                 <span className="float-right text-success mt-0.5">✓ 完成</span>
+              ) : outcome === "failed" ? (
+                <span className="float-right text-danger mt-0.5">✗ 失败</span>
               ) : (
                 <span className="float-right flex items-center gap-1 mt-0.5">
                   <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">

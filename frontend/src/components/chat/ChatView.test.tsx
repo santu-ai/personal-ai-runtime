@@ -13,6 +13,12 @@ vi.mock("../../api/client", () => ({
   listPendingApprovals: vi.fn().mockResolvedValue([]),
   listMemoriesGrouped: vi.fn().mockResolvedValue({ memories: [] }),
   searchMemories: vi.fn().mockResolvedValue([]),
+  getCapabilityPolicy: vi.fn().mockResolvedValue({
+    auto_allow: ["read_file"],
+    needs_user: ["write_file", "apply_patch", "send_email"],
+    forbidden: ["shell_exec"],
+    external_ingestion: [],
+  }),
   ApiError: class extends Error {
     status: number;
     constructor(message: string, status: number) {

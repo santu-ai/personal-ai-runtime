@@ -215,12 +215,9 @@ export default function ChatView({ conversationId }: Props) {
     memData,
   ]);
 
-  const handleConfirm = useCallback(
-    async (trustSession?: boolean) => {
-      await confirm(setMessages, addError, trustSession);
-    },
-    [confirm, setMessages, addError],
-  );
+  const handleConfirm = useCallback(async () => {
+    await confirm(setMessages, addError);
+  }, [confirm, setMessages, addError]);
 
   const handleDeny = useCallback(async () => {
     await deny(setMessages, addError);

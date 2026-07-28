@@ -23,11 +23,12 @@ function renderWithRouter(el: React.ReactElement) {
 }
 
 describe("TaskTrack", () => {
-  it("renders null for single stage (degrade to ToolCallDisplay)", () => {
-    const { container } = renderWithRouter(
-      <TaskTrack stages={[{ toolCall: multiToolCalls[0] }]} />,
-    );
-    expect(container.textContent).toBe("");
+  it("documents parent contract: single-stage should not be mounted by MessageItem", () => {
+    // TaskTrack itself always renders when mounted (hooks-safe).
+    // MessageItem must gate with toolCalls.length > 1 before mounting.
+    renderWithRouter(<TaskTrack stages={[{ toolCall: multiToolCalls[0] }]} />);
+    expect(screen.getByText("任务轨迹")).toBeInTheDocument();
+    expect(screen.getByText("0/1 完成")).toBeInTheDocument();
   });
 
   it("renders multi-step timeline with correct count", () => {
@@ -74,9 +75,27 @@ describe("TaskTrack", () => {
     expect(screen.getByText("✗ 失败")).toBeInTheDocument();
   });
 
+  it("shows failed status for plain-text error results", () => {
+    renderWithRouter(
+      <TaskTrack
+        stages={[
+          {
+            toolCall: multiToolCalls[0],
+            result: {
+              tool_name: "read_file",
+              tool_call_id: "tc-1",
+              content: "Error: file not found",
+            },
+          },
+          { toolCall: multiToolCalls[1] },
+        ]}
+      />,
+    );
+    expect(screen.getByText("✗ 失败")).toBeInTheDocument();
+  });
+
   it("expands details on click", () => {
     renderWithRouter(<TaskTrack stages={multiToolCalls.map((tc) => ({ toolCall: tc }))} />);
-    // Click the first stage to expand
     fireEvent.click(screen.getByText("读取文件"));
     expect(screen.getByText("参数")).toBeInTheDocument();
     expect(screen.getByText(/"path"/)).toBeInTheDocument();

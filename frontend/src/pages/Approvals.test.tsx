@@ -14,6 +14,12 @@ vi.mock("../api/client", () => ({
   approveApproval: vi.fn(),
   rejectApproval: vi.fn(),
   resolveApproval: vi.fn(),
+  getCapabilityPolicy: vi.fn().mockResolvedValue({
+    auto_allow: ["read_file"],
+    needs_user: ["write_file", "send_email"],
+    forbidden: ["shell_exec"],
+    external_ingestion: [],
+  }),
   ApiError: MockApiError,
 }));
 

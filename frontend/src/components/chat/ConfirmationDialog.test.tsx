@@ -1,6 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import ConfirmationDialog from "./ConfirmationDialog";
+import { renderWithRouter } from "../../test-utils";
+
+vi.mock("../../hooks/useSettingsQuery", () => ({
+  useCapabilityPolicyQuery: () => ({
+    data: {
+      auto_allow: ["read_file"],
+      needs_user: ["write_file", "apply_patch", "send_email"],
+      forbidden: ["shell_exec"],
+      external_ingestion: [],
+    },
+    isLoading: false,
+    error: null,
+  }),
+}));
 
 afterEach(() => {
   cleanup();
@@ -15,14 +29,11 @@ const toolCall = {
 
 describe("ConfirmationDialog", () => {
   it("renders human-readable label and expandable arguments", () => {
-    render(<ConfirmationDialog toolCall={toolCall} onConfirm={vi.fn()} onDeny={vi.fn()} />);
+    renderWithRouter(
+      <ConfirmationDialog toolCall={toolCall} onConfirm={vi.fn()} onDeny={vi.fn()} />,
+    );
 
-    // Human-readable label
     expect(screen.getByText(/确认写入文件/)).toBeInTheDocument();
-    // C2 / ADR-R011: durable tool-loop not promised across restart
-    expect(screen.getByText(/完整多步工具循环不会在服务重启后自动恢复/)).toBeInTheDocument();
-    expect(screen.getByText(/确认后将执行工具并自动续写一次回复/)).toBeInTheDocument();
-    // Argument details are expandable — expand them
     const summary = screen.getByText("查看详细参数");
     fireEvent.click(summary);
     expect(screen.getByText(/"path"/)).toBeInTheDocument();
@@ -32,7 +43,7 @@ describe("ConfirmationDialog", () => {
     const onConfirm = vi.fn();
     const onDeny = vi.fn();
 
-    const { container } = render(
+    const { container } = renderWithRouter(
       <ConfirmationDialog toolCall={toolCall} onConfirm={onConfirm} onDeny={onDeny} />,
     );
 
@@ -47,7 +58,7 @@ describe("ConfirmationDialog", () => {
     const onConfirm = vi.fn();
     const onDeny = vi.fn();
 
-    const { container } = render(
+    const { container } = renderWithRouter(
       <ConfirmationDialog toolCall={toolCall} onConfirm={onConfirm} onDeny={onDeny} />,
     );
 
@@ -59,7 +70,7 @@ describe("ConfirmationDialog", () => {
   });
 
   it("shows patch preview for apply_patch", () => {
-    render(
+    renderWithRouter(
       <ConfirmationDialog
         toolCall={{
           index: 0,
@@ -82,7 +93,7 @@ describe("ConfirmationDialog", () => {
   });
 
   it("shows write preview for write_file", () => {
-    render(
+    renderWithRouter(
       <ConfirmationDialog
         toolCall={{
           index: 0,
@@ -104,7 +115,7 @@ describe("ConfirmationDialog", () => {
 
   it("shows expandable full content for long patches", () => {
     const longText = "x".repeat(500);
-    render(
+    renderWithRouter(
       <ConfirmationDialog
         toolCall={{
           index: 0,

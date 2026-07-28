@@ -10,10 +10,13 @@ import {
 } from "../api/client";
 import { useErrorStore } from "../stores/errorStore";
 import { useApprovalsQuery, useInvalidateApprovals } from "../hooks/useApprovalsQuery";
+import { useCapabilityPolicyQuery } from "../hooks/useSettingsQuery";
 import Button from "../components/ui/Button";
 import Badge from "../components/ui/Badge";
 import Card from "../components/ui/Card";
 import RiskCard from "../components/approval/RiskCard";
+import { canContinueApproval } from "./approvals/canContinue";
+import type { CapabilityPolicy } from "../api/settings";
 
 function parseParams(params?: string): Record<string, unknown> | null {
   try {
@@ -33,6 +36,7 @@ export default function ApprovalsPage() {
     refetch,
     isFetching,
   } = useApprovalsQuery();
+  const { data: policy } = useCapabilityPolicyQuery();
   const invalidateApprovals = useInvalidateApprovals();
   const [resolving, setResolving] = useState<Set<string>>(new Set());
   const addError = useErrorStore((s) => s.addError);
@@ -49,7 +53,7 @@ export default function ApprovalsPage() {
     try {
       const convId = item.conversation_id || "";
       const toolCallId = item.tool_call_id || "";
-      const canContinue = Boolean(convId && toolCallId && item.action);
+      const canContinue = canContinueApproval(item);
 
       if (canContinue) {
         // P3: 对话来源 — 走 chat resolve，触发 one-shot 续写后跳转对话
@@ -104,7 +108,7 @@ export default function ApprovalsPage() {
             <h2 className="text-2xl font-semibold text-fg-primary">审批管理</h2>
             <p className="text-sm text-fg-tertiary mt-1">管理所有需要人工确认的高风险操作</p>
             <p className="text-xs text-fg-disabled mt-1">
-              对话来源的审批可「批准并续写」：执行工具、生成一次回复续写并打开对话；完整多步工具循环不会在服务重启后自动恢复。
+              对话来源的审批可「批准并续写」：执行工具并生成一次回复后打开对话。
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -140,6 +144,7 @@ export default function ApprovalsPage() {
               <ApprovalCard
                 key={item.id}
                 item={item}
+                policy={policy}
                 resolving={resolving.has(item.id)}
                 onApprove={() => handleApprove(item)}
                 onReject={() => handleReject(item.id)}
@@ -154,11 +159,13 @@ export default function ApprovalsPage() {
 
 function ApprovalCard({
   item,
+  policy,
   resolving,
   onApprove,
   onReject,
 }: {
   item: EnrichedApproval;
+  policy?: CapabilityPolicy;
   resolving: boolean;
   onApprove: () => void;
   onReject: () => void;
@@ -166,13 +173,14 @@ function ApprovalCard({
   const isExpiringSoon = item.expires_at
     ? new Date(item.expires_at).getTime() - Date.now() < 3600000
     : false;
-  const canContinue = Boolean(item.conversation_id && item.tool_call_id);
+  const canContinue = canContinueApproval(item);
 
   return (
     <RiskCard
       action={item.action || ""}
       args={item.params ?? "{}"}
       variant="panel"
+      policy={policy}
       source={{
         flowLabel: item.flow_label || item.flow_type,
         proposedBy: item.proposed_by ?? undefined,
@@ -183,9 +191,6 @@ function ApprovalCard({
         expiresAt: item.expires_at ?? undefined,
       }}
       expiringSoon={isExpiringSoon}
-      /* 后端确定性字段 —— 契约就绪前显示 "—" */
-      reversible={undefined}
-      impactSummary={undefined}
     >
       <button
         onClick={onApprove}

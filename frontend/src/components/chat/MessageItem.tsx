@@ -7,20 +7,10 @@ import ToolCallDisplay from "./ToolCallDisplay";
 import TaskTrack from "./TaskTrack";
 import { CodeBlock } from "./CodeBlock";
 import { stripToolMarkup } from "../../utils/stripToolMarkup";
+import { formatTimeAgo } from "../../utils/time";
+import { matchResultsByCallId } from "./matchToolResult";
+import type { ToolCall, ToolResult } from "./types";
 import type { SourceCitation } from "../../api/types";
-
-interface ToolCall {
-  index: number;
-  id: string;
-  function_name: string;
-  arguments: string;
-}
-
-interface ToolResult {
-  tool_name: string;
-  tool_call_id: string;
-  content: string;
-}
 
 interface DisplayMessage {
   id: string;
@@ -36,17 +26,6 @@ interface DisplayMessage {
 
 interface Props {
   message: DisplayMessage;
-}
-
-function formatTimeAgo(iso?: string): string {
-  if (!iso) return "";
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "刚刚";
-  if (mins < 60) return `${mins} 分钟前`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} 小时前`;
-  return `${Math.floor(hours / 24)} 天前`;
 }
 
 function InlineCode({ children }: { children: React.ReactNode }) {
@@ -187,12 +166,16 @@ export default function MessageItem({ message }: Props) {
           <>
             {message.toolCalls.length > 1 ? (
               <TaskTrack
-                stages={message.toolCalls.map((tc) => ({
-                  toolCall: tc,
-                  result: (message.toolResults || []).find(
-                    (r) => r.tool_call_id === tc.id || r.tool_name === tc.function_name,
-                  ),
-                }))}
+                stages={(() => {
+                  const matched = matchResultsByCallId(
+                    message.toolCalls,
+                    message.toolResults || [],
+                  );
+                  return message.toolCalls.map((tc, i) => ({
+                    toolCall: tc,
+                    result: matched[i],
+                  }));
+                })()}
               />
             ) : (
               <ToolCallDisplay

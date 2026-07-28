@@ -9,6 +9,8 @@ export interface NotificationItem {
   content: string;
   created_at: string;
   read?: number;
+  /** server = HTTP pull; live = optimistic WebSocket push */
+  source?: "server" | "live";
 }
 
 // Type guard for WebSocket notification payload
@@ -99,6 +101,7 @@ export function useNotifications() {
               title: raw.title || "通知",
               content: raw.content || "",
               created_at: raw.created_at || new Date().toISOString(),
+              source: raw.id ? "server" : "live",
             };
 
             setLiveNotifications((prev) => [item, ...prev].slice(0, 20));

@@ -3,8 +3,8 @@ import { screen, fireEvent } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
 import DashboardPage from "./Dashboard";
 
-function renderDashboard() {
-  return renderWithRouter(<DashboardPage />);
+function renderDashboard(entries = ["/dashboard"]) {
+  return renderWithRouter(<DashboardPage />, { initialEntries: entries });
 }
 
 vi.mock("../hooks/useDashboard", () => ({
@@ -16,22 +16,28 @@ vi.mock("../hooks/useNotifications", () => ({
 }));
 
 vi.mock("../hooks/useApprovalsQuery", () => ({
-  useApprovalsQuery: () => ({ data: [] }),
+  useApprovalsQuery: vi.fn(() => ({ data: [] })),
 }));
 
 vi.mock("../hooks/useInboxQuery", () => ({
-  useInboxQuery: () => ({ data: { emails: [], digest: {} } }),
+  useInboxQuery: vi.fn(() => ({ data: { emails: [], digest: {} } })),
 }));
 
 vi.mock("../hooks/useGoalsQuery", () => ({
-  useGoalsQuery: () => ({ data: [] }),
+  useGoalsQuery: vi.fn(() => ({ data: [] })),
 }));
 
 import { useDashboard } from "../hooks/useDashboard";
 import { useNotifications } from "../hooks/useNotifications";
+import { useApprovalsQuery } from "../hooks/useApprovalsQuery";
+import { useInboxQuery } from "../hooks/useInboxQuery";
+import { useGoalsQuery } from "../hooks/useGoalsQuery";
 
 const mockUseDashboard = vi.mocked(useDashboard);
 const mockUseNotifications = vi.mocked(useNotifications);
+const mockUseApprovalsQuery = vi.mocked(useApprovalsQuery);
+const mockUseInboxQuery = vi.mocked(useInboxQuery);
+const mockUseGoalsQuery = vi.mocked(useGoalsQuery);
 
 function mockDashboardData(overrides: Partial<ReturnType<typeof useDashboard>> = {}) {
   mockUseDashboard.mockReturnValue({
@@ -96,12 +102,19 @@ function mockDashboardData(overrides: Partial<ReturnType<typeof useDashboard>> =
 describe("DashboardPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseApprovalsQuery.mockReturnValue({ data: [] } as unknown as ReturnType<
+      typeof useApprovalsQuery
+    >);
+    mockUseInboxQuery.mockReturnValue({
+      data: { emails: [], digest: {} },
+    } as unknown as ReturnType<typeof useInboxQuery>);
+    mockUseGoalsQuery.mockReturnValue({ data: [] } as unknown as ReturnType<typeof useGoalsQuery>);
     mockDashboardData();
   });
 
   it("renders today title", () => {
     renderDashboard();
-    expect(screen.getAllByText("Today")[0]).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Today" })).toBeInTheDocument();
   });
 
   it("shows loading state", () => {
@@ -166,6 +179,36 @@ describe("DashboardPage", () => {
   it("shows empty state when no actions", () => {
     renderDashboard();
     expect(screen.getAllByText("今天暂无紧急事项")[0]).toBeInTheDocument();
+  });
+
+  it("shows pending approval card and navigates to approvals", () => {
+    mockUseApprovalsQuery.mockReturnValue({
+      data: [
+        {
+          id: "ap-1",
+          action: "write_file",
+          status: "pending",
+          params: "{}",
+          created_at: "2026-06-28T10:00:00Z",
+        },
+      ],
+    } as unknown as ReturnType<typeof useApprovalsQuery>);
+    renderDashboard();
+    expect(screen.getByText("待你决断")).toBeInTheDocument();
+    expect(screen.getByText("去处理")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("去处理"));
+    // Navigation is handled by react-router; presence of button is enough here.
+  });
+
+  it("shows inbox card when pending emails exist", () => {
+    mockUseInboxQuery.mockReturnValue({
+      data: {
+        emails: [{ id: "e1", subject: "Hello", from: "a@b.com", date: "", preview: "" }],
+        digest: {},
+      },
+    } as unknown as ReturnType<typeof useInboxQuery>);
+    renderDashboard();
+    expect(screen.getByText("待处理邮件")).toBeInTheDocument();
   });
 
   it("calls refresh on button click", () => {

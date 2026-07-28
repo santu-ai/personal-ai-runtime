@@ -16,26 +16,6 @@ interface PendingConfirmation {
 
 type SetMessages = React.Dispatch<React.SetStateAction<DisplayMessage[]>>;
 
-// Session-level trust key for localStorage so trust survives page refresh
-const TRUST_KEY_PREFIX = "par_trust_session_";
-
-function _loadTrustedTools(convId: string): Set<string> {
-  try {
-    const raw = sessionStorage.getItem(TRUST_KEY_PREFIX + convId);
-    return raw ? new Set(JSON.parse(raw)) : new Set();
-  } catch {
-    return new Set();
-  }
-}
-
-function _saveTrustedTools(convId: string, tools: Set<string>) {
-  try {
-    sessionStorage.setItem(TRUST_KEY_PREFIX + convId, JSON.stringify([...tools]));
-  } catch {
-    // sessionStorage may be full or disabled
-  }
-}
-
 function applyResolveToMessages(
   setMessages: SetMessages,
   assistantMsgId: string,
@@ -73,29 +53,18 @@ function applyResolveToMessages(
 
 export function useApprovalFlow(conversationId: string) {
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
-  const trustedToolsRef = useRef<Set<string>>(_loadTrustedTools(conversationId));
   const inflightApprovalsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    trustedToolsRef.current = _loadTrustedTools(conversationId);
     inflightApprovalsRef.current = new Set();
     setPendingConfirmation(null);
   }, [conversationId]);
 
   const confirm = useCallback(
-    async (
-      setMessages: SetMessages,
-      onError?: (msg: string, source: string) => void,
-      trustSession?: boolean,
-    ) => {
+    async (setMessages: SetMessages, onError?: (msg: string, source: string) => void) => {
       if (!pendingConfirmation) return;
       const pc = pendingConfirmation;
       setPendingConfirmation(null);
-
-      if (trustSession) {
-        trustedToolsRef.current.add(pc.toolCall.function_name);
-        _saveTrustedTools(conversationId, trustedToolsRef.current);
-      }
 
       try {
         const res = await resolveApproval(
@@ -173,56 +142,16 @@ export function useApprovalFlow(conversationId: string) {
         tool_args?: Record<string, unknown>;
         tool_call_id?: string;
       },
-      setMessages?: SetMessages,
+      _setMessages?: SetMessages,
     ) => {
       const toolName = event.tool_name || "";
       const approvalId = event.approval_id || "";
       const toolCallId = event.tool_call_id || "";
 
-      // 会话级信任：自动批准并写回 tool result + 续写（P3）
-      if (toolName && trustedToolsRef.current.has(toolName) && approvalId) {
-        if (inflightApprovalsRef.current.has(approvalId)) {
-          return;
-        }
+      // Guard against duplicate confirmation_required events for the same approval.
+      if (approvalId) {
+        if (inflightApprovalsRef.current.has(approvalId)) return;
         inflightApprovalsRef.current.add(approvalId);
-
-        resolveApproval(
-          approvalId,
-          "approve",
-          toolName,
-          event.tool_args || {},
-          conversationId,
-          toolCallId,
-        )
-          .then((res) => {
-            if (setMessages) {
-              applyResolveToMessages(setMessages, assistantMsgId, toolName, toolCallId, res);
-            }
-          })
-          .catch((err) => {
-            // 409 = approval already resolved elsewhere (e.g. Approvals page
-            // or a duplicate event). Backend has already acted, so silence
-            // rather than surface a stale confirmation dialog the user
-            // cannot usefully act on. Other errors fall back to manual.
-            const status = err instanceof ApiError ? err.status : 0;
-            if (status === 409) {
-              return;
-            }
-            setPendingConfirmation({
-              toolCall: {
-                index: 0,
-                id: toolCallId,
-                function_name: toolName,
-                arguments: JSON.stringify(event.tool_args || {}),
-              },
-              approvalId,
-              assistantMsgId,
-            });
-          })
-          .finally(() => {
-            inflightApprovalsRef.current.delete(approvalId);
-          });
-        return;
       }
 
       setPendingConfirmation({
@@ -236,7 +165,7 @@ export function useApprovalFlow(conversationId: string) {
         assistantMsgId,
       });
     },
-    [conversationId],
+    [],
   );
 
   return { pendingConfirmation, setPendingConfirmation, setFromEvent, confirm, deny };
