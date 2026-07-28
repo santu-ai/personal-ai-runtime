@@ -202,7 +202,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
               </button>
             ))}
             {launching && (
-              <p className="text-xs text-success text-center pt-2">正在开启对话…</p>
+              <p className="text-xs text-fg-secondary text-center pt-2">正在开启对话…</p>
             )}
           </div>
         )}

@@ -19,7 +19,6 @@ import {
   ChevronDown,
   ChevronRight,
   Shield,
-  Clock,
   Activity,
 } from "lucide-react";
 

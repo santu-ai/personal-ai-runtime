@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
@@ -267,7 +267,7 @@ export default function MessageItem({ message }: Props) {
 
         {/* Timestamp */}
         {message.created_at && (
-          <div className={`text-xs mt-2 ${isUser ? "text-fg-tertiary" : "text-fg-tertiary"}`}>
+          <div className="text-xs mt-2 text-fg-tertiary">
             {formatTimeAgo(message.created_at)}
           </div>
         )}
