@@ -1,9 +1,10 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import { Copy, Check, Brain, Mail, Target, FileText } from "lucide-react";
 import ToolCallDisplay from "./ToolCallDisplay";
+import TaskTrack from "./TaskTrack";
 import { CodeBlock } from "./CodeBlock";
 import { stripToolMarkup } from "../../utils/stripToolMarkup";
 import type { SourceCitation } from "../../api/types";
@@ -181,13 +182,26 @@ export default function MessageItem({ message }: Props) {
             : "bg-surface-raised text-fg-primary rounded-bl-md"
         }`}
       >
-        {/* Tool calls display */}
+        {/* Tool calls display: 多步用 TaskTrack，单步退化为 ToolCallDisplay */}
         {message.toolCalls && message.toolCalls.length > 0 && (
-          <ToolCallDisplay
-            toolCalls={message.toolCalls}
-            toolResults={message.toolResults || []}
-            defaultExpanded={message.expandTools ?? false}
-          />
+          <>
+            {message.toolCalls.length > 1 ? (
+              <TaskTrack
+                stages={message.toolCalls.map((tc) => ({
+                  toolCall: tc,
+                  result: (message.toolResults || []).find(
+                    (r) => r.tool_call_id === tc.id || r.tool_name === tc.function_name,
+                  ),
+                }))}
+              />
+            ) : (
+              <ToolCallDisplay
+                toolCalls={message.toolCalls}
+                toolResults={message.toolResults || []}
+                defaultExpanded={message.expandTools ?? false}
+              />
+            )}
+          </>
         )}
 
         {/* Thinking placeholder: assistant turn in flight, no tokens yet */}
