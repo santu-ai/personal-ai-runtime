@@ -29,8 +29,8 @@ test.describe("Navigation and pages", () => {
 
   test("dashboard page loads with overview", async ({ page }) => {
     await page.goto("/dashboard");
-    await expect(page.getByText("AI 概览")).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText("AI 记住了")).toBeVisible();
+    await expect(page.getByText("Today")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("进行中")).toBeVisible();
   });
 
   test("settings page shows export button", async ({ page }) => {
@@ -119,8 +119,7 @@ test.describe("Chat approval flow", () => {
     await page.getByRole("button", { name: "发送" }).click();
     await expect(page.getByText(/确认写入文件/)).toBeVisible({ timeout: 10000 });
 
-    const dialog = page.locator(".bg-amber-900\\/30");
-    await dialog.getByRole("button", { name: "取消" }).click();
+    await page.getByRole("button", { name: "取消" }).click();
     await expect(page.getByText(/确认写入文件/)).not.toBeVisible({ timeout: 5000 });
   });
 });
@@ -296,10 +295,12 @@ test.describe("New pages", () => {
     await router.install(page);
 
     await page.goto("/dashboard");
-    await expect(page.getByText("我的数据")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Today")).toBeVisible({ timeout: 10000 });
+    // 数据主权面板折叠在"运行状况"中，需先展开
+    await page.getByText("运行状况").click();
+    await expect(page.getByText("我的数据")).toBeVisible({ timeout: 5000 });
     await expect(page.getByText("1,250")).toBeVisible(); // total_events
     await expect(page.getByText("121")).toBeVisible(); // total_memories
     await expect(page.getByText("全部本地存储")).toBeVisible();
-    await expect(page.getByText("导出我的数据")).toBeVisible();
   });
 });
