@@ -150,6 +150,14 @@ export function buildCommonMocks(): MockApiRouter {
     })
     .json("/api/approvals", [])
     .json("/api/notifications", [])
+    .json("/api/inbox/emails", [])
+    .json("/api/inbox/digest", {})
+    .json("/api/settings/capability-policy", {
+      auto_allow: ["read_file", "web_search", "check_inbox"],
+      needs_user: ["write_file", "apply_patch", "send_email", "shell_exec", "telegram_send"],
+      forbidden: [],
+      external_ingestion: [],
+    })
     .json("/api/knowledge/documents", { documents: [], total: 0 })
     .json("/api/memory/memories/grouped", {
       memories: [

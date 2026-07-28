@@ -28,7 +28,7 @@ test.describe("Navigation and pages", () => {
   });
 
   test("dashboard page loads with overview", async ({ page }) => {
-    await page.goto("/dashboard");
+    await page.goto("/dashboard", { waitUntil: "networkidle" });
     await expect(page.getByText("Today")).toBeVisible({ timeout: 10000 });
     await expect(page.getByText("进行中")).toBeVisible();
   });
@@ -294,7 +294,7 @@ test.describe("New pages", () => {
     });
     await router.install(page);
 
-    await page.goto("/dashboard");
+    await page.goto("/dashboard", { waitUntil: "networkidle" });
     await expect(page.getByText("Today")).toBeVisible({ timeout: 10000 });
     // 数据主权面板折叠在"运行状况"中，需先展开
     await page.getByText("运行状况").click();

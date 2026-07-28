@@ -59,6 +59,34 @@ export default function DashboardPage() {
     [goals],
   );
 
+  // Prefer HTTP-pulled notifications; keep live WS items only when no server
+  // item shares the same type:title key (optimistic until refetch arrives).
+  const mergedNotifications = useMemo(() => {
+    const serverItems: Notification[] = notifications.map((n) => ({
+      ...n,
+      source: "server" as const,
+    }));
+    const serverKeys = new Set(serverItems.map((n) => `${n.type}:${n.title}`));
+    const liveOnly = liveNotifications
+      .filter((n) => n.source !== "server" && !serverKeys.has(`${n.type}:${n.title}`))
+      .map((n) => ({ ...n, source: "live" as const }));
+    return [...liveOnly, ...serverItems].slice(0, 6);
+  }, [liveNotifications, notifications]);
+
+  const handleNotificationClick = async (n: Notification) => {
+    setSelectedNotification(n);
+    // Live optimistic ids are not persisted — skip mark-read to avoid 404.
+    if (!n.read && n.source !== "live" && !n.id.startsWith("live-")) {
+      try {
+        await markNotificationRead(n.id);
+      } catch {
+        // still show detail
+      }
+    }
+  };
+
+  const hasActions = pendingApprovalCount > 0 || activeGoals.length > 0 || pendingInboxCount > 0;
+
   // ── Trust tab ──
   if (tab === "trust") {
     return (
@@ -114,34 +142,6 @@ export default function DashboardPage() {
     cost && cost.total_calls > 0
       ? (((cost.total_calls - cost.failed_calls) / cost.total_calls) * 100).toFixed(1)
       : "100";
-
-  // Prefer HTTP-pulled notifications; keep live WS items only when no server
-  // item shares the same type:title key (optimistic until refetch arrives).
-  const mergedNotifications = useMemo(() => {
-    const serverItems: Notification[] = notifications.map((n) => ({
-      ...n,
-      source: "server" as const,
-    }));
-    const serverKeys = new Set(serverItems.map((n) => `${n.type}:${n.title}`));
-    const liveOnly = liveNotifications
-      .filter((n) => n.source !== "server" && !serverKeys.has(`${n.type}:${n.title}`))
-      .map((n) => ({ ...n, source: "live" as const }));
-    return [...liveOnly, ...serverItems].slice(0, 6);
-  }, [liveNotifications, notifications]);
-
-  const handleNotificationClick = async (n: Notification) => {
-    setSelectedNotification(n);
-    // Live optimistic ids are not persisted — skip mark-read to avoid 404.
-    if (!n.read && n.source !== "live" && !n.id.startsWith("live-")) {
-      try {
-        await markNotificationRead(n.id);
-      } catch {
-        // still show detail
-      }
-    }
-  };
-
-  const hasActions = pendingApprovalCount > 0 || activeGoals.length > 0 || pendingInboxCount > 0;
 
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-6">
