@@ -75,10 +75,21 @@ export function getRiskTone(level: RiskLevel) {
 export function guessReversible(functionName: string): boolean {
   // 只读/查询类工具都是可逆的
   const readOnly = new Set([
-    "get_current_time", "read_file", "list_directory", "search_files",
-    "web_search", "fetch_url", "list_calendar_events", "get_upcoming_events",
-    "check_inbox", "read_inbox_email", "get_clipboard", "ocr_image",
-    "git_status", "git_log", "git_diff",
+    "get_current_time",
+    "read_file",
+    "list_directory",
+    "search_files",
+    "web_search",
+    "fetch_url",
+    "list_calendar_events",
+    "get_upcoming_events",
+    "check_inbox",
+    "read_inbox_email",
+    "get_clipboard",
+    "ocr_image",
+    "git_status",
+    "git_log",
+    "git_diff",
   ]);
   return readOnly.has(functionName);
 }

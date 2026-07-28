@@ -224,7 +224,9 @@ export default function ChatHome() {
             </div>
             <p className="text-sm text-fg-primary">{lastConversation.title || "新对话"}</p>
             {lastConversation.summary && (
-              <p className="text-xs text-fg-tertiary mt-1 line-clamp-1">{lastConversation.summary}</p>
+              <p className="text-xs text-fg-tertiary mt-1 line-clamp-1">
+                {lastConversation.summary}
+              </p>
             )}
             <p className="text-xs text-fg-disabled mt-2">{timeAgo(lastConversation.updated_at)}</p>
           </div>

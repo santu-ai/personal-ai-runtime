@@ -4,8 +4,18 @@ import { MemoryRouter } from "react-router-dom";
 import TaskTrack from "./TaskTrack";
 
 const multiToolCalls = [
-  { index: 0, id: "tc-1", function_name: "read_file", arguments: JSON.stringify({ path: "/tmp/test.txt" }) },
-  { index: 1, id: "tc-2", function_name: "web_search", arguments: JSON.stringify({ query: "hello" }) },
+  {
+    index: 0,
+    id: "tc-1",
+    function_name: "read_file",
+    arguments: JSON.stringify({ path: "/tmp/test.txt" }),
+  },
+  {
+    index: 1,
+    id: "tc-2",
+    function_name: "web_search",
+    arguments: JSON.stringify({ query: "hello" }),
+  },
 ];
 
 function renderWithRouter(el: React.ReactElement) {
@@ -15,19 +25,13 @@ function renderWithRouter(el: React.ReactElement) {
 describe("TaskTrack", () => {
   it("renders null for single stage (degrade to ToolCallDisplay)", () => {
     const { container } = renderWithRouter(
-      <TaskTrack
-        stages={[{ toolCall: multiToolCalls[0] }]}
-      />,
+      <TaskTrack stages={[{ toolCall: multiToolCalls[0] }]} />,
     );
     expect(container.textContent).toBe("");
   });
 
   it("renders multi-step timeline with correct count", () => {
-    renderWithRouter(
-      <TaskTrack
-        stages={multiToolCalls.map((tc) => ({ toolCall: tc }))}
-      />,
-    );
+    renderWithRouter(<TaskTrack stages={multiToolCalls.map((tc) => ({ toolCall: tc }))} />);
     expect(screen.getByText("任务轨迹")).toBeInTheDocument();
     expect(screen.getByText("0/2 完成")).toBeInTheDocument();
     expect(screen.getByText("读取文件")).toBeInTheDocument();
@@ -39,7 +43,10 @@ describe("TaskTrack", () => {
       <TaskTrack
         stages={multiToolCalls.map((tc, i) => ({
           toolCall: tc,
-          result: i === 0 ? { tool_name: "read_file", tool_call_id: "tc-1", content: '{"ok": true}' } : undefined,
+          result:
+            i === 0
+              ? { tool_name: "read_file", tool_call_id: "tc-1", content: '{"ok": true}' }
+              : undefined,
         }))}
       />,
     );
@@ -54,7 +61,11 @@ describe("TaskTrack", () => {
         stages={[
           {
             toolCall: multiToolCalls[0],
-            result: { tool_name: "read_file", tool_call_id: "tc-1", content: '{"error": "file not found"}' },
+            result: {
+              tool_name: "read_file",
+              tool_call_id: "tc-1",
+              content: '{"error": "file not found"}',
+            },
           },
           { toolCall: multiToolCalls[1] },
         ]}
@@ -64,11 +75,7 @@ describe("TaskTrack", () => {
   });
 
   it("expands details on click", () => {
-    renderWithRouter(
-      <TaskTrack
-        stages={multiToolCalls.map((tc) => ({ toolCall: tc }))}
-      />,
-    );
+    renderWithRouter(<TaskTrack stages={multiToolCalls.map((tc) => ({ toolCall: tc }))} />);
     // Click the first stage to expand
     fireEvent.click(screen.getByText("读取文件"));
     expect(screen.getByText("参数")).toBeInTheDocument();

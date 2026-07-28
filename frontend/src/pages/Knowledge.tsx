@@ -127,7 +127,10 @@ export default function KnowledgePage() {
         {/* Search */}
         <div className="flex gap-2 mb-6">
           <div className="flex-1 relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-disabled" />
+            <Search
+              size={14}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-disabled"
+            />
             <input
               type="text"
               value={searchQuery}
@@ -154,7 +157,10 @@ export default function KnowledgePage() {
             </h3>
             <div className="space-y-2">
               {searchResults.map((r) => (
-                <div key={r.id} className="bg-surface-raised border border-border-subtle rounded-lg p-3">
+                <div
+                  key={r.id}
+                  className="bg-surface-raised border border-border-subtle rounded-lg p-3"
+                >
                   <div className="text-sm text-fg-primary mb-1">
                     {r.content.length > 200 ? r.content.substring(0, 200) + "…" : r.content}
                   </div>

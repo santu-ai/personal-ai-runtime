@@ -196,14 +196,14 @@ export default function DashboardPage() {
                             key={item.id}
                             className="flex items-center gap-2 text-xs p-2 bg-warning/5 rounded-lg border border-warning/20"
                           >
-                            <span className="text-warning shrink-0">
-                              {isExpiring ? "⏱" : "⚠"}
-                            </span>
+                            <span className="text-warning shrink-0">{isExpiring ? "⏱" : "⚠"}</span>
                             <span className="text-fg-primary truncate flex-1">
                               {item.action || "—"}
                             </span>
                             {item.expires_at && (
-                              <span className={`shrink-0 ${isExpiring ? "text-danger" : "text-fg-tertiary"}`}>
+                              <span
+                                className={`shrink-0 ${isExpiring ? "text-danger" : "text-fg-tertiary"}`}
+                              >
                                 {formatTime(item.expires_at)}
                               </span>
                             )}
@@ -233,14 +233,13 @@ export default function DashboardPage() {
                       <div className="flex items-center gap-1.5 mb-2">
                         <Target size={14} className="text-warning" />
                         <span className="text-xs font-medium text-fg-secondary">进行中</span>
-                        <span className="text-xs text-fg-tertiary ml-auto">{activeGoals.length}</span>
+                        <span className="text-xs text-fg-tertiary ml-auto">
+                          {activeGoals.length}
+                        </span>
                       </div>
                       <div className="space-y-1.5">
                         {activeGoals.slice(0, 3).map((g) => (
-                          <div
-                            key={g.id}
-                            className="flex items-center gap-2 text-xs"
-                          >
+                          <div key={g.id} className="flex items-center gap-2 text-xs">
                             <span className="truncate flex-1 text-fg-primary">{g.title}</span>
                             <span className="text-fg-tertiary shrink-0">
                               {Math.round(g.progress * 100)}%
@@ -299,9 +298,7 @@ export default function DashboardPage() {
                     <div className="space-y-2.5">
                       {activeGoals.slice(0, 5).map((g) => (
                         <div key={g.id} className="flex items-center gap-3">
-                          <span className="text-sm text-fg-primary truncate flex-1">
-                            {g.title}
-                          </span>
+                          <span className="text-sm text-fg-primary truncate flex-1">{g.title}</span>
                           <span className="text-xs text-fg-tertiary shrink-0">
                             {Math.round(g.progress * 100)}%
                           </span>
@@ -356,9 +353,7 @@ export default function DashboardPage() {
               <Activity size={36} className="mx-auto mb-3 opacity-40" />
             </div>
             <p className="text-fg-secondary font-medium mb-1">今天暂无紧急事项</p>
-            <p className="text-sm text-fg-tertiary">
-              去和 AI 聊聊天，或创建第一个目标开始使用
-            </p>
+            <p className="text-sm text-fg-tertiary">去和 AI 聊聊天，或创建第一个目标开始使用</p>
           </div>
         )}
 
@@ -402,9 +397,7 @@ export default function DashboardPage() {
             {showHealth ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             <span>运行状况</span>
             {!showHealth && (
-              <span className="text-fg-disabled ml-1">
-                · Token / 成本 / 数据计数 ...
-              </span>
+              <span className="text-fg-disabled ml-1">· Token / 成本 / 数据计数 ...</span>
             )}
           </button>
 
@@ -446,15 +439,26 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex items-center gap-4 text-xs text-fg-tertiary">
                     <span>
-                      自我陈述: <span className="text-insight font-medium">{dashboard.data_sovereignty.memories_self_report || 0}</span>
+                      自我陈述:{" "}
+                      <span className="text-insight font-medium">
+                        {dashboard.data_sovereignty.memories_self_report || 0}
+                      </span>
                     </span>
                     <span>
-                      AI 提炼: <span className="text-warning font-medium">{dashboard.data_sovereignty.memories_claim || 0}</span>
+                      AI 提炼:{" "}
+                      <span className="text-warning font-medium">
+                        {dashboard.data_sovereignty.memories_claim || 0}
+                      </span>
                     </span>
                     <span>
-                      目标: <span className="text-success font-medium">{dashboard.data_sovereignty.goals_active || 0}</span>
+                      目标:{" "}
+                      <span className="text-success font-medium">
+                        {dashboard.data_sovereignty.goals_active || 0}
+                      </span>
                       <span className="text-fg-disabled">/</span>
-                      <span className="text-fg-secondary font-medium">{dashboard.data_sovereignty.goals_completed || 0}</span>
+                      <span className="text-fg-secondary font-medium">
+                        {dashboard.data_sovereignty.goals_completed || 0}
+                      </span>
                     </span>
                   </div>
                 </div>
@@ -531,7 +535,9 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className="flex justify-between">
                     <span className="text-fg-tertiary">总 Token</span>
-                    <span className="text-fg-secondary font-mono">{totalTokens.toLocaleString()}</span>
+                    <span className="text-fg-secondary font-mono">
+                      {totalTokens.toLocaleString()}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-fg-tertiary">预估费用</span>

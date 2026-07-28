@@ -161,7 +161,9 @@ function formatResult(content: string, toolName: string): ReactNode {
     );
   } catch {
     const text = content.length > 500 ? content.slice(0, 500) + "\n... [truncated]" : content;
-    return <pre className="bg-surface-sunken p-2 rounded text-fg-primary overflow-x-auto">{text}</pre>;
+    return (
+      <pre className="bg-surface-sunken p-2 rounded text-fg-primary overflow-x-auto">{text}</pre>
+    );
   }
 }
 

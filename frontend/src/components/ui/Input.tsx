@@ -23,7 +23,13 @@ interface Props extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   invalid?: boolean;
 }
 
-export function Textarea({ autoGrow = false, invalid = false, className = "", onInput, ...props }: Props) {
+export function Textarea({
+  autoGrow = false,
+  invalid = false,
+  className = "",
+  onInput,
+  ...props
+}: Props) {
   const handleInput = useCallback(
     (e: React.FormEvent<HTMLTextAreaElement>) => {
       if (autoGrow) {

@@ -90,9 +90,7 @@ export default function InboxPage() {
 
         {digest && digest.content && (
           <Card className="mb-6">
-            <h3 className="text-sm font-medium text-insight mb-2">
-              {digest.title || "今日摘要"}
-            </h3>
+            <h3 className="text-sm font-medium text-insight mb-2">{digest.title || "今日摘要"}</h3>
             <pre className="text-xs text-fg-secondary whitespace-pre-wrap font-sans">
               {digest.content}
             </pre>
@@ -110,11 +108,18 @@ export default function InboxPage() {
                 </h3>
                 <div className="space-y-3 max-h-[60vh] overflow-y-auto">
                   {byCategory(col.key).map((em) => (
-                    <div key={em.id} className="p-3 bg-surface-sunken rounded-lg border border-border-subtle">
-                      <div className="text-sm font-medium text-fg-primary truncate">{em.subject}</div>
+                    <div
+                      key={em.id}
+                      className="p-3 bg-surface-sunken rounded-lg border border-border-subtle"
+                    >
+                      <div className="text-sm font-medium text-fg-primary truncate">
+                        {em.subject}
+                      </div>
                       <div className="text-xs text-fg-tertiary mt-1 truncate">{em.sender}</div>
                       {em.reason && (
-                        <div className="text-xs text-fg-disabled mt-2 line-clamp-2">{em.reason}</div>
+                        <div className="text-xs text-fg-disabled mt-2 line-clamp-2">
+                          {em.reason}
+                        </div>
                       )}
                       <div className="flex gap-3 mt-2">
                         <button

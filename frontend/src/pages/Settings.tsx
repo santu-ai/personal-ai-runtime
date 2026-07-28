@@ -110,7 +110,9 @@ export default function SettingsPage() {
 
         <Card>
           <h3 className="text-sm font-medium text-fg-secondary mb-3">MCP 市场</h3>
-          <p className="text-sm text-fg-tertiary mb-3">浏览并安装社区 MCP 服务器，扩展 AI 的能力。</p>
+          <p className="text-sm text-fg-tertiary mb-3">
+            浏览并安装社区 MCP 服务器，扩展 AI 的能力。
+          </p>
           <McpMarketplace />
         </Card>
 

@@ -87,7 +87,10 @@ export default function ContextPanel({ lastUserMessage, toolResults = [], open, 
     <aside className="w-72 border-l border-border-subtle bg-surface-raised/50 overflow-y-auto shrink-0 flex flex-col">
       <div className="p-3 border-b border-border-subtle flex items-center justify-between">
         <h3 className="text-sm font-medium text-fg-primary">上下文</h3>
-        <button onClick={onToggle} className="text-xs text-fg-tertiary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded">
+        <button
+          onClick={onToggle}
+          className="text-xs text-fg-tertiary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+        >
           收起
         </button>
       </div>
@@ -97,7 +100,10 @@ export default function ContextPanel({ lastUserMessage, toolResults = [], open, 
           <section>
             <h4 className="text-xs text-warning mb-2">待审批 ({approvals.length})</h4>
             {approvals.map((a) => (
-              <div key={a.id} className="text-xs text-fg-secondary p-2 bg-warning/10 rounded-lg mb-1">
+              <div
+                key={a.id}
+                className="text-xs text-fg-secondary p-2 bg-warning/10 rounded-lg mb-1"
+              >
                 {a.action || "未知操作"}
               </div>
             ))}

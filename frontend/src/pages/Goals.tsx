@@ -248,7 +248,7 @@ export default function GoalsPage() {
           />
         ) : selectedGoal ? (
           <div className="max-w-2xl">
-                <div className="flex items-start justify-between mb-6">
+            <div className="flex items-start justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-bold text-fg-primary">{selectedGoal.title}</h2>
                 <div className="flex items-center gap-2 mt-2">
@@ -332,9 +332,7 @@ export default function GoalsPage() {
               {suggestedSteps.length > 0 && (
                 <div className="mb-4 p-3 bg-insight/10 border border-insight/30 rounded-lg">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-insight font-medium">
-                      ✨ AI 建议的行动步骤
-                    </span>
+                    <span className="text-xs text-insight font-medium">✨ AI 建议的行动步骤</span>
                     <button
                       onClick={handleAddAllSuggestedSteps}
                       className="text-xs px-2 py-1 bg-insight/30 hover:bg-insight/40 rounded text-insight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
@@ -388,7 +386,10 @@ export default function GoalsPage() {
                 <h3 className="text-sm font-semibold text-fg-secondary mb-3">相关事件</h3>
                 <div className="space-y-2">
                   {selectedGoal.events.map((event) => (
-                    <div key={event.id} className="flex items-center gap-2 text-xs text-fg-tertiary">
+                    <div
+                      key={event.id}
+                      className="flex items-center gap-2 text-xs text-fg-tertiary"
+                    >
                       <span className="text-fg-disabled">
                         {new Date(event.timestamp).toLocaleString("zh-CN")}
                       </span>

@@ -113,7 +113,9 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
 
       <div className={compact ? "space-y-8" : "p-6 space-y-8"}>
         {compact && (
-          <p className="text-sm text-fg-tertiary">了解 AI 如何使用你的数据，确保一切可审计、可追溯</p>
+          <p className="text-sm text-fg-tertiary">
+            了解 AI 如何使用你的数据，确保一切可审计、可追溯
+          </p>
         )}
 
         {actionError && data && (
@@ -248,7 +250,9 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
                   className="flex items-start gap-3 bg-danger/10 border border-danger/30 rounded-xl p-4"
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-fg-primary font-mono truncate">{repair.aggregate_id}</p>
+                    <p className="text-sm text-fg-primary font-mono truncate">
+                      {repair.aggregate_id}
+                    </p>
                     <p className="text-xs text-fg-secondary mt-1">
                       {repair.event_type} · seq {repair.event_seq} · 已重试 {repair.retry_count} 次
                     </p>

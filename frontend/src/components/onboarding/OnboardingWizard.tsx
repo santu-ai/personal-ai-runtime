@@ -183,7 +183,9 @@ export default function OnboardingWizard({ onComplete }: Props) {
 
         {step === 2 && (
           <div className="mt-4 space-y-2">
-            <p className="text-xs text-fg-tertiary mb-3">一切就绪。选一个开始——你的 AI 会立即响应：</p>
+            <p className="text-xs text-fg-tertiary mb-3">
+              一切就绪。选一个开始——你的 AI 会立即响应：
+            </p>
             {STARTER_PROMPTS.map((sp) => (
               <button
                 key={sp.label}

@@ -29,7 +29,12 @@ export default function Badge({ children, tone = "default", dot = false, classNa
     <span
       className={`inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full ${toneClasses[tone]} ${className}`}
     >
-      {dot && <span className={`inline-block w-1.5 h-1.5 rounded-full ${dotColors[tone]}`} aria-hidden="true" />}
+      {dot && (
+        <span
+          className={`inline-block w-1.5 h-1.5 rounded-full ${dotColors[tone]}`}
+          aria-hidden="true"
+        />
+      )}
       {children}
     </span>
   );

@@ -97,7 +97,9 @@ export default function Sidebar({
               to={item.path}
               end={item.path === "/"}
               className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm mb-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
-                active ? "bg-surface-overlay text-fg-primary" : "text-fg-secondary hover:bg-surface-overlay/50 hover:text-fg-primary"
+                active
+                  ? "bg-surface-overlay text-fg-primary"
+                  : "text-fg-secondary hover:bg-surface-overlay/50 hover:text-fg-primary"
               }`}
             >
               <Icon size={18} className="shrink-0" />

@@ -17,7 +17,8 @@ const variantClasses: Record<Variant, string> = {
     "bg-danger hover:bg-danger/90 text-white disabled:bg-surface-overlay disabled:text-fg-disabled",
 };
 
-const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base";
+const focusRing =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
@@ -50,7 +51,14 @@ export default function Button({
           fill="none"
           aria-hidden="true"
         >
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <circle
+            className="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+          />
           <path
             className="opacity-75"
             fill="currentColor"

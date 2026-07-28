@@ -26,10 +26,7 @@ export default function Card({
 }: Props) {
   const pad = padding === "sm" ? "p-3" : "p-4";
   return (
-    <div
-      className={`border rounded-xl ${variantClasses[variant]} ${pad} ${className}`}
-      {...props}
-    >
+    <div className={`border rounded-xl ${variantClasses[variant]} ${pad} ${className}`} {...props}>
       {children}
     </div>
   );

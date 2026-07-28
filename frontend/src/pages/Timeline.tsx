@@ -121,12 +121,17 @@ export default function TimelinePage() {
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-2 h-2 rounded-full bg-fg-tertiary" />
                   <h3 className="text-sm font-medium text-fg-secondary">{day}</h3>
-                  <span className="text-xs text-fg-disabled">{groupedEvents[day].length} 个事件</span>
+                  <span className="text-xs text-fg-disabled">
+                    {groupedEvents[day].length} 个事件
+                  </span>
                 </div>
                 <div className="space-y-2">
                   {groupedEvents[day].map((event) => {
                     const iconKey = icons[event.type] || "activity";
-                    const iconInfo = ICON_LABELS[iconKey] || { icon: "●", color: "text-fg-tertiary" };
+                    const iconInfo = ICON_LABELS[iconKey] || {
+                      icon: "●",
+                      color: "text-fg-tertiary",
+                    };
                     return (
                       <div
                         key={event.id}

@@ -80,7 +80,9 @@ export function PortraitPanel({ compact = false }: { compact?: boolean }) {
             </div>
             <div>
               <h1 className="text-xl font-bold text-fg-primary">AI 画像</h1>
-              <p className="text-sm text-fg-secondary mt-1">AI 对你的理解——包含 {totalItems} 项洞察</p>
+              <p className="text-sm text-fg-secondary mt-1">
+                AI 对你的理解——包含 {totalItems} 项洞察
+              </p>
             </div>
           </div>
         </div>

@@ -52,26 +52,18 @@ export default function MemoryListItem({
           <span className="text-xs text-fg-disabled">{timeAgoShort(m.created_at)}</span>
         )}
         {m.origin === "claim" && <span className="text-xs text-insight/70">对话推断</span>}
-        {m.origin === "self_report" && (
-          <span className="text-xs text-success/70">你告诉我的</span>
-        )}
+        {m.origin === "self_report" && <span className="text-xs text-success/70">你告诉我的</span>}
         {m.claim_status === "proposed" && (
-          <span className="text-xs bg-warning/15 text-warning px-1.5 py-0.5 rounded">
-            待确认
-          </span>
+          <span className="text-xs bg-warning/15 text-warning px-1.5 py-0.5 rounded">待确认</span>
         )}
         {m.claim_status === "ratified" && (
-          <span className="text-xs bg-success/15 text-success px-1.5 py-0.5 rounded">
-            已确认
-          </span>
+          <span className="text-xs bg-success/15 text-success px-1.5 py-0.5 rounded">已确认</span>
         )}
         {m.claim_status === "rejected" && (
           <span className="text-xs bg-danger/15 text-danger px-1.5 py-0.5 rounded">已拒绝</span>
         )}
         {m.claim_status === "contested" && (
-          <span className="text-xs bg-insight/15 text-insight px-1.5 py-0.5 rounded">
-            有争议
-          </span>
+          <span className="text-xs bg-insight/15 text-insight px-1.5 py-0.5 rounded">有争议</span>
         )}
         {m.origin === "claim" && m.claim_status === "proposed" && (
           <>

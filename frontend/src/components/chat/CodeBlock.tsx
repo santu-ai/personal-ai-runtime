@@ -20,9 +20,9 @@ export function CodeBlock({ language, code }: { language: string; code: string }
   return (
     <Suspense
       fallback={
-    <pre className="bg-surface-sunken rounded p-3 text-xs overflow-x-auto">
-      <code>{code}</code>
-    </pre>
+        <pre className="bg-surface-sunken rounded p-3 text-xs overflow-x-auto">
+          <code>{code}</code>
+        </pre>
       }
     >
       <LazySyntaxBlock language={language} code={code} />

@@ -1,11 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Check,
-  X,
-  RefreshCw,
-  MessageSquare,
-} from "lucide-react";
+import { Check, X, RefreshCw, MessageSquare } from "lucide-react";
 import {
   approveApproval,
   rejectApproval,

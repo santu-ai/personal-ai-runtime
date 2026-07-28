@@ -168,27 +168,19 @@ export default function RiskCard({
           <div className="flex items-center gap-2 flex-wrap">
             <h4 className={`${tone.title} font-medium`}>确认{label}</h4>
             {riskLevel === "high" && <Badge tone="danger">高风险</Badge>}
-            {expiringSoon && (
-              <Badge tone="danger">
-                ⏱ 即将过期
-              </Badge>
-            )}
+            {expiringSoon && <Badge tone="danger">⏱ 即将过期</Badge>}
             {source?.flowLabel && <Badge tone="insight">{source.flowLabel}</Badge>}
           </div>
 
           {/* ── 为什么（风险解释）—— */}
-          {riskExplanation && (
-            <p className={`text-xs ${tone.desc} italic`}>{riskExplanation}</p>
-          )}
+          {riskExplanation && <p className={`text-xs ${tone.desc} italic`}>{riskExplanation}</p>}
 
           {/* ── 影响（后端确定性字段）—— */}
           {variant === "panel" && (
             <div className="text-xs space-y-1">
               <div>
                 <span className="text-fg-tertiary">影响：</span>
-                <span className="text-fg-secondary">
-                  {impactSummary || "—"}
-                </span>
+                <span className="text-fg-secondary">{impactSummary || "—"}</span>
               </div>
               <div>
                 <span className="text-fg-tertiary">可撤销：</span>
@@ -221,9 +213,7 @@ export default function RiskCard({
           {/* ── 时间 / 来源信息 —— */}
           <div className="flex items-center gap-4 text-xs text-fg-disabled flex-wrap">
             {timing?.createdAt && (
-              <span title={formatTime(timing.createdAt)}>
-                {formatTimeAgo(timing.createdAt)}
-              </span>
+              <span title={formatTime(timing.createdAt)}>{formatTimeAgo(timing.createdAt)}</span>
             )}
             {timing?.expiresAt && (
               <span className={expiringSoon ? "text-danger" : ""}>
@@ -237,11 +227,7 @@ export default function RiskCard({
           {trustSlot}
 
           {/* ── 操作按钮（父组件注入）—— */}
-          {children && (
-            <div className="flex gap-2 pt-1">
-              {children}
-            </div>
-          )}
+          {children && <div className="flex gap-2 pt-1">{children}</div>}
         </div>
       </div>
     </div>

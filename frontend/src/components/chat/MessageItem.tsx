@@ -267,9 +267,7 @@ export default function MessageItem({ message }: Props) {
 
         {/* Timestamp */}
         {message.created_at && (
-          <div className="text-xs mt-2 text-fg-tertiary">
-            {formatTimeAgo(message.created_at)}
-          </div>
+          <div className="text-xs mt-2 text-fg-tertiary">{formatTimeAgo(message.created_at)}</div>
         )}
 
         {/* Source citations — memory + document references */}

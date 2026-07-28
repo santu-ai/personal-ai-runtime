@@ -210,14 +210,12 @@ export default function DataSovereigntyCard({ onAfterImport }: Props) {
       <hr className="mt-4 border-border-subtle" />
       <div className="mt-4">
         <h4 className="text-xs font-medium text-danger mb-2">危险操作</h4>
-        <Button
-          variant="danger"
-          onClick={handleDestroy}
-          disabled={destroying}
-        >
+        <Button variant="danger" onClick={handleDestroy} disabled={destroying}>
           {destroying ? "销毁中…" : "销毁全部数据"}
         </Button>
-        <p className="text-xs text-fg-disabled mt-1">永久删除所有对话、记忆、目标和事件。不可恢复。</p>
+        <p className="text-xs text-fg-disabled mt-1">
+          永久删除所有对话、记忆、目标和事件。不可恢复。
+        </p>
       </div>
     </Card>
   );

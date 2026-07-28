@@ -181,7 +181,9 @@ export default function MemoriesPage() {
             <button
               onClick={() => setViewMode("list")}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
-                viewMode === "list" ? "bg-border-strong text-white" : "text-fg-secondary hover:text-fg-primary"
+                viewMode === "list"
+                  ? "bg-border-strong text-white"
+                  : "text-fg-secondary hover:text-fg-primary"
               }`}
             >
               <List size={14} />
