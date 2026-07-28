@@ -147,12 +147,13 @@ export default function MessageItem({ message }: Props) {
   const isThinking = isAssistant && message.isStreaming && !displayContent.trim() && !hasTools;
 
   // Pre-compute tool call stages for TaskTrack (avoid IIFE in JSX)
-  const taskStages = hasTools && message.toolCalls
-    ? (() => {
-        const matched = matchResultsByCallId(message.toolCalls, message.toolResults || []);
-        return message.toolCalls.map((tc, i) => ({ toolCall: tc, result: matched[i] }));
-      })()
-    : [];
+  const taskStages =
+    hasTools && message.toolCalls
+      ? (() => {
+          const matched = matchResultsByCallId(message.toolCalls, message.toolResults || []);
+          return message.toolCalls.map((tc, i) => ({ toolCall: tc, result: matched[i] }));
+        })()
+      : [];
 
   return (
     <div className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
