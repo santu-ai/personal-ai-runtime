@@ -22,6 +22,7 @@ export default function ConfirmationDialog({ toolCall, onConfirm, onDeny }: Prop
       policy={policy}
       variant="inline"
     >
+      <p className="text-xs text-fg-tertiary w-full mt-1">确认后将执行工具并自动续写一次回复</p>
       <Button size="sm" onClick={onConfirm}>
         确认执行
       </Button>

@@ -9,12 +9,7 @@ import {
 } from "../../api/client";
 import { listWorkItems } from "../../api/workItems";
 import { useErrorStore } from "../../stores/errorStore";
-
-interface ToolResult {
-  tool_name: string;
-  tool_call_id: string;
-  content: string;
-}
+import type { ToolResult } from "./types";
 
 interface Props {
   lastUserMessage?: string;

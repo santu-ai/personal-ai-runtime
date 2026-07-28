@@ -101,7 +101,7 @@ export function useNotifications() {
               title: raw.title || "通知",
               content: raw.content || "",
               created_at: raw.created_at || new Date().toISOString(),
-              source: raw.id ? "server" : "live",
+              source: "live",
             };
 
             setLiveNotifications((prev) => [item, ...prev].slice(0, 20));

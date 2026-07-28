@@ -19,5 +19,7 @@ function isFailedContent(content: string): boolean {
 /** Derive display outcome for a tool stage from its optional result. */
 export function detectOutcome(result?: ToolResult): ToolOutcome {
   if (!result) return "running";
+  // Empty content typically means streaming has not finished; keep as running.
+  if (!result.content?.trim()) return "running";
   return isFailedContent(result.content) ? "failed" : "done";
 }

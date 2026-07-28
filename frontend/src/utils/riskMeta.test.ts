@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getRiskLevelFromPolicy, getRiskTone, getRiskLevel } from "./riskMeta";
+import { getRiskLevelFromPolicy, getRiskTone } from "./riskMeta";
 import type { CapabilityPolicy } from "../api/settings";
 
 const samplePolicy: CapabilityPolicy = {
@@ -32,12 +32,6 @@ describe("getRiskLevelFromPolicy", () => {
   it("defaults to medium when policy is missing", () => {
     expect(getRiskLevelFromPolicy("unknown_tool", undefined)).toBe("medium");
     expect(getRiskLevelFromPolicy("shell_exec", null)).toBe("medium");
-  });
-});
-
-describe("getRiskLevel (deprecated wrapper)", () => {
-  it("defaults to medium without policy", () => {
-    expect(getRiskLevel("anything")).toBe("medium");
   });
 });
 

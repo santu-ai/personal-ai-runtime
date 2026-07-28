@@ -3,6 +3,16 @@ import { screen, fireEvent } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
 import DashboardPage from "./Dashboard";
 
+const mockNavigate = vi.fn();
+
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
+
 function renderDashboard(entries = ["/dashboard"]) {
   return renderWithRouter(<DashboardPage />, { initialEntries: entries });
 }
@@ -197,7 +207,7 @@ describe("DashboardPage", () => {
     expect(screen.getByText("待你决断")).toBeInTheDocument();
     expect(screen.getByText("去处理")).toBeInTheDocument();
     fireEvent.click(screen.getByText("去处理"));
-    // Navigation is handled by react-router; presence of button is enough here.
+    expect(mockNavigate).toHaveBeenCalledWith("/approvals");
   });
 
   it("shows inbox card when pending emails exist", () => {

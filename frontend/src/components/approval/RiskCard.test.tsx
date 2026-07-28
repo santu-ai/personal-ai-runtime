@@ -29,7 +29,7 @@ describe("RiskCard", () => {
     expect(screen.getByText("高风险")).toBeInTheDocument();
   });
 
-  it("renders medium tone without high-risk badge for needs_user write_file", () => {
+  it("renders high-risk badge for needs_user via policy", () => {
     // needs_user maps to high in getRiskLevelFromPolicy
     renderWithRouter(
       <RiskCard
@@ -48,6 +48,19 @@ describe("RiskCard", () => {
       <RiskCard action="shell_exec" args="{}" policy={policy} riskLevel="low" variant="inline" />,
     );
     expect(screen.queryByText("高风险")).not.toBeInTheDocument();
+  });
+
+  it("renders low-risk style for auto_allow tools via policy", () => {
+    renderWithRouter(
+      <RiskCard
+        action="read_file"
+        args={JSON.stringify({ path: "/tmp/a.txt" })}
+        policy={policy}
+        variant="inline"
+      />,
+    );
+    expect(screen.queryByText("高风险")).not.toBeInTheDocument();
+    expect(screen.getByText(/确认读取文件/)).toBeInTheDocument();
   });
 
   it("shows patch preview for apply_patch", () => {

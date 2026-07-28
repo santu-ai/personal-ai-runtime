@@ -32,13 +32,3 @@ export function matchResultsByCallId(
     return undefined;
   });
 }
-
-export function matchResultForCall(
-  call: ToolCall,
-  results: ToolResult[],
-  allCalls: ToolCall[],
-): ToolResult | undefined {
-  const matched = matchResultsByCallId(allCalls, results);
-  const idx = allCalls.findIndex((c) => c.id === call.id);
-  return idx >= 0 ? matched[idx] : undefined;
-}

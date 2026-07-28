@@ -37,14 +37,6 @@ export function getRiskLevelFromPolicy(
 }
 
 /**
- * @deprecated 请使用 getRiskLevelFromPolicy；无策略时默认 medium。
- * 保留薄包装以兼容旧调用点，在过渡期结束后删除。
- */
-export function getRiskLevel(functionName: string): RiskLevel {
-  return getRiskLevelFromPolicy(functionName, null);
-}
-
-/**
  * 根据风险等级获取对应的 Tailwind 色调类名。
  */
 export function getRiskTone(level: RiskLevel) {

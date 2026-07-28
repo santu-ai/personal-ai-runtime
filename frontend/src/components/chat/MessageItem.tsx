@@ -146,6 +146,14 @@ export default function MessageItem({ message }: Props) {
   // so the user sees the turn is in flight, not stalled or finished.
   const isThinking = isAssistant && message.isStreaming && !displayContent.trim() && !hasTools;
 
+  // Pre-compute tool call stages for TaskTrack (avoid IIFE in JSX)
+  const taskStages = hasTools && message.toolCalls
+    ? (() => {
+        const matched = matchResultsByCallId(message.toolCalls, message.toolResults || []);
+        return message.toolCalls.map((tc, i) => ({ toolCall: tc, result: matched[i] }));
+      })()
+    : [];
+
   return (
     <div className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
       {isAssistant && (
@@ -165,18 +173,7 @@ export default function MessageItem({ message }: Props) {
         {message.toolCalls && message.toolCalls.length > 0 && (
           <>
             {message.toolCalls.length > 1 ? (
-              <TaskTrack
-                stages={(() => {
-                  const matched = matchResultsByCallId(
-                    message.toolCalls,
-                    message.toolResults || [],
-                  );
-                  return message.toolCalls.map((tc, i) => ({
-                    toolCall: tc,
-                    result: matched[i],
-                  }));
-                })()}
-              />
+              <TaskTrack stages={taskStages} />
             ) : (
               <ToolCallDisplay
                 toolCalls={message.toolCalls}

@@ -12,6 +12,7 @@
 import { useState } from "react";
 import { toolLabel, toolIcon } from "../../utils/toolLabels";
 import { detectOutcome } from "./detectToolFailure";
+import { formatArgs } from "./formatArgs";
 import type { ToolCall, ToolResult } from "./types";
 
 interface TaskStage {
@@ -21,14 +22,6 @@ interface TaskStage {
 
 interface Props {
   stages: TaskStage[];
-}
-
-function formatArgs(args: string): string {
-  try {
-    return JSON.stringify(JSON.parse(args), null, 2);
-  } catch {
-    return args;
-  }
 }
 
 function formatResult(content: string): string {

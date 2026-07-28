@@ -34,6 +34,7 @@ describe("ConfirmationDialog", () => {
     );
 
     expect(screen.getByText(/确认写入文件/)).toBeInTheDocument();
+    expect(screen.getByText(/确认后将执行工具并自动续写一次回复/)).toBeInTheDocument();
     const summary = screen.getByText("查看详细参数");
     fireEvent.click(summary);
     expect(screen.getByText(/"path"/)).toBeInTheDocument();

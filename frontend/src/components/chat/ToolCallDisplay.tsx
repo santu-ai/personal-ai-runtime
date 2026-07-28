@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { toolLabel, toolIcon, describeToolAction } from "../../utils/toolLabels";
 import { matchResultsByCallId } from "./matchToolResult";
 import { detectOutcome } from "./detectToolFailure";
+import { formatArgs } from "./formatArgs";
 import type { ToolCall, ToolResult } from "./types";
 
 interface EmailItem {
@@ -16,15 +17,6 @@ interface Props {
   toolResults: ToolResult[];
   /** When true, expand tool panels that already have results (e.g. after page reload). */
   defaultExpanded?: boolean;
-}
-
-function formatArgs(args: string): string {
-  try {
-    const parsed = JSON.parse(args);
-    return JSON.stringify(parsed, null, 2);
-  } catch {
-    return args;
-  }
 }
 
 function emailSortKey(dateStr: string): number {

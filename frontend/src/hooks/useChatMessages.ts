@@ -5,12 +5,7 @@ import type { Message, StreamEvent, SourceCitation } from "../api/client";
 import { useChatStore } from "../stores/chatStore";
 import { stripToolMarkup } from "../utils/stripToolMarkup";
 import { updateConversationTitleInCache } from "./useConversationsQuery";
-
-interface ToolResult {
-  tool_name: string;
-  tool_call_id: string;
-  content: string;
-}
+import type { ToolResult } from "../components/chat/types";
 
 export interface DisplayMessage {
   id: string;
