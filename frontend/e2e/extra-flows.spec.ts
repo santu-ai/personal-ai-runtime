@@ -67,7 +67,7 @@ test.describe("Extra core flows", () => {
     });
 
     await page.goto("/approvals");
-    await expect(page.getByText("写入文件")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("heading", { name: "确认写入文件" })).toBeVisible({ timeout: 5000 });
     await page.getByRole("button", { name: "批准" }).click();
     await expect(page.getByText("暂无待审批项")).toBeVisible({ timeout: 5000 });
   });
@@ -108,7 +108,7 @@ test.describe("Extra core flows", () => {
     });
 
     await page.goto("/approvals");
-    await expect(page.getByText("执行命令")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("heading", { name: "确认执行命令" })).toBeVisible({ timeout: 5000 });
     await page.getByRole("button", { name: "拒绝" }).click();
     await expect(page.getByText("暂无待审批项")).toBeVisible({ timeout: 5000 });
   });
