@@ -109,6 +109,17 @@
 
 用户面向 UI 目录，镜像同样 6 个服务器，附中文描述、类别（`browser`/`search`/`developer`/`productivity`）、安装命令（**与 `mcp_config.json` 同 pin**）、中文环境变量提示（如 `BRAVE_API_KEY`：「从 https://brave.com/search/api/ 获取」）、图标名，以及安装时写入 `mcp_config` 的运行时字段（`required_env` / `enabled_tools` / `ingestion_tools` 等）。是可安装 MCP marketplace 元数据；`env_vars` 仅作 UI 提示，不会写入运行时 `env`。
 
+### `backend/mcp_config.local.json`（个人 opt-in，gitignored）
+
+`_merge_external_servers` 按 `name` 把 local 条目叠加在 main 之上，让个人/团队专属 MCP 不进仓库。模板见 [`mcp_config.local.json.example`](../../backend/mcp_config.local.json.example)：copy 为 `mcp_config.local.json` 并按需启用。凭据统一来自 `.env`（经 [`mcp_config.py`](../../backend/app/core/harness/mcp_config.py) 的 `resolve_env` 注入子进程），未填 `required_env` 的服务器保持 dormant（`is_available()` 返 `False`，不报错）。
+
+| Server | 用途 | 环境变量 |
+|---|---|---|
+| **tapd** | 腾讯 TAPD — 需求/Bug/任务只读查询 | `TAPD_ACCESS_TOKEN`（必需）、`TAPD_DEFAULT_WORKSPACE_ID`/`TAPD_NICK_NAME`（可选） |
+| **tushare** | 中国金融数据 — A股/港美股/基金/宏观/财经新闻（`aigroup-market-mcp`） | `TUSHARE_TOKEN`（必需） |
+
+新增带凭据的 local MCP 时，必须在 `resolve_env()` 与 `has_required_credentials()` 的 `settings_env` 字典里各加一行映射，否则 token 传不进子进程。
+
 ## 与治理的集成
 
 工具调用流程参见 [02-concepts/capability-governance.md](../02-concepts/capability-governance.md)：

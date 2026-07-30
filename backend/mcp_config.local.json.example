@@ -51,6 +51,53 @@
         "tapd_get_timesheets",
         "tapd_get_current_user"
       ]
+    },
+    {
+      "_comment": "Tushare 金融数据 — A股/港美股/基金/宏观/财经新闻。需要 .env 里的 TUSHARE_TOKEN；未填时服务器保持 dormant。Token 申请：https://tushare.pro/register",
+      "name": "tushare",
+      "type": "stdio",
+      "enabled": true,
+      "startup_connect": false,
+      "command": "npx",
+      "args": ["-y", "aigroup-market-mcp@2.0.12"],
+      "required_env": ["TUSHARE_TOKEN"],
+      "connect_timeout_seconds": 30,
+      "policy_default": "auto_allow",
+      "enabled_tools": [
+        "current_timestamp",
+        "finance_news",
+        "stock_data",
+        "stock_data_minutes",
+        "index_data",
+        "macro_econ",
+        "company_performance",
+        "fund_data",
+        "fund_manager_by_name",
+        "convertible_bond",
+        "block_trade",
+        "money_flow",
+        "margin_trade",
+        "company_performance_us",
+        "csi_index_constituents",
+        "dragon_tiger_inst",
+        "hot_news_7x24",
+        "basic_info",
+        "company_performance_hk"
+      ],
+      "ingestion_tools": [
+        "finance_news",
+        "stock_data",
+        "stock_data_minutes",
+        "index_data",
+        "macro_econ",
+        "company_performance",
+        "fund_data",
+        "company_performance_us",
+        "company_performance_hk",
+        "dragon_tiger_inst",
+        "hot_news_7x24",
+        "basic_info"
+      ]
     }
   ]
 }

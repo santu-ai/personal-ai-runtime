@@ -111,6 +111,11 @@ class Settings(BaseSettings):
     tapd_default_workspace_id: str = ""
     tapd_nick_name: str = ""
 
+    # Tushare (中国金融数据) — personal access token.
+    # Empty = tushare MCP server stays dormant (no errors).
+    # Get token at https://tushare.pro/register
+    tushare_token: str = ""
+
     # --- Voice (TTS/STT) — requires an OpenAI-compatible audio endpoint ---
     voice_base_url: str = ""
     """Audio API base URL (e.g. https://api.openai.com/v1). Empty disables voice tools.

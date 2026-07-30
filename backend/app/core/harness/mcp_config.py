@@ -97,6 +97,7 @@ class ExternalMCPServerConfig:
             "TAPD_ACCESS_TOKEN": settings.tapd_access_token,
             "TAPD_DEFAULT_WORKSPACE_ID": settings.tapd_default_workspace_id,
             "TAPD_NICK_NAME": settings.tapd_nick_name,
+            "TUSHARE_TOKEN": settings.tushare_token,
         }
         # Minimal base env + config file overrides + credential keys from settings.
         extra = dict(self.env)
@@ -118,6 +119,7 @@ class ExternalMCPServerConfig:
             "TAPD_ACCESS_TOKEN": settings.tapd_access_token,
             "TAPD_DEFAULT_WORKSPACE_ID": settings.tapd_default_workspace_id,
             "TAPD_NICK_NAME": settings.tapd_nick_name,
+            "TUSHARE_TOKEN": settings.tushare_token,
         }
         for key in self.required_env:
             if self.env.get(key, "").strip():
