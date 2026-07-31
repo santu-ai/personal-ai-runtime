@@ -35,8 +35,12 @@ test.describe("Navigation and pages", () => {
 
   test("settings page shows export button", async ({ page }) => {
     await page.goto("/settings");
-    await expect(page.getByText("导出全部数据")).toBeVisible({ timeout: 5000 });
-    await expect(page.getByRole("heading", { name: "数据主权" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "数据主权" })).toBeVisible({
+      timeout: 5000,
+    });
+    // Data sovereignty is collapsed by default — expand before asserting content.
+    await page.getByRole("button", { name: /数据主权/ }).click();
+    await expect(page.getByText("导出全部数据")).toBeVisible();
   });
 
   test("approvals page shows empty state", async ({ page }) => {
