@@ -160,6 +160,8 @@ class MCPMesh:
         self._discovered: list[DiscoveredMCPTool] = []
         # Servers that already completed tool discovery (including forbidden-only).
         self._discovered_servers: set[str] = set()
+        # Last connect/disconnect error per server (surfaced in get_server_status).
+        self._connect_errors: dict[str, str] = {}
         self._started = False
         self._start_lock = asyncio.Lock()
         self._register_lock = asyncio.Lock()
@@ -242,6 +244,7 @@ class MCPMesh:
             self._tool_index.clear()
             self._discovered.clear()
             self._discovered_servers.clear()
+            self._connect_errors.clear()
             self._server_locks.clear()
             self._started = False
 
@@ -335,6 +338,7 @@ class MCPMesh:
             config = self._configs.get(server_name)
             if config is not None:
                 self._pending_configs[server_name] = config
+            self._connect_errors.setdefault(server_name, "transport_disconnected")
 
     async def _connect_servers_parallel(self, configs: list[ExternalMCPServerConfig]) -> None:
         results = await asyncio.gather(
@@ -343,18 +347,25 @@ class MCPMesh:
         )
         for config, result in zip(configs, results):
             if isinstance(result, Exception):
+                self._connect_errors[config.name] = (
+                    f"{type(result).__name__}: {result}"
+                )
                 logger.warning(
                     "MCP server '%s' unavailable: %s",
                     config.name,
                     type(result).__name__,
                 )
+            else:
+                self._connect_errors.pop(config.name, None)
 
     async def _connect_lazy_servers(self, configs: list[ExternalMCPServerConfig]) -> None:
         for config in configs:
             try:
                 await self._connect_server_safe(config)
                 self._pending_configs.pop(config.name, None)
+                self._connect_errors.pop(config.name, None)
             except Exception as e:
+                self._connect_errors[config.name] = f"{type(e).__name__}: {e}"
                 logger.warning(
                     "MCP server '%s' (lazy connect) unavailable: %s",
                     config.name,
@@ -400,10 +411,16 @@ class MCPMesh:
         if config is None:
             raise RuntimeError(f"server not connected: {server_name}")
 
-        await self._connect_server_safe(config)
-        self._pending_configs.pop(server_name, None)
+        try:
+            await self._connect_server_safe(config)
+            self._pending_configs.pop(server_name, None)
+            self._connect_errors.pop(server_name, None)
+        except Exception as exc:
+            self._connect_errors[server_name] = f"{type(exc).__name__}: {exc}"
+            raise
         conn = self._connections.get(server_name)
         if conn is None or conn.session is None:
+            self._connect_errors.setdefault(server_name, "server connect failed")
             raise RuntimeError(f"server connect failed: {server_name}")
         return conn
 
@@ -477,6 +494,7 @@ class MCPMesh:
             conn = _ServerConnection(config)
             await conn.connect()
             self._connections[config.name] = conn
+            self._connect_errors.pop(config.name, None)
 
             # Reconnect after a prior successful discovery (including forbidden-only
             # servers that never entered ``_tool_index``): reuse existing index.
@@ -591,17 +609,22 @@ class MCPMesh:
                     "available": True,
                 })
             elif config.name in self._pending_configs:
-                servers.append({
+                entry: dict[str, Any] = {
                     "name": config.name,
                     "status": "lazy",
                     "tool_count": 0,
                     "startup_connect": config.startup_connect,
                     "available": True,
-                })
+                }
+                if config.name in self._connect_errors:
+                    entry["reason"] = self._connect_errors[config.name]
+                servers.append(entry)
             else:
+                reason = self._connect_errors.get(config.name) or "not_connected"
                 servers.append({
                     "name": config.name,
                     "status": "disconnected",
+                    "reason": reason,
                     "tool_count": 0,
                     "startup_connect": config.startup_connect,
                     "available": True,

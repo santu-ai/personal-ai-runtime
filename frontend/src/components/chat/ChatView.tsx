@@ -49,8 +49,14 @@ export default function ChatView({ conversationId }: Props) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [memoryNotice, setMemoryNotice] = useState<string | null>(null);
   const [initialLoad, setInitialLoad] = useState(true);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isAtBottomRef = useRef(true);
+  const isProgrammaticScrollRef = useRef(false);
+  const scrollRafRef = useRef<number | null>(null);
+  const scrollSettleTimerRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const prevMemoryTotalRef = useRef<number | null>(null);
 
@@ -175,9 +181,73 @@ export default function ChatView({ conversationId }: Props) {
     prevMemoryTotalRef.current = memoryTotal;
   }, [memoryTotal, recentMemories]);
 
+  const BOTTOM_THRESHOLD_PX = 80;
+
+  const updateIsAtBottom = useCallback(() => {
+    // Ignore scroll events caused by our own stick-to-bottom / jump scrolls,
+    // otherwise smooth/layout adjustments briefly look "not at bottom" and
+    // permanently disable auto-follow for the rest of the stream.
+    if (isProgrammaticScrollRef.current) return;
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const atBottom = distance < BOTTOM_THRESHOLD_PX;
+    isAtBottomRef.current = atBottom;
+    if (atBottom) {
+      setShowJumpToLatest(false);
+    }
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    updateIsAtBottom();
+  }, [updateIsAtBottom]);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    isProgrammaticScrollRef.current = true;
+    messagesEndRef.current?.scrollIntoView({ behavior });
+    if (scrollSettleTimerRef.current !== null) {
+      window.clearTimeout(scrollSettleTimerRef.current);
+    }
+    // Instant scrolls settle within a frame; smooth jump needs a short grace.
+    const settleMs = behavior === "smooth" ? 320 : 0;
+    scrollSettleTimerRef.current = window.setTimeout(() => {
+      isProgrammaticScrollRef.current = false;
+      isAtBottomRef.current = true;
+      setShowJumpToLatest(false);
+      scrollSettleTimerRef.current = null;
+    }, settleMs);
+  }, []);
+
+  const jumpToLatest = useCallback(() => {
+    isAtBottomRef.current = true;
+    setShowJumpToLatest(false);
+    scrollToBottom("smooth");
+  }, [scrollToBottom]);
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingContent]);
+    if (!isAtBottomRef.current) {
+      // Only surface the jump chip while new content is actually arriving.
+      if (isLoading || streamingContent) {
+        setShowJumpToLatest(true);
+      }
+      return;
+    }
+    if (scrollRafRef.current !== null) {
+      cancelAnimationFrame(scrollRafRef.current);
+    }
+    scrollRafRef.current = requestAnimationFrame(() => {
+      // Use instant scroll while streaming so onScroll never sees a mid-animation
+      // "away from bottom" gap that would poison isAtBottomRef.
+      scrollToBottom("auto");
+      scrollRafRef.current = null;
+    });
+    return () => {
+      if (scrollRafRef.current !== null) {
+        cancelAnimationFrame(scrollRafRef.current);
+        scrollRafRef.current = null;
+      }
+    };
+  }, [messages, streamingContent, isLoading, scrollToBottom]);
 
   useEffect(() => {
     if (!isLoading && inputRef.current) {
@@ -190,6 +260,10 @@ export default function ChatView({ conversationId }: Props) {
     if (!trimmed || isLoading || pendingConfirmation) return;
     setInput("");
     hasSentRef.current = true;
+    // Sending a new message re-engages stick-to-bottom.
+    isAtBottomRef.current = true;
+    setShowJumpToLatest(false);
+    isProgrammaticScrollRef.current = false;
     // Reset the memory baseline so a memory derived from THIS exchange can
     // still trigger the "I just remembered" toast once.
     prevMemoryTotalRef.current = memData?.memories.length ?? 0;
@@ -371,13 +445,28 @@ export default function ChatView({ conversationId }: Props) {
             </button>
           </div>
         )}
-        <div className="flex-1 overflow-y-auto px-4 py-4">
-          <div className="max-w-3xl mx-auto space-y-4">
-            {messages.map((msg) => (
-              <MessageItem key={msg.id} message={msg} />
-            ))}
-            <div ref={messagesEndRef} />
+        <div className="flex-1 relative min-h-0">
+          <div
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="h-full overflow-y-auto px-4 py-4"
+          >
+            <div className="max-w-3xl mx-auto space-y-4">
+              {messages.map((msg) => (
+                <MessageItem key={msg.id} message={msg} />
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
           </div>
+          {showJumpToLatest && (
+            <button
+              type="button"
+              onClick={jumpToLatest}
+              className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 text-xs rounded-full bg-surface-raised border border-border-strong text-fg-secondary shadow-md hover:text-fg-primary hover:border-focus-ring transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+            >
+              ↓ 新消息
+            </button>
+          )}
         </div>
 
         {pendingConfirmation && (

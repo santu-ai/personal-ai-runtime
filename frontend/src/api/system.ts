@@ -1,7 +1,13 @@
 /** System API — health, LLM providers, MCP status, export/import, dashboard. */
 
 import { API_BASE, ApiError, authHeaders, request } from "./core";
-import type { HealthResponse, SystemInfo, LlmProvidersResponse, DashboardData } from "./types";
+import type {
+  HealthResponse,
+  SystemInfo,
+  LlmProvidersResponse,
+  DashboardData,
+  McpStatusResponse,
+} from "./types";
 
 export async function getSystemHealth(): Promise<HealthResponse> {
   return request<HealthResponse>(`${API_BASE}/system/health`);
@@ -13,6 +19,10 @@ export async function fetchSystemInfo(): Promise<SystemInfo> {
 
 export async function getLlmProviders(): Promise<LlmProvidersResponse> {
   return request<LlmProvidersResponse>(`${API_BASE}/system/llm-providers`);
+}
+
+export async function getMcpStatus(): Promise<McpStatusResponse> {
+  return request<McpStatusResponse>(`${API_BASE}/system/mcp-status`);
 }
 
 export async function getDashboard(): Promise<DashboardData> {

@@ -139,6 +139,38 @@ async def mcp_status():
     return mcp_mesh.get_server_status()
 
 
+@router.post("/morning-brief/test")
+async def morning_brief_test(persist: bool = False):
+    """Manually run morning-brief generation for diagnostics.
+
+    Returns the assembled brief text plus per-step timings / errors so we can
+    tell whether a missed 08:00 fire was a data issue or a scheduler miss.
+    Defaults to ``persist=False`` to avoid spamming the notification center
+    during diagnosis; pass ``?persist=true`` to also push a real notification.
+    """
+    from app.product.morning_brief import deliver_morning_brief, generate_morning_brief
+
+    try:
+        if persist:
+            result = await deliver_morning_brief(persist=True)
+        else:
+            result = generate_morning_brief()
+        return {
+            "ok": True,
+            "persisted": persist,
+            **result.to_dict(),
+        }
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "ok": False,
+                "persisted": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            },
+        ) from exc
+
+
 @router.post("/export")
 async def export_all_data(body: ExportRequest | None = None):
     """Export governed personal data snapshot as streamed JSON.

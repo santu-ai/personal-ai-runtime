@@ -19,6 +19,7 @@ export const queryKeys = {
   trustReport: ["trustReport"] as const,
   settingsCore: ["settings", "core"] as const,
   settingsHealth: ["settings", "health"] as const,
+  mcpStatus: ["settings", "mcpStatus"] as const,
   capabilityPolicy: ["settings", "capabilityPolicy"] as const,
   promptConfig: ["settings", "prompt"] as const,
   portrait: ["portrait"] as const,

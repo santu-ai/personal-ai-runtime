@@ -29,9 +29,11 @@ function emptyProvider(id = ""): LlmProviderConfig {
 interface Props {
   llm: LlmSettingsResponse;
   onSaved: (next: LlmSettingsResponse) => void;
+  /** Skip outer Card + title when wrapped by Disclosure. */
+  embedded?: boolean;
 }
 
-export default function LlmConfigCard({ llm, onSaved }: Props) {
+export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props) {
   const addError = useErrorStore((s) => s.addError);
 
   const [llmForm, setLlmForm] = useState<LlmProviderConfig[]>(
@@ -105,9 +107,9 @@ export default function LlmConfigCard({ llm, onSaved }: Props) {
     }
   };
 
-  return (
-    <Card>
-      <h3 className="text-sm font-medium text-fg-secondary mb-3">LLM 配置</h3>
+  const body = (
+    <>
+      {!embedded && <h3 className="text-sm font-medium text-fg-secondary mb-3">LLM 配置</h3>}
 
       <div className="grid grid-cols-3 gap-3 mb-4">
         <div>
@@ -281,6 +283,8 @@ export default function LlmConfigCard({ llm, onSaved }: Props) {
           {savingLlm ? "保存中…" : "保存 LLM 配置"}
         </Button>
       </div>
-    </Card>
+    </>
   );
+
+  return embedded ? body : <Card>{body}</Card>;
 }

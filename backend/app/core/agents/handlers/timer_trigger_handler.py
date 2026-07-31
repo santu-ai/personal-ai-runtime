@@ -87,41 +87,14 @@ async def _call_product(
                     persist=False,
                 )
         elif handler_name == "morning_brief":
-            from app.core.runtime import read_ports
-            from app.core.runtime.notification_channel import notification_router
+            from app.product.morning_brief import deliver_morning_brief
 
-            now_local = datetime.now(tz)
-            # Get today's calendar events
-            try:
-                calendar_items = read_ports.query_active_timers(limit=50)
-            except Exception:
-                calendar_items = []
-
-            # Get goal summary
-            try:
-                active_goals = read_ports.query_active_goals(limit=10)
-
-                goal_lines = "\n".join([f"  · {g.get('title', '')} (进度 {g.get('progress', 0)}%)" for g in active_goals[:5]]) if active_goals else "  无"
-            except Exception:
-                goal_lines = "  获取失败"
-
-            # Get unread inbox count
-            try:
-                inbox_items = read_ports.query_inbox_emails(limit=500, status="new")
-                inbox_count: int = len(inbox_items)
-            except Exception:
-                inbox_count = 0
-
-            brief = (
-                f"早安！{now_local.strftime('%Y年%m月%d日')} 简报\n\n"
-                f"📋 进行中的目标:\n{goal_lines}\n\n"
-                f"📧 未读邮件: {inbox_count} 封\n\n"
-                f"⏰ 活跃定时任务: {len(calendar_items)} 个\n\n"
-                f"祝你今天一切顺利！"
+            logger.info(
+                "morning_brief: timer fired timer_id=%s",
+                timer_id,
+                extra={"step": "timer_fired", "timer_id": timer_id},
             )
-            await notification_router.notify(
-                "早安简报", brief, type_="morning_brief", priority="normal", persist=True,
-            )
+            await deliver_morning_brief(persist=True)
         elif handler_name == "reminder":
             from app.core.runtime.notification_channel import notification_router
 
@@ -139,6 +112,21 @@ async def _call_product(
             logger.warning("Unknown timer handler: %s", handler_name)
     except Exception as e:
         logger.warning("Timer handler %s error: %s", handler_name, e)
+        if handler_name == "morning_brief":
+            try:
+                from app.core.runtime.notification_channel import notification_router
+
+                await notification_router.notify(
+                    "早安简报生成失败",
+                    f"定时触发失败: {type(e).__name__}: {e}",
+                    type_="morning_brief_failed",
+                    priority="high",
+                    persist=True,
+                )
+            except Exception as notify_exc:
+                logger.warning(
+                    "morning_brief: failed to push failure alert: %s", notify_exc
+                )
 
 
 async def _run_inbox_poll():

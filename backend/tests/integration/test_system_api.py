@@ -169,6 +169,31 @@ def test_health_includes_startup_diagnostics(client: TestClient):
     assert "warning_count" in startup
 
 
+def test_morning_brief_test_endpoint(client: TestClient, monkeypatch):
+    """Diagnostic endpoint returns brief text + step timings without persisting."""
+    monkeypatch.setattr(
+        "app.core.runtime.read_ports.query_calendar_today_events",
+        lambda: {"count": 0, "events": []},
+    )
+    monkeypatch.setattr(
+        "app.core.runtime.read_ports.query_active_goals",
+        lambda limit=10: [],
+    )
+    monkeypatch.setattr(
+        "app.core.runtime.read_ports.query_inbox_emails",
+        lambda **kwargs: [],
+    )
+    r = client.post("/api/system/morning-brief/test")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert data["persisted"] is False
+    assert "brief" in data
+    assert data["brief"].startswith("早安！")
+    assert "steps_ms" in data
+    assert "goals" in data["steps_ms"]
+
+
 def test_health_full_startup_with_auth(authed_client: TestClient):
     r = authed_client.get(
         "/api/system/health",

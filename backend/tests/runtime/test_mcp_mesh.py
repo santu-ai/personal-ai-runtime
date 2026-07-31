@@ -406,4 +406,5 @@ def test_get_server_status_single_server(monkeypatch):
     assert status["connected"] is False
     assert status["status"] == "disconnected"
     assert status["tool_count"] == 0
+    assert status.get("reason") == "not_connected"
     assert mesh.list_server_tools("email") == []

@@ -16,9 +16,11 @@ import { Input } from "../ui/Input";
 interface Props {
   /** Called after a successful import so the parent can refetch core settings. */
   onAfterImport?: () => void;
+  /** Skip outer Card + title when wrapped by Disclosure. */
+  embedded?: boolean;
 }
 
-export default function DataSovereigntyCard({ onAfterImport }: Props) {
+export default function DataSovereigntyCard({ onAfterImport, embedded = false }: Props) {
   const addError = useErrorStore((s) => s.addError);
   const invalidateSettings = useInvalidateSettings();
 
@@ -130,9 +132,11 @@ export default function DataSovereigntyCard({ onAfterImport }: Props) {
     }
   };
 
-  return (
-    <Card>
-      <h3 className="text-sm font-medium text-fg-secondary mb-3">数据主权</h3>
+  const body = (
+    <>
+      {!embedded && (
+        <h3 className="text-sm font-medium text-fg-secondary mb-3">数据主权</h3>
+      )}
       <p className="text-sm text-fg-tertiary mb-4">导出完整个人数据快照，或从备份文件导入。</p>
       {statusMessage && <p className="text-xs text-success mb-3">{statusMessage}</p>}
       <div className="flex flex-wrap gap-3 items-center">
@@ -217,6 +221,8 @@ export default function DataSovereigntyCard({ onAfterImport }: Props) {
           永久删除所有对话、记忆、目标和事件。不可恢复。
         </p>
       </div>
-    </Card>
+    </>
   );
+
+  return embedded ? body : <Card>{body}</Card>;
 }

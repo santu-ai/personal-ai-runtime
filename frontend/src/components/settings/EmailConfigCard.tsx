@@ -16,9 +16,11 @@ const MASKED_SECRET = "••••••••";
 interface Props {
   email: EmailSettingsResponse;
   onSaved: (next: EmailSettingsResponse) => void;
+  /** Skip outer Card + title when wrapped by Disclosure. */
+  embedded?: boolean;
 }
 
-export default function EmailConfigCard({ email, onSaved }: Props) {
+export default function EmailConfigCard({ email, onSaved, embedded = false }: Props) {
   const addError = useErrorStore((s) => s.addError);
 
   const [emailUser, setEmailUser] = useState(email.config.user);
@@ -75,9 +77,11 @@ export default function EmailConfigCard({ email, onSaved }: Props) {
     }
   };
 
-  return (
-    <Card>
-      <h3 className="text-sm font-medium text-fg-secondary mb-3">Gmail 邮箱配置</h3>
+  const body = (
+    <>
+      {!embedded && (
+        <h3 className="text-sm font-medium text-fg-secondary mb-3">Gmail 邮箱配置</h3>
+      )}
       <p className="text-xs text-fg-tertiary mb-4">
         {email.help || "使用 Gmail 应用专用密码连接 IMAP/SMTP。"}
       </p>
@@ -125,6 +129,8 @@ export default function EmailConfigCard({ email, onSaved }: Props) {
           {testingEmail ? "测试中…" : "测试连接"}
         </Button>
       </div>
-    </Card>
+    </>
   );
+
+  return embedded ? body : <Card>{body}</Card>;
 }

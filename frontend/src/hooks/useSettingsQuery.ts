@@ -7,11 +7,13 @@ import {
   getLlmSettings,
   getEmailSettings,
   getSystemHealth,
+  getMcpStatus,
   getPromptConfig,
   getCapabilityPolicy,
   type LlmSettingsResponse,
   type EmailSettingsResponse,
   type HealthResponse,
+  type McpStatusResponse,
   type PromptConfig,
   type CapabilityPolicy,
 } from "../api/client";
@@ -34,6 +36,15 @@ export function useSettingsHealthQuery() {
     queryKey: queryKeys.settingsHealth,
     queryFn: getSystemHealth,
     staleTime: 30_000,
+    retry: 1,
+  });
+}
+
+export function useMcpStatusQuery() {
+  return useQuery<McpStatusResponse>({
+    queryKey: queryKeys.mcpStatus,
+    queryFn: getMcpStatus,
+    staleTime: 15_000,
     retry: 1,
   });
 }
@@ -67,5 +78,6 @@ export function useInvalidateSettings() {
   return () => {
     void qc.invalidateQueries({ queryKey: queryKeys.settingsCore });
     void qc.invalidateQueries({ queryKey: queryKeys.settingsHealth });
+    void qc.invalidateQueries({ queryKey: queryKeys.mcpStatus });
   };
 }
