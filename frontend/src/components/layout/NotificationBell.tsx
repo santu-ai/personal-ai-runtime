@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Bell } from "lucide-react";
 import {
   markAllNotificationsRead,
@@ -17,6 +17,26 @@ export default function NotificationBell() {
   const [selected, setSelected] = useState<Notification | null>(null);
   const { data: notifications = [], refetch } = useNotificationsQuery(15);
   const invalidateNotifications = useInvalidateNotifications();
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    if (open) {
+      // Use setTimeout to let the current event finish before attaching,
+      // so the mousedown that opened the dropdown doesn't also close it.
+      const t = setTimeout(() => {
+        document.addEventListener("mousedown", handleClickOutside);
+      }, 0);
+      return () => {
+        clearTimeout(t);
+        document.removeEventListener("mousedown", handleClickOutside);
+      };
+    }
+  }, [open]);
 
   const unread = notifications.filter((n) => !n.read).length;
 
@@ -65,7 +85,7 @@ export default function NotificationBell() {
         </button>
 
         {open && (
-          <div className="absolute bottom-full left-2 right-2 mb-1 bg-surface-raised border border-border-strong rounded-xl shadow-xl max-h-64 overflow-y-auto z-50">
+          <div ref={dropdownRef} className="absolute bottom-full left-2 right-2 mb-1 bg-surface-raised border border-border-strong rounded-xl shadow-xl max-h-64 overflow-y-auto z-50">
             <div className="flex items-center justify-between px-3 py-2 border-b border-border-subtle">
               <span className="text-xs text-fg-tertiary">最近通知</span>
               {unread > 0 && (

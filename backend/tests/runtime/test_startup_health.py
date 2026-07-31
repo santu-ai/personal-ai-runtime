@@ -64,7 +64,7 @@ def test_sanitize_startup_strips_sensitive_fields():
     assert "base_url" not in public["checks"]["llm"]
     assert "host" not in public["checks"]["auth"]
     assert public["checks"]["email"] == {"configured": False}
-    assert public["checks"]["mcp"] == {"total": 2, "connected": 1, "failed": 1}
+    assert public["checks"]["mcp"] == {"total": 2, "connected": 1, "failed": 1, "available": 0}
     assert public["checks"]["runtime_loop"] == {"status": "failed"}
 
 

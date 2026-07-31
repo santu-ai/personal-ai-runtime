@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { triggerInboxPoll, updateInboxEmailStatus, ApiError, type InboxEmail } from "../api/client";
+import { triggerInboxPoll, updateInboxEmailStatus, getInboxEmailDetail, ApiError, type InboxEmail } from "../api/client";
 import { useErrorStore } from "../stores/errorStore";
 import { useQuickChat } from "../hooks/useQuickChat";
 import { useInboxQuery, useInvalidateInbox } from "../hooks/useInboxQuery";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
+import InboxEmailDetailModal from "../components/inbox/InboxEmailDetailModal";
 
 const COLUMNS: { key: string; label: string; color: string }[] = [
   { key: "important", label: "重要", color: "text-danger" },
@@ -19,6 +20,8 @@ export default function InboxPage() {
   const digest = data?.digest ?? null;
   const [polling, setPolling] = useState(false);
   const [initialPollDone, setInitialPollDone] = useState(false);
+  const [selectedEmail, setSelectedEmail] = useState<InboxEmail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   const addError = useErrorStore((s) => s.addError);
   const quickChat = useQuickChat();
 
@@ -57,6 +60,19 @@ export default function InboxPage() {
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "标记已读失败";
       addError(msg, "收件箱");
+    }
+  };
+
+  const handleViewDetail = async (em: InboxEmail) => {
+    setLoadingDetail(true);
+    try {
+      const detail = await getInboxEmailDetail(em.id);
+      setSelectedEmail(detail);
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "加载邮件详情失败";
+      addError(msg, "收件箱");
+    } finally {
+      setLoadingDetail(false);
     }
   };
 
@@ -123,6 +139,13 @@ export default function InboxPage() {
                       )}
                       <div className="flex gap-3 mt-2">
                         <button
+                          onClick={() => handleViewDetail(em)}
+                          disabled={loadingDetail}
+                          className="text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded disabled:opacity-50"
+                        >
+                          {loadingDetail ? "加载中..." : "查看"}
+                        </button>
+                        <button
                           onClick={() => handleMarkRead(em)}
                           className="text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
                         >
@@ -146,6 +169,7 @@ export default function InboxPage() {
           </div>
         )}
       </div>
+      <InboxEmailDetailModal email={selectedEmail} onClose={() => setSelectedEmail(null)} />
     </div>
   );
 }

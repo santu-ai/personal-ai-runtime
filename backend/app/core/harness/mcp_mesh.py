@@ -570,12 +570,15 @@ class MCPMesh:
         }
         servers = []
         for config in load_external_server_configs():
-            if not config.is_available():
+            has_creds = config.is_available()
+            if not has_creds:
                 servers.append({
                     "name": config.name,
                     "status": "unavailable",
                     "reason": "missing_env",
                     "tool_count": 0,
+                    "startup_connect": config.startup_connect,
+                    "available": False,
                 })
                 continue
             if config.name in connected:
@@ -585,6 +588,7 @@ class MCPMesh:
                     "status": "connected",
                     "tool_count": len(conn.tools),
                     "startup_connect": config.startup_connect,
+                    "available": True,
                 })
             elif config.name in self._pending_configs:
                 servers.append({
@@ -592,6 +596,7 @@ class MCPMesh:
                     "status": "lazy",
                     "tool_count": 0,
                     "startup_connect": config.startup_connect,
+                    "available": True,
                 })
             else:
                 servers.append({
@@ -599,6 +604,7 @@ class MCPMesh:
                     "status": "disconnected",
                     "tool_count": 0,
                     "startup_connect": config.startup_connect,
+                    "available": True,
                 })
 
         if server_name is not None:

@@ -36,3 +36,13 @@ export async function getInboxDigest(): Promise<{
 export async function triggerInboxPoll(): Promise<Record<string, unknown>> {
   return request(`${API_BASE}/inbox/poll`, { method: "POST" });
 }
+
+export async function getInboxEmailDetail(emailId: string): Promise<InboxEmail> {
+  return request<InboxEmail>(`${API_BASE}/inbox/${encodeURIComponent(emailId)}`);
+}
+
+export async function getInboxEmailSummary(
+  emailId: string,
+): Promise<{ email_id: string; subject: string; sender: string; summary: string }> {
+  return request(`${API_BASE}/inbox/${encodeURIComponent(emailId)}/summary`);
+}

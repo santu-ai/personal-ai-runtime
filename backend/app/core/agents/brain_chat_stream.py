@@ -58,6 +58,7 @@ async def chat_stream(
     tool_iterations = 0
     cumulative_prompt_tokens = 0
     loop_start = time.time()
+    all_tc_for_msg: list[dict] = []
 
     while tool_iterations < settings.max_tool_iterations:
         if time.time() - loop_start > settings.total_tool_loop_timeout:
@@ -150,10 +151,7 @@ async def chat_stream(
             "function": {"name": tc["function_name"], "arguments": tc["arguments"]},
         } for tc in tool_calls_data]
 
-        conversation.save_assistant_message(
-            assistant_content or "",
-            tool_calls=tc_for_msg if tool_calls_data else None,
-        )
+        all_tc_for_msg.extend(tc_for_msg)
 
         messages.extend(dispatcher.build_tool_call_messages(assistant_content, tool_calls_data))
         messages.extend(_tool_messages)
@@ -185,11 +183,15 @@ async def chat_stream(
                 }
             break
 
-    if full_content:
+    if full_content or all_tc_for_msg:
         try:
             sources = get_sources(conversation.conversation_id)
         except Exception:
             sources = None
-        conversation.save_assistant_message(full_content, sources=sources)
+        conversation.save_assistant_message(
+            full_content or "",
+            tool_calls=all_tc_for_msg if all_tc_for_msg else None,
+            sources=sources,
+        )
 
     yield {"type": "done"}

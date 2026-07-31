@@ -141,7 +141,42 @@ function parseLoadedMessages(msgs: Message[]): DisplayMessage[] {
     result.push(display);
   }
 
-  return result;
+  // Merge consecutive assistant messages produced by multi-turn tool loops.
+  // When the LLM reasons across multiple iterations within a single chat turn,
+  // the backend writes one assistant row per iteration. Without merging, each
+  // row renders its own avatar on reload. Group consecutive assistant rows
+  // (possibly separated by tool rows, which are filtered out above) into one
+  // DisplayMessage: accumulate toolCalls, take the last non-empty content as
+  // the visible text, and keep sources from any row that had them.
+  const merged: DisplayMessage[] = [];
+  for (const msg of result) {
+    const last = merged[merged.length - 1];
+    if (msg.role === "assistant" && last && last.role === "assistant") {
+      const accToolCalls = [
+        ...(last.toolCalls ?? []),
+        ...(msg.toolCalls ?? []),
+      ];
+      const accToolResults = [
+        ...(last.toolResults ?? []),
+        ...(msg.toolResults ?? []),
+      ];
+      // Prefer the latest non-empty content as the visible text — it is the
+      // final answer the user cares about. Fall back to earlier text if empty.
+      const nextContent =
+        msg.content && msg.content.trim() ? msg.content : last.content ?? "";
+      merged[merged.length - 1] = {
+        ...last,
+        content: nextContent,
+        toolCalls: accToolCalls.length > 0 ? accToolCalls : undefined,
+        toolResults: accToolResults.length > 0 ? accToolResults : undefined,
+        sources: msg.sources ?? last.sources,
+      };
+    } else {
+      merged.push(msg);
+    }
+  }
+
+  return merged;
 }
 
 export function useChatMessages(

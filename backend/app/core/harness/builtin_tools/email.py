@@ -385,6 +385,39 @@ class EmailServer:
         """Mark one inbox message as unread (IMAP -\\Seen)."""
         return self._mark_flags(index, message_id or mid, limit, False, "-FLAGS", "\\Seen")
 
+    def read_email_body(self, message_id: str) -> str | None:
+        """Fetch the full plain-text body of an inbox email by Message-ID.
+
+        Returns the decoded body or None when the message cannot be found.
+        """
+        if not message_id.strip():
+            return None
+        try:
+            mail = self._connect_inbox()
+            try:
+                status, res = mail.search(None, f'HEADER Message-ID "{message_id}"')
+                if status != "OK" or not res[0]:
+                    return None
+                ids = res[0].split()
+                if not ids:
+                    return None
+                seq = ids[-1].decode()
+                fetch_status, fetch_data = mail.fetch(seq, "(BODY.PEEK[])")
+                if fetch_status != "OK":
+                    return None
+                for part in fetch_data:
+                    if isinstance(part, tuple):
+                        m = email.message_from_bytes(part[1])
+                        return _extract_body(m, max_len=8000)
+                return None
+            finally:
+                try:
+                    mail.logout()
+                except Exception:
+                    pass
+        except Exception:
+            return None
+
     def _mark_flags(
         self,
         index: int | None,

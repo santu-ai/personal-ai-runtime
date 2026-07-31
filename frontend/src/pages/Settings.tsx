@@ -101,6 +101,12 @@ export default function SettingsPage() {
               已连接，
               {health.startup.checks.mcp.failed} 个连接失败。
             </div>
+          ) : (health.startup.checks.mcp.available ?? 0) < health.startup.checks.mcp.total ? (
+            <div className="p-3 bg-warning/10 border border-warning/30 rounded-lg text-xs text-warning">
+              MCP 服务 {health.startup.checks.mcp.connected}/{health.startup.checks.mcp.total}{" "}
+              已连接，
+              {(health.startup.checks.mcp.total - (health.startup.checks.mcp.available ?? 0))} 个凭证未配置（不可用）。
+            </div>
           ) : (
             <p className="text-sm text-fg-secondary">
               全部 {health.startup.checks.mcp.total} 个 MCP 服务已连接

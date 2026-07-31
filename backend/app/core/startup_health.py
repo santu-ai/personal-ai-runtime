@@ -150,6 +150,7 @@ def _summarize_mcp_for_public(mcp_status: dict[str, Any]) -> dict[str, Any]:
         "total": len(servers),
         "connected": sum(1 for s in servers if s.get("status") == "connected"),
         "failed": sum(1 for s in servers if _mcp_server_failed(s)),
+        "available": sum(1 for s in servers if s.get("available") is True),
     }
 
 
@@ -182,11 +183,25 @@ def sanitize_startup_for_public(snapshot: dict[str, Any] | None) -> dict[str, An
 
     mcp = checks.get("mcp")
     if isinstance(mcp, dict):
-        if "servers" in mcp:
-            public_checks["mcp"] = _summarize_mcp_for_public(mcp)
-        elif "error" in mcp:
-            # Never expose exception text to unauthenticated callers.
-            public_checks["mcp"] = {"error": True}
+        # Fetch real-time MCP status instead of stale startup snapshot.
+        try:
+            from app.core.harness.mcp_mesh import mcp_mesh
+
+            fresh = mcp_mesh.get_server_status()
+            # Prefer real-time data when servers are actually present;
+            # fall back to snapshot when mesh is not yet populated (e.g. tests).
+            if fresh.get("servers"):
+                public_checks["mcp"] = _summarize_mcp_for_public(fresh)
+            elif "servers" in mcp:
+                public_checks["mcp"] = _summarize_mcp_for_public(mcp)
+            elif "error" in mcp:
+                public_checks["mcp"] = {"error": True}
+        except Exception:
+            # Fall back to snapshot if mesh is not available yet.
+            if "servers" in mcp:
+                public_checks["mcp"] = _summarize_mcp_for_public(mcp)
+            elif "error" in mcp:
+                public_checks["mcp"] = {"error": True}
 
     for key, entry in checks.items():
         if key in _NAMED_PUBLIC_CHECKS or key in public_checks:

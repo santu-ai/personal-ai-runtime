@@ -9,7 +9,7 @@ export interface HealthResponse {
     status: string;
     warning_count: number;
     checks?: {
-      mcp?: { total: number; connected: number; failed: number };
+      mcp?: { total: number; connected: number; failed: number; available?: number };
       llm?: { configured: boolean; model?: string };
       storage?: { data_dir_exists: boolean; data_dir_writable: boolean; sqlite_exists: boolean };
     };
@@ -168,6 +168,7 @@ export interface InboxEmail {
   sender: string;
   subject: string;
   preview: string;
+  body?: string;
   received_at: string;
   category: string;
   importance: number;
