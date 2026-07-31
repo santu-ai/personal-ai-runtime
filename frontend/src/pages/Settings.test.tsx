@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, fireEvent } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
 import SettingsPage from "./Settings";
 
@@ -15,6 +15,18 @@ vi.mock("../api/client", () => ({
         mcp: { total: 1, connected: 1, failed: 0 },
       },
     },
+  }),
+  getMcpStatus: vi.fn().mockResolvedValue({
+    enabled: true,
+    servers: [
+      {
+        name: "email",
+        status: "connected",
+        tool_count: 3,
+        startup_connect: true,
+      },
+    ],
+    total_tools: 3,
   }),
   getLlmSettings: vi.fn().mockResolvedValue({
     config: {
@@ -106,6 +118,13 @@ vi.mock("../stores/errorStore", () => ({
     selector({ addError: vi.fn() }),
 }));
 
+async function expandSection(title: string) {
+  const trigger = await screen.findByRole("button", { name: new RegExp(title) });
+  if (trigger.getAttribute("aria-expanded") !== "true") {
+    fireEvent.click(trigger);
+  }
+}
+
 describe("SettingsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -116,8 +135,10 @@ describe("SettingsPage", () => {
     await waitFor(() => {
       expect(screen.getByText("设置")).toBeInTheDocument();
     });
-    expect(screen.getByText("导出全部数据")).toBeInTheDocument();
     expect(screen.getByText("运行正常")).toBeInTheDocument();
+
+    await expandSection("数据主权");
+    expect(await screen.findByText("导出全部数据")).toBeInTheDocument();
   });
 
   it("shows editable LLM and Gmail config sections", async () => {
@@ -125,8 +146,11 @@ describe("SettingsPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Gmail 邮箱配置")).toBeInTheDocument();
     });
+    // LLM is defaultOpen
     expect(screen.getByText("保存 LLM 配置")).toBeInTheDocument();
-    expect(screen.getByText("保存邮箱配置")).toBeInTheDocument();
+
+    await expandSection("Gmail 邮箱配置");
+    expect(await screen.findByText("保存邮箱配置")).toBeInTheDocument();
     expect(screen.getByText("测试连接")).toBeInTheDocument();
   });
 
@@ -135,6 +159,7 @@ describe("SettingsPage", () => {
     await waitFor(() => {
       expect(screen.getByText("AI 能力与信任")).toBeInTheDocument();
     });
+    await expandSection("AI 能力与信任");
     await waitFor(() => {
       expect(screen.getByText("读取文件")).toBeInTheDocument();
       expect(screen.getByText("写入文件")).toBeInTheDocument();
