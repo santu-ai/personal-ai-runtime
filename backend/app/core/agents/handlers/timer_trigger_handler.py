@@ -87,14 +87,34 @@ async def _call_product(
                     persist=False,
                 )
         elif handler_name == "morning_brief":
-            from app.product.morning_brief import deliver_morning_brief
+            import time
+
+            from app.core.runtime.notification_channel import notification_router
+            from app.product.morning_brief import generate_morning_brief
 
             logger.info(
                 "morning_brief: timer fired timer_id=%s",
                 timer_id,
                 extra={"step": "timer_fired", "timer_id": timer_id},
             )
-            await deliver_morning_brief(persist=True)
+            result = generate_morning_brief()
+            t0 = time.perf_counter()
+            logger.info(
+                "morning_brief: notify start persist=True",
+                extra={"step": "notify_start", "persist": True},
+            )
+            await notification_router.notify(
+                "早安简报",
+                result.brief,
+                type_="morning_brief",
+                priority="normal",
+                persist=True,
+            )
+            logger.info(
+                "morning_brief: notify done ms=%.1f",
+                (time.perf_counter() - t0) * 1000,
+                extra={"step": "notify_done"},
+            )
         elif handler_name == "reminder":
             from app.core.runtime.notification_channel import notification_router
 

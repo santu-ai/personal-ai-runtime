@@ -134,9 +134,7 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
 
   const body = (
     <>
-      {!embedded && (
-        <h3 className="text-sm font-medium text-fg-secondary mb-3">数据主权</h3>
-      )}
+      {!embedded && <h3 className="text-sm font-medium text-fg-secondary mb-3">数据主权</h3>}
       <p className="text-sm text-fg-tertiary mb-4">导出完整个人数据快照，或从备份文件导入。</p>
       {statusMessage && <p className="text-xs text-success mb-3">{statusMessage}</p>}
       <div className="flex flex-wrap gap-3 items-center">

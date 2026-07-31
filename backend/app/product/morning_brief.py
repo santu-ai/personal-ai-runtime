@@ -146,30 +146,3 @@ def generate_morning_brief() -> MorningBriefResult:
         extra={"step": "assembled", "errors": result.errors},
     )
     return result
-
-
-async def deliver_morning_brief(*, persist: bool = True) -> MorningBriefResult:
-    """Generate the brief and push it through the notification router."""
-    from app.core.runtime.notification_channel import notification_router
-
-    result = generate_morning_brief()
-    t0 = time.perf_counter()
-    logger.info(
-        "morning_brief: notify start persist=%s",
-        persist,
-        extra={"step": "notify_start", "persist": persist},
-    )
-    await notification_router.notify(
-        "早安简报",
-        result.brief,
-        type_="morning_brief",
-        priority="normal",
-        persist=persist,
-    )
-    result.steps_ms["notify"] = round((time.perf_counter() - t0) * 1000, 1)
-    logger.info(
-        "morning_brief: notify done ms=%.1f",
-        result.steps_ms["notify"],
-        extra={"step": "notify_done"},
-    )
-    return result

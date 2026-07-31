@@ -63,16 +63,12 @@ export default function McpServerList({ servers }: Props) {
           >
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-medium text-fg-primary truncate">
-                  {server.name}
-                </span>
+                <span className="text-sm font-medium text-fg-primary truncate">{server.name}</span>
                 <Badge tone={statusTone(server.status)} dot>
                   {statusLabel(server.status)}
                 </Badge>
               </div>
-              {reason && (
-                <p className="text-xs text-fg-tertiary mt-1 break-all">{reason}</p>
-              )}
+              {reason && <p className="text-xs text-fg-tertiary mt-1 break-all">{reason}</p>}
             </div>
             <span className="text-xs text-fg-tertiary shrink-0 pt-0.5">
               {server.tool_count} 工具

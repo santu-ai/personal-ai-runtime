@@ -127,9 +127,7 @@ export default function SettingsPage() {
                 ) : (
                   <p className="text-sm text-fg-secondary">
                     全部 {mcpSummary.total} 个 MCP 服务已连接
-                    {mcpStatus?.total_tools != null
-                      ? `（共 ${mcpStatus.total_tools} 个工具）`
-                      : ""}
+                    {mcpStatus?.total_tools != null ? `（共 ${mcpStatus.total_tools} 个工具）` : ""}
                   </p>
                 ))}
               <McpServerList servers={mcpServers} />

@@ -79,9 +79,7 @@ export default function EmailConfigCard({ email, onSaved, embedded = false }: Pr
 
   const body = (
     <>
-      {!embedded && (
-        <h3 className="text-sm font-medium text-fg-secondary mb-3">Gmail 邮箱配置</h3>
-      )}
+      {!embedded && <h3 className="text-sm font-medium text-fg-secondary mb-3">Gmail 邮箱配置</h3>}
       <p className="text-xs text-fg-tertiary mb-4">
         {email.help || "使用 Gmail 应用专用密码连接 IMAP/SMTP。"}
       </p>
