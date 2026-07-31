@@ -46,7 +46,10 @@ export default function InboxEmailDetailModal({ email, onClose }: Props) {
 
   if (!email) return null;
 
-  const cat = CATEGORY_LABELS[email.category] || { label: email.category, color: "text-fg-tertiary" };
+  const cat = CATEGORY_LABELS[email.category] || {
+    label: email.category,
+    color: "text-fg-tertiary",
+  };
 
   return (
     <div
@@ -61,7 +64,9 @@ export default function InboxEmailDetailModal({ email, onClose }: Props) {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2 mb-2">
-                <span className={`inline-block text-xs px-2 py-0.5 rounded bg-surface-overlay ${cat.color}`}>
+                <span
+                  className={`inline-block text-xs px-2 py-0.5 rounded bg-surface-overlay ${cat.color}`}
+                >
                   {cat.label}
                 </span>
                 {email.importance > 0 && (
@@ -70,9 +75,7 @@ export default function InboxEmailDetailModal({ email, onClose }: Props) {
                   </span>
                 )}
               </div>
-              <h3 className="text-lg font-semibold text-fg-primary break-words">
-                {email.subject}
-              </h3>
+              <h3 className="text-lg font-semibold text-fg-primary break-words">{email.subject}</h3>
               <p className="text-sm text-fg-secondary mt-1">{email.sender}</p>
               {email.received_at && (
                 <p className="text-xs text-fg-tertiary mt-1">{formatTime(email.received_at)}</p>

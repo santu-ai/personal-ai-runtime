@@ -1,5 +1,7 @@
 """Inbox API — proactive inbox app read surface."""
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -10,8 +12,6 @@ from app.product.inbox import (
     mark_inbox_email_status,
     poll_inbox,
 )
-
-import asyncio
 
 router = APIRouter(tags=["inbox"])
 

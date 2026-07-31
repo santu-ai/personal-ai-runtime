@@ -152,18 +152,11 @@ function parseLoadedMessages(msgs: Message[]): DisplayMessage[] {
   for (const msg of result) {
     const last = merged[merged.length - 1];
     if (msg.role === "assistant" && last && last.role === "assistant") {
-      const accToolCalls = [
-        ...(last.toolCalls ?? []),
-        ...(msg.toolCalls ?? []),
-      ];
-      const accToolResults = [
-        ...(last.toolResults ?? []),
-        ...(msg.toolResults ?? []),
-      ];
+      const accToolCalls = [...(last.toolCalls ?? []), ...(msg.toolCalls ?? [])];
+      const accToolResults = [...(last.toolResults ?? []), ...(msg.toolResults ?? [])];
       // Prefer the latest non-empty content as the visible text — it is the
       // final answer the user cares about. Fall back to earlier text if empty.
-      const nextContent =
-        msg.content && msg.content.trim() ? msg.content : last.content ?? "";
+      const nextContent = msg.content && msg.content.trim() ? msg.content : (last.content ?? "");
       merged[merged.length - 1] = {
         ...last,
         content: nextContent,

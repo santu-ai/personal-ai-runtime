@@ -85,7 +85,10 @@ export default function NotificationBell() {
         </button>
 
         {open && (
-          <div ref={dropdownRef} className="absolute bottom-full left-2 right-2 mb-1 bg-surface-raised border border-border-strong rounded-xl shadow-xl max-h-64 overflow-y-auto z-50">
+          <div
+            ref={dropdownRef}
+            className="absolute bottom-full left-2 right-2 mb-1 bg-surface-raised border border-border-strong rounded-xl shadow-xl max-h-64 overflow-y-auto z-50"
+          >
             <div className="flex items-center justify-between px-3 py-2 border-b border-border-subtle">
               <span className="text-xs text-fg-tertiary">最近通知</span>
               {unread > 0 && (

@@ -79,7 +79,14 @@ export {
 } from "./goals";
 
 // Inbox
-export { listInboxEmails, getInboxDigest, triggerInboxPoll, updateInboxEmailStatus, getInboxEmailDetail, getInboxEmailSummary } from "./inbox";
+export {
+  listInboxEmails,
+  getInboxDigest,
+  triggerInboxPoll,
+  updateInboxEmailStatus,
+  getInboxEmailDetail,
+  getInboxEmailSummary,
+} from "./inbox";
 
 // Memory
 export {

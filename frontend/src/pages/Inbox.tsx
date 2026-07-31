@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import { triggerInboxPoll, updateInboxEmailStatus, getInboxEmailDetail, ApiError, type InboxEmail } from "../api/client";
+import {
+  triggerInboxPoll,
+  updateInboxEmailStatus,
+  getInboxEmailDetail,
+  ApiError,
+  type InboxEmail,
+} from "../api/client";
 import { useErrorStore } from "../stores/errorStore";
 import { useQuickChat } from "../hooks/useQuickChat";
 import { useInboxQuery, useInvalidateInbox } from "../hooks/useInboxQuery";
