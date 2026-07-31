@@ -109,7 +109,7 @@
 
 用户面向 UI 目录，镜像同样 6 个服务器，附中文描述、类别（`browser`/`search`/`developer`/`productivity`）、安装命令（**与 `mcp_config.json` 同 pin**）、中文环境变量提示（如 `BRAVE_API_KEY`：「从 https://brave.com/search/api/ 获取」）、图标名，以及安装时写入 `mcp_config` 的运行时字段（`required_env` / `enabled_tools` / `ingestion_tools` 等）。是可安装 MCP marketplace 元数据；`env_vars` 仅作 UI 提示，不会写入运行时 `env`。
 
-### `backend/mcp_config.local.json`（个人 opt-in，gitignored）
+### `mcp_config.local.json`（个人 opt-in，gitignored）
 
 `_merge_external_servers` 按 `name` 把 local 条目叠加在 main 之上，让个人/团队专属 MCP 不进仓库。模板见 [`mcp_config.local.json.example`](../../backend/mcp_config.local.json.example)：copy 为 `mcp_config.local.json` 并按需启用。凭据统一来自 `.env`（经 [`mcp_config.py`](../../backend/app/core/harness/mcp_config.py) 的 `resolve_env` 注入子进程），未填 `required_env` 的服务器保持 dormant（`is_available()` 返 `False`，不报错）。
 
