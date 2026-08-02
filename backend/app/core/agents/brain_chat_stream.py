@@ -51,7 +51,7 @@ async def chat_stream(
     taint_registry.clear(correlation_id)
     conversation.correlation_id = correlation_id
 
-    messages = brain._build_messages(conversation, user_message, system_prompt=system_prompt)
+    messages = brain.build_messages(conversation, user_message, system_prompt=system_prompt)
     conversation.save_user_message(user_message)
 
     full_content = ""
@@ -72,12 +72,12 @@ async def chat_stream(
 
         llm_start = time.time()
         try:
-            response, client, used_provider = await brain._llm.create_stream(messages)
+            response, client, used_provider = await brain.llm.create_stream(messages)
         except Exception as e:
             yield {"type": "error", "content": f"LLM API error: {str(e)}"}
             return
-        if used_provider.name != brain._llm.provider.name:
-            brain._llm.replace_provider(client, used_provider)
+        if used_provider.name != brain.llm.provider.name:
+            brain.llm.replace_provider(client, used_provider)
 
         assembled: AssembledStream | None = None
         async for evt in iter_assembled_stream(response):
@@ -110,7 +110,7 @@ async def chat_stream(
                 # whitespace-only user turns to avoid burning tokens on noise.
                 try:
                     full_content = await asyncio.wait_for(
-                        brain._llm.complete_text_only(messages, user_message),
+                        brain.llm.complete_text_only(messages, user_message),
                         timeout=settings.complete_text_only_timeout,
                     )
                 except TimeoutError:
@@ -168,7 +168,7 @@ async def chat_stream(
                 full_content = assistant_content
                 yield {"type": "text_delta", "content": assistant_content}
             else:
-                synthesized = await brain._llm.synthesize_from_tool_results(messages)
+                synthesized = await brain.llm.synthesize_from_tool_results(messages)
                 if synthesized:
                     full_content = synthesized
                     yield {"type": "text_delta", "content": synthesized}

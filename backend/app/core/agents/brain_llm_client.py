@@ -23,9 +23,15 @@ class BrainLLMClient:
 
     ``client`` and ``provider`` are injected so multiple Brain instances
     (or tests) can use different providers without sharing mutable state.
+
+    Collaborators (``brain_llm_ops`` / ``brain_chat_stream``) access the
+    injected dependencies through the public ``client`` / ``provider``
+    properties and the ``build_messages`` helper — never through private
+    fields. This keeps the internal representation swappable (e.g. renaming
+    ``_client``) without breaking callers.
     """
 
-    _MAX_CONTINUE_DEPTH = 3
+    MAX_CONTINUE_DEPTH = 3
 
     def __init__(
         self,
@@ -39,9 +45,26 @@ class BrainLLMClient:
         self._build_messages_fn = build_messages_fn
 
     @property
-    def provider(self):
-        """Expose provider name for failover detection in Brain.chat_stream."""
+    def client(self) -> Any:
+        """The currently bound OpenAI-compatible client."""
+        return self._client
+
+    @property
+    def provider(self) -> Any:
+        """Expose provider for failover detection in Brain.chat_stream."""
         return self._provider
+
+    def build_messages(
+        self,
+        conversation: "ConversationManager",
+        user_message: str = "",
+        *,
+        system_prompt: str,
+    ) -> list[dict]:
+        """Build the LLM messages array via the injected builder callback."""
+        return self._build_messages_fn(
+            conversation, user_message=user_message, system_prompt=system_prompt,
+        )
 
     def replace_provider(self, client: Any, provider: Any) -> None:
         """Swap client+provider after LLM failover (Brain hot path)."""

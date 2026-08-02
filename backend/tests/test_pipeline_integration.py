@@ -35,7 +35,7 @@ class TestBrainWithSystemPrompt:
         brain = Brain()
         conv = ConversationManager(conversation_id=f"test_{uuid.uuid4().hex[:8]}")
         with pytest.raises(RuntimeError, match="system_prompt must be compiled"):
-            brain._build_messages(conv, "hello", system_prompt="")
+            brain.build_messages(conv, "hello", system_prompt="")
 
     def test_build_messages_uses_compiled_prompt(self):
         from app.core.agents.brain import Brain
@@ -43,7 +43,7 @@ class TestBrainWithSystemPrompt:
 
         brain = Brain()
         conv = ConversationManager(conversation_id=f"test_{uuid.uuid4().hex[:8]}")
-        msg = brain._build_messages(conv, "hello", system_prompt="CUSTOM_COMPILED_PROMPT")
+        msg = brain.build_messages(conv, "hello", system_prompt="CUSTOM_COMPILED_PROMPT")
         assert msg[0]["role"] == "system"
         assert msg[0]["content"] == "CUSTOM_COMPILED_PROMPT"
         assert msg[-1] == {"role": "user", "content": "hello"}
@@ -146,10 +146,13 @@ class TestContinueAfterToolResultCompile:
         )
 
         brain = Brain()
-        brain._llm._client = MagicMock()
+        # Inject a mock client into the backing store. Tests may reach into
+        # the private field for mock injection — the public API stays readonly.
+        mock_client = MagicMock()
+        brain.llm._client = mock_client
         response = MagicMock()
         response.choices = [MagicMock(message=MagicMock(content="审批后回复"))]
-        brain._llm._client.chat.completions.create = AsyncMock(return_value=response)
+        mock_client.chat.completions.create = AsyncMock(return_value=response)
 
         result = await brain.continue_after_tool_result(conversation)
 

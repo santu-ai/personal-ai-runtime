@@ -31,10 +31,10 @@ async def continue_after_tool_result(
     trigger another tool call that again needs approval, and without a
     cap the loop could recurse indefinitely.
     """
-    if depth >= llm._MAX_CONTINUE_DEPTH:
+    if depth >= llm.MAX_CONTINUE_DEPTH:
         logger.warning(
             "continue_after_tool_result hit depth cap (%d); stopping",
-            llm._MAX_CONTINUE_DEPTH,
+            llm.MAX_CONTINUE_DEPTH,
         )
         return "操作已完成，但后续推理深度已达上限。"
     from app.chat.prompt_compiler import (
@@ -53,7 +53,7 @@ async def continue_after_tool_result(
             stage="post_tool",
         ),
     )
-    messages = llm._build_messages_fn(
+    messages = llm.build_messages(
         conversation, user_message="", system_prompt=system_prompt,
     )
     if messages and messages[-1].get("role") == "user" and not messages[-1].get("content"):
@@ -65,8 +65,8 @@ async def continue_after_tool_result(
 
     content = ""
     try:
-        response = await llm._client.chat.completions.create(
-            model=llm._provider.model,
+        response = await llm.client.chat.completions.create(
+            model=llm.provider.model,
             messages=egress_messages,
             temperature=runtime_config.get_generation_params()[0],
             max_tokens=runtime_config.get_generation_params()[1],
@@ -89,8 +89,8 @@ async def continue_after_tool_result(
             "content": "请只用文字回复，不要调用任何工具。",
         })
         try:
-            response = await llm._client.chat.completions.create(
-                model=llm._provider.model,
+            response = await llm.client.chat.completions.create(
+                model=llm.provider.model,
                 messages=retry_messages,
                 temperature=runtime_config.get_generation_params()[0],
                 max_tokens=runtime_config.get_generation_params()[1],
@@ -122,7 +122,7 @@ async def create_stream(llm, messages: list[dict]):
     MAX_PRIMARY_ATTEMPTS = 3
 
     candidates: list[tuple[AsyncOpenAI, LLMProvider]] = [
-        (llm._client, llm._provider),
+        (llm.client, llm.provider),
         *llm_router.get_fallback_clients(),
     ]
     errors: list[str] = []
@@ -201,8 +201,8 @@ async def synthesize_from_tool_results(llm, messages: list[dict]) -> str:
         synth_messages, purpose="synthesize_tool_results",
     )
     try:
-        response = await llm._client.chat.completions.create(
-            model=llm._provider.model,
+        response = await llm.client.chat.completions.create(
+            model=llm.provider.model,
             messages=egress_messages,
             temperature=runtime_config.get_generation_params()[0],
             max_tokens=runtime_config.get_generation_params()[1],
@@ -226,8 +226,8 @@ async def complete_text_only(llm, messages: list[dict], user_message: str) -> st
         retry_messages, purpose="complete_text_only",
     )
     try:
-        response = await llm._client.chat.completions.create(
-            model=llm._provider.model,
+        response = await llm.client.chat.completions.create(
+            model=llm.provider.model,
             messages=egress_messages,
             temperature=runtime_config.get_generation_params()[0],
             max_tokens=runtime_config.get_generation_params()[1],

@@ -31,6 +31,11 @@ class Brain:
             build_messages_fn=build_messages,
         )
 
+    @property
+    def llm(self) -> BrainLLMClient:
+        """The BrainLLMClient backing this Brain (public collaborator access)."""
+        return self._llm
+
     async def chat_stream(
         self,
         conversation: ConversationManager,
@@ -100,7 +105,7 @@ class Brain:
             conversation, depth=depth,
         )
 
-    def _build_messages(
+    def build_messages(
         self,
         conversation: ConversationManager,
         user_message: str,
