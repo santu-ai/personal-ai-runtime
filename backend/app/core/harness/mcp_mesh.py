@@ -53,6 +53,25 @@ def _is_transport_failure(exc: BaseException) -> bool:
     return any(m in name or m in msg for m in _TRANSPORT_ERROR_MARKERS)
 
 
+def _safe_mcp_error(server_name: str, exc: BaseException) -> str:
+    """Return a sanitized, classification-only error string for LLM contexts.
+
+    Raw exception messages can leak absolute paths, connection strings, or
+    internal stack details into the LLM tool result. Only the error category
+    and the server name are surfaced; the underlying detail is logged locally.
+    """
+    if isinstance(exc, (ConnectionError, BrokenPipeError, EOFError, asyncio.TimeoutError)):
+        category = "connection"
+    else:
+        category = "unexpected"
+    logger.warning(
+        "MCP tool failed (server=%s category=%s): %s",
+        server_name, category, exc,
+        exc_info=True,
+    )
+    return f"MCP tool failed (server={server_name}, category={category})"
+
+
 @dataclass
 class DiscoveredMCPTool:
     registered_name: str
@@ -261,7 +280,7 @@ class MCPMesh:
         try:
             conn = await self._ensure_server(server_name)
         except Exception as exc:
-            return json.dumps({"error": f"MCP server unavailable ({server_name}): {exc}"})
+            return json.dumps({"error": _safe_mcp_error(server_name, exc)})
 
         url_err = await self._validate_tool_arguments(original_name, arguments)
         if url_err:
@@ -274,7 +293,7 @@ class MCPMesh:
         except asyncio.TimeoutError:
             return json.dumps({"error": f"MCP tool timed out: {registered_name}"})
         except Exception as exc:
-            return json.dumps({"error": f"MCP tool failed: {exc}"})
+            return json.dumps({"error": _safe_mcp_error(server_name, exc)})
 
         parts: list[str] = []
         for block in result.content:

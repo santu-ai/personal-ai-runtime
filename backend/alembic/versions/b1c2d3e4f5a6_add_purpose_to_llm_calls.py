@@ -7,6 +7,8 @@ Create Date: 2026-07-17 17:35:00.000000
 """
 from typing import Sequence, Union
 
+import sqlalchemy as sa
+
 from alembic import op
 
 
@@ -17,7 +19,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TABLE llm_calls ADD COLUMN purpose TEXT DEFAULT 'chat';")
+    # 0001_consolidated already creates llm_calls with the purpose column, so
+    # this migration must be idempotent for fresh databases: only ADD the
+    # column when it is absent (legacy DBs that predate purpose).
+    bind = op.get_bind()
+    cols = {
+        row[1]
+        for row in bind.execute(sa.text("PRAGMA table_info(llm_calls)")).fetchall()
+    }
+    if "purpose" not in cols:
+        op.execute("ALTER TABLE llm_calls ADD COLUMN purpose TEXT DEFAULT 'chat';")
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_llm_calls_purpose ON llm_calls (purpose);"
     )

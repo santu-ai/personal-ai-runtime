@@ -189,12 +189,26 @@ function resolveFrontendFile(distRoot, relPath) {
   if (!relPath || relPath === ".") {
     return path.join(distRoot, "index.html");
   }
-  const candidate = path.join(distRoot, relPath);
+  // Path traversal guard: reject "..", absolute paths, and Windows-style
+  // separators so app://./../../etc/passwd style requests stay inside distRoot.
+  const normalized = relPath.replace(/\\/g, "/");
+  if (
+    normalized.includes("..") ||
+    path.isAbsolute(normalized) ||
+    normalized.startsWith("/")
+  ) {
+    return path.join(distRoot, "index.html");
+  }
+  const candidate = path.normalize(path.join(distRoot, normalized));
+  // Defense in depth: ensure the resolved path did not escape distRoot.
+  if (candidate !== distRoot && !candidate.startsWith(distRoot + path.sep)) {
+    return path.join(distRoot, "index.html");
+  }
   if (fs.existsSync(candidate) && !fs.statSync(candidate).isDirectory()) {
     return candidate;
   }
   // SPA client routes (e.g. /chat/abc) fall back to index.html; static assets 404.
-  if (relPath.startsWith("assets/")) {
+  if (normalized.startsWith("assets/")) {
     return candidate;
   }
   return path.join(distRoot, "index.html");

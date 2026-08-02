@@ -66,15 +66,19 @@ def test_llm_test_endpoint_safe_error(client: TestClient, monkeypatch):
     """LLM test failures return generic message, not raw exception text."""
     sensitive_marker = "SECRET_MARKER_/private/provider"
 
-    class _FailingCompletions:
-        async def create(self, **_kwargs):
-            raise RuntimeError(sensitive_marker)
+    def _failing_get_client(_provider_id=None):
+        class _FailingCompletions:
+            async def create(self, **_kwargs):
+                raise RuntimeError(sensitive_marker)
 
-    class _FailingClient:
-        def __init__(self, **_kwargs):
-            self.chat = type("Chat", (), {"completions": _FailingCompletions()})()
+        class _FailingClient:
+            def __init__(self):
+                self.chat = type("Chat", (), {"completions": _FailingCompletions()})()
+                self.model = "fake"
 
-    monkeypatch.setattr("app.api.settings_api.AsyncOpenAI", _FailingClient)
+        return _FailingClient(), type("Provider", (), {"model": "fake"})()
+
+    monkeypatch.setattr("app.api.settings_api.llm_router.get_client", _failing_get_client)
     monkeypatch.setattr(
         "app.api.settings_api.runtime_config.get_llm_config",
         lambda masked=False: {"default_provider": "test"},

@@ -48,7 +48,7 @@
 | 文档 | 内容 |
 |---|---|
 | [backend-core.md](03-subsystems/backend-core.md) | Brain 推理循环、工具派发、记忆引擎、RuntimeLoop、Scheduler |
-| [backend-api.md](03-subsystems/backend-api.md) | 15 个 router、约 70 个端点、SSE、WebSocket |
+| [backend-api.md](03-subsystems/backend-api.md) | 15 个 router、约 98 个端点、SSE、WebSocket |
 | [frontend.md](03-subsystems/frontend.md) | React 路由、API client 分层、状态管理、hooks |
 | [desktop.md](03-subsystems/desktop.md) | Electron 进程模型、后端 spawn、IPC、托盘与快捷键 |
 | [mcp-harness.md](03-subsystems/mcp-harness.md) | 内建工具注册、外部 MCP 网格生命周期 |
@@ -57,7 +57,7 @@
 
 | 文档 | 内容 |
 |---|---|
-| [data-model.md](04-data/data-model.md) | 16 张 governed 表 + 3 张 app 表、ChromaDB collections |
+| [data-model.md](04-data/data-model.md) | 15 张 governed 表 + 4 张 app 表、ChromaDB collections |
 | [configuration.md](04-data/configuration.md) | `.env`、`config.py`、运行时 DB 配置、能力策略 JSON、MCP 配置 |
 
 ### 05 · 工程

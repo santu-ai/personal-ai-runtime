@@ -7,7 +7,7 @@
 ```mermaid
 flowchart TB
     subgraph L1[层 1 · 单元/集成]
-        Pytest[backend/tests/<br/>~146 文件]
+        Pytest[backend/tests/<br/>~157 文件]
         FE[frontend vitest]
     end
 
@@ -35,7 +35,7 @@ flowchart TB
 | `api/` | API 覆盖冒烟（`test_api_coverage.py`） |
 | `integration/` | FastAPI TestClient + Kernel：approval flow、auth、b2/b3 审计、dashboard、goals/knowledge/settings/system/timeline/trigger API |
 | `product/` | 基于 Kernel 的产品层：dashboard、encrypted_sync、inbox、notifications |
-| `runtime/` | kernel/执行/治理核心（~102 文件） |
+| `runtime/` | kernel/执行/治理核心（~111 文件） |
 
 顶层还有：`test_context_policy.py`、`test_context_assembler.py`、`test_core_tier_fragments.py`、`test_pipeline_integration.py`、`test_prompt_artifact.py`、`test_policy_coverage.py`、`test_fragment_registry_audit.py`、`test_fragment_read_boundary.py`、`test_mail_fragment_collect.py`、`test_version.py`。
 

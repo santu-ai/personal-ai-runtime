@@ -50,6 +50,7 @@ class ToolDispatcher:
 
         results: list[dict] = []
         tool_messages: list[dict] = []
+        suspended = False
 
         for tc in tool_calls_data:
             tool_name = tc["function_name"]
@@ -67,6 +68,9 @@ class ToolDispatcher:
             )
 
             if cap_result["status"] == "pending":
+                # Suspend only this tool for approval; keep executing the rest
+                # of the batch so unrelated tools are not dropped.
+                suspended = True
                 yield {
                     "type": "confirmation_required",
                     "tool_name": tool_name,
@@ -74,8 +78,7 @@ class ToolDispatcher:
                     "tool_call_id": tc["id"],
                     "approval_id": cap_result["approval_id"],
                 }
-                yield {"type": "done"}
-                return  # Suspend — caller must handle approval
+                continue
 
             elif cap_result["status"] == "success":
                 tool_result = cap_result["result"]
@@ -110,6 +113,10 @@ class ToolDispatcher:
             })
 
             self._conversation.save_tool_result(tool_result, tc["id"])
+
+        # Caller must suspend the turn when any tool awaits approval.
+        if suspended:
+            yield {"type": "done"}
 
         # Signal completion via a special internal event
         yield {

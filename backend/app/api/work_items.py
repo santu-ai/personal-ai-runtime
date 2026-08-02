@@ -373,10 +373,8 @@ Only return the JSON array, no other text."""
 
     content = ""
     try:
-        from app.core.agents.llm_failover import llm_router
-        from app.core.runtime.egress import audit_llm_egress
+        from app.core.agents.brain_llm_ops import complete_text_with_failover
 
-        client, provider = llm_router.get_client()
         messages = [
             {
                 "role": "system",
@@ -387,16 +385,13 @@ Only return the JSON array, no other text."""
             },
             {"role": "user", "content": prompt},
         ]
-        audited_messages, _audit = audit_llm_egress(
-            messages, purpose="goal_breakdown", actor="api",
-        )
-        response = await client.chat.completions.create(
-            model=provider.model,
-            messages=audited_messages,  # type: ignore[arg-type]
+        content, _provider = await complete_text_with_failover(
+            messages,
+            purpose="goal_breakdown",
+            actor="api",
             temperature=0.7,
             max_tokens=500,
         )
-        content = (response.choices[0].message.content or "").strip()
         if content.startswith("```"):
             lines = content.split("\n")
             content = "\n".join(lines[1:-1]) if len(lines) > 2 else content

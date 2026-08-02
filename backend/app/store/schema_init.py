@@ -52,13 +52,30 @@ def ensure_schema(db: Database) -> None:
         apply_raw_ddl(db)
         return
 
+    # Production path: Alembic is the single source of truth. A migration
+    # failure must abort startup — silently falling back to raw DDL could
+    # leave a production DB with a schema that diverges from Alembic.
     from app.store.alembic_runner import run_migrations
     try:
-        run_migrations()
+        head = run_migrations()
     except Exception as exc:
-        logger.warning("Alembic unavailable, using raw DDL: %s", exc)
-        apply_raw_ddl(db)
-        return
+        logger.error(
+            "Alembic schema setup failed on production DB %s — refusing to "
+            "fall back to raw DDL (schema divergence risk): %s",
+            db.db_path,
+            exc,
+        )
+        raise
+    if head is None:
+        logger.error(
+            "Alembic could not initialize on production DB %s "
+            "(alembic.ini missing or no head) — refusing to continue.",
+            db.db_path,
+        )
+        raise RuntimeError(
+            "Alembic schema initialization failed on production DB "
+            f"{db.db_path}"
+        )
 
     # Projector-owned tables are re-ensured idempotently after Alembic baseline.
     apply_projection_ddl(db)

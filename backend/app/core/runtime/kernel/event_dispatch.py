@@ -21,6 +21,23 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Main asyncio loop registered by RuntimeLoop.start() so events emitted from
+# worker threads (no running loop in that thread) can still be delivered to
+# the async dispatcher instead of being silently dropped.
+_dispatch_loop: asyncio.AbstractEventLoop | None = None
+
+
+def set_dispatch_loop(loop: asyncio.AbstractEventLoop | None) -> None:
+    """Bind the main event loop used to schedule worker-thread dispatches.
+
+    Called by RuntimeLoop.start()/stop(). When an event is emitted from a
+    thread without a running loop (e.g. the memory-index repair worker),
+    ``dispatch`` schedules the async dispatcher onto this loop via
+    ``call_soon_threadsafe`` so live delivery is not lost.
+    """
+    global _dispatch_loop
+    _dispatch_loop = loop
+
 
 def log_dispatch_task_exception(task: "asyncio.Task") -> None:
     """Done callback for fire-and-forget Event dispatch tasks.
@@ -198,14 +215,29 @@ def dispatch(kernel: Any, event: "Event") -> None:
             task.add_done_callback(kernel._dispatch_tasks.discard)
             kernel._dispatch_tasks.add(task)
         except RuntimeError:
-            logger.debug(
-                "Event dispatch skipped (no running loop) for %s "
-                "aggregate=%s/%s — event is persisted, subscribers "
-                "will see it on next read_events/replay.",
-                event.type,
-                event.aggregate_type,
-                event.aggregate_id,
-            )
+            # No running loop in this thread — e.g. emit_event from a worker
+            # thread (memory-index repair). Deliver via the main loop instead
+            # of dropping the event, so subscribers still see it live.
+            main_loop = _dispatch_loop
+            if main_loop is not None and main_loop.is_running():
+                def _schedule_on_main_loop() -> None:
+                    task = main_loop.create_task(async_dispatcher(event))
+                    task.add_done_callback(log_dispatch_task_exception)
+                    if not hasattr(kernel, "_dispatch_tasks"):
+                        kernel._dispatch_tasks = set()
+                    task.add_done_callback(kernel._dispatch_tasks.discard)
+                    kernel._dispatch_tasks.add(task)
+
+                main_loop.call_soon_threadsafe(_schedule_on_main_loop)
+            else:
+                logger.debug(
+                    "Event dispatch skipped (no running loop) for %s "
+                    "aggregate=%s/%s — event is persisted, subscribers "
+                    "will see it on next read_events/replay.",
+                    event.type,
+                    event.aggregate_type,
+                    event.aggregate_id,
+                )
 
     # Resolve pending submit_command Futures on matching completion events.
     key = (event.correlation_id or "", event.type)

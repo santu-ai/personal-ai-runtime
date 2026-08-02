@@ -15,11 +15,11 @@ SQLite 启用 WAL + `synchronous=NORMAL`（[`backend/app/store/database.py`](../
 
 ## 表分类总览
 
-全部 20 张表必须归入 GOVERNED 或 APP_STORAGE（[`backend/app/store/table_registry.py`](../../backend/app/store/table_registry.py)）。
+全部 19 张表必须归入 GOVERNED 或 APP_STORAGE（[`backend/app/store/table_registry.py`](../../backend/app/store/table_registry.py)）。
 
 | 类别 | 表数 | 写入权 |
 |---|---|---|
-| GOVERNED_TABLES | 16 | 仅 Kernel（事件溯源投影） |
+| GOVERNED_TABLES | 15 | 仅 Kernel（事件溯源投影） |
 | APP_STORAGE_TABLES | 4 | 任意模块直访 |
 
 ## GOVERNED 表（事件溯源投影）

@@ -41,7 +41,7 @@
 
 策略种子 [`backend/capability_policy.json`](../../backend/capability_policy.json)：
 
-- **needs_user**（9 个写工具）：`apply_patch`、`write_file`、`add_calendar_event`、`send_email`、`shell_exec`、`telegram_send`、`computer_click`/`type`/`key`。
+- **needs_user**（16 个写工具）：`apply_patch`、`write_file`、`add_calendar_event`、`send_email`、`shell_exec`、`telegram_send`、`computer_screenshot`/`click`/`type`/`move`/`scroll`/`key`、`create_goal`/`update_goal_progress`/`complete_goal`/`delete_goal`。
 - 审批 24h TTL，RuntimeLoop 每 ~10s 过期。
 - `correlation_id` 被 taint 时，写类工具强制 high 风险（防提示注入）。
 
@@ -67,9 +67,9 @@ URL 抓取类工具经 `url_safety.validate_http_url` 校验。相关测试：`t
 
 [`backend/app/product/encrypted_sync.py`](../../backend/app/product/encrypted_sync.py)：
 
-- 算法：AES-GCM + PBKDF2-HMAC-SHA256（600k 迭代）。
-- blob 布局：`[16B salt][12B nonce][ciphertext + 16B tag]`，base64 编码。
-- `BLOB_FORMAT = "encrypted_snapshot_v1"`。
+- 算法：AES-GCM + Argon2id（V2 当前版本；V1 用 PBKDF2-HMAC-SHA256 600k 迭代，仅作兼容导入路径）。
+- blob 布局（V2）：`[4B magic 'PAES'][1B version=2][16B salt][12B nonce][ciphertext + 16B tag]`（zlib 压缩后 AES-GCM 加密），base64 编码。
+- `BLOB_FORMAT = "encrypted_snapshot_v2"`。
 - 最小密码 8 字符。
 - 异步执行（线程池），避免阻塞事件循环。
 

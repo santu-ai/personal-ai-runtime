@@ -4,7 +4,6 @@ import logging
 import time
 
 from fastapi import APIRouter, HTTPException
-from openai import AsyncOpenAI
 from pydantic import BaseModel, field_validator
 
 from app.core.agents.llm_failover import llm_router
@@ -160,16 +159,26 @@ async def test_llm_connection(body: TestLlmRequest | None = None):
     if not api_key and p.get("type") != "ollama":
         return {"ok": False, "provider": provider_id, "error": "API Key 未配置"}
 
-    client = AsyncOpenAI(
-        api_key=api_key,
-        base_url=p.get("base_url", ""),
-        timeout=15.0,  # Connection test should be faster
-        max_retries=3,
-    )
+    client = None
+    provider_meta = None
+    try:
+        from app.core.agents.llm_failover import llm_router
+
+        client, provider_meta = llm_router.get_client(provider_id)
+    except RuntimeError as exc:
+        logger = logging.getLogger("app.api.settings_api")
+        logger.warning("LLM connection test: provider %s unavailable: %s", provider_id, exc)
+        return {
+            "ok": False,
+            "provider": provider_id,
+            "model": p.get("model"),
+            "error": "Provider not configured or unavailable",
+        }
+
     start = time.perf_counter()
     try:
         await client.chat.completions.create(
-            model=p.get("model", ""),
+            model=provider_meta.model,
             messages=[{"role": "user", "content": "ping"}],
             max_tokens=5,
         )
@@ -177,7 +186,7 @@ async def test_llm_connection(body: TestLlmRequest | None = None):
         return {
             "ok": True,
             "provider": provider_id,
-            "model": p.get("model"),
+            "model": provider_meta.model,
             "latency_ms": round(latency_ms, 1),
         }
     except Exception as exc:

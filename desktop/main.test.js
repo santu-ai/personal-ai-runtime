@@ -102,4 +102,13 @@ describe("Electron main process", () => {
     expect(source).toContain("function resolveDesktopDataEnv");
     expect(source).toContain("DATA_DIR");
   });
+
+  it("guards resolveFrontendFile against path traversal", () => {
+    // The function must reject "..", absolute paths, and backslash separators
+    // so app:// requests cannot escape the frontend dist directory.
+    expect(source).toContain("function resolveFrontendFile");
+    expect(source).toContain('normalized.includes("..")');
+    expect(source).toContain("path.isAbsolute(normalized)");
+    expect(source).toContain("candidate.startsWith(distRoot + path.sep)");
+  });
 });

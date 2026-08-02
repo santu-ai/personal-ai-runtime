@@ -122,7 +122,7 @@ sequenceDiagram
     Sch->>H: 执行 handler（execution_scope）
     H->>H: PromptCompiler.compile<br/>（ContextPipeline）
     H->>B: Brain.chat_stream
-    loop 工具循环（≤10 次）
+    loop 工具循环（≤ `max_tool_iterations` 次，默认 10）
         B->>LLM: 流式补全
         LLM-->>B: text deltas + tool_calls
         B->>TD: dispatch(tool_calls)
@@ -153,7 +153,7 @@ sequenceDiagram
 | 层依赖（职责边） | `check_layer_deps.py` | Runtime↛Product、Store↛Runtime、API/Product 深模块与私有 import |
 | 执行归属 | `check_execution_ownership.py` | 静态扫描所有 `invoke_capability(` 调用必须含 `execution_id` |
 | 投影溯源 | `check_projection_provenance.py` | 运行时 SQL join 验证每条投影行有对应 `event_log` 事件 |
-| 事件日志可重建 | `verify_rebuild.py` 等 12 个脚本 | 重放 `event_log` 重建全部投影并与原状态字节比对 |
+| 事件日志可重建 | `verify_rebuild.py` 等 15 个脚本 | 重放 `event_log` 重建全部投影并与原状态字节比对 |
 | LLM 出口审计 | `verify_egress.py` | 验证 `audit_llm_egress` 发出 `EgressAudited` 事件 |
 | 向量一致性 | `verify_vector_consistency.py` | SQLite 记忆集合与 ChromaDB collection 集合对账 |
 | 收件箱双写一致性 | `verify_inbox_audit.py` | 验证 `inbox_emails` 表与 `InboxEmailRecorded` 事件 1:1 对应 |

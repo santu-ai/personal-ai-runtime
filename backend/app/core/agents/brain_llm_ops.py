@@ -236,3 +236,67 @@ async def complete_text_only(llm, messages: list[dict], user_message: str) -> st
     except Exception:
         logger.exception("complete_text_only retry failed")
         return "抱歉，我暂时无法生成回复，请再试一次。"
+
+
+async def complete_text_with_failover(
+    messages: list[dict],
+    *,
+    purpose: str,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    actor: str = "api",
+) -> tuple[str, str]:
+    """Text-only completion routed through primary + fallback providers.
+
+    Centralizes the non-Brain LLM call paths (goal breakdown, inbox classify /
+    summary) so they get the same failover + egress audit as the Brain paths.
+    Returns ``(content, provider_name)``.
+
+    Raises ``RuntimeError`` when every configured provider fails.
+    """
+    from openai import AsyncOpenAI
+
+    from app.core.agents.llm_failover import LLMProvider
+
+    try:
+        client, provider = llm_router.get_client()
+        candidates: list[tuple[AsyncOpenAI, LLMProvider]] = [
+            (client, provider),
+            *llm_router.get_fallback_clients(),
+        ]
+    except RuntimeError as exc:
+        logger.warning("complete_text_with_failover: no provider configured: %s", exc)
+        raise
+
+    if temperature is None or max_tokens is None:
+        gen_temp, gen_max = runtime_config.get_generation_params()
+        temperature = temperature if temperature is not None else gen_temp
+        max_tokens = max_tokens if max_tokens is not None else gen_max
+
+    audited_messages, _audit = audit_llm_egress(
+        messages, purpose=purpose, actor=actor,
+    )
+
+    errors: list[str] = []
+    for client, provider in candidates:
+        try:
+            response = await client.chat.completions.create(
+                model=provider.model,
+                messages=audited_messages,  # type: ignore[arg-type]
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            content = (response.choices[0].message.content or "").strip()
+            if content:
+                return content, provider.name
+            errors.append(f"{provider.name}(empty response)")
+        except Exception as exc:
+            errors.append(f"{provider.name}({type(exc).__name__}: {exc})")
+            logger.warning(
+                "complete_text_with_failover provider %s failed: %s",
+                provider.name, exc,
+            )
+
+    raise RuntimeError(
+        f"All LLM providers failed for {purpose}: {'; '.join(errors)}"
+    )

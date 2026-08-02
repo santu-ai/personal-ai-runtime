@@ -72,9 +72,12 @@ class RuntimeLoop:
             )
         self._loop_task = asyncio.create_task(self._loop())
         try:
+            from app.core.runtime.kernel.event_dispatch import set_dispatch_loop
             from app.core.runtime.notification_bridge import set_broadcast_loop
 
-            set_broadcast_loop(asyncio.get_running_loop())
+            loop = asyncio.get_running_loop()
+            set_broadcast_loop(loop)
+            set_dispatch_loop(loop)
         except Exception:
             logger.debug("Could not bind notification broadcast loop", exc_info=True)
         logger.info("RuntimeLoop started (tick=%.0fms)", _TICK_SECONDS * 1000)
@@ -82,9 +85,11 @@ class RuntimeLoop:
     async def stop(self) -> None:
         self._running = False
         try:
+            from app.core.runtime.kernel.event_dispatch import set_dispatch_loop
             from app.core.runtime.notification_bridge import set_broadcast_loop
 
             set_broadcast_loop(None)
+            set_dispatch_loop(None)
         except Exception:
             pass
         if self._loop_task:

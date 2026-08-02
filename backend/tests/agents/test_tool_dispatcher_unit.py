@@ -96,7 +96,7 @@ class TestToolDispatcherDispatch:
         assert conv.saved == [("tc1", '{"data": 1}')]
 
     @pytest.mark.asyncio
-    async def test_dispatch_pending_suspends(self):
+    async def test_dispatch_pending_suspends_but_keeps_batch(self):
         from app.core.agents.tool_dispatcher import ToolDispatcher
 
         kernel = MockKernel({
@@ -104,9 +104,10 @@ class TestToolDispatcherDispatch:
                 "status": "pending",
                 "approval_id": "ap-1",
             },
-            "read_file": {"status": "success", "result": "should-not-run"},
+            "read_file": {"status": "success", "result": "ok"},
         })
-        td = ToolDispatcher(kernel=kernel, conversation=MockConversation())
+        conv = MockConversation()
+        td = ToolDispatcher(kernel=kernel, conversation=conv)
         events = await _collect(
             td,
             [
@@ -115,10 +116,18 @@ class TestToolDispatcherDispatch:
             ],
         )
 
-        assert [e["type"] for e in events] == ["confirmation_required", "done"]
+        # The pending tool suspends, but the rest of the batch still runs.
+        assert [e["type"] for e in events] == [
+            "confirmation_required",
+            "tool_result",
+            "done",
+            "_dispatcher_done",
+        ]
         assert events[0]["approval_id"] == "ap-1"
         assert events[0]["tool_call_id"] == "tc1"
-        assert len(kernel.calls) == 1  # second tool not invoked
+        assert len(kernel.calls) == 2  # read_file still invoked
+        assert conv.saved == [("tc2", "ok")]
+        assert events[-1]["results"] == [{"tool_name": "read_file", "tool_call_id": "tc2", "content": "ok"}]
 
     @pytest.mark.asyncio
     async def test_dispatch_failure_yields_error_json(self):

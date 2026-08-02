@@ -67,6 +67,32 @@ def doc_tables() -> set[str]:
     return candidates
 
 
+def prose_table_counts() -> list[tuple[str, int]]:
+    """Return prose table-count claims from data-model.md as ``(label, value)`` pairs.
+
+    Catches narrative numbers that the structured table-name check cannot see:
+    - "全部 N 张表必须归入 GOVERNED 或 APP_STORAGE"
+    - "| GOVERNED_TABLES | N |"
+    - "| APP_STORAGE_TABLES | N |"
+    - "verify_alembic.py ... N 张必需表"
+    Each entry is ``"row-label:document-value"`` so violations identify the
+    exact spot.
+    """
+    doc_path = _ROOT / "docs" / "04-data" / "data-model.md"
+    text = doc_path.read_text(encoding="utf-8")
+
+    claims: list[tuple[str, int]] = []
+    for m in re.finditer(r"全部\s*(\d+)\s*张表", text):
+        claims.append(("全部 N 张表", int(m.group(1))))
+    for m in re.finditer(r"^\|\s*GOVERNED_TABLES\s*\|\s*(\d+)\s*\|", text, re.MULTILINE):
+        claims.append(("GOVERNED_TABLES 行", int(m.group(1))))
+    for m in re.finditer(r"^\|\s*APP_STORAGE_TABLES\s*\|\s*(\d+)\s*\|", text, re.MULTILINE):
+        claims.append(("APP_STORAGE_TABLES 行", int(m.group(1))))
+    for m in re.finditer(r"(\d+)\s*张必需表", text):
+        claims.append(("N 张必需表", int(m.group(1))))
+    return [(label, value) for label, value in claims]
+
+
 def main() -> int:
     governed, app_storage = registry_tables()
     registry_all = governed | app_storage
@@ -90,6 +116,17 @@ def main() -> int:
         violations.append(
             f"tables mentioned in data-model.md but not in registry: {sorted(doc_extra)}"
         )
+
+    # Prose table-count claims must match the live registry.
+    for label, claimed in prose_table_counts():
+        if label == "全部 N 张表" and claimed != len(registry_all):
+            violations.append(f"prose '{label}' says {claimed}, registry has {len(registry_all)}")
+        elif label == "GOVERNED_TABLES 行" and claimed != len(governed):
+            violations.append(f"prose '{label}' says {claimed}, registry has {len(governed)}")
+        elif label == "APP_STORAGE_TABLES 行" and claimed != len(app_storage):
+            violations.append(f"prose '{label}' says {claimed}, registry has {len(app_storage)}")
+        elif label == "N 张必需表" and claimed != len(registry_all):
+            violations.append(f"prose '{label}' says {claimed}, registry has {len(registry_all)}")
 
     if violations:
         print("DOC TABLE SYNC FAILED", file=sys.stderr)

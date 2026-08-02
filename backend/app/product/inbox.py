@@ -88,10 +88,8 @@ async def _classify_emails(emails: list[dict]) -> list[dict]:
     if not emails:
         return []
 
-    from app.core.agents.llm_failover import llm_router
-    from app.core.runtime.egress import audit_llm_egress
+    from app.core.agents.brain_llm_ops import complete_text_with_failover
 
-    client, provider = llm_router.get_client()
     user_prompt = (
         "请分类以下邮件：\n\n"
         f"{_format_emails_for_llm(emails)}\n\n"
@@ -102,22 +100,15 @@ async def _classify_emails(emails: list[dict]) -> list[dict]:
         {"role": "system", "content": CLASSIFY_SYSTEM_PROMPT},
         {"role": "user", "content": user_prompt},
     ]
-    # Route through the egress audit gate for parity with Brain paths.
-    # audit_llm_egress emits EgressAudited and returns (messages, audit_meta);
-    # we reuse the returned messages so the LLM call matches what was audited.
-    audited_messages, _audit = audit_llm_egress(
-        messages, purpose="inbox_classify", actor="inbox",
-    )
 
     try:
-        response = await client.chat.completions.create(
-            model=provider.model,
-            messages=audited_messages,
+        raw, _provider = await complete_text_with_failover(
+            messages,
+            purpose="inbox_classify",
+            actor="inbox",
             temperature=0.2,
             max_tokens=settings.llm_max_tokens,
-            response_format={"type": "json_object"},
-        )  # type: ignore[call-overload]
-        raw = response.choices[0].message.content or "{}"
+        )
     except Exception as exc:
         logger.error("Inbox classification failed: %s", exc)
         return [

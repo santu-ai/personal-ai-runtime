@@ -77,7 +77,6 @@ async def get_inbox_email_summary(email_id: str):
     """
     from app.core.harness.builtin_tools.email import email_server
     from app.core.runtime.read_ports.inbox import query_inbox_email
-    from app.core.runtime.runtime_config import runtime_config
 
     row = query_inbox_email(email_id)
     if row is None:
@@ -89,43 +88,28 @@ async def get_inbox_email_summary(email_id: str):
         # Fall back to the poll-time preview when IMAP body is unavailable.
         body = (row.get("preview") or "")
 
-    # Build a single-turn chat completion for summarization.
-    # masked=False is required: we need the real API key to call the LLM.
-    llm_config = runtime_config.get_llm_config(masked=False)
-    providers = llm_config.get("providers", [])
-    primary = next((p for p in providers if p.get("enabled")), None)
-    if not primary:
-        raise HTTPException(status_code=503, detail="No enabled LLM provider configured")
-
-    api_key = str(primary.get("api_key") or "")
-    if not api_key and primary.get("type") != "ollama":
-        raise HTTPException(status_code=503, detail="LLM API key not configured")
-    # Ollama doesn't require an API key, but openai SDK warns on empty strings.
-    if not api_key:
-        api_key = "ollama"
-
-    from openai import AsyncOpenAI
-
-    client = AsyncOpenAI(
-        api_key=api_key,
-        base_url=str(primary.get("base_url", "")),
-        timeout=EMAIL_SUMMARY_TIMEOUT,
-    )
-    model = str(primary.get("model", "deepseek-chat"))
+    # Build a single-turn chat completion for summarization, routed through the
+    # same failover + egress audit path as other LLM callers.
+    messages = [
+        {"role": "user", "content": (
+            f"{EMAIL_SUMMARY_PROMPT}\n发件人: {row.get('sender', '')}\n"
+            f"主题: {row.get('subject', '')}\n\n{body}"
+        )},
+    ]
 
     try:
-        response = await asyncio.wait_for(
-            client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "user", "content": f"{EMAIL_SUMMARY_PROMPT}\n发件人: {row.get('sender', '')}\n主题: {row.get('subject', '')}\n\n{body}"},
-                ],
+        from app.core.agents.brain_llm_ops import complete_text_with_failover
+
+        summary, _provider = await asyncio.wait_for(
+            complete_text_with_failover(
+                messages,
+                purpose="inbox_summary",
+                actor="api",
                 temperature=0.3,
                 max_tokens=300,
             ),
             timeout=EMAIL_SUMMARY_TIMEOUT,
         )
-        summary = response.choices[0].message.content or ""
     except asyncio.TimeoutError:
         raise HTTPException(status_code=504, detail="Summary generation timed out")
     except Exception as e:
