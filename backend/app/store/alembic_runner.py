@@ -32,6 +32,7 @@ def _find_alembic_ini() -> Path:
             if path.is_file():
                 return path
         except Exception:
+            logger.debug("alembic.ini strategy failed", exc_info=True)
             continue
 
     # Default fallback (might not exist, will be caught in run_migrations)

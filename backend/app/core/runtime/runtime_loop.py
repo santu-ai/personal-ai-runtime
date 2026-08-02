@@ -91,7 +91,7 @@ class RuntimeLoop:
             set_broadcast_loop(None)
             set_dispatch_loop(None)
         except Exception:
-            pass
+            logger.debug("Could not unbind runtime loops during stop", exc_info=True)
         if self._loop_task:
             try:
                 self._loop_task.cancel()
@@ -166,7 +166,7 @@ class RuntimeLoop:
 
                 try:
                     payload = json.loads(payload_json)
-                except Exception:
+                except (json.JSONDecodeError, TypeError):
                     payload = {}
 
                 if not handler_name:
@@ -202,11 +202,11 @@ class RuntimeLoop:
     def _next_cron_fire(cron_expr: str, from_ts=None) -> str:
         """Calculate the next fire time for a cron expression."""
         from datetime import UTC, datetime, timedelta, tzinfo
-        from zoneinfo import ZoneInfo
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
         try:
             tz: tzinfo = ZoneInfo(settings.timezone)
-        except Exception:
+        except ZoneInfoNotFoundError:
             tz = UTC
 
         # We calculate the target in the user's local timezone

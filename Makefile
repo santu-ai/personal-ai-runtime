@@ -1,4 +1,4 @@
-.PHONY: install setup init-db dev demo screenshots test test-backend test-backend-coverage test-frontend test-e2e test-e2e-real ci-local backend-ci-core backend-ci-static backend-ci-runtime backend-compileall backend-smoke lint typecheck dependency-sync desktop desktop-test desktop-build boundary layer-deps layer-deps-inventory layer-deps-strict docs-links docs-table-sync docs-line-refs docs-numbers policy-consistency rebuild-verify export-roundtrip-verify snapshot-verify egress-verify connector-verify alembic-verify vector-consistency-verify memory-repair-verify tool-calls-audit-verify architecture-check architecture-check-strict architecture-snapshot architecture-record event-schema event-schema-snapshot event-schema-record non-sovereign-attachments single-process-control-plane dynamic-imports dashboard dashboard-write docker-up docker-down projection-provenance conversation-rebuild goal-rebuild work-items-goal-rebuild memory-lifecycle-verify inbox-audit-verify lockfile secrets-scan
+.PHONY: install setup init-db dev demo screenshots test test-backend test-backend-coverage test-frontend test-e2e test-e2e-real ci-local backend-ci-core backend-ci-static backend-ci-runtime backend-compileall backend-smoke lint typecheck dependency-sync desktop desktop-test desktop-build boundary layer-deps layer-deps-inventory layer-deps-strict docs-links docs-table-sync docs-line-refs docs-numbers policy-consistency rebuild-verify export-roundtrip-verify snapshot-verify egress-verify connector-verify alembic-verify vector-consistency-verify memory-repair-verify tool-calls-audit-verify architecture-check architecture-check-strict architecture-snapshot architecture-record event-schema event-schema-snapshot event-schema-record non-sovereign-attachments single-process-control-plane dynamic-imports except-hygiene dashboard dashboard-write docker-up docker-down projection-provenance conversation-rebuild goal-rebuild work-items-goal-rebuild memory-lifecycle-verify inbox-audit-verify lockfile secrets-scan
 
 # Backend
 BACKEND_DIR := backend
@@ -67,7 +67,7 @@ dependency-sync:
 BACKEND_CI_STATIC := dependency-sync backend-compileall lint typecheck version-sync \
 	policy-consistency docs-links docs-table-sync docs-line-refs docs-numbers boundary \
 	layer-deps execution-ownership architecture-check event-schema \
-	non-sovereign-attachments single-process-control-plane dynamic-imports
+	non-sovereign-attachments single-process-control-plane dynamic-imports except-hygiene
 
 # Runtime verifies — ephemeral DBs / tmp paths; parallel after static wave.
 BACKEND_CI_RUNTIME := alembic-verify backend-smoke test-backend-coverage \
@@ -135,6 +135,9 @@ docs-line-refs:
 
 docs-numbers:
 	cd $(BACKEND_DIR) && python3 -m scripts.check_doc_numbers
+
+except-hygiene:
+	cd $(BACKEND_DIR) && python3 -m scripts.check_except_hygiene
 
 policy-consistency:
 	cd $(BACKEND_DIR) && python3 -m scripts.check_capability_policy_consistency

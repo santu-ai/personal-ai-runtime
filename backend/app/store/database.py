@@ -84,7 +84,7 @@ class Database:
             try:
                 conn.close()
             except Exception:
-                pass
+                logger.debug("Error closing database connection", exc_info=True)
 
     @contextmanager
     def get_db(self) -> Generator[sqlite3.Connection, None, None]:
@@ -103,7 +103,7 @@ class Database:
             try:
                 conn.rollback()
             except Exception:
-                pass
+                logger.debug("Error rolling back after GeneratorExit", exc_info=True)
             raise
         # Connection is kept open for reuse; closed only on explicit close().
 

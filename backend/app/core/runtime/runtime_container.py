@@ -14,10 +14,13 @@ Architecture target: global singletons 15+ → 0 (all registered).
 
 from __future__ import annotations
 
+import logging
 import threading
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from app.store.bound_proxy import BoundProxy as _LazyProxy  # noqa: F401
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from app.chat.prompt_compiler import PromptCompiler
@@ -315,7 +318,7 @@ class RuntimeContainer:
                 try:
                     self._db.close()
                 except Exception:
-                    pass
+                    logger.debug("Failed to close Database during reset", exc_info=True)
             # Drop cached instances — properties will lazily rebuild on access.
             for attr in self._SINGLETON_ATTRS:
                 setattr(self, attr, None)

@@ -298,7 +298,7 @@ def invalidate_runtime_config_cache() -> None:
 
         invalidate_prompt_artifact_cache()
     except Exception:
-        pass
+        logger.debug("Failed to invalidate prompt artifact cache", exc_info=True)
 
 
 class RuntimeConfig:

@@ -244,7 +244,10 @@ class VectorStore:
             try:
                 self.knowledge_collection.delete(ids=[chunk_id])
             except Exception:
-                pass
+                logger.debug(
+                    "Idempotent delete of knowledge chunk %s failed", chunk_id,
+                    exc_info=True,
+                )
         return self.add_knowledge_chunk(content, metadata=metadata, chunk_id=chunk_id)
 
     def delete_memory(self, memory_id: str):

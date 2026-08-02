@@ -345,8 +345,8 @@ def _assert_imap_capability_ok(cap_res: dict, *, action: str) -> None:
                 error = parsed["error"]
             elif not parsed.get("success", True):
                 imap_ok = False
-        except Exception:
-            pass
+        except (ValueError, TypeError):
+            logger.debug("Could not parse IMAP capability result", exc_info=True)
     if not imap_ok:
         err = error or "unknown"
         logger.warning("IMAP %s failed: %s", action, err)

@@ -5,12 +5,15 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 
 from app.context_runtime import ContextFragment, FragmentResult, RuntimeContext
 from app.core.agents.token_counter import count_text_tokens, truncate_to_token_budget
 from app.core.runtime import read_ports
+
+logger = logging.getLogger(__name__)
 
 _TRIVIAL_MESSAGES = frozenset(
     {
@@ -82,14 +85,14 @@ class BackgroundContextFragment(ContextFragment):
                     parts.append(ctx_str)
                     sources.extend(ctx_sources)
             except Exception:
-                pass
+                logger.debug("Background recall failed", exc_info=True)
 
         try:
             world = read_ports.query_world_context()
             if world and world.strip():
                 parts.append(world.strip())
         except Exception:
-            pass
+            logger.debug("World context query failed", exc_info=True)
 
         if not parts:
             return FragmentResult(content="")

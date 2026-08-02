@@ -5,6 +5,7 @@ import hashlib
 import html
 import imaplib
 import json
+import logging
 import os
 import re
 import smtplib
@@ -13,6 +14,8 @@ from datetime import timezone
 from email.header import decode_header
 from email.mime.text import MIMEText
 from email.utils import parsedate_to_datetime
+
+logger = logging.getLogger(__name__)
 
 
 def _decode_mime_header(value: str | None) -> str:
@@ -55,7 +58,7 @@ def _format_date(date_str: str | None) -> str:
             dt = dt.replace(tzinfo=timezone.utc)
         dt = dt.astimezone()
         return dt.strftime("%Y-%m-%d %H:%M")
-    except Exception:
+    except (TypeError, ValueError):
         return date_str[:20] if date_str else ""
 
 
@@ -222,8 +225,8 @@ class EmailServer:
             if idate_match:
                 try:
                     ts = parsedate_to_datetime(idate_match.group(1)).timestamp()
-                except Exception:
-                    pass
+                except (TypeError, ValueError):
+                    logger.debug("Could not parse INTERNALDATE %r", idate_match.group(1))
 
             from_raw = _decode_mime_header(msg.get("From"))
             subject = _decode_mime_header(msg.get("Subject")) or "(无主题)"
@@ -232,8 +235,8 @@ class EmailServer:
             if ts == 0.0 and date_raw:
                 try:
                     ts = parsedate_to_datetime(date_raw).timestamp()
-                except Exception:
-                    pass
+                except (TypeError, ValueError):
+                    logger.debug("Could not parse Date header %r", date_raw)
 
             candidates.append({
                 "seq_num": seq_num,
@@ -293,8 +296,7 @@ class EmailServer:
             try:
                 mail.logout()
             except Exception:
-                import logging
-                logging.getLogger(__name__).warning("Error during IMAP logout", exc_info=True)
+                logger.warning("Error during IMAP logout", exc_info=True)
 
     def check_inbox(self, limit: int = 10, unread_only: bool = False) -> str:
         """Check inbox for recent emails (default: all mail, not unread-only)."""
@@ -311,7 +313,7 @@ class EmailServer:
                 try:
                     mail.logout()
                 except Exception:
-                    pass
+                    logger.debug("Error during IMAP logout", exc_info=True)
 
             slim = [
                 {k: v for k, v in em.items() if k not in ("body", "seq_num")}
@@ -414,8 +416,14 @@ class EmailServer:
                 try:
                     mail.logout()
                 except Exception:
-                    pass
-        except Exception:
+                    logger.debug("Error during IMAP logout", exc_info=True)
+        except imaplib.IMAP4.error as exc:
+            logger.warning("read_email_body IMAP error for %s: %s", message_id, exc)
+            return None
+        except (OSError, ValueError) as exc:
+            # Connection / credential failures fall back to preview instead of
+            # 500ing the summary endpoint (the caller has no try/except).
+            logger.debug("read_email_body unavailable for %s: %s", message_id, exc)
             return None
 
     def _mark_flags(
@@ -501,7 +509,7 @@ class EmailServer:
                 try:
                     mail.logout()
                 except Exception:
-                    pass
+                    logger.debug("Error during IMAP logout", exc_info=True)
         except Exception as e:
             return json.dumps({"error": str(e)})
 

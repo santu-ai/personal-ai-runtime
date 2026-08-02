@@ -624,7 +624,7 @@ def iter_snapshot_json_chunks(kernel):
         try:
             conn.rollback()
         except Exception:
-            pass
+            logger.debug("Failed to rollback import transaction", exc_info=True)
         raise
     finally:
         conn.close()

@@ -1,12 +1,15 @@
 """Approvals API — manage approval workflows with flow context."""
 
 import json
+import logging
 
 from fastapi import APIRouter, HTTPException
 
 from app.config import settings
 from app.core.runtime import read_ports
 from app.core.runtime.kernel_instance import kernel
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["approvals"])
 
@@ -137,7 +140,7 @@ def _list_pending_enriched(kernel, limit: int | None = None) -> list[dict]:
             if item:
                 task_map[tid] = item.get("title", "")
         except Exception:
-            pass
+            logger.debug("Failed to resolve work item title for %s", tid, exc_info=True)
 
     enriched = []
     for a in pending:

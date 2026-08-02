@@ -80,8 +80,8 @@ def _load_prompt_file(filename: str, default: str) -> str:
     try:
         if path.exists():
             return path.read_text(encoding="utf-8").strip()
-    except Exception:
-        pass
+    except OSError as exc:
+        logger.debug("Prompt file %s unreadable, using default: %s", filename, exc)
     return default
 
 

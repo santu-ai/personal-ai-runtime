@@ -50,7 +50,7 @@ class ComputerUseServer:
             pyperclip.copy(text)
             return
         except Exception:
-            pass
+            logger.debug("pyperclip unavailable, falling back to tkinter clipboard", exc_info=True)
         import tkinter as tk
         root = tk.Tk()
         root.withdraw()

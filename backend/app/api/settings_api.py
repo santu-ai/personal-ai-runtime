@@ -346,8 +346,10 @@ async def get_notification_settings():
         try:
             import json
             return json.loads(data)
-        except Exception:
-            pass
+        except (json.JSONDecodeError, TypeError):
+            logging.getLogger(__name__).debug(
+                "Invalid notifications prompt JSON; using defaults", exc_info=True
+            )
     return {"webhook_url": "", "ntfy_topic": "", "ntfy_server": "https://ntfy.sh"}
 
 

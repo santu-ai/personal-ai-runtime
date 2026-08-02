@@ -6,9 +6,13 @@ reconstructible from the Event Log.
 
 from __future__ import annotations
 
+import logging
+
 from .constants import AGGREGATE_POLICY
 from .event import Event
 from .projectors_registry import _OWNED_TABLES, projector
+
+logger = logging.getLogger(__name__)
 
 _OWNED_TABLES[AGGREGATE_POLICY] = ["policy_events"]
 
@@ -20,7 +24,7 @@ def _invalidate_risk_cache() -> None:
 
         capability_governance.invalidate_risk_cache()
     except Exception:
-        pass
+        logger.debug("Could not invalidate risk cache", exc_info=True)
 
 
 # ── Policy projectors ───────────────────────────────────────────────────
