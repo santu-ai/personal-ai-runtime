@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from app.core.runtime.kernel.constants import (
     EVENT_SCHEMA_VERSION_DEFAULT,
     EVENT_WORK_ITEM_CREATED,

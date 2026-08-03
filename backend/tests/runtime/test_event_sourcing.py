@@ -6,6 +6,7 @@ replaying the Event Log alone must reconstruct it identically.
 
 import pytest
 
+
 class TestEventSourcing:
     def test_goal_created_projects_to_state(self, isolated_kernel):
         kernel, _db = isolated_kernel

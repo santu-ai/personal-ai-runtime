@@ -15,9 +15,8 @@ pytest.importorskip("cryptography")
 
 from cryptography.hazmat.primitives import hashes  # noqa: E402
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # noqa: E402
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC  # noqa: E402
-
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id  # noqa: E402
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC  # noqa: E402
 
 from app.product import encrypted_sync as enc  # noqa: E402
 from app.product.encrypted_sync import (  # noqa: E402

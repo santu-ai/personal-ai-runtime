@@ -5,6 +5,7 @@ Uses direct emit_event for task lifecycle.
 
 import uuid
 
+
 class TestTaskAgent:
     def test_full_task_agent_lifecycle_and_rebuild(self, isolated_kernel):
         k, _db = isolated_kernel

@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
+
 @pytest.mark.asyncio
 @patch("app.core.runtime.cron_registry.run_memory_decay")
 async def test_run_memory_decay(mock_decay):

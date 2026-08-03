@@ -9,7 +9,9 @@ Validates that:
 """
 
 import asyncio
+
 import pytest
+
 
 @pytest.fixture
 def kernel(isolated_kernel):

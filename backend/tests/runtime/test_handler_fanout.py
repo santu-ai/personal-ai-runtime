@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+
 def _reregister_handlers() -> None:
     """Re-run @subscribe after autouse runtime.reset() cleared the registry."""
     import app.core.agents.handlers.chat_completed_handlers as cch

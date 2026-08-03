@@ -10,6 +10,7 @@ Covers paths not exercised by existing decision/forbidden tests:
 
 import pytest
 
+
 @pytest.fixture
 def kernel(isolated_kernel):
     k, _db = isolated_kernel

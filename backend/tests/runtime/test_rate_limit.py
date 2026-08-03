@@ -5,7 +5,6 @@ import pytest
 from app.core.rate_limit import (
     _BUCKETS,
     _MAX_BUCKETS,
-    _evict_stale_buckets,
     _matches,
     check_rate_limit,
     hash_caller_key,

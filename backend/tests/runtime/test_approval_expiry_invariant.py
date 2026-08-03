@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+
 def test_expire_stale_approvals_emit_only_projects_expired(isolated_kernel):
     k, _db = isolated_kernel
     k.emit_event(

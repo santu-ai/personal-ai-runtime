@@ -5,6 +5,7 @@ import pytest
 from app.core.runtime import read_ports
 from app.core.runtime.reaction_registry import reset_reactions
 
+
 @pytest.fixture
 def kernel(isolated_kernel):
     k, _db = isolated_kernel

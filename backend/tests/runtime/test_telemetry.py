@@ -2,8 +2,8 @@
 
 from datetime import UTC, datetime, timedelta
 
-from app.core.telemetry.telemetry import Telemetry
 from app.core.runtime.kernel.kernel import Kernel
+from app.core.telemetry.telemetry import Telemetry
 from app.store.database import Database
 
 

@@ -9,6 +9,7 @@ even on the pre_approved path.
 
 import pytest
 
+
 @pytest.fixture
 def kernel(isolated_kernel):
     k, _db = isolated_kernel

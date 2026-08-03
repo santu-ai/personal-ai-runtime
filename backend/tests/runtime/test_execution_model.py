@@ -10,6 +10,7 @@ Validates:
 
 import pytest
 
+
 @pytest.fixture(autouse=True)
 def _reset_scheduler():
     """Reset the global scheduler singleton between tests."""

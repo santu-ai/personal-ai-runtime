@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+
 def test_work_item_created_triggers_goal_changed(isolated_kernel):
     k, _db = isolated_kernel
     with patch("app.core.runtime.notification_bridge.broadcast_event") as broadcast:

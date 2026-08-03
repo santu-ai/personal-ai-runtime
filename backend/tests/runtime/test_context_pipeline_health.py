@@ -61,7 +61,6 @@ def test_missing_fragment_module_treated_as_ok(monkeypatch):
 
     # Hide the module by inserting a failing import via sys.modules.
     real_mod = sys.modules.pop("app.fragments.register", None)
-    real_loader = None
     try:
         # Build a fresh pipeline; the lazy import will fail with ImportError.
         pipeline = ContextPipeline()

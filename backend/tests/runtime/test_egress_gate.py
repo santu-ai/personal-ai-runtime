@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from app.core.runtime.egress.egress_gate import audit_llm_egress, classify_llm_payload
 
 

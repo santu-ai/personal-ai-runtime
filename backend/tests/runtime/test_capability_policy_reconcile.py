@@ -13,8 +13,6 @@ from pathlib import Path
 import pytest
 
 from app.core.runtime.capability_governance import capability_governance
-from app.core.runtime.kernel import Kernel
-from app.store.database import Database
 
 POLICY_PATH = Path(__file__).resolve().parents[2] / "capability_policy.json"
 
@@ -52,8 +50,6 @@ def test_seed_reconciles_stale_low_risk(kernel):
     capability_governance._ensure_policy(kernel, "computer_screenshot", "low")
     rows = kernel.query_state("policy_events", capability="computer_screenshot", limit=1)
     assert rows[0]["risk_level"] == "low"
-
-    events_before = kernel.read_events(aggregate_type="policy")
 
     # Re-seed from the (tightened) JSON.
     capability_governance.seed_from_json(kernel)

@@ -9,7 +9,6 @@ if str(_BACKEND_ROOT / "backend") not in sys.path:
 
 import pytest
 
-from app.core.runtime.kernel.kernel import Kernel
 
 @pytest.fixture
 def kernel(isolated_kernel):

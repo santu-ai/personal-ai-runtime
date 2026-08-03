@@ -6,6 +6,7 @@ Selector and governance edge cases for kernel.query_state / read_events.
 import asyncio
 from datetime import datetime, timezone
 
+
 class TestQueryStateW3:
 
     def test_memories_by_claim_status(self, isolated_kernel):

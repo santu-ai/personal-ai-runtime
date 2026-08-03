@@ -10,6 +10,7 @@ Verifies that:
 
 import threading
 
+
 def _fresh_kernel(tmp_path, *, memory_index=None):
     """Build an isolated Kernel against tmp_path with optional memory_index."""
     from app.core.runtime.kernel import Kernel

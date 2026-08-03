@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from app.core.harness.builtin_tools.calendar import CalendarServer
 from app.context_runtime import RuntimeContext
+from app.core.harness.builtin_tools.calendar import CalendarServer
 from app.fragments.calendar import DailyAgendaFragment, UpcomingEventsFragment
 
 
