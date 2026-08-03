@@ -157,15 +157,6 @@ export {
 // Notifications
 export { listNotifications, markNotificationRead, markAllNotificationsRead } from "./notifications";
 
-// Knowledge
-export {
-  listKnowledgeDocuments,
-  uploadKnowledgeDocument,
-  deleteKnowledgeDocument,
-  searchKnowledge,
-} from "./knowledge";
-export type { KnowledgeDocument, KnowledgeSearchResult } from "./knowledge";
-
 // Timeline
 export { listTimelineEvents } from "./timeline";
 export type { TimelineEvent, TimelineResponse } from "./timeline";

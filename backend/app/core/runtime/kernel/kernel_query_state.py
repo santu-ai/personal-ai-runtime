@@ -124,13 +124,6 @@ class QueryStateMixin:  # type: ignore[attr-defined]  # mixed into Kernel which 
             return []
         return port.search_memories(query, n_results=k)
 
-    def recall_knowledge(self, query: str, k: int = 5) -> list[dict]:
-        """Knowledge recall via injected MemoryIndexPort."""
-        port = getattr(self, "_memory_index", None)
-        if port is None:
-            return []
-        return port.search_knowledge(query, n_results=k)
-
     def _query_conversations(self, filters: dict[str, Any]) -> list[dict]:
         return qb.query_conversations(self._db, filters)
 

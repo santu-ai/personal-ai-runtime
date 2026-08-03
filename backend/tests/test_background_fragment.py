@@ -34,7 +34,7 @@ class TestBackgroundCollect:
             return "## 相关记忆\n1. should-not-appear", [{"id": "m1", "type": "memory", "title": "x"}]
 
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.retrieve_unified_with_sources",
+            "app.core.runtime.read_ports.retrieve_memory_with_sources",
             _recall,
         )
         monkeypatch.setattr(
@@ -48,35 +48,9 @@ class TestBackgroundCollect:
         assert "should-not-appear" not in r.content
 
     @pytest.mark.asyncio
-    async def test_knowledge_tag_skips_document_recall(self, monkeypatch):
-        seen = {}
-
-        def _recall(msg, **kwargs):
-            seen.update(kwargs)
-            return "## 相关记忆\n1. only memory", [{"id": "m1", "type": "memory", "title": "only memory"}]
-
-        monkeypatch.setattr(
-            "app.core.runtime.read_ports.retrieve_unified_with_sources",
-            _recall,
-        )
-        monkeypatch.setattr(
-            "app.core.runtime.read_ports.query_world_context",
-            lambda: "",
-        )
-
-        r = await BackgroundContextFragment().collect(
-            RuntimeContext(
-                user_message="查找知识库里关于认证的文档",
-                intent_tags=frozenset({"knowledge"}),
-            )
-        )
-        assert seen.get("max_knowledge") == 0
-        assert "only memory" in r.content
-
-    @pytest.mark.asyncio
     async def test_world_failure_keeps_recall(self, monkeypatch):
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.retrieve_unified_with_sources",
+            "app.core.runtime.read_ports.retrieve_memory_with_sources",
             lambda msg, **kwargs: ("## 相关记忆\n1. kept fact", [{"id": "m1", "type": "memory", "title": "kept fact"}]),
         )
 
@@ -99,7 +73,7 @@ class TestBackgroundCollect:
             raise RuntimeError("recall down")
 
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.retrieve_unified_with_sources",
+            "app.core.runtime.read_ports.retrieve_memory_with_sources",
             _boom,
         )
         monkeypatch.setattr(
@@ -116,7 +90,7 @@ class TestBackgroundCollect:
     async def test_enforces_max_tokens(self, monkeypatch):
         huge = "## 相关记忆\n" + ("fact about project planning " * 400)
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.retrieve_unified_with_sources",
+            "app.core.runtime.read_ports.retrieve_memory_with_sources",
             lambda msg, **kwargs: (huge, []),
         )
         monkeypatch.setattr(

@@ -38,14 +38,13 @@ export default function MemoryListItem({
     <li className="bg-surface-raised border border-border-subtle rounded-lg p-3 text-sm group">
       <p className="text-fg-primary">{m.content}</p>
       {m.source_document_name && (
-        <a
-          href={`#/knowledge`}
-          className="inline-flex items-center gap-1 mt-1.5 text-xs text-insight hover:text-insight/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+        <span
+          className="inline-flex items-center gap-1 mt-1.5 text-xs text-fg-secondary"
           title={m.source_document_id || ""}
         >
           <FileText size={10} />
           <span>源自：《{m.source_document_name}》</span>
-        </a>
+        </span>
       )}
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         {m.created_at && (

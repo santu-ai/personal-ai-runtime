@@ -89,9 +89,6 @@ class TestMemoryExtractor:
                     }
                 ]
 
-            def search_knowledge(self, query, n_results=5):
-                return []
-
             def index_memory(self, content, metadata=None, memory_id=None):
                 return f"emb_{memory_id}"
 

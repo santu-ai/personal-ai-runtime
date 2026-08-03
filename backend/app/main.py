@@ -22,7 +22,6 @@ from app.api import (
     connectors,
     dashboard,
     inbox,
-    knowledge,
     memory,
     notifications,
     settings_api,
@@ -520,7 +519,6 @@ app = FastAPI(
 - **Memory** — automated memory extraction and semantic search
 - **Inbox** — email polling, reading, and sending (Gmail)
 - **Approvals** — human-in-the-loop confirmation for high-risk actions
-- **Knowledge Base** — document upload and RAG search
 - **Telemetry** — cost, token usage, and tool call statistics
 - **System** — health, data export/import/destroy, and settings
 
@@ -630,7 +628,6 @@ app.include_router(triggers.router, prefix="/api/triggers")
 app.include_router(inbox.router, prefix="/api/inbox")
 app.include_router(connectors.router, prefix="/api/connectors")
 app.include_router(timeline.router, prefix="/api/timeline")
-app.include_router(knowledge.router, prefix="/api/knowledge")
 app.include_router(work_items.router, prefix="/api/work-items")
 
 

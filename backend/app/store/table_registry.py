@@ -92,10 +92,8 @@ APP_STORAGE_SCHEMA: dict[str, frozenset[str]] = {
     "activity_log": frozenset({
         "id", "type", "payload", "timestamp",
     }),
-    # App settings (UI preferences, LLM/Email connection config, and the
-    # knowledge_docs registry JSON). Local-only operational config; not a
-    # governed fact. Knowledge docs + Chroma are also registered under
-    # NON_SOVEREIGN_ATTACHMENTS['knowledge'].
+    # App settings (UI preferences, LLM/Email connection config). Local-only
+    # operational config; not a governed fact.
     "app_settings": frozenset({
         "category", "data_json", "updated_at",
     }),
@@ -126,25 +124,10 @@ ALL_CLASSIFIED_TABLES = GOVERNED_TABLES | APP_STORAGE_TABLES
 
 # ── Non-sovereignty attachments ─────────────────────────────────────────────
 # Explicitly registered stores that are **not** reconstructed from event_log.
-# Choosing Path B (register) over Path A (event-source): Knowledge is bulk RAG
-# cache / local docs — same tier as app_settings operational config, not personal
-# facts requiring rebuild/export fidelity via Event Sourcing.
-#
-# INV-S4: never present these as a second Truth Layer.
-NON_SOVEREIGN_ATTACHMENTS: dict[str, dict[str, str]] = {
-    "knowledge": {
-        "kind": "hybrid",
-        "owner_module": "app.product.knowledge",
-        "sqlite": "app_settings.category=knowledge_docs",
-        "vector_collection": "knowledge",
-        "write_path": "product/knowledge.py direct; AppConfigChanged is audit-only",
-        "notes": (
-            "Not in GOVERNED_TABLES; not in MEMORY_INDEX_EVENT_TYPES; "
-            "Kernel.snapshot/export does not restore documents from event_log alone. "
-            "Decision: ADR-R013 Path B+."
-        ),
-    },
-}
+# Currently empty — the Knowledge Base (Path B attachment) was removed. If a
+# future store is added that cannot be rebuilt from event_log, register it
+# here explicitly instead of silently becoming a second Truth Layer.
+NON_SOVEREIGN_ATTACHMENTS: dict[str, dict[str, str]] = {}
 
 # Philosophy / Truth-Layer exceptions (must stay explicit — Fitness registry).
 # Each entry is a deliberate fracture of "everything is Event/State".
@@ -156,10 +139,6 @@ PHILOSOPHY_EXCEPTIONS: dict[str, dict[str, str]] = {
     "memory_vector_index": {
         "rule": "Chroma memory index is eventually consistent derived State",
         "evidence": "kernel.emit_event post-commit sync + memory_index_repairs",
-    },
-    "knowledge_path_b": {
-        "rule": "Knowledge docs are non-sovereign attachments (INV-S4)",
-        "evidence": "NON_SOVEREIGN_ATTACHMENTS['knowledge']; ADR-R013",
     },
     "app_storage": {
         "rule": "APP_STORAGE is operational — not governed Truth",
@@ -185,6 +164,3 @@ if __debug__:
     assert GOVERNED_TABLES.isdisjoint(APP_STORAGE_TABLES), (
         f"Overlap between GOVERNED and APP_STORAGE: {GOVERNED_TABLES & APP_STORAGE_TABLES}"
     )
-    # Knowledge must stay classified as attachment, never as a governed table name.
-    assert "knowledge" not in GOVERNED_TABLES
-    assert "knowledge_docs" not in GOVERNED_TABLES

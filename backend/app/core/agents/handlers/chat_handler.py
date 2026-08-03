@@ -1,7 +1,7 @@
 """Chat Handler — processes chat messages via Scheduler with streaming (ADR Unification).
 
 Stage 3: PromptCompiler builds the system prompt from Universal Fragments
-(RuntimeIdentity + ConversationState + Memory + Knowledge) via QueryAnalysis.
+(RuntimeIdentity + ConversationState + Memory) via QueryAnalysis.
 
 ChatTextDelta events are pushed to the SSE queue registry instead of event_log
 to avoid polluting the immutable Truth Layer with high-frequency incremental

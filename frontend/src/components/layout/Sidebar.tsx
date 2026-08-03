@@ -13,7 +13,6 @@ import {
   ChevronRight,
   FolderOpen,
   Clock,
-  BookOpen,
 } from "lucide-react";
 import { useApprovalsQuery } from "../../hooks/useApprovalsQuery";
 import { useInboxQuery } from "../../hooks/useInboxQuery";
@@ -27,7 +26,6 @@ const DATA_NAV = [
   { path: "/approvals", label: "审批", icon: ShieldCheck, badgeKey: "approvals" as const },
   { path: "/memories", label: "记忆", icon: Brain, badgeKey: null },
   { path: "/timeline", label: "时间线", icon: Clock, badgeKey: null },
-  { path: "/knowledge", label: "知识库", icon: BookOpen, badgeKey: null },
 ];
 
 const SYSTEM_NAV = [{ path: "/settings", label: "设置", icon: Settings }];

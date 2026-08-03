@@ -37,10 +37,6 @@ _INTENT_PATTERNS: dict[str, list[str]] = {
         r"\blearn\b", r"\bremember\b",
         "记得", "回忆", "之前说过", "上次", "我讲过", "记忆", "记住",
     ],
-    "knowledge": [
-        r"\bknowledge\b", r"\bsearch doc\b",
-        "知识库", "文档", "找一下", "有没有关于", "查", "资料",
-    ],
     "mail": [
         r"\binbox\b", r"\bemail\b", r"\bgmail\b",
         "邮件", "收件箱", "发信", "回复邮件", "查邮件",

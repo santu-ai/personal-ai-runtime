@@ -9,11 +9,6 @@ class TestQueryAnalyzerExtended:
         assert "review" in qa.analyze("本周总结一下进展").tags
         assert "coding" in qa.analyze("帮我修复这个 bug").tags
 
-    def test_analyze_knowledge_intent(self):
-        qa = QueryAnalyzer()
-        result = qa.analyze("帮我查一下知识库里有没有关于机器学习的资料")
-        assert "knowledge" in result.tags
-
     def test_analyze_multiple_tags(self):
         qa = QueryAnalyzer()
         result = qa.analyze("帮我规划代码重构和本周回顾")

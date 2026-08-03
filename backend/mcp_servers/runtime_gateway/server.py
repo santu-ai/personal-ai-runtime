@@ -6,7 +6,7 @@ Built on the official ``mcp`` MCPServer SDK (stdio). Tool logic lives in
 runtime internals.
 
 Tools (``PAR_GATEWAY_TOOLS=all|core|name,name``):
-  - core: recall / store_memory — @public memory + knowledge
+  - core: recall / store_memory — @public memory recall + store
   - extended: list_pending_approvals / recent_timeline — authenticated read surfaces
 
 Usage from Cursor / Claude Desktop config:
@@ -99,7 +99,7 @@ def _register_tools() -> None:
 
         @mcp.tool()
         def recall(query: str, n_results: int = 5) -> str:
-            """Recall what the user already knows. Searches memories + knowledge documents."""
+            """Recall what the user already knows. Searches memories."""
             return _unwrap(tool_recall(query, n_results))
 
     if "store_memory" in ENABLED_TOOLS:

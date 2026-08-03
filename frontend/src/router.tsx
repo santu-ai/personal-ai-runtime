@@ -10,7 +10,6 @@ const DashboardPage = lazy(() => import("./pages/Dashboard"));
 const SettingsPage = lazy(() => import("./pages/Settings"));
 const ApprovalsPage = lazy(() => import("./pages/Approvals"));
 const TimelinePage = lazy(() => import("./pages/Timeline"));
-const KnowledgePage = lazy(() => import("./pages/Knowledge"));
 
 export const router = createBrowserRouter([
   {
@@ -30,7 +29,6 @@ export const router = createBrowserRouter([
       { path: "settings", element: <SettingsPage /> },
       { path: "approvals", element: <ApprovalsPage /> },
       { path: "timeline", element: <TimelinePage /> },
-      { path: "knowledge", element: <KnowledgePage /> },
     ],
   },
 ]);

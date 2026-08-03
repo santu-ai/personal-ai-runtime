@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlencode
@@ -72,13 +71,8 @@ def tool_recall(query: str, n_results: int = 5) -> ToolOutput:
     n = clamp_n(n_results)
 
     mem_qs = urlencode({"q": query, "n": n})
-    know_qs = urlencode({"query": query, "n_results": n})
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        fut_mem = pool.submit(request, "GET", f"/api/memory/memories/search?{mem_qs}")
-        fut_know = pool.submit(request, "GET", f"/api/knowledge/search?{know_qs}")
-        mem = fut_mem.result()
-        know = fut_know.result()
+    mem = request("GET", f"/api/memory/memories/search?{mem_qs}")
 
     lines: list[str] = []
     errors = 0
@@ -94,28 +88,9 @@ def tool_recall(query: str, n_results: int = 5) -> ToolOutput:
                 content = str(m.get("content", ""))[:200]
                 lines.append(f"{i}. {content}")
 
-    if not know.ok:
-        errors += 1
-        lines.append(f"[knowledge search error: {know.error}]")
-    elif isinstance(know.data, dict):
-        docs = know.data.get("results") or []
-        if docs:
-            lines.append("\n## 相关文档")
-            for i, d in enumerate(docs, 1):
-                if not isinstance(d, dict):
-                    continue
-                meta = d.get("metadata") or {}
-                fname = (
-                    meta.get("source_file", "document")
-                    if isinstance(meta, dict)
-                    else "document"
-                )
-                snippet = (d.get("content") or "")[:200].replace("\n", " ")
-                lines.append(f"{i}. [{fname}] {snippet}")
-
     if not lines:
-        return ToolOutput("未找到相关记忆或文档")
-    return ToolOutput("\n".join(lines), is_error=errors == 2)
+        return ToolOutput("未找到相关记忆")
+    return ToolOutput("\n".join(lines), is_error=errors == 1)
 
 
 def tool_store_memory(content: str, category: str = "fact") -> ToolOutput:

@@ -321,8 +321,8 @@ class MemoryIndexPort(Protocol):
     """Semantic memory index for storage and recall.
 
     The Kernel uses this to synchronise memory events with a vector index
-    and to serve ``recall_memory`` / ``recall_knowledge``. If None is
-    injected, index sync and recall are no-ops.
+    and to serve ``recall_memory``. If None is injected, index sync and
+    recall are no-ops.
     """
 
     def index_memory(
@@ -347,8 +347,4 @@ class MemoryIndexPort(Protocol):
         self, queries: list[str], n_results: int = 5
     ) -> list[list[dict]]:
         """Batch semantic search; return one hit list per query."""
-        ...
-
-    def search_knowledge(self, query: str, n_results: int = 5) -> list[dict]:
-        """Semantic search over knowledge chunks."""
         ...

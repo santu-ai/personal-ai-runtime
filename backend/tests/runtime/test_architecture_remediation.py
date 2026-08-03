@@ -167,7 +167,6 @@ def test_prune_handler_executions_respects_retention(kernel):
 def test_philosophy_exceptions_registry_present():
     from app.store.table_registry import PHILOSOPHY_EXCEPTIONS
 
-    assert "knowledge_path_b" in PHILOSOPHY_EXCEPTIONS
     assert "single_process_control_plane" in PHILOSOPHY_EXCEPTIONS
     assert "transport_chat_delta" in PHILOSOPHY_EXCEPTIONS
     assert "handler_executions_soft_prune" in PHILOSOPHY_EXCEPTIONS

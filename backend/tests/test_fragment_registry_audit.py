@@ -22,7 +22,6 @@ FRAGMENT_TRIGGER_MATRIX: dict[str, str] = {
     "mail.email_search": "Scenario: mail tag",
     "calendar.today": "Scenario: calendar tag",
     "calendar.upcoming": "Scenario: calendar tag",
-    "scenario.knowledge": "Scenario: knowledge tag",
 }
 
 
@@ -115,7 +114,7 @@ class TestIdentitySingleSource:
         from app.core.runtime.governance.context_pipeline import ContextPipeline
 
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.retrieve_unified_with_sources",
+            "app.core.runtime.read_ports.retrieve_memory_with_sources",
             lambda msg, **kwargs: ("", []),
         )
         monkeypatch.setattr(

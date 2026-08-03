@@ -7,7 +7,7 @@
     context_policy.py); the pipeline itself is policy-agnostic.
 
     Citation Tracking:
-    Pipeline tracks sources (memories, knowledge docs) used during
+    Pipeline tracks sources (memories) used during
     context assembly and stores them for SSE emission.
 
 Usage:

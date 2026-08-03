@@ -92,7 +92,7 @@ def _repair_empty_collection_configs(vector_dir: str | Path) -> int:
 
 
 class VectorStore:
-    """Manages ChromaDB collections for memory and knowledge embeddings."""
+    """Manages the ChromaDB collection for memory embeddings."""
 
     def __init__(self):
         # Resolve settings at call time so test reset_settings() takes effect.
@@ -123,11 +123,6 @@ class VectorStore:
             name="memories",
             embedding_function=_EMBEDDING_FUNCTION,
             metadata={"description": "Long-term user memories and preferences"},
-        )
-        self.knowledge_collection = self.client.get_or_create_collection(
-            name="knowledge",
-            embedding_function=_EMBEDDING_FUNCTION,
-            metadata={"description": "Imported documents and knowledge fragments"},
         )
 
     def add_memory(
@@ -179,23 +174,6 @@ class VectorStore:
         )
         return self._parse_search_results(results, len(queries))
 
-    def search_knowledge(self, query: str, n_results: int = 5) -> list[VectorSearchResult]:
-        """Semantic search in the knowledge base."""
-        batch = self.search_knowledge_batch([query], n_results=n_results)
-        return batch[0] if batch else []
-
-    def search_knowledge_batch(
-        self, queries: list[str], n_results: int = 5
-    ) -> list[list[VectorSearchResult]]:
-        """Batch semantic search in knowledge base."""
-        if not queries:
-            return []
-        results = self.knowledge_collection.query(
-            query_texts=queries,
-            n_results=n_results,
-        )
-        return self._parse_search_results(results, len(queries))
-
     def _parse_search_results(self, results: Any, num_queries: int) -> list[list[VectorSearchResult]]:
         """Internal helper to parse ChromaDB QueryResult into list of lists."""
         batches: list[list[VectorSearchResult]] = []
@@ -224,32 +202,6 @@ class VectorStore:
             batches.append(items)
         return batches
 
-    def add_knowledge_chunk(
-        self, content: str, metadata: dict | None = None, chunk_id: str | None = None
-    ) -> str:
-        """Store a knowledge chunk with embedding."""
-        cid = chunk_id or str(uuid.uuid4())
-        self.knowledge_collection.add(
-            ids=[cid],
-            documents=[content],
-            metadatas=[metadata or {}],
-        )
-        return cid
-
-    def index_knowledge_chunk(
-        self, content: str, metadata: dict | None = None, chunk_id: str | None = None
-    ) -> str:
-        """Idempotent knowledge indexing per chunk_id."""
-        if chunk_id:
-            try:
-                self.knowledge_collection.delete(ids=[chunk_id])
-            except Exception:
-                logger.debug(
-                    "Idempotent delete of knowledge chunk %s failed", chunk_id,
-                    exc_info=True,
-                )
-        return self.add_knowledge_chunk(content, metadata=metadata, chunk_id=chunk_id)
-
     def delete_memory(self, memory_id: str):
         """Delete a memory by its ID."""
         self.memory_collection.delete(ids=[memory_id])
@@ -258,11 +210,6 @@ class VectorStore:
         """Return all memory IDs currently in the vector index."""
         result = self.memory_collection.get(include=[])
         return list(result.get("ids") or [])
-
-    def delete_knowledge_chunks(self, chunk_ids: list[str]):
-        """Delete knowledge chunks by their IDs."""
-        if chunk_ids:
-            self.knowledge_collection.delete(ids=chunk_ids)
 
 
 vector_store = BoundProxy()

@@ -1,8 +1,8 @@
-"""Tests for Memory ↔ Knowledge provenance.
+"""Tests for memory provenance fields.
 
 Verifies that MemoryDerived events carrying source_document_id / name are
-projected into the memories table and surfaced through query_state, so the
-frontend can render "derived from: <doc>" and link back to the document.
+projected into the memories table and surfaced through query_state. These
+fields record the document a memory was derived from.
 """
 
 class TestMemoryDocumentProvenance:

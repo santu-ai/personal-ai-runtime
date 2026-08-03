@@ -37,21 +37,9 @@ class TestMCPServerProtocol:
 
 
 class TestToolRecall:
-    def test_recall_combines_memory_and_knowledge(self, monkeypatch):
+    def test_recall_returns_memory_hits(self, monkeypatch):
         responses = iter([
             HttpResult(ok=True, data=[{"id": "m1", "content": "User likes Rust"}]),
-            HttpResult(
-                ok=True,
-                data={
-                    "results": [
-                        {
-                            "content": "Rust ownership guide",
-                            "metadata": {"source_file": "rust.md"},
-                        }
-                    ],
-                    "total": 1,
-                },
-            ),
         ])
 
         def fake_http(method, path, body=None):
@@ -63,30 +51,23 @@ class TestToolRecall:
         output = server.tool_recall("Rust")
         assert not output.is_error
         assert "User likes Rust" in output.text
-        assert "rust.md" in output.text
 
-    def test_recall_uses_get_for_knowledge(self, monkeypatch):
+    def test_recall_uses_get_for_memory(self, monkeypatch):
         seen: list[tuple[str, str]] = []
 
         def fake_http(method, path, body=None):
             seen.append((method, path))
-            if "memory" in path:
-                return HttpResult(ok=True, data=[])
-            return HttpResult(ok=True, data={"results": []})
+            return HttpResult(ok=True, data=[])
 
         monkeypatch.setattr("mcp_servers.runtime_gateway.tools.request", fake_http)
         server.tool_recall("q")
-        assert any(m == "GET" and path.startswith("/api/knowledge/search?") for m, path in seen)
+        assert any(m == "GET" and path.startswith("/api/memory/memories/search?") for m, path in seen)
         assert not any(m == "POST" for m, _ in seen)
 
     def test_recall_handles_empty(self, monkeypatch):
         monkeypatch.setattr(
             "mcp_servers.runtime_gateway.tools.request",
-            lambda *a, **k: (
-                HttpResult(ok=True, data=[])
-                if "memory" in a[1]
-                else HttpResult(ok=True, data={"results": []})
-            ),
+            lambda *a, **k: HttpResult(ok=True, data=[]),
         )
         output = server.tool_recall("nothing")
         assert "未找到" in output.text
@@ -95,16 +76,14 @@ class TestToolRecall:
     def test_recall_wrapped_memory_payload(self, monkeypatch):
         monkeypatch.setattr(
             "mcp_servers.runtime_gateway.tools.request",
-            lambda method, path, body=None: (
-                HttpResult(ok=True, data={"items": [{"content": "wrapped"}]})
-                if "memory" in path
-                else HttpResult(ok=True, data={"results": []})
+            lambda method, path, body=None: HttpResult(
+                ok=True, data={"items": [{"content": "wrapped"}]}
             ),
         )
         output = server.tool_recall("x")
         assert "wrapped" in output.text
 
-    def test_recall_both_sources_fail_is_error(self, monkeypatch):
+    def test_recall_memory_failure_is_error(self, monkeypatch):
         monkeypatch.setattr(
             "mcp_servers.runtime_gateway.tools.request",
             lambda *a, **k: HttpResult(ok=False, status=401, error="HTTP 401"),
@@ -112,7 +91,6 @@ class TestToolRecall:
         output = server.tool_recall("x")
         assert output.is_error
         assert "memory search error" in output.text
-        assert "knowledge search error" in output.text
 
     def test_recall_rejects_empty_query(self):
         output = server.tool_recall("   ")

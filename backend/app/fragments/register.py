@@ -1,9 +1,9 @@
 """Fragment registration — single entrypoint for all context fragments.
 
-Active set (10):
+Active set (9):
   Core:       background, timeline, goals
   Priority:   conversation_state, governance
-  Scenario:   mail (recent + search), calendar (today + upcoming), knowledge
+  Scenario:   mail (recent + search), calendar (today + upcoming)
 
 Selection policy lives in ``fragment_selector`` (Core / Priority / Scenario /
 stage sets). This module only registers instances into a FragmentRegistry.
@@ -24,7 +24,6 @@ from app.fragments.universal.background import BackgroundContextFragment
 from app.fragments.universal.conversation_state import ConversationStateFragment
 from app.fragments.universal.goals import GoalsContextFragment
 from app.fragments.universal.governance import GovernanceContextFragment
-from app.fragments.universal.knowledge_context import KnowledgeContextFragment
 from app.fragments.universal.timeline import TimelineContextFragment
 
 # Ordered for readability only — selection order is decided by FragmentSelector.
@@ -41,7 +40,6 @@ _ALL_FRAGMENT_CLASSES = [
     EmailSearchFragment,         # mail
     DailyAgendaFragment,         # calendar
     UpcomingEventsFragment,      # calendar
-    KnowledgeContextFragment,    # knowledge
 ]
 
 EXPECTED_FRAGMENT_COUNT = len(_ALL_FRAGMENT_CLASSES)

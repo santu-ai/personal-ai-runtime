@@ -35,7 +35,7 @@ class FragmentResult:
     content: str = ""
     token_count: int = 0
     sources: list[dict] = field(default_factory=list)
-    # Each source: {"id": str, "type": "memory"|"knowledge"|"email"|"goal", "title": str}
+    # Each source: {"id": str, "type": "memory"|"email"|"goal", "title": str}
 
     def __post_init__(self):
         if self.token_count == 0 and self.content:

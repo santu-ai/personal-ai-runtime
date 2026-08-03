@@ -24,7 +24,6 @@ export const queryKeys = {
   promptConfig: ["settings", "prompt"] as const,
   portrait: ["portrait"] as const,
   approvals: ["approvals"] as const,
-  knowledge: ["knowledge"] as const,
   timeline: ["timeline"] as const,
   mcpRegistry: ["mcpRegistry"] as const,
   conversations: ["conversations"] as const,

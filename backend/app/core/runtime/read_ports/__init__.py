@@ -53,11 +53,6 @@ from app.core.runtime.read_ports.inbox import (
     query_recent_inbox_emails,
     search_inbox_emails,
 )
-from app.core.runtime.read_ports.knowledge import (
-    recall_unified,
-    retrieve_unified_with_sources,
-    search_knowledge,
-)
 from app.core.runtime.read_ports.memory import (
     build_memory_graph_edges,
     count_memories,
@@ -171,9 +166,6 @@ __all__ = [
     "retrieve_memory_with_sources",
     "query_memory",
     "query_memories",
-    "recall_unified",
-    "retrieve_unified_with_sources",
-    "search_knowledge",
     "notify_goal_action_completed",
     "query_conversation_messages",
     "query_conversation",

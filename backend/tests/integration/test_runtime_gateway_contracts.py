@@ -1,18 +1,10 @@
 """Runtime Gateway HTTP contracts that are not covered by api smoke.
 
-Keeps knowledge search (absent from api coverage) and approvals ``limit``
-behavior; memory/timeline shapes live in api/timeline integration suites.
+Keeps approvals ``limit`` behavior; memory/timeline shapes live in
+api/timeline integration suites.
 """
 
 from fastapi.testclient import TestClient
-
-
-def test_knowledge_search_is_get_with_results(client: TestClient):
-    r = client.get("/api/knowledge/search", params={"query": "gateway", "n_results": 1})
-    assert r.status_code == 200
-    body = r.json()
-    assert "results" in body
-    assert isinstance(body["results"], list)
 
 
 def test_approvals_pending_enriched_honours_limit(client: TestClient, monkeypatch):

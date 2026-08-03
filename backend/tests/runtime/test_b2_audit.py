@@ -1,4 +1,4 @@
-"""Runtime audit: Inbox / Knowledge events land in event_log (B2).
+"""Runtime audit: Inbox events land in event_log (B2).
 
 Not an HTTP integration test — lives under tests/runtime.
 """

@@ -126,8 +126,8 @@ class MemoryExtractor:
         polluting the memory store with near-duplicates.
 
         When source_document_id is provided, every extracted memory is linked
-        back to that document, establishing the Memory ↔ Knowledge provenance
-        chain used by the "derived from" UI.
+        back to that document. (Knowledge Base was removed; the field remains
+        available for future document-sourced extraction.)
         """
         if not conversation_text.strip():
             return []

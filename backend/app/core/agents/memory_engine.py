@@ -28,11 +28,10 @@ class MemoryEngine:
     ) -> str:
         """Store a memory via Kernel event; Chroma index syncs in Kernel Space.
 
-        When the memory was derived from a knowledge-base document (e.g. the
-        user discussed an uploaded PDF and the extractor captured a fact from
-        that discussion), pass source_document_id / source_document_name to
-        record the provenance link. The frontend can then show "derived from:
-        <doc>" and jump to the document.
+        When the memory was derived from a source document, pass
+        source_document_id / source_document_name to record the provenance
+        link. (Knowledge Base was removed; the fields remain for future
+        document-sourced extraction.)
         """
         memory_id = str(uuid.uuid4())
         payload: dict[str, object] = {

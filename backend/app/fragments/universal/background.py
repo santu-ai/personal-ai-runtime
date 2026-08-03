@@ -75,11 +75,10 @@ class BackgroundContextFragment(ContextFragment):
         sources: list[dict] = []
 
         if should_recall_background(ctx.user_message):
-            max_knowledge = 0 if "knowledge" in ctx.intent_tags else 3
             try:
-                ctx_str, ctx_sources = read_ports.retrieve_unified_with_sources(
+                ctx_str, ctx_sources = read_ports.retrieve_memory_with_sources(
                     ctx.user_message,
-                    max_knowledge=max_knowledge,
+                    max_memories=3,
                 )
                 if ctx_str:
                     parts.append(ctx_str)

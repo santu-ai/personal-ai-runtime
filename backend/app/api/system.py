@@ -177,9 +177,6 @@ async def export_all_data(body: ExportRequest | None = None):
     """Export governed personal data snapshot as streamed JSON.
 
     Includes ``event_log`` and governed projections rebuildable from it.
-    Does **not** include non-sovereign Knowledge attachments (documents /
-    Chroma ``knowledge`` collection) — see INV-S4 / Path B. Use Knowledge
-    APIs separately if those files must be backed up.
     """
     payload = body or ExportRequest()
     if payload.confirm != EXPORT_CONFIRM:

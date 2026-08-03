@@ -1,8 +1,11 @@
 """CI gate: non-sovereignty attachments stay explicitly registered (Path B).
 
-Knowledge (and future peers) must not silently become a second Truth Layer.
-This check enforces the registration in ``table_registry.NON_SOVEREIGN_ATTACHMENTS``
-and that each attachment stays outside governed / memory-index event machinery.
+Future stores that cannot be rebuilt from event_log must not silently become
+a second Truth Layer. This check enforces the registration in
+``table_registry.NON_SOVEREIGN_ATTACHMENTS`` and that each attachment stays
+outside governed / memory-index event machinery.
+
+The Knowledge Base attachment was removed; the registry is currently empty.
 
 Usage:
     python -m scripts.check_non_sovereign_attachments
@@ -27,7 +30,8 @@ _REQUIRED_META_KEYS = frozenset({
 })
 
 # Attachment ids that must always be present (Path B baseline).
-_REQUIRED_ATTACHMENT_IDS = frozenset({"knowledge"})
+# Currently none — the Knowledge Base attachment was removed.
+_REQUIRED_ATTACHMENT_IDS: frozenset[str] = frozenset()
 
 
 def check(*, verbose: bool = True) -> int:
@@ -100,16 +104,6 @@ def check(*, verbose: bool = True) -> int:
                     f"types: {sorted(claimed)}"
                 )
 
-    # Knowledge-specific vector collection name (stable contract with VectorStore).
-    knowledge_meta = NON_SOVEREIGN_ATTACHMENTS.get("knowledge") or {}
-    if knowledge_meta.get("vector_collection") not in (None, "knowledge"):
-        violations += 1
-        if verbose:
-            print(
-                "  [FAIL] knowledge.vector_collection must be 'knowledge' "
-                f"(got {knowledge_meta.get('vector_collection')!r})"
-            )
-
     if verbose and violations == 0:
         print(
             f"NON-SOVEREIGN ATTACHMENTS OK — "
@@ -123,7 +117,6 @@ def check(*, verbose: bool = True) -> int:
     required_exc = {
         "transport_chat_delta",
         "memory_vector_index",
-        "knowledge_path_b",
         "app_storage",
         "single_process_control_plane",
         "handler_executions_soft_prune",

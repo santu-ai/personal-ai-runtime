@@ -43,7 +43,6 @@ _SCENARIO_TAG_FRAGMENTS: dict[str, list[str]] = {
     "calendar":  ["calendar.today", "calendar.upcoming"],
     "planning":  ["core.background"],
     "review":    ["core.background"],
-    "knowledge": ["scenario.knowledge"],
 }
 
 
