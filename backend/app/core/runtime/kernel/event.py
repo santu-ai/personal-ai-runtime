@@ -1,8 +1,8 @@
-"""Event primitive — the single immutable source of truth in the Runtime.
+"""事件原语——Runtime 中唯一不可变的事实来源。
 
-Per docs/RUNTIME_SPEC.md (v1.0 FROZEN), an Event is append-only, ordered (by `seq`),
-immutable, and replayable. State and Memory are projections derived from Events;
-the Event Log itself is the only thing that cannot be rebuilt.
+按 docs/RUNTIME_SPEC.md（v1.0 FROZEN）：事件只追加、按 ``seq`` 排序、
+不可变、可重放。State 与 Memory 都是由事件派生的投影；事件日志本身
+是唯一不可重建的东西。
 """
 
 from __future__ import annotations
@@ -20,19 +20,19 @@ def _new_id() -> str:
 
 @dataclass(frozen=True)
 class Event:
-    """An immutable fact. Frozen on purpose — once emitted, it never changes.
+    """一条不可变事实。刻意 frozen——一旦发出永不再变。
 
-    Schema mirrors docs/RUNTIME_SPEC.md §1.1:
-        seq            global monotonic ordinal (assigned by the log, not time)
-        id             unique event id
-        type           e.g. GoalCreated / GoalUpdated / GoalCompleted
-        aggregate_type which kind of aggregate this belongs to (e.g. "goal")
-        aggregate_id   concrete aggregate instance (e.g. "goal-123")
-        actor          who triggered it (user / agent:xxx / kernel / scheduler)
-        payload        event data (includes schema_version stamped on emit)
-        caused_by      direct causal predecessor event id (one hop)
-        correlation_id trace id shared by all events of one intent
-        ts             wall-clock timestamp (display only; order by seq)
+    字段语义：
+        seq            全局单调序号（由日志分配，不是时间）
+        id             事件唯一 id
+        type           如 GoalCreated / GoalUpdated / GoalCompleted
+        aggregate_type 所属聚合类型（如 "goal"）
+        aggregate_id   具体聚合实例（如 "goal-123"）
+        actor          触发者（user / agent:xxx / kernel / scheduler）
+        payload        事件数据（发出时压入 schema_version）
+        caused_by      直接因果前驱事件 id（一跳）
+        correlation_id 同一意图所有事件共享的 trace id
+        ts             墙钟时间戳（仅展示；排序靠 seq）
     """
 
     type: str
@@ -43,11 +43,11 @@ class Event:
     caused_by: str | None = None
     correlation_id: str | None = None
     id: str = field(default_factory=_new_id)
-    seq: int | None = None  # assigned by the Event Log on append
+    seq: int | None = None  # 事件日志追加时分配
     ts: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
     def with_seq(self, seq: int) -> "Event":
-        """Return a copy with the log-assigned sequence number."""
+        """返回带日志分配序号的新副本。"""
         return Event(
             type=self.type,
             aggregate_type=self.aggregate_type,
@@ -73,7 +73,7 @@ class Event:
         caused_by: str | None = None,
         correlation_id: str | None = None,
     ) -> "Event":
-        """Build an Event with ``schema_version`` stamped into the payload."""
+        """构建事件，并把 ``schema_version`` 压入 payload。"""
         from app.core.runtime.kernel.constants import stamp_event_payload
 
         return cls(
