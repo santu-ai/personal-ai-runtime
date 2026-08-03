@@ -22,7 +22,7 @@ Kernel 是 Runtime 的**稳定边界入口**，不是持续增长的业务门面
 
 | 能力 | 位置 | 说明 |
 |------|------|------|
-| 语义召回 | `MemoryIndexPort.search_*` via `recall_memory` / `recall_knowledge` | 禁止旁路全局 `vector_store` |
+| 语义召回 | `MemoryIndexPort.search_memories` via `recall_memory` | 禁止旁路全局 `vector_store` |
 | 工具 schema 列表 | `mcp_hub.get_tool_defs_for_llm` | Kernel 仅 thin 转发（勿再扩） |
 | ScheduledExecution 扫描 | `execution_repository` | Kernel 包装供 Scheduler 恢复 |
 | 按 id 读取执行单元 | `Kernel.read_scheduled_execution(id)` | O(1) 投影查找；Scheduler shadow-compare 必须用此，禁止全表扫 |

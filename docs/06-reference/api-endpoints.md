@@ -156,17 +156,6 @@
 
 `EVENT_LABELS`（[`timeline.py`](../../backend/app/api/timeline.py)）与 `EVENT_ICONS`（[`timeline.py`](../../backend/app/api/timeline.py)）把内部事件类型翻译为中文 + 图标。一次性拉最多 500 条 event_log 在 Python 中过滤/分页。
 
-## knowledge — `/api/knowledge`（[`api/knowledge.py`](../../backend/app/api/knowledge.py)）
-
-`MAX_FILE_SIZE=10MB`，`ALLOWED_EXTENSIONS={.pdf,.md,.txt,.markdown,.json,.csv,.docx}`（[`product/knowledge.py`](../../backend/app/product/knowledge.py)）。元数据存 `app_settings`（`category='knowledge_docs'`），向量化入 ChromaDB。
-
-| 方法 | 路径 | 行 | 请求 | 响应 | 副作用 |
-|---|---|---|---|---|---|
-| POST | `/upload` | `104-163` | multipart `file: UploadFile` | `{ok, document}` / 400 | 文件系统 + PyPDF2 提取 + 分块 + 向量化 + app_settings 写 |
-| GET | `/documents` | `166-170` | — | `{documents, total}` | 无 |
-| DELETE | `/documents/{document_id}` | `173-184` | path | `{ok: true}` / 404 | 删 ChromaDB chunks + app_settings |
-| POST | `/search` | `187-193` | query `query`, `n_results=5`(1-20) | `{results, query, total}` | 读 ChromaDB |
-
 ## connectors — `/api/connectors`（[`api/connectors.py`](../../backend/app/api/connectors.py)）
 
 | 方法 | 路径 | 行 | 请求 | 响应 | 副作用 |

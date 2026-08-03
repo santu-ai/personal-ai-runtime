@@ -91,7 +91,7 @@ User Space 通过 `app.core.runtime.kernel_instance` 拿到 Kernel 代理，可�
 | 类别 | 方法 |
 |---|---|
 | **写** | `emit_event`、`submit_command`、`invoke_capability`、`request_approval`、`grant_approval`、`deny_approval`、`expire_stale_approvals` |
-| **读** | `read_events`、`subscribe_events`、`query_state`、`count_state`、`recall_memory`、`recall_knowledge`、`list_capability_definitions`、`read_scheduled_executions`、`recover_scheduled_executions` |
+| **读** | `read_events`、`subscribe_events`、`query_state`、`count_state`、`recall_memory`、`list_capability_definitions`、`read_scheduled_executions`、`recover_scheduled_executions` |
 | **主权** | `export_event_log_rows`、`import_event_log_rows`、`rebuild`、`rebuild_all`、`save_projection_snapshots` |
 
 目标数据通过 `query_state("work_items", work_type="goal", ...)` / `count_state(...)` 读取（`goals` selector 已移除）。Lane A 执行投影经 `read_scheduled_executions` / `recover_scheduled_executions` 读取（`handler_executions`）。

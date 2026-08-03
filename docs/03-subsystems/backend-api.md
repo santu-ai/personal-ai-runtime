@@ -8,12 +8,12 @@
 
 ### 路由挂载
 
-15 个 router 在 [`main.py`](../../backend/app/main.py) 挂载：
+14 个 router 在 [`main.py`](../../backend/app/main.py) 挂载：
 
 ```
 chat, dashboard, system, settings_api, memory, notifications,
 telemetry_api, approvals, background_tasks(兼容,见下), triggers, inbox,
-connectors, timeline, knowledge, work_items
+connectors, timeline, work_items
 ```
 
 ### 中间件（外到内）
@@ -63,7 +63,6 @@ connectors, timeline, knowledge, work_items
 | settings_api | `/api/settings` | llm GET/PUT/test、email GET/PUT/test、prompt GET/PUT、notifications | DB 写 + 网络出口 + 文件写 |
 | telemetry_api | `/api/telemetry` | cost/summary/by-model、llm-calls、tool-calls、tool-summary、memory/stats、health | 只读 |
 | timeline | `/api/timeline` | `/events`（分页 + 中文标签） | 只读 event_log |
-| knowledge | `/api/knowledge` | upload、documents、search、delete | 文件 + Chroma + app_settings |
 | connectors | `/api/connectors` | 列表、详情、test、registry、install、uninstall | 可能进程间/网络 + 文件写 |
 
 ## SSE 流式端点
@@ -102,7 +101,7 @@ connectors, timeline, knowledge, work_items
 | [`alembic_runner.py`](../../backend/app/store/alembic_runner.py) | `run_migrations()` 用 `backend/alembic.ini`，`command.upgrade(cfg, "head")`，幂等 |
 | [`schema_ddl.py`](../../backend/app/store/schema_ddl.py) | raw DDL fallback：应用表 + kernel 表 + 投影表（`event_log`、`projection_checkpoints`、`handler_executions`、`timer_events`、`policy_events`） |
 | [`table_registry.py`](../../backend/app/store/table_registry.py) | 表分类（GOVERNED vs APP_STORAGE）+ `GOVERNED_SCHEMA` 契约。详见 [02-concepts/kernel-boundary.md](../02-concepts/kernel-boundary.md) |
-| [`vector.py`](../../backend/app/store/vector.py) | `VectorStore` 单例，ChromaDB `PersistentClient(path=settings.vector_dir)`，关闭 telemetry 并 monkey-patch `posthog.capture`。两个 collection：`memories`、`knowledge` |
+| [`vector.py`](../../backend/app/store/vector.py) | `VectorStore` 单例，ChromaDB `PersistentClient(path=settings.vector_dir)`，关闭 telemetry 并 monkey-patch `posthog.capture`。单个 collection：`memories` |
 
 ## Product 层
 
@@ -119,7 +118,6 @@ connectors, timeline, knowledge, work_items
 
 绝大多数 router 通过 Kernel ABI。例外（直访 APP_STORAGE / 文件，或经 product 写非 governed 存储）：
 
-- [`knowledge.py`](../../backend/app/product/knowledge.py) — **非主权附件**（`NON_SOVEREIGN_ATTACHMENTS['knowledge']`）：文档注册表 + Chroma；[`api/knowledge.py`](../../backend/app/api/knowledge.py) 仅做 HTTP 适配
 - [`connectors.py`](../../backend/app/api/connectors.py) 的 install/uninstall — 写 [`mcp_config.json`](../../backend/mcp_config.json)
 
 `inbox_emails` 是 GOVERNED 投影：[`product/inbox.py`](../../backend/app/product/inbox.py) 写经 `emit_event`，读经 `read_ports`。

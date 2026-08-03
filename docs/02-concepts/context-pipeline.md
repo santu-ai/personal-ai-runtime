@@ -44,21 +44,21 @@ flowchart LR
 
 ## 已注册的 Fragment
 
-[`backend/app/fragments/register.py`](../../backend/app/fragments/register.py) 注册 12 个 fragment，全部为只读 `ContextFragment`，通过 [`read_ports/`](../../backend/app/core/runtime/read_ports/__init__.py) 访问数据。
+[`backend/app/fragments/register.py`](../../backend/app/fragments/register.py) 注册 9 个 fragment，全部为只读 `ContextFragment`，通过 [`read_ports/`](../../backend/app/core/runtime/read_ports/__init__.py) 访问数据。
 
 | Fragment | id | priority | max_tokens | tags | 作用 |
 |---|---|---|---|---|---|
 | `GovernanceContextFragment` | `core.governance` | 85 | 400 | governance, universal | 运行时治理快照（待审批数、最近工具、停滞目标） |
-| `ConversationStateFragment` | `core.conversation_state` | 80 | 800 | conversation, universal | 当前会话状态摘要（最近 6 条） |
-| `GoalsContextFragment` | `core.goals` | 75 | 1000 | goals, universal | Top 5 活跃目标 |
-| `TimelineContextFragment` | `core.timeline` | 70 | 2000 | timeline, actions, events, universal | 待办 actions + 近 7 天 events |
-| `MemoryContextFragment` | `core.memory` | 60 | 2000 | memory, universal | 语义记忆检索（带 sources） |
-| `WorldContextFragment` | `core.world` | 55 | 1000 | world, planning, review | 30 天生活快照 |
-| `KnowledgeContextFragment` | `scenario.knowledge` | 50 | 1500 | knowledge, scenario | 从 ChromaDB 注入相关知识块（TOP_K=3） |
-| `MailIdentityFragment` / `RecentEmailsFragment` / `EmailSearchFragment` | `mail.*` | — | — | mail | 邮件身份/最近/搜索 |
-| `CalendarIdentityFragment` / `DailyAgendaFragment` / `UpcomingEventsFragment` | `calendar.*` | — | — | calendar | 日历身份/日议程/未来事件 |
+| `ConversationStateFragment` | `core.conversation_state` | 80 | 500 | conversation, universal | 当前会话状态摘要（最近 6 条） |
+| `GoalsContextFragment` | `core.goals` | 75 | 600 | goals, universal | Top 活跃目标 |
+| `TimelineContextFragment` | `core.timeline` | 70 | 1500 | timeline, actions, events, universal | 待办 actions + 近期 events |
+| `BackgroundContextFragment` | `core.background` | 58 | 3000 | background, universal | 语义记忆召回 + 世界快照 |
+| `RecentEmailsFragment` | `mail.recent_emails` | 70 | 1800 | mail | 最近邮件（含身份标识） |
+| `EmailSearchFragment` | `mail.email_search` | 65 | 1500 | mail | 邮件语义搜索 |
+| `UpcomingEventsFragment` | `calendar.upcoming` | 60 | 2000 | calendar | 未来日程 |
+| `DailyAgendaFragment` | `calendar.today` | 75 | 1500 | calendar | 今日议程（含身份标识） |
 
-`priority >= 100`（Identity）的 fragment **永不被丢弃**。
+mail/calendar fragment 的输出内嵌 `_IDENTITY` 前缀（账户/日历身份信息）；没有独立的 Identity fragment。
 
 ## 治理层：ContextPipeline
 
@@ -78,21 +78,20 @@ flowchart LR
 
 ### QueryAnalyzer
 
-[`governance/query_analyzer.py`](../../backend/app/core/runtime/governance/query_analyzer.py) 是**基于规则的意图标注器**（不调用 LLM、不访问 DB）。标签：`planning`、`review`、`coding`、`memory`、`knowledge`、`mail`、`goals`、`calendar`。英文用 `\b` 词边界；中文用子串匹配。
+[`governance/query_analyzer.py`](../../backend/app/core/runtime/governance/query_analyzer.py) 是**基于规则的意图标注器**（不调用 LLM、不访问 DB）。标签：`planning`、`review`、`coding`、`memory`、`mail`、`goals`、`calendar`。英文用 `\b` 词边界；中文用子串匹配。
 
 ### FragmentSelector
 
 [`governance/fragment_selector.py`](../../backend/app/core/runtime/governance/fragment_selector.py) 三层选择：
 
-1. **Core Tier**（永远加载）：`core.memory`、`core.timeline`、`core.goals`。
-2. **Priority Tier**：`priority >= 80` 的 fragment。
+1. **Core Tier**（永远加载）：`core.background`、`core.timeline`、`core.goals`。
+2. **Priority Tier**：`priority >= 80` 的 fragment（`core.governance`、`core.conversation_state`）。
 3. **Scenario Tier**：标签→fragment_id 映射
-   - mail → `recent_emails` / `identity` / `email_search`
-   - calendar → `today` / `upcoming` / `identity`
-   - planning / review → `core.world`
-   - knowledge → `scenario.knowledge`
+   - mail → `mail.recent_emails` / `mail.email_search`
+   - calendar → `calendar.today` / `calendar.upcoming`
+   - planning / review → `core.background`
 
-Stage 变体：`_select_post_tool`（memory + conversation_state + scenario）、`_select_brief`（goals + world + calendar）。
+Stage 变体：`_select_post_tool`（background + conversation_state + governance）、`_select_brief`（goals + background + calendar.today + calendar.upcoming）。
 
 ### CapabilityContext（已删除）
 
@@ -104,11 +103,11 @@ Stage 变体：`_select_post_tool`（memory + conversation_state + scenario）�
 
 1. `asyncio.gather(*[f.collect(ctx)])`（异常 fragment 被跳过）。
 2. 按 `Fragment.priority` 降序排序。
-3. 在 `budget` token 内组装；`priority >= 100`（Identity）永不被丢弃。
+3. 在 `budget` token 内组装；超过预算的 fragment 被跳过（不强制保留任何 priority）。
 4. 用 `\n\n---\n` 连接 parts，返回 `AssemblyResult{system_prompt, sources}`。
 
 token 估算用 [`backend/app/core/agents/token_counter.py`](../../backend/app/core/agents/token_counter.py) 的 tiktoken（失败回退 `len//4`）。
 
 ## 读边界
 
-Fragment **必须**通过 [`backend/app/core/runtime/read_ports/`](../../backend/app/core/runtime/read_ports/__init__.py) 访问数据，绝不直访 Kernel 存储。可用端口：`query_top_active_goals`、`query_recent_inbox_emails`、`retrieve_memory_with_sources`、`search_knowledge`、`query_world_context`、`query_calendar_*`、MCP connector 探针、治理读端口（`query_pending_approval_count`、`query_stagnant_goal_count`）。这是 Kernel 边界的一部分，详见 [kernel-boundary.md](kernel-boundary.md)。
+Fragment **必须**通过 [`backend/app/core/runtime/read_ports/`](../../backend/app/core/runtime/read_ports/__init__.py) 访问数据，绝不直访 Kernel 存储。可用端口：`query_top_active_goals`、`query_recent_inbox_emails`、`retrieve_memory_with_sources`、`query_world_context`、`query_calendar_*`、MCP connector 探针、治理读端口（`query_pending_approval_count`、`query_stagnant_goal_count`）。这是 Kernel 边界的一部分，详见 [kernel-boundary.md](kernel-boundary.md)。

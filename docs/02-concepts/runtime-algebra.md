@@ -66,7 +66,6 @@ TRANSPORT  — 瞬时推送通道（不入 event_log、容许丢失）
 
 - **不是** APP_STORAGE（`app_settings`、`plan_resumes`、`memory_index_repairs`、`activity_log` 可直访，不是 event-sourced Truth；见 [`table_registry.py`](../../backend/app/store/table_registry.py)）
 - **不是**中间计算结果（那些属于 WORK 的执行过程，不进事件日志）
-- **不是** Knowledge 附件（Path B non-sovereign；INV-S4）
 
 ### 1.3 Capability
 

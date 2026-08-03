@@ -34,7 +34,6 @@
 - [ ] Goals（创建/推进/完成）
 - [ ] Inbox（poll/digest/分类）
 - [ ] Calendar
-- [ ] Knowledge（上传/检索）
 - [ ] Morning Brief
 - [ ] Memory（看 Memories 页）
 
@@ -58,7 +57,6 @@
 - [ ] Goals
 - [ ] Inbox
 - [ ] Calendar
-- [ ] Knowledge
 - [ ] Morning Brief
 - [ ] Memory
 
@@ -84,7 +82,6 @@
 - [ ] Goals
 - [ ] Inbox
 - [ ] Calendar
-- [ ] Knowledge
 - [ ] Morning Brief
 - [ ] Memory
 
@@ -109,7 +106,6 @@
 - [ ] Goals
 - [ ] Inbox
 - [ ] Calendar
-- [ ] Knowledge
 - [ ] Morning Brief
 - [ ] Memory
 
@@ -128,7 +124,6 @@
 - [ ] Goals
 - [ ] Inbox
 - [ ] Calendar
-- [ ] Knowledge
 - [ ] Morning Brief
 - [ ] Memory
 
@@ -144,7 +139,6 @@
 - [ ] Goals
 - [ ] Inbox
 - [ ] Calendar
-- [ ] Knowledge
 - [ ] Morning Brief
 - [ ] Memory
 

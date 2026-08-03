@@ -29,7 +29,6 @@
 | `/settings` | `pages/Settings.tsx` | LLM/邮件/MCP/数据设置 |
 | `/approvals` | `pages/Approvals.tsx` | 审批队列 |
 | `/timeline` | `pages/Timeline.tsx` | 人生事件时间线 |
-| `/knowledge` | `pages/Knowledge.tsx` | RAG 文档上传与搜索 |
 
 ## 认证
 
@@ -133,7 +132,7 @@ types.ts       ← 共享 TS 接口
 侧栏导航模型（[`Sidebar.tsx:22-37`](../../frontend/src/components/layout/Sidebar.tsx)）：
 
 - `PRIMARY_NAV`：`/`「对话」
-- `DATA_NAV`（折叠在「我的数据」组下）：`/memories`「记忆」（含画像 tab）、`/dashboard`「仪表盘」（含信任报告 tab）、`/goals`「目标」、`/inbox`「收件箱」、`/approvals`「审批」、`/timeline`「时间线」、`/knowledge`「知识库」
+- `DATA_NAV`（折叠在「我的数据」组下）：`/memories`「记忆」（含画像 tab）、`/dashboard`「仪表盘」（含信任报告 tab）、`/goals`「目标」、`/inbox`「收件箱」、`/approvals`「审批」、`/timeline`「时间线」
 - `SYSTEM_NAV`：`/settings`「设置」
 
 会话列表只在 chat 路由显示。

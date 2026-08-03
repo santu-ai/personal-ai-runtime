@@ -33,7 +33,7 @@ flowchart TB
 |---|---|
 | `agents/` | agent 层单测：brain 遥测、computer_use/voice import 安全、token_counter、tool_dispatcher、tool_markup/postprocess |
 | `api/` | API 覆盖冒烟（`test_api_coverage.py`） |
-| `integration/` | FastAPI TestClient + Kernel：approval flow、auth、b2/b3 审计、dashboard、goals/knowledge/settings/system/timeline/trigger API |
+| `integration/` | FastAPI TestClient + Kernel：approval flow、auth、b2/b3 审计、dashboard、goals/settings/system/timeline/trigger API |
 | `product/` | 基于 Kernel 的产品层：dashboard、encrypted_sync、inbox、notifications |
 | `runtime/` | kernel/执行/治理核心（~111 文件） |
 
@@ -59,7 +59,7 @@ flowchart TB
 - **出口与连接器**：`test_egress.py`、`test_connector.py`、`test_fetch_ssrf.py`、`test_url_safety.py`、`test_web_search_html.py`
 - **MCP / filesystem / shell / email server**：`test_filesystem_server.py`、`test_shell_server.py`、`test_email_server.py`、`test_mcp_config.py`、`test_mcp_mesh.py`
 - **记忆 / 通知 / 后台**：`test_memory_extractor.py`、`test_memory_ws_notify.py`、`test_notification_bridge.py`、`test_notification_channel.py`、`test_sse_queue_registry.py`、`test_background_task_event_chain.py`
-- **Product / 主权 / fragment**：`tests/product/`（dashboard / inbox / notifications / encrypted_sync）、`test_sovereignty_basic.py`、`test_governance_fragment.py`、`test_scenario_fragments.py`、`test_mail_fragment_collect.py`、`test_fragment_read_boundary.py`、`test_fragment_registry_audit.py`、`test_runtime_container.py`；知识库 fragment 见顶层 `test_knowledge_fragment.py`
+- **Product / 主权 / fragment**：`tests/product/`（dashboard / inbox / notifications / encrypted_sync）、`test_sovereignty_basic.py`、`test_governance_fragment.py`、`test_scenario_fragments.py`、`test_mail_fragment_collect.py`、`test_fragment_read_boundary.py`、`test_fragment_registry_audit.py`、`test_runtime_container.py`
 
 ### 运行
 
@@ -147,7 +147,7 @@ CI 报告用 `--cov-report=term-missing` 让缺失部分可见，开发者按需
 - **聊天流**：`/chat/:id` 输入框 placeholder `输入消息`、`发送` 按钮。
 - **聊天审批流**（headline）：mock SSE 流返回 `confirmation_required`（工具 `write_file`、`approval_id=ap-e2e-1`），断言 `确认写入文件` 对话框出现，点 `确认执行`，断言对话框在 `/api/chat/approvals/ap-e2e-1/resolve` 返回 approved 后消失；另一测试点 `取消` 验证 deny。
 - **错误处理**：telemetry 端点 500 时 dashboard 显示 `重试`。
-- **新页面**：timeline（`人生时间线`、含 `BeliefFormed` 事件）、knowledge 上传区+文档列表、dashboard 数据主权面板（`1,250` events、`121` memories、`全部本地存储`、`导出我的数据`）。
+- **新页面**：timeline（`人生时间线`、含 `BeliefFormed` 事件）、dashboard 数据主权面板（`1,250` events、`121` memories、`全部本地存储`、`导出我的数据`）。
 
 运行：`make test-e2e`（先 `npx playwright install chromium`）。
 
