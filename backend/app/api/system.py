@@ -87,7 +87,6 @@ async def readiness(request: Request):
 
     Safe for k8s readiness probes; Docker healthcheck can use /live instead.
     """
-    from app.core.runtime.kernel_instance import kernel
     try:
         kernel.table_counts(("event_log",))
     except Exception as exc:
@@ -107,8 +106,6 @@ async def list_llm_providers():
 @router.get("/info")
 async def system_info():
     """Get system information."""
-    from app.core.runtime.kernel_instance import kernel
-
     counts = kernel.table_counts(
         ("conversations", "messages", "event_log", "memories")
     )
@@ -294,7 +291,6 @@ async def import_encrypted(body: EncryptedImportRequest, request: Request):
 @router.get("/demo/model-continuity")
 async def model_continuity_demo():
     """Return current model & memory stats for the model-switch demo."""
-    from app.core.runtime.kernel_instance import kernel
     counts = kernel.table_counts(("memories", "event_log"))
     return {
         "model": settings.llm_model,

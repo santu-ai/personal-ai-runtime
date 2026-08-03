@@ -44,7 +44,7 @@ async def create_trigger(body: CreateTriggerRequest):
     return read_ports.register_trigger_reaction(
         name=name,
         every_cycle=True,
-        event_types=condition.get("event_type") and [condition["event_type"]] or [],
+        event_types=[condition["event_type"]] if condition.get("event_type") else [],
         aggregate_type=condition.get("aggregate_type", ""),
         count_gte=count,
         window_days=condition.get("window_days", 1),

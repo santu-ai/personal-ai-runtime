@@ -15,6 +15,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from app.core.runtime.handler_registry import subscribe
+from app.core.runtime.kernel.constants import EVENT_CHAT_DONE
 
 if TYPE_CHECKING:
     from app.core.runtime.execution import ExecutionContext
@@ -107,7 +108,7 @@ async def on_chat_requested(ctx: "ExecutionContext", event: "Event") -> None:
     )
 
     ctx.emit(
-        "ChatDone", "chat", f"chat_{conv_id}",
+        EVENT_CHAT_DONE, "chat", f"chat_{conv_id}",
         payload={"conversation_id": conv_id},
         caused_by=event.id,
     )

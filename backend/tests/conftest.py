@@ -5,6 +5,8 @@ from typing import Any, AsyncIterator
 
 import pytest
 
+from app.core.runtime.kernel.constants import EVENT_CHAT_DONE
+
 os.environ.setdefault("LLM_API_KEY", "test-key")
 os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
 os.environ.setdefault("CHROMA_TELEMETRY_IMPL", "none")
@@ -136,7 +138,7 @@ def fake_brain(monkeypatch):
                             )
                             break
                         done_events = _k.read_events(
-                            type="ChatDone", correlation_id=correlation_id, limit=1,
+                            type=EVENT_CHAT_DONE, correlation_id=correlation_id, limit=1,
                         )
                         if done_events:
                             yield f"data: {_json2.dumps({'type': 'done'})}\n\n"

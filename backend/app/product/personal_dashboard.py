@@ -19,6 +19,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from app.core.runtime import read_ports
+from app.core.runtime.kernel.constants import EVENT_CHAT_DONE, EVENT_CHAT_TEXT_DELTA
 from app.core.runtime.kernel_instance import kernel
 
 logger = logging.getLogger(__name__)
@@ -133,7 +134,7 @@ def _widget_recent_events(since_ts: str) -> dict:
     try:
         all_events = kernel.read_events(since_ts=since_ts, limit=_MAX_RECENT_EVENTS * 5, order="desc")
         interesting = [e for e in all_events if e.type not in {
-            "ChatTextDelta", "ChatDone",
+            EVENT_CHAT_TEXT_DELTA, EVENT_CHAT_DONE,
         }]
         top_events = interesting[:_MAX_RECENT_EVENTS]
         return {

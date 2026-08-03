@@ -25,12 +25,19 @@ async def unread_count():
     return {"count": read_ports.query_unread_notification_count()}
 
 
-@router.put("/{notification_id}/read")
-async def mark_as_read(notification_id: str):
-    """Mark a notification as read."""
-    existing = read_ports.query_notification(notification_id)
-    if not existing:
-        raise HTTPException(status_code=404, detail="Notification not found")
+@router.put("/read-all")
+async def mark_all_as_read():
+    """Mark all notifications as read."""
+    _emit_read_event("all")
+    return {"status": "ok"}
+
+
+def _emit_read_event(notification_id: str) -> None:
+    """发一条 NotificationRead 事件。
+
+    单条已读与全部已读共用此路径；``notification_id="all"`` 是批量语义，
+    由 projectors_core 的 NotificationRead 投影器解释。
+    """
     kernel.emit_event(
         EVENT_NOTIFICATION_READ,
         AGGREGATE_NOTIFICATION,
@@ -38,17 +45,13 @@ async def mark_as_read(notification_id: str):
         payload={},
         actor="user",
     )
-    return {"status": "ok"}
 
 
-@router.put("/read-all")
-async def mark_all_as_read():
-    """Mark all notifications as read."""
-    kernel.emit_event(
-        EVENT_NOTIFICATION_READ,
-        AGGREGATE_NOTIFICATION,
-        "all",
-        payload={},
-        actor="user",
-    )
+@router.put("/{notification_id}/read")
+async def mark_as_read(notification_id: str):
+    """Mark a notification as read."""
+    existing = read_ports.query_notification(notification_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    _emit_read_event(notification_id)
     return {"status": "ok"}
