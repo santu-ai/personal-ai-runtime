@@ -110,8 +110,8 @@ async def get_inbox_email_summary(email_id: str):
             ),
             timeout=EMAIL_SUMMARY_TIMEOUT,
         )
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="Summary generation timed out")
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="Summary generation timed out") from exc
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"LLM call failed: {e}") from e
 

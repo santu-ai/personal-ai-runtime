@@ -1,4 +1,4 @@
-"""ChromaDB vector store management for semantic search and memory."""
+"""ChromaDB 向量存储管理 —— 用于语义搜索与记忆。"""
 
 import json
 import logging
@@ -18,12 +18,12 @@ class VectorSearchResult(TypedDict):
     distance: float | None
 
 
-# Suppress ChromaDB telemetry before the chromadb import touches posthog
+# 在 chromadb import 触及 posthog 之前先关闭 ChromaDB 遥测。
 os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
 os.environ.setdefault("CHROMA_TELEMETRY_IMPL", "none")
 os.environ.setdefault("CHROMA_TELEMETRY_ENABLED", "false")
 
-# Optional: older Chroma builds pulled posthog; patch capture if present.
+# 可选：旧版 Chroma 会拉入 posthog；若存在则 patch 掉 capture。
 try:
     import posthog  # noqa: E402
 except ImportError:
@@ -40,14 +40,14 @@ from chromadb.utils.embedding_functions import DefaultEmbeddingFunction  # noqa:
 
 logger = logging.getLogger(__name__)
 
-# Pin the same default ONNX MiniLM L6 v2 path Chroma 0.5.x / 1.x ships so
-# upgrades do not silently switch embedding models or dimensions.
-# Typed as Any: chromadb stubs expect a broader EmbeddingFunction protocol than
-# DefaultEmbeddingFunction declares.
+# 钉死 Chroma 0.5.x / 1.x 自带的默认 ONNX MiniLM L6 v2 路径，
+# 防止升级时悄悄切换 embedding 模型或维度。
+# 类型标注为 Any：chromadb 的 stub 期望一个比 DefaultEmbeddingFunction 声明更宽的
+# EmbeddingFunction 协议。
 _EMBEDDING_FUNCTION: Any = DefaultEmbeddingFunction()
 
-# Valid CollectionConfigurationInternal for Chroma 0.5.x when older DBs stored
-# an empty config_json_str ('{}'), which otherwise raises KeyError: '_type'.
+# Chroma 0.5.x 在面对老库留下的空 config_json_str（'{}'）时会抛 KeyError: '_type'，
+# 该 JSON 是合法的 CollectionConfigurationInternal 默认配置。
 _DEFAULT_COLLECTION_CONFIG_JSON = json.dumps({
     "hnsw_configuration": {
         "space": "l2",
@@ -65,9 +65,9 @@ _DEFAULT_COLLECTION_CONFIG_JSON = json.dumps({
 
 
 def _repair_empty_collection_configs(vector_dir: str | Path) -> int:
-    """Patch collections whose config_json_str is empty / '{}'.
+    """将 config_json_str 为空或 '{}' 的 collection 修补为合法默认值。
 
-    Returns the number of rows updated.
+    返回更新的行数。
     """
     db_path = Path(vector_dir) / "chroma.sqlite3"
     if not db_path.is_file():
@@ -92,14 +92,14 @@ def _repair_empty_collection_configs(vector_dir: str | Path) -> int:
 
 
 class VectorStore:
-    """Manages the ChromaDB collection for memory embeddings."""
+    """管理用于 memory embedding 的 ChromaDB collection。"""
 
     def __init__(self):
-        # Resolve settings at call time so test reset_settings() takes effect.
+        # 在调用期解析 settings，让测试的 reset_settings() 生效。
         from app.config import settings
 
-        # Older DBs may have empty config_json_str; repair before PersistentClient
-        # lists collections (Chroma 0.5.x requires '_type' in the JSON).
+        # 老库可能存在空 config_json_str；要在 PersistentClient 列举 collection
+        # 之前修补（Chroma 0.5.x 要求 JSON 含 '_type'）。
         repaired = _repair_empty_collection_configs(settings.vector_dir)
         if repaired:
             logger.info(
@@ -115,10 +115,10 @@ class VectorStore:
         self._init_collections()
 
     def _init_collections(self):
-        """Create collections if they don't exist."""
-        # Descriptive metadata only. Do not put hnsw:space in metadata — on
-        # Chroma 0.5.x it does not change the real HNSW config (still L2) and
-        # is misleading. Existing indexes already use L2.
+        """若 collection 不存在则创建。"""
+        # 仅放描述性 metadata。不要把 hnsw:space 写进 metadata —— 在
+        # Chroma 0.5.x 上它不会改变真正的 HNSW 配置（仍是 L2），只会造成误导。
+        # 已有索引都使用 L2。
         self.memory_collection = self.client.get_or_create_collection(
             name="memories",
             embedding_function=_EMBEDDING_FUNCTION,
@@ -128,7 +128,7 @@ class VectorStore:
     def add_memory(
         self, content: str, metadata: dict | None = None, memory_id: str | None = None
     ) -> str:
-        """Store a memory with embedding. Returns the embedding ID."""
+        """存储一条带 embedding 的 memory，返回 embedding ID。"""
         mid = memory_id or str(uuid.uuid4())
         self.memory_collection.add(
             ids=[mid],
@@ -140,31 +140,29 @@ class VectorStore:
     def index_memory(
         self, content: str, metadata: dict | None = None, memory_id: str | None = None
     ) -> str:
-        """MemoryIndexPort implementation — idempotent index per memory_id.
+        """MemoryIndexPort 实现 —— 以 memory_id 为键的幂等索引。
 
-        Delegates to add_memory but first removes any existing entry for the
-        same memory_id so re-indexing (e.g. on MemoryUpdated) doesn't create
-        duplicate embeddings.
+        委托给 add_memory，但会先删除该 memory_id 的既有条目，
+        避免重复索引（如 MemoryUpdated）产生重复 embedding。
         """
         if memory_id:
             try:
                 self.memory_collection.delete(ids=[memory_id])
             except Exception:
-                pass  # not present yet — fine
+                pass  # 不存在也没关系
         return self.add_memory(content, metadata=metadata, memory_id=memory_id)
 
     def search_memories(self, query: str, n_results: int = 5) -> list[VectorSearchResult]:
-        """Semantic search for related memories."""
+        """对相关 memory 做语义搜索。"""
         batch = self.search_memories_batch([query], n_results=n_results)
         return batch[0] if batch else []
 
     def search_memories_batch(
         self, queries: list[str], n_results: int = 5
     ) -> list[list[VectorSearchResult]]:
-        """Batch semantic search — one Chroma round-trip for many queries.
+        """批量语义搜索 —— 多个 query 共一次 Chroma 往返。
 
-        Returns a list aligned with ``queries``; each entry is the hit list
-        for that query.
+        返回与 ``queries`` 对齐的列表；每个元素是对应 query 的命中列表。
         """
         if not queries:
             return []
@@ -175,10 +173,10 @@ class VectorStore:
         return self._parse_search_results(results, len(queries))
 
     def _parse_search_results(self, results: Any, num_queries: int) -> list[list[VectorSearchResult]]:
-        """Internal helper to parse ChromaDB QueryResult into list of lists."""
+        """将 ChromaDB QueryResult 解析为嵌套列表的内部辅助。"""
         batches: list[list[VectorSearchResult]] = []
 
-        # Chroma returns None or lists of lists
+        # Chroma 返回 None 或嵌套 list
         ids_by_q = results.get("ids") or []
         docs_by_q = results.get("documents") or []
         metas_by_q = results.get("metadatas") or []
@@ -203,11 +201,11 @@ class VectorStore:
         return batches
 
     def delete_memory(self, memory_id: str):
-        """Delete a memory by its ID."""
+        """按 ID 删除 memory。"""
         self.memory_collection.delete(ids=[memory_id])
 
     def list_memory_ids(self) -> list[str]:
-        """Return all memory IDs currently in the vector index."""
+        """返回向量索引中全部 memory ID。"""
         result = self.memory_collection.get(include=[])
         return list(result.get("ids") or [])
 
@@ -216,5 +214,5 @@ vector_store = BoundProxy()
 
 
 def bind_vector_store_factory(factory) -> None:
-    """Wire module ``vector_store`` to RuntimeContainer (called from runtime only)."""
+    """将模块级 ``vector_store`` 绑定到 RuntimeContainer（仅由 runtime 调用）。"""
     vector_store.bind(factory)

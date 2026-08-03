@@ -6,7 +6,7 @@ from scripts.check_dynamic_imports import IMPORTLIB_ALLOWLIST, main
 
 
 def test_dynamic_import_allowlist_covers_bound_proxy_only():
-    assert ("store/bound_proxy.py", 39) in IMPORTLIB_ALLOWLIST
+    assert ("store/bound_proxy.py", 38) in IMPORTLIB_ALLOWLIST
     assert len(IMPORTLIB_ALLOWLIST) == 1
 
 

@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Navigate } from "react-router-dom";
 import {
   Shield,
   Database,
@@ -413,11 +412,6 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
       </div>
     </div>
   );
-}
-
-/** Legacy route — redirect into Dashboard trust tab. */
-export default function TrustReportPage() {
-  return <Navigate to="/dashboard?tab=trust" replace />;
 }
 
 function Kv({

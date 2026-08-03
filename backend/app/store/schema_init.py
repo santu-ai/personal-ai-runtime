@@ -1,4 +1,4 @@
-"""Shared schema initialization — Alembic for production DB, raw DDL for test/custom DBs."""
+"""统一 Schema 初始化 —— 生产库走 Alembic，测试/自定义库走 raw DDL。"""
 
 from __future__ import annotations
 
@@ -13,17 +13,17 @@ logger = logging.getLogger(__name__)
 
 
 def uses_alembic(db_path: str) -> bool:
-    """Return True when db_path is the configured production SQLite file."""
+    """db_path 是否为已配置的生产 SQLite 文件。"""
     from app.config import settings as live_settings
 
     return Path(db_path).resolve() == Path(live_settings.sqlite_path).resolve()
 
 
 def apply_projection_ddl(db: Database) -> None:
-    """Ensure projector-owned projection tables exist (idempotent).
+    """确保 projector 拥有的投影表存在（幂等）。
 
-    These tables are owned by Kernel projectors; production DBs apply them
-    after the Alembic baseline. All columns are part of the CREATE statements.
+    这些表归 Kernel projector 所有；生产库在 Alembic baseline 之后应用它们。
+    所有列都在 CREATE 语句中声明。
     """
     from app.store.schema_ddl import (
         MEMORY_INDEX_REPAIRS_SCHEMA,
@@ -38,7 +38,7 @@ def apply_projection_ddl(db: Database) -> None:
 
 
 def apply_raw_ddl(db: Database) -> None:
-    """Apply inline DDL for test/custom databases (no Alembic)."""
+    """对测试/自定义库应用 inline DDL（不走 Alembic）。"""
     from app.store.schema_ddl import ALL_SCHEMAS
 
     with db.get_db() as conn:
@@ -47,14 +47,13 @@ def apply_raw_ddl(db: Database) -> None:
 
 
 def ensure_schema(db: Database) -> None:
-    """Initialize schema: Alembic on production path, raw DDL elsewhere."""
+    """初始化 Schema：生产路径走 Alembic，其他路径走 raw DDL。"""
     if not uses_alembic(db.db_path):
         apply_raw_ddl(db)
         return
 
-    # Production path: Alembic is the single source of truth. A migration
-    # failure must abort startup — silently falling back to raw DDL could
-    # leave a production DB with a schema that diverges from Alembic.
+    # 生产路径：Alembic 是单一可信源。迁移失败必须中止启动 ——
+    # 静默回退 raw DDL 会让生产库的 Schema 与 Alembic 产生不可见的偏离。
     from app.store.alembic_runner import run_migrations
     try:
         head = run_migrations()
@@ -77,5 +76,5 @@ def ensure_schema(db: Database) -> None:
             f"{db.db_path}"
         )
 
-    # Projector-owned tables are re-ensured idempotently after Alembic baseline.
+    # Alembic baseline 后再幂等确保 projector 拥有的表。
     apply_projection_ddl(db)

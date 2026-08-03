@@ -1,9 +1,15 @@
-"""Tests for WorkItem engine (uses work_items)."""
+"""WorkItem engine 行为测试。
+
+历史上 Task 与 WorkItem 是两套词汇；现已统一为 work_item_*。
+本测试改用新 API 验证同等行为，避免依赖 task_engine 的向后兼容别名。
+"""
 from app.core.runtime.task_engine import (
     create_task,
-    get_subtasks,
-    get_task,
-    list_tasks,
+    create_work_item,
+    get_sub_work_items,
+    get_work_item,
+    list_work_items,
+    update_task_status,
 )
 
 
@@ -14,7 +20,7 @@ class TestTaskEngine:
         assert task["status"] == "pending"
         assert task["description"] == "A test task"
 
-        retrieved = get_task(task["id"])
+        retrieved = get_work_item(task["id"])
         assert retrieved is not None
         assert retrieved["title"] == "Test Task"
 
@@ -28,7 +34,7 @@ class TestTaskEngine:
         assert child["parent_work_id"] == parent["id"]
         assert child["priority"] == 5
 
-        subtasks = get_subtasks(parent["id"])
+        subtasks = get_sub_work_items(parent["id"])
         assert len(subtasks) == 1
         assert subtasks[0]["title"] == "Child Task"
 
@@ -36,11 +42,10 @@ class TestTaskEngine:
         task = create_task(name="Standalone Task")
         assert task["parent_goal_id"] is None
 
-        tasks = list_tasks()
+        tasks = list_work_items()
         assert any(t["id"] == task["id"] for t in tasks)
 
     def test_update_status(self, isolated_kernel):
-        from app.core.runtime.task_engine import update_task_status
         task = create_task(name="Status Test")
         updated = update_task_status(task["id"], "running")
         assert updated["status"] == "running"
@@ -49,7 +54,7 @@ class TestTaskEngine:
         assert completed["status"] == "completed"
 
     def test_dependencies_met(self, isolated_kernel):
-        from app.core.runtime.task_engine import are_dependencies_met, update_task_status
+        from app.core.runtime.task_engine import are_dependencies_met
         dep = create_task(name="Dependency Task")
         update_task_status(dep["id"], "running")
         update_task_status(dep["id"], "completed")
@@ -60,6 +65,9 @@ class TestTaskEngine:
         )
         assert are_dependencies_met(main_task["id"])
 
-    def test_list_tasks(self, isolated_kernel):
-        tasks = list_tasks(limit=10)
+    def test_list_work_items(self, isolated_kernel):
+        # 直接用 work_item API 验证：list_work_items 是 read 路径的真相源。
+        create_work_item(title="W1", work_type="task")
+        tasks = list_work_items(limit=10)
         assert isinstance(tasks, list)
+        assert len(tasks) >= 1

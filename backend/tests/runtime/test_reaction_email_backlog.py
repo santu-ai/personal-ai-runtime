@@ -10,13 +10,6 @@ broadcast every cycle. These tests pin the corrected contract:
   3. Repeated evaluate_cycle does not create a duplicate nor re-broadcast.
 """
 
-import sys
-from pathlib import Path
-
-_BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
-if str(_BACKEND_ROOT / "backend") not in sys.path:
-    sys.path.insert(0, str(_BACKEND_ROOT / "backend"))
-
 import pytest
 
 from app.core.runtime.kernel.kernel import Kernel

@@ -1,7 +1,7 @@
-"""Governed telemetry projection readers (llm_calls / tool_calls).
+"""受治理的 telemetry 投影读取器（llm_calls / tool_calls）。
 
-Kept in the store layer so Kernel QueryStateMixin stays thin — SELECT on
-governed tables is allowed here (see check_boundary._is_store_layer).
+放在 store 层是为了让 Kernel QueryStateMixin 保持精简 ——
+这里允许 SELECT 受治理表（见 check_boundary._is_store_layer）。
 """
 
 from __future__ import annotations
@@ -13,12 +13,12 @@ if TYPE_CHECKING:
 
 
 class TelemetryRow(TypedDict):
-    """Schema for telemetry result rows."""
+    """telemetry 结果行的 Schema。"""
     id: str
     created_at: str
     success: int
     latency_ms: float
-    # Other fields are dynamic depending on table (llm_calls vs tool_calls)
+    # 其他字段依表而变（llm_calls 与 tool_calls 各不同）
 
 
 def created_at_since_sql(
@@ -26,10 +26,10 @@ def created_at_since_sql(
     *,
     column: str = "created_at",
 ) -> tuple[str | None, list[Any]]:
-    """Return ``(predicate, params)`` comparing ISO/SQLite timestamps safely.
+    """返回 ``(predicate, params)``，安全比较 ISO/SQLite 时间戳。
 
-    Event timestamps are ISO-8601 (``…T…+00:00``); SQLite ``datetime('now')``
-    uses a space separator. Normalize both sides to ``YYYY-MM-DD HH:MM:SS``.
+    事件时间戳是 ISO-8601（``…T…+00:00``）；SQLite ``datetime('now')`` 用空格分隔。
+    把两侧都归一到 ``YYYY-MM-DD HH:MM:SS``。
     """
     if since_days is None:
         return None, []
@@ -37,8 +37,8 @@ def created_at_since_sql(
         days_int = int(since_days)
     except (TypeError, ValueError):
         return None, []
-    # substr(...,1,19) drops fractional seconds and timezone suffix;
-    # replace T→space aligns with SQLite datetime() text form.
+    # substr(...,1,19) 去掉小数秒与时区后缀；
+    # 将 T 替换为空格以对齐 SQLite datetime() 文本形式。
     normalized = f"datetime(replace(substr({column}, 1, 19), 'T', ' '))"
     return f"{normalized} >= datetime('now', ?)", [f"-{days_int} days"]
 
@@ -58,23 +58,23 @@ def select_telemetry_rows(
     name_col: str | None = None,
 ) -> list[dict]:
     """
-    Read llm_calls or tool_calls with optional since_days / name / success / offset.
+    读取 llm_calls 或 tool_calls，支持 since_days / name / success / offset 过滤。
 
     Args:
-        db: Database instance.
-        table: Table name ('llm_calls' or 'tool_calls').
-        filters: Dictionary containing:
-            - limit (int, default 5000)
-            - offset (int, default 0)
-            - since_days (int, optional)
-            - name (str, optional, matches tool_name or model)
-            - success (int, optional, 0 or 1)
-        name_col: Explicit column name for name filtering (e.g. 'tool_name' or 'model').
+        db: Database 实例。
+        table: 表名（'llm_calls' 或 'tool_calls'）。
+        filters: 过滤字典：
+            - limit (int, 默认 5000)
+            - offset (int, 默认 0)
+            - since_days (int, 可选)
+            - name (str, 可选；匹配 tool_name 或 model)
+            - success (int, 可选；0 或 1)
+        name_col: 显式指定 name 列名（例如 'tool_name' 或 'model'）。
     """
     if table not in ("llm_calls", "tool_calls"):
         raise ValueError(f"unsupported telemetry table: {table!r}")
 
-    # 1. Normalize and validate basic pagination
+    # 1. 归一化并校验基础分页
     try:
         limit = min(max(int(filters.get("limit", 5000)), 1), 10000)
         offset = max(int(filters.get("offset", 0) or 0), 0)
@@ -84,33 +84,33 @@ def select_telemetry_rows(
     clauses: list[str] = []
     params: list[Any] = []
 
-    # 2. Add filters
-    # Name filter (tool_name or model)
+    # 2. 拼接过滤条件
+    # Name 过滤（tool_name 或 model）
     name_val = filters.get("name") or filters.get("tool_name")
     if name_val and (name_col or table == "llm_calls"):
         actual_name_col = name_col or "model"
         clauses.append(f"{actual_name_col} = ?")
         params.append(name_val)
 
-    # Success filter
+    # Success 过滤
     success = filters.get("success")
     if success is not None:
         clauses.append("success = ?")
         params.append(1 if success else 0)
 
-    # Optional purpose filter (chat / memory_extract / …)
+    # 可选 purpose 过滤（chat / memory_extract / …）
     purpose = filters.get("purpose")
     if purpose:
         clauses.append("purpose = ?")
         params.append(str(purpose))
 
-    # Time filter (ISO-safe)
+    # 时间过滤（ISO-safe）
     since_pred, since_params = created_at_since_sql(filters.get("since_days"))
     if since_pred is not None:
         clauses.append(since_pred)
         params.extend(since_params)
 
-    # 3. Build and execute query
+    # 3. 组装并执行查询
     where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
     query = f"SELECT * FROM {table}{where} ORDER BY created_at DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
@@ -122,7 +122,7 @@ def select_telemetry_rows(
 
 
 def aggregate_llm_summary(db: Database, *, days: int | None = 7) -> dict[str, Any]:
-    """Full-window LLM totals via SQL (no row cap)."""
+    """全窗口 LLM 汇总 —— 通过 SQL（无行数上限）。"""
     where, params = _since_clause(days)
     with db.get_db() as conn:
         row = conn.execute(
@@ -153,7 +153,7 @@ def aggregate_llm_summary(db: Database, *, days: int | None = 7) -> dict[str, An
 
 
 def aggregate_llm_by_model(db: Database, *, days: int | None = 7) -> list[dict[str, Any]]:
-    """LLM totals grouped by provider + model (no row cap)."""
+    """按 provider + model 分组的 LLM 汇总（无行数上限）。"""
     where, params = _since_clause(days)
     with db.get_db() as conn:
         rows = conn.execute(
@@ -194,7 +194,7 @@ def aggregate_llm_by_model(db: Database, *, days: int | None = 7) -> list[dict[s
 
 
 def aggregate_tool_summary(db: Database, *, days: int | None = 7) -> list[dict[str, Any]]:
-    """Tool-call totals grouped by tool_name (no row cap)."""
+    """按 tool_name 分组的工具调用汇总（无行数上限）。"""
     where, params = _since_clause(days)
     with db.get_db() as conn:
         rows = conn.execute(
@@ -224,7 +224,7 @@ def aggregate_tool_summary(db: Database, *, days: int | None = 7) -> list[dict[s
 
 
 def aggregate_call_failure_rates(db: Database, *, days: int = 1) -> dict[str, Any]:
-    """24h-style failure rates for LLM and tool calls."""
+    """LLM 与工具调用的 24h 风格失败率汇总。"""
     where, params = _since_clause(days)
     with db.get_db() as conn:
         llm = conn.execute(

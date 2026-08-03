@@ -33,11 +33,6 @@ export function renderWithRouter(
 }
 
 /** Zustand selector mock for use in vi.mock factories. */
-export function createZustandMock<T extends Record<string, unknown>>(state: T) {
-  return (selector: (s: T) => unknown) => selector(state);
-}
-
-/** ApiError class matching api/core for vi.mock factories. */
 export class MockApiError extends Error {
   status: number;
   constructor(message: string, status: number) {

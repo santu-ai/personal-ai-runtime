@@ -7,7 +7,7 @@ import ToolCallDisplay from "./ToolCallDisplay";
 import TaskTrack from "./TaskTrack";
 import { CodeBlock } from "./CodeBlock";
 import { stripToolMarkup } from "../../utils/stripToolMarkup";
-import { formatTimeAgo } from "../../utils/time";
+import { timeAgo } from "../../utils/timeUtils";
 import { matchResultsByCallId } from "./matchToolResult";
 import type { ToolCall, ToolResult } from "./types";
 import type { SourceCitation } from "../../api/types";
@@ -248,7 +248,7 @@ export default function MessageItem({ message }: Props) {
 
         {/* Timestamp */}
         {message.created_at && (
-          <div className="text-xs mt-2 text-fg-tertiary">{formatTimeAgo(message.created_at)}</div>
+          <div className="text-xs mt-2 text-fg-tertiary">{timeAgo(message.created_at)}</div>
         )}
 
         {/* Source citations — memory + document references */}

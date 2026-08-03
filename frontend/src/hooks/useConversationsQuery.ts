@@ -96,11 +96,3 @@ export function useConversationCacheActions() {
     [qc],
   );
 }
-
-/** Soft refresh from server (e.g. pull-to-refresh). Prefer cache actions after local mutations. */
-export function useInvalidateConversations() {
-  const qc = useQueryClient();
-  return () => {
-    void qc.invalidateQueries({ queryKey: queryKeys.conversations });
-  };
-}

@@ -225,8 +225,8 @@ async def approve(approval_id: str):
     try:
         raw = approval.get("params", "{}")
         tool_args = json.loads(raw) if isinstance(raw, str) else dict(raw)
-    except (json.JSONDecodeError, TypeError):
-        raise HTTPException(status_code=400, detail="Approval has invalid params")
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail="Approval has invalid params") from exc
 
     # Try to find conversation_id from the approval's correlation chain
     conv_id = ""

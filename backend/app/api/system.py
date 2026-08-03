@@ -90,8 +90,8 @@ async def readiness(request: Request):
     from app.core.runtime.kernel_instance import kernel
     try:
         kernel.table_counts(("event_log",))
-    except Exception:
-        raise HTTPException(status_code=503, detail="Database not ready")
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Database not ready") from exc
     return {"status": "ok", "service": "personal-ai-runtime"}
 
 
@@ -256,8 +256,8 @@ async def export_encrypted(body: EncryptedExportRequest):
 
     try:
         blob = await encrypt_snapshot(snapshot, body.password)
-    except EncryptedSyncError:
-        raise HTTPException(status_code=400, detail="Encryption failed — check password and data integrity")
+    except EncryptedSyncError as exc:
+        raise HTTPException(status_code=400, detail="Encryption failed — check password and data integrity") from exc
 
     return {"format": BLOB_FORMAT, "data": blob, "size_bytes": len(blob)}
 
@@ -282,8 +282,8 @@ async def import_encrypted(body: EncryptedImportRequest, request: Request):
 
     try:
         snapshot = await decrypt_snapshot(body.data, body.password)
-    except EncryptedSyncError:
-        raise HTTPException(status_code=400, detail="Decryption failed — check password and data integrity")
+    except EncryptedSyncError as exc:
+        raise HTTPException(status_code=400, detail="Decryption failed — check password and data integrity") from exc
 
     result = await asyncio.to_thread(kernel.restore, snapshot, read_only=False)
     return {"status": "ok", "events_imported": result.get("events_imported", 0)}

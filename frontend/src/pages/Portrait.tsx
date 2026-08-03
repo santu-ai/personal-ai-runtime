@@ -1,4 +1,3 @@
-import { Navigate } from "react-router-dom";
 import {
   User,
   Heart,
@@ -242,9 +241,4 @@ export function PortraitPanel({ compact = false }: { compact?: boolean }) {
       </div>
     </div>
   );
-}
-
-/** Legacy route — redirect into Memories portrait tab. */
-export default function PortraitPage() {
-  return <Navigate to="/memories?tab=portrait" replace />;
 }

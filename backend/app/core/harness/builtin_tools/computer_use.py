@@ -27,10 +27,10 @@ class ComputerUseServer:
             try:
                 import mss
                 self._screenshot_module = mss
-            except ImportError:
+            except ImportError as exc:
                 raise RuntimeError(
                     "Computer Use requires 'mss' library. Install: pip install mss"
-                )
+                ) from exc
 
     def _ensure_pyautogui(self):
         if self._pyautogui is None:
@@ -38,10 +38,10 @@ class ComputerUseServer:
                 import pyautogui
                 pyautogui.FAILSAFE = True  # Move to corner to abort
                 self._pyautogui = pyautogui
-            except ImportError:
+            except ImportError as exc:
                 raise RuntimeError(
                     "Computer Use requires 'pyautogui' library. Install: pip install pyautogui"
-                )
+                ) from exc
 
     @staticmethod
     def _set_clipboard(text: str) -> None:

@@ -1,18 +1,18 @@
-"""Explicit registry of governed projection tables vs application storage tables.
+"""受治理投影表 vs 应用存储表的显式注册表。
 
-Every business table in SQLite must appear in exactly one of these sets.
-New tables must be classified here or schema contract tests will fail.
+SQLite 中的每张业务表必须**正好**落入以下两个集合之一。
+新增表必须在此分类，否则 schema contract 测试会失败。
 """
 
 from __future__ import annotations
 
-# Expected columns for governed projection tables (PRAGMA contract).
+# 受治理投影表的预期列（PRAGMA contract）。
 GOVERNED_SCHEMA: dict[str, frozenset[str]] = {
     "work_items": frozenset({
         "id", "title", "description", "work_type", "parent_work_id",
         "parent_goal_id", "status", "priority", "dependencies_json",
         "executable_plan", "created_at", "updated_at", "completed_at",
-        # Goal columns (work_type='goal' rows populate these):
+        # Goal 列（work_type='goal' 的行才会填充）：
         "progress", "importance", "urgency", "deadline", "last_activity_at",
     }),
     "memories": frozenset({
@@ -54,83 +54,81 @@ GOVERNED_SCHEMA: dict[str, frozenset[str]] = {
     "policy_events": frozenset({
         "id", "capability", "risk_level", "status", "created_at", "updated_at",
     }),
-    # Derived solely from InboxEmail* events via projectors_inbox.py
-    # so the table is fully rebuildable from event_log.
+    # 仅由 InboxEmail* 事件经 projectors_inbox.py 派生而来，
+    # 因此该表完全可从 event_log 重建。
     "inbox_emails": frozenset({
         "id", "server_id", "sender", "subject", "date", "preview",
         "full_text", "status", "category", "importance", "reason",
         "notified", "digested", "created_at", "received_at",
     }),
-    # Derived solely from Capability* events via projectors_governance.py.
-    # Every row maps 1:1 to a CapabilityInvoked, CapabilityFailed, or
-    # CapabilityDenied event in event_log.
+    # 仅由 Capability* 事件经 projectors_governance.py 派生而来。
+    # 每行 1:1 对应 event_log 中的一条 CapabilityInvoked / CapabilityFailed /
+    # CapabilityDenied 事件。
     "tool_calls": frozenset({
         "id", "tool_name", "success", "latency_ms", "error_message", "created_at",
     }),
-    # Derived solely from LLMCallRecorded events via projectors_governance.py.
+    # 仅由 LLMCallRecorded 事件经 projectors_governance.py 派生而来。
     "llm_calls": frozenset({
         "id", "provider", "model", "prompt_tokens", "completion_tokens",
         "latency_ms", "cost", "success", "error_message", "purpose", "created_at",
     }),
-    # Derived solely from UserProfileUpdated events via projectors_core.py.
+    # 仅由 UserProfileUpdated 事件经 projectors_core.py 派生而来。
     "user_profile": frozenset({
         "id", "category", "data_json", "confidence", "created_at", "updated_at",
     }),
 }
 
-# Expected columns for application storage tables.
+# 应用存储表的预期列。
 #
-# Why each of these is NOT event-sourced:
-# The Truth Layer (event_log + GOVERNED_TABLES) is event-sourced because
-# it represents authoritative personal facts whose loss would break data
-# sovereignty. The tables below are operational/observational and either (a)
-# can be regenerated from authoritative sources, (b) are pure caches, or
-# (c) hold app-local config with no audit requirement. They must never be
-# presented as a second source of truth.
+# 为何这些表**不**走事件溯源：
+# Truth Layer（event_log + GOVERNED_TABLES）走事件溯源是因为它们承载
+# 个人事实，丢失会破坏数据主权。下面的表是运维/观测性的：
+#   (a) 可从权威来源重建；
+#   (b) 是纯缓存；
+#   (c) 仅持有无审计要求的应用本地配置。
+# 它们永远不能作为第二可信源呈现给上层。
 APP_STORAGE_SCHEMA: dict[str, frozenset[str]] = {
-    # Human-readable activity log; derived from event_log via projection.
+    # 人类可读的活动日志；从 event_log 投影得到。
     "activity_log": frozenset({
         "id", "type", "payload", "timestamp",
     }),
-    # App settings (UI preferences, LLM/Email connection config). Local-only
-    # operational config; not a governed fact.
+    # 应用配置（UI 偏好、LLM/Email 连接配置）。仅本地运维配置，
+    # 不是受治理事实。
     "app_settings": frozenset({
         "category", "data_json", "updated_at",
     }),
-    # Pending ChromaDB index repairs for memory events whose embedding sync
-    # failed. The authoritative record is the MemoryDerived/Updated event in
-    # event_log; this queue tracks outstanding reconciliation work and is
-    # drained by RuntimeLoop._maintenance via the memory index repair worker.
+    # ChromaDB 索引修复的待处理队列：某些 memory 事件的 embedding 同步失败。
+    # 权威记录是 event_log 中的 MemoryDerived/Updated 事件；
+    # 本队列跟踪未完成的对账工作，由 RuntimeLoop._maintenance 通过
+    # memory index repair worker 消费。
     "memory_index_repairs": frozenset({
         "id", "aggregate_id", "event_type", "event_seq", "error",
         "retry_count", "status", "created_at", "last_retry_at",
     }),
-    # Operational continuation for plan steps paused on approval. The
-    # approval row remains the governance authority; this table only keeps
-    # resume coordinates across process restarts (see plan_resume.py).
+    # 计划步骤因 approval 暂停后的运维续跑坐标。Approval 行本身仍是治理权威；
+    # 本表只用于跨进程重启保留续跑坐标（见 plan_resume.py）。
     "plan_resumes": frozenset({
         "approval_id", "kind", "resume_from", "previous_output_json",
         "action_id", "task_id", "plan_json", "created_at",
     }),
 }
 
-# Kernel-owned projections (event-sourced read models + event log).
+# Kernel 拥有的投影（事件溯源读模型 + 事件日志）。
 GOVERNED_TABLES: frozenset[str] = frozenset(GOVERNED_SCHEMA.keys())
 
-# Application storage (direct read/write outside Kernel ABI is allowed).
+# 应用存储（允许在 Kernel ABI 之外直接读写）。
 APP_STORAGE_TABLES: frozenset[str] = frozenset(APP_STORAGE_SCHEMA.keys())
 
 ALL_CLASSIFIED_TABLES = GOVERNED_TABLES | APP_STORAGE_TABLES
 
-# ── Non-sovereignty attachments ─────────────────────────────────────────────
-# Explicitly registered stores that are **not** reconstructed from event_log.
-# Currently empty — the Knowledge Base (Path B attachment) was removed. If a
-# future store is added that cannot be rebuilt from event_log, register it
-# here explicitly instead of silently becoming a second Truth Layer.
+# ── 非主权附件 ────────────────────────────────────────────────────────────
+# 显式注册的、**不能**从 event_log 重建的存储。
+# 当前为空 —— Knowledge Base（Path B attachment）已移除。若未来加入无法从
+# event_log 重建的存储，请显式在此注册，而不是默默让它成为第二 Truth Layer。
 NON_SOVEREIGN_ATTACHMENTS: dict[str, dict[str, str]] = {}
 
-# Philosophy / Truth-Layer exceptions (must stay explicit — Fitness registry).
-# Each entry is a deliberate fracture of "everything is Event/State".
+# 设计哲学 / Truth Layer 例外（必须保持显式 —— Fitness registry）。
+# 每条都是对「万物皆为 Event/State」的一次刻意豁免。
 PHILOSOPHY_EXCEPTIONS: dict[str, dict[str, str]] = {
     "transport_chat_delta": {
         "rule": "ChatTextDelta / SSE / WS are TRANSPORT — not event_log",
@@ -159,7 +157,7 @@ def is_non_sovereign_attachment(attachment_id: str) -> bool:
     return attachment_id in NON_SOVEREIGN_ATTACHMENTS
 
 
-# Invariants check.
+# 不变量校验。
 if __debug__:
     assert GOVERNED_TABLES.isdisjoint(APP_STORAGE_TABLES), (
         f"Overlap between GOVERNED and APP_STORAGE: {GOVERNED_TABLES & APP_STORAGE_TABLES}"

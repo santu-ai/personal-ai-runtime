@@ -74,14 +74,6 @@ EVENT_EXECUTION_RETRIED = "ExecutionRetried"
 EVENT_EXECUTION_COMPLETED = "ExecutionCompleted"
 EVENT_EXECUTION_FAILED = "ExecutionFailed"
 
-EXECUTION_EVENT_TYPES = frozenset({
-    EVENT_EXECUTION_REQUESTED,
-    EVENT_EXECUTION_STARTED,
-    EVENT_EXECUTION_RETRIED,
-    EVENT_EXECUTION_COMPLETED,
-    EVENT_EXECUTION_FAILED,
-})
-
 EVENT_USER_PROFILE_UPDATED = "UserProfileUpdated"
 
 # ── 聚合类型 ─────────────────────────────────────────────────────────────
@@ -95,7 +87,6 @@ AGGREGATE_NOTIFICATION = "notification"
 AGGREGATE_EXECUTION = "execution"
 AGGREGATE_TIMER = "timer"
 AGGREGATE_POLICY = "policy"
-AGGREGATE_GRANT = "grant"
 AGGREGATE_INBOX_EMAIL = "inbox_email"
 
 # ── Timer 聚合 ─────────────────────────────────────────────────────────

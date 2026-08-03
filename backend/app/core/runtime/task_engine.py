@@ -330,8 +330,9 @@ def bump_parent_activity(parent_id: str) -> None:
 
 
 # ── Backward-compat aliases ───────────────────────────────────────────────
-# Kept for tests and any external caller that still uses the Task vocabulary.
-# Prefer the work_item_* names for new code.
+# 旧的 Task 词表别名。新代码请直接使用 work_item_* 名字。
+# 仅保留有调用方的两个；其余 5 个（get_task / get_subtasks /
+# get_tasks_for_goal / get_task_tree / list_tasks）经全仓库 grep 验证零引用，已删除。
 
 def create_task(name, description="", parent_goal_id=None, parent_task_id=None,
                 priority=0, dependencies=None):
@@ -340,21 +341,5 @@ def create_task(name, description="", parent_goal_id=None, parent_task_id=None,
         parent_goal_id=parent_goal_id, parent_work_id=parent_task_id,
         priority=priority, dependencies=dependencies)
 
-def get_task(item_id: str) -> dict | None:
-    return get_work_item(item_id)
-
-def get_subtasks(parent_work_id: str) -> list[dict]:
-    return get_sub_work_items(parent_work_id)
-
-def get_tasks_for_goal(goal_id: str, *, work_type: str | None = None) -> list[dict]:
-    return get_work_items_for_goal(goal_id, work_type=work_type)
-
-def get_task_tree(goal_id: str) -> list[dict]:
-    return get_work_item_tree(goal_id)
-
 def update_task_status(item_id: str, new_status: str) -> dict | None:
     return update_work_item_status(item_id, new_status)
-
-def list_tasks(status: str | None = None, work_type: str | None = None,
-               limit: int = 50) -> list[dict]:
-    return list_work_items(status=status, work_type=work_type, limit=limit)

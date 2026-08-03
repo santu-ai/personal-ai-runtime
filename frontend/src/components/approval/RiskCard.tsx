@@ -20,7 +20,8 @@ import {
   RISK_EXPLANATIONS,
   type RiskLevel,
 } from "../../utils/riskMeta";
-import { formatTime, formatTimeAgo } from "../../utils/time";
+import { formatTime } from "../../utils/time";
+import { timeAgo } from "../../utils/timeUtils";
 import type { CapabilityPolicy } from "../../api/settings";
 import Badge from "../ui/Badge";
 
@@ -196,7 +197,7 @@ export default function RiskCard({
 
           <div className="flex items-center gap-4 text-xs text-fg-disabled flex-wrap">
             {timing?.createdAt && (
-              <span title={formatTime(timing.createdAt)}>{formatTimeAgo(timing.createdAt)}</span>
+              <span title={formatTime(timing.createdAt)}>{timeAgo(timing.createdAt)}</span>
             )}
             {timing?.expiresAt && (
               <span className={expiringSoon ? "text-danger" : ""}>

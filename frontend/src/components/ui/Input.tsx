@@ -1,9 +1,4 @@
-import {
-  useCallback,
-  useState,
-  type InputHTMLAttributes,
-  type TextareaHTMLAttributes,
-} from "react";
+import { useState, type InputHTMLAttributes } from "react";
 import { Eye, EyeOff } from "lucide-react";
 
 const DEFAULT_MASKED = "••••••••";
@@ -16,42 +11,6 @@ interface PasswordInputProps extends InputHTMLAttributes<HTMLInputElement> {
   isSavedSecret?: boolean;
   /** Show invalid (error) styling — red border instead of focus-ring on focus. */
   invalid?: boolean;
-}
-
-interface Props extends TextareaHTMLAttributes<HTMLTextAreaElement> {
-  autoGrow?: boolean;
-  invalid?: boolean;
-}
-
-export function Textarea({
-  autoGrow = false,
-  invalid = false,
-  className = "",
-  onInput,
-  ...props
-}: Props) {
-  const handleInput = useCallback(
-    (e: React.FormEvent<HTMLTextAreaElement>) => {
-      if (autoGrow) {
-        const el = e.currentTarget;
-        el.style.height = "auto";
-        el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-      }
-      if (onInput) {
-        onInput(e as unknown as React.InputEvent<HTMLTextAreaElement>);
-      }
-    },
-    [autoGrow, onInput],
-  );
-
-  return (
-    <textarea
-      className={`${baseInput} ${invalid ? "border-danger focus:border-danger" : ""} ${className}`}
-      onInput={handleInput}
-      aria-invalid={invalid || undefined}
-      {...props}
-    />
-  );
 }
 
 export function Input({

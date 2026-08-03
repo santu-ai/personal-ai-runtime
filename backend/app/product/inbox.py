@@ -385,6 +385,8 @@ async def mark_inbox_email_status(email_id: str, status: str) -> dict | None:
                 )
                 _assert_imap_capability_ok(cap_res, action="标记未读")
         except ValueError:
+            # _assert_imap_capability_ok 抛出的业务错误原样上抛，避免被下面的
+            # Exception 分支再次包装成"IMAP 同步失败"。
             raise
         except Exception as exc:
             logger.warning("Failed to sync status to IMAP for %s: %s", email_id, exc)

@@ -1,4 +1,4 @@
-"""Alembic schema runner — called at application startup to initialize the DB schema."""
+"""Alembic Schema 执行器 —— 应用启动时调用以初始化 DB Schema。"""
 
 import logging
 import os
@@ -14,15 +14,15 @@ logger = logging.getLogger(__name__)
 
 
 def _find_alembic_ini() -> Path:
-    """Locate alembic.ini with fallback strategies."""
+    """按多策略回退定位 alembic.ini。"""
     strategies = [
-        # Strategy 1: Environment variable
+        # 策略 1：环境变量
         lambda: Path(os.environ.get("ALEMBIC_CONFIG", "")),
-        # Strategy 2: Relative to this file (backend/app/store/alembic_runner.py)
+        # 策略 2：相对于本文件（backend/app/store/alembic_runner.py）
         lambda: Path(__file__).resolve().parent.parent.parent / "alembic.ini",
-        # Strategy 3: Current working directory
+        # 策略 3：当前工作目录
         lambda: Path.cwd() / "alembic.ini",
-        # Strategy 4: Subdirectory 'backend' from CWD
+        # 策略 4：CWD 下的 backend 子目录
         lambda: Path.cwd() / "backend" / "alembic.ini",
     ]
 
@@ -35,7 +35,7 @@ def _find_alembic_ini() -> Path:
             logger.debug("alembic.ini strategy failed", exc_info=True)
             continue
 
-    # Default fallback (might not exist, will be caught in run_migrations)
+    # 默认回退（可能不存在，将由 run_migrations 捕获处理）
     return Path(__file__).resolve().parent.parent.parent / "alembic.ini"
 
 
@@ -43,20 +43,19 @@ _ALEMBIC_INI = _find_alembic_ini()
 
 
 def run_migrations(db_url: Optional[str] = None) -> Optional[str]:
-    """
-    Apply the Alembic schema to head (idempotent — safe to call every startup).
+    """将 Alembic Schema 升级到 head（幂等，可每次启动调用）。
 
     Args:
-        db_url: Optional SQLAlchemy database URL to override default settings.
+        db_url: 可选的 SQLAlchemy DB URL，用于覆盖默认配置。
 
     Returns:
-        The current head revision ID after migration.
+        迁移完成后的当前 head revision ID。
     """
     if not _ALEMBIC_INI.is_file():
         logger.warning("alembic.ini not found at %s — skipping schema setup", _ALEMBIC_INI)
         return None
 
-    # Guard: prevent some app models from crashing if they expect this key during import
+    # 防御性默认值：某些 app model 在 import 时会读取 LLM_API_KEY，缺失会崩。
     os.environ.setdefault("LLM_API_KEY", "alembic-migration-key")
 
     alembic_cfg = Config(str(_ALEMBIC_INI))
@@ -66,7 +65,7 @@ def run_migrations(db_url: Optional[str] = None) -> Optional[str]:
     try:
         command.upgrade(alembic_cfg, "head")
 
-        # Log and return the current head for better observability
+        # 记录并返回当前 head，便于可观测性
         script = ScriptDirectory.from_config(alembic_cfg)
         head_rev = script.get_current_head()
 

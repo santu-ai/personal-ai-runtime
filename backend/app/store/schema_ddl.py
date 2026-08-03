@@ -1,7 +1,7 @@
-"""Raw SQL DDL for non-Alembic database initialization (tests and fallback).
+"""非 Alembic 初始化用的 raw SQL DDL（测试与回退路径）。
 
-This module is the single source of truth for inline DDL. Kernel projectors
-must not own parallel CREATE TABLE strings — import from here if needed.
+本模块是 inline DDL 的单一可信源。Kernel projector 不得另起 CREATE TABLE
+字符串 —— 若需要请从本模块导入。
 """
 
 CONVERSATIONS_SCHEMA = """
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS memories (
 );
 """
 
-# Unified work_items table (Goal / Task / Action are work_type values).
+# 统一 work_items 表（Goal / Task / Action 都是 work_type 取值）。
 WORK_ITEMS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS work_items (
     id TEXT PRIMARY KEY,
@@ -308,7 +308,7 @@ CREATE TABLE IF NOT EXISTS plan_resumes (
 );
 """
 
-# Ordered list of all schemas for full database initialization.
+# 全部 Schema 的有序列表，用于完整数据库初始化。
 ALL_SCHEMAS = [
     CONVERSATIONS_SCHEMA,
     MESSAGES_SCHEMA,

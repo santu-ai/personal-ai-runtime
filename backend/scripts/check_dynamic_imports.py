@@ -20,7 +20,7 @@ APP_ROOT = BACKEND / "app"
 # (posix path under app/, lineno) — shrink toward empty when possible.
 IMPORTLIB_ALLOWLIST: frozenset[tuple[str, int]] = frozenset({
     # BoundProxy lazy-loads runtime_container to avoid Store→Runtime hard cycle.
-    ("store/bound_proxy.py", 39),
+    ("store/bound_proxy.py", 38),
 })
 
 
