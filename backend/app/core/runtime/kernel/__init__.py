@@ -1,9 +1,9 @@
-"""Personal AI Runtime — Kernel.
+"""Personal AI Runtime —— Kernel。
 
-The boundary of the Runtime. User Space (agents, workflows, APIs, UI) talks to
-the system exclusively through `Kernel`; only the Kernel touches storage.
+Runtime 的边界。User Space（agents、workflows、APIs、UI）只能经由
+``Kernel`` 与系统交互；只有 Kernel 触碰存储。
 
-See docs/RUNTIME_SPEC.md (v1.0 FROZEN) for the object model, boundary, and ABI.
+对象模型、边界与 ABI 见 docs/RUNTIME_SPEC.md（v1.0 FROZEN）。
 """
 
 from .event import Event

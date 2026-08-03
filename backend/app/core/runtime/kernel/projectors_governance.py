@@ -1,7 +1,6 @@
-"""Governance projectors — Policy event-sourced projections.
+"""治理投影器——Policy 聚合的事件溯源投影。
 
-policy_events is a projection of Policy aggregate event streams, fully
-reconstructible from the Event Log.
+policy_events 是 Policy 聚合事件流的投影，可完全从事件日志重建。
 """
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ _OWNED_TABLES[AGGREGATE_POLICY] = ["policy_events"]
 
 
 def _invalidate_risk_cache() -> None:
-    """Policy table changed — drop CapabilityGovernance risk cache."""
+    """Policy 表变化——丢弃 CapabilityGovernance 风险缓存。"""
     try:
         from app.core.runtime.capability_governance import capability_governance
 
@@ -27,7 +26,7 @@ def _invalidate_risk_cache() -> None:
         logger.debug("Could not invalidate risk cache", exc_info=True)
 
 
-# ── Policy projectors ───────────────────────────────────────────────────
+# ── Policy 投影器 ───────────────────────────────────────────────────
 
 @projector("PolicyCreated")
 def _on_policy_created(event: Event, conn) -> None:
@@ -59,7 +58,7 @@ def _on_policy_updated(event: Event, conn) -> None:
         _invalidate_risk_cache()
         return
     if status == "active":
-        # Reactivation after intentional revoke (INV-C6): restore active + risk.
+        # 有意撤销后的重新激活（INV-C6）：恢复 active 状态与风险等级。
         risk = p.get("risk_level", "low")
         conn.execute(
             "UPDATE policy_events SET status = 'active', risk_level = ?, "
@@ -75,7 +74,7 @@ def _on_policy_updated(event: Event, conn) -> None:
     _invalidate_risk_cache()
 
 
-# --- Telemetry projections (folded to keep runtime_files zero-sum) ---
+# --- 遥测投影（折叠在此以保持 runtime_files 零和）---
 
 _OWNED_TABLES["capability"] = ["tool_calls"]
 _OWNED_TABLES["llm_call"] = ["llm_calls"]
@@ -118,7 +117,7 @@ def _on_capability_failed(event: Event, conn) -> None:
 
 @projector("CapabilityDenied")
 def _on_capability_denied(event: Event, conn) -> None:
-    """Denied calls are also tool calls (rejected before invocation)."""
+    """被拒绝的调用也是 tool call（在调用前就被拦下）。"""
     p = event.payload
     conn.execute(
         """INSERT OR REPLACE INTO tool_calls

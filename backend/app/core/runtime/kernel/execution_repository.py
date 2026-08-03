@@ -1,8 +1,7 @@
-"""ScheduledExecution persistence reader — Kernel-space scanner for handler_executions.
+"""ScheduledExecution 持久化读取器——handler_executions 的 Kernel 空间扫描器。
 
-Read paths over the projection; writes happen exclusively through execution
-projectors reacting to Execution* events. The Scheduler uses these scanners to
-recover interrupted ScheduledExecutions after a restart.
+对投影的读路径；写入只经 Execution 投影器响应 Execution* 事件发生。
+Scheduler 用这些扫描器在重启后恢复中断的 ScheduledExecutions。
 """
 
 from __future__ import annotations
@@ -24,7 +23,7 @@ _BASE_SELECT = "SELECT * FROM handler_executions"
 
 
 def read_scheduled_execution(db: Any, execution_id: str) -> "ScheduledExecution | None":
-    """Read one ScheduledExecution by id (O(1) projection lookup)."""
+    """按 id 读取一条 ScheduledExecution（O(1) 投影查询）。"""
     from app.core.runtime.scheduled_execution import ScheduledExecution
 
     with db.get_db() as conn:
@@ -42,7 +41,7 @@ def read_scheduled_executions(
     status: str | None = None,
     instance_id: str | None = None,
 ) -> list["ScheduledExecution"]:
-    """Read ScheduledExecutions from the handler_executions projection."""
+    """从 handler_executions 投影读取 ScheduledExecutions。"""
     from app.core.runtime.scheduled_execution import ScheduledExecution
 
     clauses: list[str] = ["1=1"]
@@ -66,9 +65,9 @@ def read_scheduled_executions(
 def recover_scheduled_executions(
     db: Any,
 ) -> tuple[list["ScheduledExecution"], list["ScheduledExecution"]]:
-    """Scan ScheduledExecutions needing recovery after a restart.
+    """扫描重启后需要恢复的 ScheduledExecutions。
 
-    Returns ``(running, pending)``. Performs NO writes.
+    返回 ``(running, pending)``。不做任何写入。
     """
     from app.core.runtime.scheduled_execution import ScheduledExecution
 
@@ -90,7 +89,7 @@ def recover_scheduled_executions(
 
 
 def count_scheduled_executions_by_status(db: Any) -> dict[str, int]:
-    """Return ``{status: count}`` for all handler_executions rows."""
+    """返回全部 handler_executions 行的 ``{status: count}``。"""
     with db.get_db() as conn:
         rows = conn.execute(
             "SELECT status, COUNT(*) AS c FROM handler_executions GROUP BY status"

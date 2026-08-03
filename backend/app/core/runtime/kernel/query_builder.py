@@ -1,35 +1,32 @@
-"""Typed query-construction helpers for Kernel read paths.
+"""Kernel 读路径的类型化查询构造助手。
 
-Centralises the patterns that were previously hand-written across the Kernel
-mixins (``WHERE`` clause assembly, ``LIMIT``/``ORDER BY`` injection,
-``IN (...)`` placeholders). Goals:
+把原先散落在 Kernel 各 mixin 中手写的模式集中起来（``WHERE`` 子句组装、
+``LIMIT``/``ORDER BY`` 注入、``IN (...)`` 占位符）。目标：
 
-- No ad-hoc f-strings in call sites — every fragment is built here.
-- ``int(limit)`` coercion lives in exactly one place, with a sane ceiling.
-- ``ORDER BY`` clauses are validated against an allowlist dict so callers
-  cannot inject arbitrary SQL via the ``order`` parameter — unknown keys
-  fall back to the default rather than being interpolated.
+- 调用点不出现临时 f-string——每个片段都在这里构造。
+- ``int(limit)`` 强转只存在一处，并带合理上限。
+- ``ORDER BY`` 子句经白名单字典校验，调用方无法经 ``order`` 参数注入
+  任意 SQL——未知键回退到默认值，而不是被插值。
 
-Fragment helpers emit SQL text only. Projection/event fetch helpers below
-open Database connections — still Kernel Space
-(``check_boundary.py`` treats ``core/runtime/kernel`` as trusted).
+片段助手只产出 SQL 文本。下面的投影/事件抓取助手会打开 Database 连接，
+仍属 Kernel Space（``check_boundary.py`` 把 ``core/runtime/kernel``
+视为可信）。
 """
 
 from __future__ import annotations
 
 from typing import Any, Iterable
 
-# A defensive upper bound — none of the current call sites need more than a
-# few hundred rows. Keeps a runaway ``limit`` from dragging the DB.
+# 防御性上限——当前没有任何调用点需要超过几百行。防止失控的 ``limit``
+# 拖垮数据库。
 MAX_LIMIT = 5000
 
 
 def safe_limit(limit: int | None, default: int | None = None) -> str:
-    """Return a ``LIMIT ?``-free SQL fragment with the integer already inlined.
+    """返回不含 ``LIMIT ?`` 参数的 SQL 片段，整数已内联。
 
-    All limits flow through here so we can guarantee (a) the value is an int
-    and (b) it never exceeds :data:`MAX_LIMIT`. Returns ``""`` when neither
-    ``limit`` nor ``default`` is supplied.
+    所有 limit 都流经此处，保证 (a) 值是 int，(b) 永不超 :data:`MAX_LIMIT`。
+    两者皆未提供时返回 ``""``。
     """
     if limit is None:
         if default is None:
@@ -44,7 +41,7 @@ def safe_limit(limit: int | None, default: int | None = None) -> str:
 
 
 def safe_offset(offset: int | None) -> str:
-    """Return an ``OFFSET N`` fragment, or ``""`` when unset/zero."""
+    """返回 ``OFFSET N`` 片段；未设置或为 0 时返回 ``""``。"""
     if not offset:
         return ""
     n = int(offset)
@@ -56,13 +53,11 @@ def safe_offset(offset: int | None) -> str:
 
 
 def safe_order(order: str | None, allowed: dict[str, str], default_key: str) -> str:
-    """Return an ``ORDER BY`` fragment validated against ``allowed``.
+    """返回经 ``allowed`` 校验的 ``ORDER BY`` 片段。
 
-    ``allowed`` maps a stable public name (e.g. ``"importance_desc"``) to a
-    literal SQL fragment. Unknown keys fall back to ``allowed[default_key]``
-    rather than being interpolated — this closes the order-by injection
-    surface that previously existed wherever ``f"ORDER BY {order_sql}"`` was
-    written.
+    ``allowed`` 把稳定公开名（如 ``"importance_desc"``）映射到字面 SQL
+    片段。未知键回退到 ``allowed[default_key]`` 而不是被插值——这关闭了
+    原先各处 ``f"ORDER BY {order_sql}"`` 写法留下的排序注入面。
     """
     if order is None:
         order = default_key
@@ -70,10 +65,10 @@ def safe_order(order: str | None, allowed: dict[str, str], default_key: str) -> 
 
 
 def in_clause(values: Iterable[Any]) -> tuple[str, list[Any]]:
-    """Build an ``IN (?, ?, ...)`` placeholder list with matching params.
+    """构造 ``IN (?, ?, ...)`` 占位符列表及对应参数。
 
-    Returns ``("", [])`` for an empty input so callers can compose it into a
-    larger ``WHERE`` without special-casing.
+    空输入返回 ``("", [])``，调用方可把它组合进更大的 ``WHERE`` 而无需
+    特判。
     """
     seq = list(values)
     if not seq:
@@ -83,26 +78,26 @@ def in_clause(values: Iterable[Any]) -> tuple[str, list[Any]]:
 
 
 def build_where(clauses: list[str]) -> str:
-    """Join filter clauses into a ``WHERE ...`` fragment (empty when no clauses).
+    """把过滤子句拼接成 ``WHERE ...`` 片段（无子句时为空）。
 
-    Params are owned by the caller; this helper only assembles the clause
-    text, so callers retain full control over parameter ordering.
+    参数由调用方持有；本助手只组装子句文本，因此调用方保留对参数顺序
+    的完全控制。
     """
     if not clauses:
         return ""
     return " WHERE " + " AND ".join(clauses)
 
 
-# Default batch for sovereignty export — keeps peak memory bounded without
-# changing the snapshot wire format (still a full list of row dicts).
+# 主权导出的默认批次——在不让峰值内存失控的前提下保持快照线格式不变
+# （仍是完整的行 dict 列表）。
 EVENT_LOG_EXPORT_BATCH = 2000
 
 
 def fetch_event_log_dicts(conn: Any, *, batch_size: int = EVENT_LOG_EXPORT_BATCH) -> list[dict[str, Any]]:
-    """Read ``event_log`` in seq order via batched ``seq > ?`` cursors.
+    """按 seq 顺序、用 ``seq > ?`` 游标分批读取 ``event_log``。
 
-    Avoids a single ``fetchall()`` of the entire table. Caller owns the
-    connection/transaction so ``snapshot()`` can share one read txn.
+    避免对整个表做一次 ``fetchall()``。连接/事务由调用方持有，使
+    ``snapshot()`` 可以共享一个只读事务。
     """
     out: list[dict[str, Any]] = []
     last_seq = 0
@@ -128,7 +123,7 @@ def fetch_event_log_dicts(conn: Any, *, batch_size: int = EVENT_LOG_EXPORT_BATCH
 def fetch_chat_projection_dicts(
     conn: Any,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Read conversation/message projections on an open connection."""
+    """在打开的连接上读取 conversation/message 投影。"""
     conversations = [
         dict(r)
         for r in conn.execute(
@@ -147,7 +142,7 @@ def fetch_chat_projection_dicts(
 def iter_event_log_json_objects(
     conn: Any, *, batch_size: int = EVENT_LOG_EXPORT_BATCH
 ) -> Iterable[str]:
-    """Yield JSON object strings for each event_log row (seq ascending)."""
+    """逐行产出 event_log 的 JSON 对象字符串（seq 升序）。"""
     import json
 
     last_seq = 0
@@ -178,7 +173,7 @@ def iter_snapshot_document_bytes(
     export_format: str,
     batch_size: int = EVENT_LOG_EXPORT_BATCH,
 ) -> Iterable[bytes]:
-    """Stream a lossless snapshot JSON document on an open connection."""
+    """在打开的连接上流式产出无损快照 JSON 文档。"""
     import json
 
     def _text() -> Iterable[str]:
@@ -249,7 +244,7 @@ def fetch_event_log_rows(
     order: str = "asc",
     id: str | None = None,
 ) -> list[Any]:
-    """Read filtered ``event_log`` rows (sqlite Row objects)."""
+    """读取过滤后的 ``event_log`` 行（sqlite Row 对象）。"""
     clauses = ["seq > ?"]
     params: list[Any] = [since_seq]
     if id is not None:
@@ -259,9 +254,8 @@ def fetch_event_log_rows(
         clauses.append("aggregate_type = ?")
         params.append(aggregate_type)
     if aggregate_ids is not None:
-        # Explicit aggregate_ids list (even empty) is a filter: empty means
-        # "match nothing". Falls back to aggregate_id only when aggregate_ids
-        # was not provided at all.
+        # 显式 aggregate_ids 列表（即使为空）是一个过滤器：空即「不匹配任何
+        # 东西」。只有 aggregate_ids 完全未提供时才回退到 aggregate_id。
         if aggregate_ids:
             placeholders = ",".join("?" * len(aggregate_ids))
             clauses.append(f"aggregate_id IN ({placeholders})")
@@ -311,19 +305,19 @@ def fetch_event_log_rows(
         )
 
 
-# ── Projection reads (extracted from QueryStateMixin) ─────────────────────
-# These open Database connections; fragment helpers above stay connection-free.
+# ── 投影读取（从 QueryStateMixin 抽出）────────────────────────────────────
+# 这些函数会打开 Database 连接；上面的片段助手保持无连接。
 
 
 def query_work_items(db, filters: dict[str, Any]) -> list[dict] | int:
-    """Unified query for work_items table.
+    """work_items 表的统一查询。
 
-    Serves all work types (task / action / background / goal).
+    服务全部工作类型（task / action / background / goal）。
     """
     item_id = filters.get("id")
     item_ids = filters.get("id_in")
-    # Explicit empty id_in means "match nothing" — must short-circuit before
-    # the general clause path (which would otherwise return all rows).
+    # 显式空 id_in 表示「不匹配任何东西」——必须在通用子句路径之前短路
+    #（否则会返回全部行）。
     item_ids_provided = item_ids is not None
     status = filters.get("status")
     status_in = filters.get("status_in")
@@ -360,8 +354,8 @@ def query_work_items(db, filters: dict[str, Any]) -> list[dict] | int:
             return [dict(row)] if row else []
 
         if item_ids_provided:
-            # Batch lookup by id list (N+1 avoidance for enrichment paths).
-            # Empty list is an explicit "match nothing" filter.
+            # 按 id 列表批量查找（为富化路径避免 N+1）。
+            # 空列表是显式「不匹配任何东西」过滤器。
             unique_ids = list(dict.fromkeys(str(i) for i in (item_ids or []) if i))
             if not unique_ids:
                 return [] if not count_only else 0
@@ -380,8 +374,7 @@ def query_work_items(db, filters: dict[str, Any]) -> list[dict] | int:
 
         clauses: list[str] = []
         params: list[Any] = []
-        # status_in takes precedence over status when both are present
-        # (mirrors _query_goals semantics).
+        # status_in 与 status 同时出现时，status_in 优先（镜像 _query_goals 语义）。
         if status_in is not None:
             placeholders = ",".join("?" * len(status_in))
             clauses.append(f"status IN ({placeholders})")
@@ -799,7 +792,7 @@ def query_policy_events(db, filters: dict[str, Any]) -> list[dict] | int:
 
 def query_user_profile(db, filters: dict[str, Any]) -> list[dict]:
     category = filters.get("id")
-    # ``limit`` is optional: omit for a full category listing (small table).
+    # ``limit`` 可选：省略则返回整个分类列表（表很小）。
     limit = filters.get("limit")
     with db.get_db() as conn:
         if category:
@@ -852,8 +845,8 @@ def aggregate_call_failure_rates(db, filters: dict[str, Any]) -> dict:
 
 
 def aggregate_memory_stats(db, filters: dict[str, Any] | None = None) -> dict:
-    """Memory totals / categories / recent_7d via SQL COUNT (no row cap)."""
-    del filters  # reserved for future filters
+    """经 SQL COUNT 统计记忆总量/分类/近7天（无行上限）。"""
+    del filters  # 预留未来过滤器
     from app.store.memory_queries import aggregate_memory_stats as _agg
 
     return _agg(db)

@@ -1,10 +1,15 @@
+"""核心投影器——approval / memory / work_item / user_profile / notification。
+
+各读模型表仅由对应聚合事件派生，可完全从事件日志重建。
+"""
+
 import json
 
 from .event import Event
 from .projectors_registry import _OWNED_TABLES, projector
 
-# --- Approval projection -----------------------------------------------------
-# The `approvals` table is the read model for governance.
+# --- Approval 投影 ------------------------------------------------------------
+# ``approvals`` 表是治理读模型。
 
 _OWNED_TABLES["approval"] = ["approvals"]
 
@@ -39,7 +44,7 @@ def _on_approval_granted(event: Event, conn) -> None:
 def _on_approval_denied(event: Event, conn) -> None:
     p = event.payload
     status = "expired" if p.get("reason") == "auto_expired" else "denied"
-    # Idempotent: only transition pending rows (safe under duplicate emits).
+    # 幂等：只迁移 pending 行（重复 emit 下安全）。
     conn.execute(
         "UPDATE approvals SET status = ?, resolved_at = ?, resolved_by = ? "
         "WHERE id = ? AND status = 'pending'",
@@ -47,16 +52,16 @@ def _on_approval_denied(event: Event, conn) -> None:
     )
 
 
-# --- Memory projection -------------------------------------------------------
-# The `memories` table is the projection for derived beliefs.
+# --- Memory 投影 ---------------------------------------------------------------
+# ``memories`` 表是派生信念的投影。
 
 _OWNED_TABLES["memory"] = ["memories"]
 
 
 def origin_from_actor(actor: str) -> str:
-    """Map event actor to memory origin (Meaning Boundary G2).
+    """把事件 actor 映射为记忆来源（Meaning Boundary G2）。
 
-    Only explicit user-authored events are self_report; everything else is claim.
+    只有用户显式撰写的用户事件是 self_report，其余都是 claim。
     """
     if actor == "user":
         return "self_report"
@@ -64,12 +69,12 @@ def origin_from_actor(actor: str) -> str:
 
 
 def initial_claim_status(origin: str) -> str | None:
-    """Meaning Boundary G1: claims start proposed; self-reports skip Authority."""
+    """Meaning Boundary G1：claim 以 proposed 起步；self-report 跳过 Authority。"""
     return "proposed" if origin == "claim" else None
 
 
 def _set_claim_status_if_claim(conn, memory_id: str, status: str) -> None:
-    """Apply epistemic status only to origin=claim rows."""
+    """只对 origin=claim 的行应用认知状态。"""
     row = conn.execute(
         "SELECT origin FROM memories WHERE id = ?", (memory_id,)
     ).fetchone()
@@ -120,7 +125,7 @@ def _on_memory_decayed(event: Event, conn) -> None:
 
 @projector("MemoryRevoked")
 def _on_memory_revoked(event: Event, conn) -> None:
-    """A memory has been contradicted by new evidence — set confidence to 0."""
+    """记忆被新证据反驳——置信度归零。"""
     conn.execute(
         "UPDATE memories SET confidence = 0.0, decayed_at = ? WHERE id = ?",
         (event.ts, event.aggregate_id),
@@ -148,8 +153,8 @@ def _on_memory_deleted(event: Event, conn) -> None:
     conn.execute("DELETE FROM memories WHERE id = ?", (event.aggregate_id,))
 
 
-# --- WorkItem projection -------------------------------------------------------
-# The `work_items` table holds all work types (task / action / background / goal).
+# --- WorkItem 投影 ---------------------------------------------------------------
+# ``work_items`` 表容纳全部工作类型（task / action / background / goal）。
 
 _OWNED_TABLES["work_item"] = ["work_items"]
 
@@ -157,10 +162,10 @@ _OWNED_TABLES["work_item"] = ["work_items"]
 @projector("WorkItemCreated")
 def _on_work_item_created(event: Event, conn) -> None:
     p = event.payload
-    # Goal columns: WorkItemCreated with work_type='goal' populates
-    # progress/importance/urgency/deadline/last_activity_at; other work_types
-    # fall back to schema defaults (progress=0, importance=urgency=0.5,
-    # deadline/last_activity_at=NULL).
+    # Goal 列：work_type='goal' 的 WorkItemCreated 会填充
+    # progress/importance/urgency/deadline/last_activity_at；其余 work_type
+    # 回退到 schema 默认值（progress=0、importance=urgency=0.5、
+    # deadline/last_activity_at=NULL）。
     conn.execute(
         """INSERT OR REPLACE INTO work_items
            (id, title, description, work_type, parent_work_id, parent_goal_id,
@@ -180,9 +185,9 @@ def _on_work_item_created(event: Event, conn) -> None:
             p.get("executable_plan"),
             p.get("created_at", event.ts),
             event.ts,
-            # v1.0 goal fields — only present in payload when work_type='goal'.
-            # Defaults match the schema server_default so non-goal rows are
-            # byte-identical to pre-v1.0 rebuild output.
+            # v1.0 goal 字段——仅在 work_type='goal' 时出现在 payload。
+            # 默认值与 schema server_default 一致，保证非 goal 行的重建输出
+            # 与 v1.0 之前逐字节一致。
             p.get("progress", 0),
             p.get("importance", 0.5),
             p.get("urgency", 0.5),
@@ -191,10 +196,8 @@ def _on_work_item_created(event: Event, conn) -> None:
         ),
     )
 
-    # When a new child is created under a goal, recompute the parent's progress
-    # so the count of children stays consistent. Without this, adding a child
-    # after some siblings are already completed would leave the parent's
-    # progress stale until the next status change.
+    # 在 goal 下新建子项后重算父级进度，保持子项计数一致。不做这一步，
+    # 在部分兄弟已完成后再加子项会让父级进度一直陈旧，直到下次状态变更。
     _recalculate_parent_goal_progress(conn, event.aggregate_id, event.ts)
 
 
@@ -229,7 +232,7 @@ def _on_work_item_status_changed(event: Event, conn) -> None:
     if status == "completed":
         extra.append("completed_at = ?")
         vals.append(event.ts)
-        # v1.0 fix: ensure progress is 1.0 when a goal/task is completed.
+        # v1.0 修正：goal/task 完成时确保 progress 为 1.0。
         extra.append("progress = 1.0")
     completed_clause = ", " + ", ".join(extra) if extra else ""
     vals.append(event.aggregate_id)
@@ -238,28 +241,26 @@ def _on_work_item_status_changed(event: Event, conn) -> None:
         vals,
     )
 
-    # Derive parent goal progress when a child changes status.
-    # Pure projection (same transaction) — rebuild produces byte-identical
-    # state because the same event sequence replays the same calculation.
+    # 子项状态变更时派生父 goal 的进度。纯投影（同一事务）——重建会得到
+    # 逐字节一致的状态，因为相同事件序列重放了同一计算。
     _recalculate_parent_goal_progress(conn, event.aggregate_id, event.ts)
 
 
 def _recalculate_parent_goal_progress(
     conn, child_id: str, ts: str, parent_id_hint: str | None = None,
 ) -> None:
-    """When a child work_item's status changes or is created/deleted, recompute
-    its parent goal's progress as completed_children / total_children (only if
-    the parent is a goal). Pure SQL within the projector's transaction — no
-    event emission, so no recursion risk.
+    """子 work_item 状态变更 / 创建 / 删除时，重算父 goal 的进度
+    为 completed_children / total_children（仅当父项是 goal）。在投影器的
+    事务内做纯 SQL——不发事件，因此无递归风险。
 
-    Progress = completed / total (only children of this parent counted).
+    Progress = completed / total（只统计该父项的子项）。
 
-    ``parent_id_hint`` lets callers that already know the parent (e.g. delete
-    path, which has to capture it before the row goes away) skip the lookup.
+    ``parent_id_hint`` 让已知父项的调用方（如删除路径——必须在行消失前
+    捕获它）跳过查找。
     """
     parent_id = parent_id_hint
     if parent_id is None:
-        # Look up the parent reference of the child that just changed.
+        # 查找刚变更子项的父引用。
         row = conn.execute(
             "SELECT parent_work_id, parent_goal_id FROM work_items WHERE id = ?",
             (child_id,),
@@ -270,22 +271,22 @@ def _recalculate_parent_goal_progress(
     if not parent_id:
         return
 
-    # Only recompute if the parent is a goal (tasks don't track progress).
+    # 只有父项是 goal 才重算（task 不追踪进度）。
     parent = conn.execute(
         "SELECT work_type FROM work_items WHERE id = ?", (parent_id,),
     ).fetchone()
     if parent is None or parent["work_type"] != "goal":
         return
 
-    # Count children and completed children. Children reference the goal
-    # via either parent_work_id or parent_goal_id.
+    # 统计子项与已完成子项。子项经 parent_work_id 或 parent_goal_id
+    # 引用 goal。
     children = conn.execute(
         "SELECT status FROM work_items "
         "WHERE parent_work_id = ? OR parent_goal_id = ?",
         (parent_id, parent_id),
     ).fetchall()
     if not children:
-        # No children left — reset progress to 0 (avoids stale non-zero value).
+        # 没有子项了——重置进度为 0（避免残留陈旧非零值）。
         conn.execute(
             "UPDATE work_items SET progress = 0, last_activity_at = ?, updated_at = ? "
             "WHERE id = ?",
@@ -305,8 +306,7 @@ def _recalculate_parent_goal_progress(
 
 @projector("WorkItemDeleted")
 def _on_work_item_deleted(event: Event, conn) -> None:
-    # Capture parent reference before delete so we can recompute
-    # parent goal progress after the child row is gone.
+    # 删除前捕获父引用，以便子行消失后重算父 goal 进度。
     row = conn.execute(
         "SELECT parent_work_id, parent_goal_id FROM work_items WHERE id = ?",
         (event.aggregate_id,),
@@ -319,7 +319,7 @@ def _on_work_item_deleted(event: Event, conn) -> None:
         _recalculate_parent_goal_progress(conn, event.aggregate_id, event.ts)
 
 
-# --- Claim authority projection (Meaning Boundary G1) ------------------------
+# --- Claim 权威投影（Meaning Boundary G1）------------------------------------
 
 
 @projector("ClaimRatified")
@@ -371,7 +371,7 @@ def _on_claim_revised(event: Event, conn) -> None:
     )
 
 
-# --- User Profile projection --------------------------------------------------
+# --- User Profile 投影 ----------------------------------------------------------
 
 _OWNED_TABLES["user_profile"] = ["user_profile"]
 
@@ -380,7 +380,7 @@ _OWNED_TABLES["user_profile"] = ["user_profile"]
 def _on_user_profile_updated(event: Event, conn) -> None:
     p = event.payload
     category = p["category"]
-    # Preserve created_at across updates (INSERT OR REPLACE would wipe it).
+    # 更新时保留 created_at（INSERT OR REPLACE 会抹掉它）。
     conn.execute(
         """INSERT INTO user_profile
            (id, category, data_json, confidence, created_at, updated_at)
@@ -400,7 +400,7 @@ def _on_user_profile_updated(event: Event, conn) -> None:
     )
 
 
-# --- Notification projection --------------------------------------------------
+# --- Notification 投影 ----------------------------------------------------------
 
 _OWNED_TABLES["notification"] = ["notifications"]
 

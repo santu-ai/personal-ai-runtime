@@ -1,7 +1,12 @@
+"""Conversation 投影——chat 读模型。
+
+conversations/messages 仅由 Conversation* 与 MessageAppended 事件派生，
+可完全从事件日志重建。
+"""
+
 import json
 from typing import Any
 
-# --- Conversation projection (chat read models) --------------------------------
 from .event import Event
 from .projectors_registry import _OWNED_TABLES, projector
 

@@ -1,9 +1,9 @@
 # mypy: disable-error-code="attr-defined"
-"""Sovereignty operations — export, import, rebuild, erase.
+"""数据主权操作——导出、导入、重建、擦除。
 
-Extracted from ``kernel_sovereignty.SovereigntyMixin`` so the God Object
-LOC budget can shrink. Functions take a Kernel-like object (``_db``,
-``emit_event``, ``read_events``, ``_sync_memory_index``, …).
+从 ``kernel_sovereignty.SovereigntyMixin`` 抽出，让 God Object 的 LOC
+预算可以收缩。函数接收 Kernel 类对象（``_db``、``emit_event``、
+``read_events``、``_sync_memory_index`` 等）。
 """
 
 from __future__ import annotations
@@ -34,15 +34,15 @@ EXPORT_FORMAT = "snapshot"
 
 
 def _ordered_projection_tables() -> list[str]:
-    """Return projection tables in safe DELETE order (children before parents).
+    """按安全 DELETE 顺序返回投影表（子表在父表之前）。
 
-    Tables with foreign keys to other projection tables must be cleared first.
+    有外键指向其他投影表的表必须先清空。
     """
     all_tables: set[str] = set()
     for tables in projectors._OWNED_TABLES.values():
         all_tables.update(tables)
-    # FK: messages.conversation_id → conversations.id
-    # FK (in data): handler_executions may reference event_log seqs (by convention)
+    # FK：messages.conversation_id → conversations.id
+    # 数据级 FK（按约定）：handler_executions 可能引用 event_log seq
     child_before_parent = ["messages", "handler_executions", "timer_events"]
     ordered = []
     for child in child_before_parent:
@@ -71,10 +71,10 @@ def _ensure_event_log_guards(kernel, conn) -> None:
     )
 
 def export_event_log_rows(kernel, *, conn=None) -> list[dict[str, Any]]:
-    """Export full event_log for lossless snapshot (batched seq cursor).
+    """导出完整 event_log 以做无损快照（按 seq 游标分批）。
 
-    When ``conn`` is provided, reads on that connection so callers can
-    hold a single point-in-time transaction across event_log + chat.
+    提供 ``conn`` 时在该连接上读取，让调用方可以在 event_log + chat
+    上持有一个时点一致的事务。
     """
     if conn is not None:
         return fetch_event_log_dicts(conn)
@@ -87,7 +87,7 @@ def import_event_log_rows(
     *,
     rebuild_projections: bool = True,
 ) -> int:
-    """Import while excluding concurrent vector sync and repair operations."""
+    """导入，同时排除并发的向量同步与修复操作。"""
     from .memory_index_sync import memory_index_operation_lock
 
     with memory_index_operation_lock:

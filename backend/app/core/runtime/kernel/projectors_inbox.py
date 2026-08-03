@@ -1,10 +1,8 @@
-"""Inbox email projection — derives the inbox_emails table solely from
-InboxEmail* events.
+"""收件箱邮件投影——仅从 InboxEmail* 事件派生 inbox_emails 表。
 
-inbox_emails is a governed projection: every column is derived from events,
-the table can be rebuilt via kernel.rebuild("inbox_email"), and
-verify_inbox_audit.py can guarantee 1:1 correspondence because the INSERT
-path only exists inside the Kernel.
+inbox_emails 是受治理投影：每一列都派生自事件，表可经
+kernel.rebuild("inbox_email") 重建，且因为 INSERT 路径只存在于 Kernel
+内部，verify_inbox_audit.py 可保证 1:1 对应。
 """
 
 import json
@@ -52,10 +50,9 @@ def _on_inbox_email_status_changed(event: Event, conn) -> None:
 def _on_inbox_email_flag_set(event: Event, conn) -> None:
     flag = event.payload.get("flag", "notified")
     if flag == "digested":
-        # Bulk op: mark all undigested rows as digested. aggregate_id carries
-        # the digest run id; we update every row where digested = 0 so the
-        # projection converges to "everything emitted before this event has
-        # been digested".
+        # 批量操作：把所有未消化的行标记为已消化。aggregate_id 携带消化
+        # 批次 id；更新所有 digested = 0 的行，让投影收敛到「本事件之前
+        # 发出的一切都已被消化」。
         conn.execute("UPDATE inbox_emails SET digested = 1 WHERE COALESCE(digested, 0) = 0")
     else:
         conn.execute(
@@ -64,8 +61,8 @@ def _on_inbox_email_flag_set(event: Event, conn) -> None:
         )
 
 
-# --- Timer projection (folded here to keep runtime_files zero-sum) ----------
-# timer_events DDL lives in app.store.schema_ddl.TIMER_EVENTS_SCHEMA.
+# --- Timer 投影（折叠在此以保持 runtime_files 零和）-------------------------
+# timer_events 的 DDL 在 app.store.schema_ddl.TIMER_EVENTS_SCHEMA。
 
 
 @projector("TimerCreated")

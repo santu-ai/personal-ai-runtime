@@ -1,9 +1,9 @@
-"""Execution projectors — materialise handler_executions from Execution events (ADR-0007).
+"""Execution 投影器——从 Execution 事件物化 handler_executions（ADR-0007）。
 
-handler_executions is a projection of the Execution aggregate event stream.
-ExecutionRequested is the sole aggregate creation event (no ExecutionCreated).
+handler_executions 是 Execution 聚合事件流的投影。ExecutionRequested 是
+唯一的聚合创建事件（无 ExecutionCreated）。
 
-Background work is projected into ``work_items`` via WorkItem* events (INV-W5).
+后台工作经 WorkItem* 事件投影进 ``work_items``（INV-W5）。
 """
 
 from __future__ import annotations
