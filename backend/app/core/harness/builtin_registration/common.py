@@ -1,4 +1,8 @@
-"""Shared builtins registration primitives."""
+"""内置工具注册的共享原语。
+
+内置工具以声明式 spec 描述（参数 JSON schema + handler），由本模块
+统一转换为 MCPHub 的 ToolDef 并注册，避免各工具自行处理注册细节。
+"""
 
 from __future__ import annotations
 
@@ -14,7 +18,7 @@ from app.core.harness.mcp_hub import ToolDef
 
 @dataclass(frozen=True)
 class BuiltinToolSpec:
-    """Declarative builtin tool — registered via ``_register_specs``."""
+    """内置工具的声明式描述，经 ``_register_specs`` 注册到 hub。"""
 
     name: str
     description: str
@@ -22,15 +26,15 @@ class BuiltinToolSpec:
     handler: Callable[..., Any]
     is_async: bool = False
     requires_confirmation: bool = False
-    # Wrap sync handlers with ``asyncio.to_thread`` (implies ``is_async=True``).
+    # 同步 handler 用 ``asyncio.to_thread`` 包装（等价 ``is_async=True``）。
     offload: bool = False
 
 
 def _offload(fn: Callable[..., str]) -> Callable[..., Awaitable[str]]:
-    """Run a sync tool handler in a worker thread so it won't block the event loop.
+    """把同步工具 handler 放进工作线程，避免阻塞事件循环。
 
-    The wrapper keeps ``__signature__`` from ``fn`` so ``MCPHub`` kwargs
-    filtering still drops unexpected LLM arguments.
+    包装器保留 ``fn`` 的 ``__signature__``，使 MCPHub 的 kwargs 过滤仍能
+    丢弃 LLM 传入的意外参数。
     """
 
     @functools.wraps(fn)
