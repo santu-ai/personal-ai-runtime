@@ -1,12 +1,11 @@
-"""Constants for the Runtime Kernel — event types, aggregate types, and table names.
+"""Runtime Kernel 常量——事件类型、聚合类型与表名。
 
-Centralising these string literals prevents drift between the Kernel, projectors,
-CI checks, and verification scripts.
+把这些字符串字面量集中，防止 Kernel、投影器、CI 检查与验证脚本之间漂移。
 """
 
-# ── Event types ─────────────────────────────────────────────────────────────
+# ── 事件类型 ─────────────────────────────────────────────────────────────
 
-# ── WorkItem (unified task + action + goal aggregate, v1.0) ──────────
+# ── WorkItem（task + action + goal 统一聚合，v1.0）─────────────────
 EVENT_WORK_ITEM_CREATED = "WorkItemCreated"
 EVENT_WORK_ITEM_UPDATED = "WorkItemUpdated"
 EVENT_WORK_ITEM_DELETED = "WorkItemDeleted"
@@ -14,18 +13,17 @@ EVENT_WORK_ITEM_STATUS_CHANGED = "WorkItemStatusChanged"
 
 EVENT_APPROVAL_REQUESTED = "ApprovalRequested"
 EVENT_APPROVAL_GRANTED = "ApprovalGranted"
-EVENT_APPROVAL_DENIED = "ApprovalDenied"  # also covers auto-expired (reason="auto_expired")
+EVENT_APPROVAL_DENIED = "ApprovalDenied"  # 也覆盖自动过期（reason="auto_expired"）
 
 EVENT_CAPABILITY_INVOKED = "CapabilityInvoked"
 EVENT_CAPABILITY_FAILED = "CapabilityFailed"
-EVENT_CAPABILITY_DENIED = "CapabilityDenied"  # also covers deferred (reason="deferred")
+EVENT_CAPABILITY_DENIED = "CapabilityDenied"  # 也覆盖 deferred（reason="deferred"）
 
 EVENT_MEMORY_DERIVED = "MemoryDerived"
 EVENT_MEMORY_UPDATED = "MemoryUpdated"
 EVENT_MEMORY_DELETED = "MemoryDeleted"
-# Emitted when a ChromaDB index repair exhausts its retry budget. The memory
-# itself remains authoritative in event_log + memories projection; only the
-# derived vector index is missing, so recall silently excludes it.
+# ChromaDB 索引修复耗尽重试预算时发出。记忆本身在 event_log + memories
+# 投影中仍是权威；只是派生的向量索引缺失，因此召回时将其静默排除。
 EVENT_MEMORY_INDEX_REPAIR_FAILED = "MemoryIndexRepairFailed"
 
 EVENT_CONVERSATION_CREATED = "ConversationCreated"
@@ -35,9 +33,9 @@ EVENT_MESSAGE_APPENDED = "MessageAppended"
 
 EVENT_NOTIFICATION_CREATED = "NotificationCreated"
 EVENT_NOTIFICATION_UPDATED = "NotificationUpdated"
-EVENT_NOTIFICATION_READ = "NotificationRead"  # aggregate_id="all" marks bulk read
+EVENT_NOTIFICATION_READ = "NotificationRead"  # aggregate_id="all" 表示批量已读
 
-# ── Chat (ADR Unification) ──────────────────────────────────────────────────
+# ── Chat（ADR 统一）──────────────────────────────────────────────────────
 
 EVENT_CHAT_REQUESTED = "ChatRequested"
 EVENT_CHAT_COMPLETED = "ChatCompleted"
@@ -51,26 +49,24 @@ EVENT_EXECUTE_COMPLETED = "ExecuteCompleted"
 EVENT_INBOX_POLL_REQUESTED = "InboxPollRequested"
 EVENT_INBOX_POLL_COMPLETED = "InboxPollCompleted"
 EVENT_INBOX_EMAIL_RECORDED = "InboxEmailRecorded"
-# inbox_emails is a governed projection derived solely from events.
-# Status / notified / digested transitions are event-sourced so
-# verify_inbox_audit can guarantee the table is fully reconstructable from
-# event_log.
+# inbox_emails 是仅由事件派生的受治理投影。Status / notified / digested
+# 转换全部事件溯源，使 verify_inbox_audit 能保证该表可完全从 event_log 重建。
 EVENT_INBOX_EMAIL_STATUS_CHANGED = "InboxEmailStatusChanged"
-# InboxEmailFlagSet covers both notified and digested (payload.flag distinguishes).
+# InboxEmailFlagSet 同时覆盖 notified 与 digested（payload.flag 区分）。
 EVENT_INBOX_EMAIL_FLAG_SET = "InboxEmailFlagSet"
 
-EVENT_CHAT_TEXT_DELTA = "ChatTextDelta"   # DELIBERATELY NOT EMITTED TO EVENT_LOG — pushed to SSE queue to avoid polluting Truth Layer
+# 刻意不写入 event_log——只推 SSE 队列，避免污染真相层。
+EVENT_CHAT_TEXT_DELTA = "ChatTextDelta"
 EVENT_CHAT_DONE = "ChatDone"
 
-# ── Application audit ──────────────────────────────────────────
+# ── 应用审计 ───────────────────────────────────────────────────────
 
 EVENT_APP_CONFIG_CHANGED = "AppConfigChanged"
-# Telemetry LLM calls are event-sourced. brain_telemetry emits
-# this event instead of INSERTing directly into the llm_calls APP_STORAGE
-# table. The projector (projectors_governance.py) derives the table row.
+# 遥测 LLM 调用是事件溯源的：brain_telemetry 发此事件而非直接 INSERT
+# llm_calls APP_STORAGE 表；投影器（projectors_governance.py）派生表行。
 EVENT_LLM_CALL_RECORDED = "LLMCallRecorded"
 
-# ── Execution aggregate ──────────────────────────────────────────
+# ── Execution 聚合 ────────────────────────────────────────────────────
 
 EVENT_EXECUTION_REQUESTED = "ExecutionRequested"
 EVENT_EXECUTION_STARTED = "ExecutionStarted"
@@ -88,7 +84,7 @@ EXECUTION_EVENT_TYPES = frozenset({
 
 EVENT_USER_PROFILE_UPDATED = "UserProfileUpdated"
 
-# ── Aggregate types ─────────────────────────────────────────────────────────
+# ── 聚合类型 ─────────────────────────────────────────────────────────────
 
 AGGREGATE_APPROVAL = "approval"
 AGGREGATE_CAPABILITY = "capability"
@@ -102,21 +98,21 @@ AGGREGATE_POLICY = "policy"
 AGGREGATE_GRANT = "grant"
 AGGREGATE_INBOX_EMAIL = "inbox_email"
 
-# ── Timer aggregate ─────────────────────────────────────────────────────────
+# ── Timer 聚合 ─────────────────────────────────────────────────────────
 
 EVENT_TIMER_CREATED = "TimerCreated"
 EVENT_TIMER_FIRED = "TimerFired"
 
-# ── Policy aggregate (Governance Event-Sourced) ─────────────────────────────
+# ── Policy 聚合（治理事件溯源）─────────────────────────────────────────────
 
 EVENT_POLICY_CREATED = "PolicyCreated"
-EVENT_POLICY_UPDATED = "PolicyUpdated"  # also covers revoked (status="revoked")
+EVENT_POLICY_UPDATED = "PolicyUpdated"  # 也覆盖撤销（status="revoked"）
 
-# ── Snapshot-eligible aggregates ─────────────────────────────────────────────
+# ── 可快照的聚合 ─────────────────────────────────────────────────────────────
 
 PROJECTION_SNAPSHOT_AGGREGATES = ("work_item", "memory", "conversation")
 
-# ── Memory index event types ────────────────────────────────────────────────
+# ── 记忆索引事件类型 ────────────────────────────────────────────────────────
 
 MEMORY_INDEX_EVENT_TYPES = frozenset({
     EVENT_MEMORY_DERIVED,
@@ -124,7 +120,7 @@ MEMORY_INDEX_EVENT_TYPES = frozenset({
     EVENT_MEMORY_DELETED,
 })
 
-# ── Chat bootstrap event types ──────────────────────────────────────────────
+# ── Chat 引导事件类型 ──────────────────────────────────────────────────────
 
 CHAT_EVENT_TYPES = frozenset({
     EVENT_CONVERSATION_CREATED,
@@ -133,23 +129,22 @@ CHAT_EVENT_TYPES = frozenset({
     EVENT_MESSAGE_APPENDED,
 })
 
-# ── Event payload schema versions (Architecture Contract) ───────────────────
-# Every durable emit stamps ``schema_version`` from this registry.
-# Bump an override when that event type's payload *shape* changes in a
-# backward-incompatible way; then re-record
-# ``scripts/baselines/event_schema_versions.json`` via
-# ``python -m scripts.check_event_schema --record``
-# (use ``--allow-downgrade`` only for intentional rollback).
+# ── 事件 payload schema 版本（Architecture Contract）─────────────────────────
+# 每次持久化发出都会从这个注册表压入 ``schema_version``。
+# 当某事件类型的 payload *形状* 发生向后不兼容变化时，Bump 对应 override；
+# 随后经 ``python -m scripts.check_event_schema --record`` 重新记录
+# ``scripts/baselines/event_schema_versions.json``
+# （仅在有意回滚时使用 ``--allow-downgrade``）。
 
 PAYLOAD_SCHEMA_VERSION_KEY = "schema_version"
 EVENT_SCHEMA_VERSION_DEFAULT = 1
 
-# type string → version. Omit entries that still use the default.
+# 类型字符串 → 版本。仍用默认值的条目可省略。
 EVENT_SCHEMA_VERSION_OVERRIDES: dict[str, int] = {}
 
 
 def declared_event_types() -> frozenset[str]:
-    """Return all ``EVENT_* = \"...\"`` string values declared in this module."""
+    """返回本模块声明的全部 ``EVENT_* = \"...\"`` 字符串值。"""
     return frozenset(
         v for k, v in globals().items()
         if k.startswith("EVENT_") and isinstance(v, str)
@@ -157,7 +152,7 @@ def declared_event_types() -> frozenset[str]:
 
 
 def event_schema_version(event_type: str) -> int:
-    """Return the current payload schema version for ``event_type``."""
+    """返回 ``event_type`` 当前 payload schema 版本。"""
     return int(
         EVENT_SCHEMA_VERSION_OVERRIDES.get(event_type, EVENT_SCHEMA_VERSION_DEFAULT)
     )
@@ -167,7 +162,7 @@ def stamp_event_payload(
     event_type: str,
     payload: dict[str, object] | None,
 ) -> dict[str, object]:
-    """Return a copy of ``payload`` with ``schema_version`` set from the registry."""
+    """返回 ``payload`` 的副本，并从注册表写入 ``schema_version``。"""
     stamped = dict(payload or {})
     stamped[PAYLOAD_SCHEMA_VERSION_KEY] = event_schema_version(event_type)
     return stamped
