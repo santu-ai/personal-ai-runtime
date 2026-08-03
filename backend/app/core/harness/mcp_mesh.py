@@ -1,4 +1,15 @@
-"""MCP Mesh — manages stdio MCP server connections and tool discovery."""
+"""MCP Mesh——外部 stdio MCP 服务器的连接生命周期与工具发现。
+
+连接与工具注册的语义：
+
+- 每个外部 server 由 ``_ServerConnection`` 独占一个 asyncio 任务持有
+  stdio transport + ClientSession（anyio task group 的进入/退出必须在
+  同一任务，uvicorn reload 时 shutdown 与 startup 任务不同，故必须钉住）。
+- 工具按 ``mcp_config.json`` 的策略（needs_user / forbidden / ingestion）
+  分级注册进 MCPHub；调用时先做 SSRF 式 URL 校验，传输层故障才重连重试，
+  应用层错误不重试，避免非幂等工具被二次执行。
+- ``start`` 连接 startup 级 server，惰性 server 在后台串行连接。
+"""
 
 from __future__ import annotations
 
@@ -22,13 +33,13 @@ from app.core.harness.url_safety import UnsafeUrlError, validate_http_url_async
 
 logger = logging.getLogger(__name__)
 
-# Known URL argument fields (case-insensitive) used when scanning tool args.
+# 扫描工具参数时视为 URL 的字段名（大小写不敏感）。
 _URL_ARG_KEYS = frozenset({
     "url", "uri", "href", "link", "endpoint", "target_url", "page_url",
     "base_url", "website",
 })
 
-# Substrings that suggest a dead transport rather than an application error.
+# 暗示传输层已死（而非应用层报错）的错误子串。
 _TRANSPORT_ERROR_MARKERS = (
     "closed",
     "not connected",
@@ -42,10 +53,10 @@ _TRANSPORT_ERROR_MARKERS = (
 
 
 def _is_transport_failure(exc: BaseException) -> bool:
-    """True when retrying after reconnect is likely safe/useful.
+    """判断重连后重试是否安全/有效。
 
-    Intentionally narrow: do not treat generic ``OSError`` / app errors as
-    transport failures (avoids double-executing non-idempotent tools).
+    刻意收窄：不把普通 ``OSError`` / 应用错误当作传输故障，避免
+    非幂等工具在服务端已生效副作用后被二次执行。
     """
     if isinstance(exc, (ConnectionError, BrokenPipeError, EOFError)):
         return True
@@ -55,11 +66,10 @@ def _is_transport_failure(exc: BaseException) -> bool:
 
 
 def _safe_mcp_error(server_name: str, exc: BaseException) -> str:
-    """Return a sanitized, classification-only error string for LLM contexts.
+    """返回脱敏、仅含错误分类的字符串，供 LLM 上下文使用。
 
-    Raw exception messages can leak absolute paths, connection strings, or
-    internal stack details into the LLM tool result. Only the error category
-    and the server name are surfaced; the underlying detail is logged locally.
+    原始异常消息可能泄露绝对路径、连接串或内部堆栈到 LLM 工具结果；
+    只把错误分类与 server 名返回，细节留在本地日志。
     """
     if isinstance(exc, (ConnectionError, BrokenPipeError, EOFError, asyncio.TimeoutError)):
         category = "connection"
@@ -86,15 +96,14 @@ class DiscoveredMCPTool:
 
 
 class _ServerConnection:
-    """Owns a stdio MCP connection within a dedicated asyncio task.
+    """在专属 asyncio 任务内持有某个 stdio MCP 连接。
 
-    ``stdio_client`` and ``ClientSession`` both create anyio task groups
-    whose cancel scopes must be entered *and* exited from the same task.
-    On uvicorn reload the lifespan shutdown hook (and therefore
-    ``close``) runs in a different task than startup ``connect``, so we
-    pin the entire transport + session lifetime to a single owner task
-    and drive it with an :class:`~asyncio.Event` (stop signal) and a
-    :class:`~asyncio.Future` (setup result).
+    ``stdio_client`` 与 ``ClientSession`` 都会创建 anyio task group，
+    其 cancel scope 必须在同一任务内进入*并*退出。uvicorn reload 时
+    lifespan 的 shutdown 钩子（从而 ``close``）与启动时的 ``connect``
+    不在同一任务，因此把传输层 + 会话的整个生命周期钉在一个 owner
+    任务上，用 :class:`~asyncio.Event`（停止信号）与
+    :class:`~asyncio.Future`（初始化结果）驱动。
     """
 
     def __init__(self, config: ExternalMCPServerConfig):
@@ -118,12 +127,12 @@ class _ServerConnection:
             try:
                 await self._ready
             except BaseException:
-                # Setup failed or caller cancelled — reclaim the owner task.
+                # 初始化失败或调用方取消——回收 owner 任务。
                 await self._teardown(cancel=True)
                 raise
 
     async def _run(self) -> None:
-        """Owner task — enters and holds transport + session contexts."""
+        """owner 任务——进入并持有 transport + session 上下文。"""
         stop_event = self._stop_event
         ready = self._ready
         params = StdioServerParameters(
@@ -151,25 +160,25 @@ class _ServerConnection:
                     self.tools = list(listed.tools)
                     if ready is not None and not ready.done():
                         ready.set_result(None)
-                    # Park here until close() signals stop — holding the
-                    # transport + session contexts open in this task so
-                    # __aexit__ always runs from the task that __aenter__'d.
+                    # 停在 stop_event 上，直到 close() 发出停止信号——保持
+                    # transport + session 上下文在本任务内开启，保证
+                    # __aexit__ 总是由 __aenter__ 所在任务执行。
                     if stop_event is not None:
                         await stop_event.wait()
         except Exception as exc:
-            # Transport/session __aenter__ failed before the inner try.
+            # 内层 try 之前 transport/session __aenter__ 就失败了。
             if ready is not None and not ready.done():
                 ready.set_exception(exc)
             raise
         finally:
-            # Guarantee connect() never hangs if we exit without resolving.
+            # 兜底：任务未成功初始化就退出时，绝不让 connect() 挂死。
             if ready is not None and not ready.done():
                 ready.set_exception(
                     RuntimeError("MCP owner task exited before setup completed")
                 )
 
     async def close(self) -> None:
-        """Best-effort cleanup — swallow all errors so shutdown never breaks."""
+        """尽力清理——吞掉一切错误，保证关闭流程永不中断。"""
         await self._teardown(cancel=False)
         self.session = None
         self._stop_event = None
@@ -177,7 +186,7 @@ class _ServerConnection:
         self.tools = []
 
     async def _teardown(self, *, cancel: bool) -> None:
-        """Signal the owner task to stop, optionally cancel, then join it."""
+        """通知 owner 任务停止，按需取消，然后 join 该任务。"""
         if self._stop_event is not None:
             self._stop_event.set()
         task = self._owner_task
@@ -196,23 +205,23 @@ class _ServerConnection:
 
 
 class MCPMesh:
-    """Lifecycle manager for external stdio MCP servers."""
+    """外部 stdio MCP server 的生命周期管理器。"""
 
     def __init__(self) -> None:
         self._connections: dict[str, _ServerConnection] = {}
         self._pending_configs: dict[str, ExternalMCPServerConfig] = {}
-        # Keep configs for reconnect after a live connection dies.
+        # 保留配置以便在线连接断开后重建。
         self._configs: dict[str, ExternalMCPServerConfig] = {}
         self._tool_index: dict[str, tuple[str, str]] = {}
         self._discovered: list[DiscoveredMCPTool] = []
-        # Servers that already completed tool discovery (including forbidden-only).
+        # 已完成工具发现（含仅 forbidden）的 server 集合。
         self._discovered_servers: set[str] = set()
-        # Last connect/disconnect error per server (surfaced in get_server_status).
+        # 每个 server 最近一次连接/断连错误（供 get_server_status 呈现）。
         self._connect_errors: dict[str, str] = {}
         self._started = False
         self._start_lock = asyncio.Lock()
         self._register_lock = asyncio.Lock()
-        # Per-server connect locks — prevent lazy + ensure_server double-spawn.
+        # 每 server 连接锁——防止惰性连接与 ensure_server 双重拉起。
         self._server_locks: dict[str, asyncio.Lock] = {}
         self._lazy_task: asyncio.Task | None = None
 
@@ -321,8 +330,8 @@ class MCPMesh:
         except asyncio.TimeoutError:
             return json.dumps({"error": f"MCP tool timed out: {registered_name}"})
         except MCPError as exc:
-            # v2: tool failures surface as JSON-RPC errors — pass the message
-            # through so the LLM can self-correct (v1 returned is_error content).
+            # v2 下工具失败以 JSON-RPC 错误浮现——把消息透传给 LLM 让其自纠
+            # （v1 是以 is_error 内容返回）。
             return json.dumps({"error": f"MCP tool error: {exc.message}"})
         except Exception as exc:
             return json.dumps({"error": _safe_mcp_error(server_name, exc)})
@@ -334,8 +343,8 @@ class MCPMesh:
                 parts.append(text)
             else:
                 parts.append(str(block))
-        # Keep is_error for v1-protocol external servers that still return
-        # CallToolResult(is_error=True) instead of raising MCPError.
+        # 兼容 v1 协议的外部 server——仍以 CallToolResult(is_error=True)
+        # 而非抛 MCPError 的方式上报错误。
         if result.is_error:
             return json.dumps({"error": "\n".join(parts) or "MCP tool returned error"})
         return "\n".join(parts) if parts else json.dumps({"status": "ok", "result": None})
@@ -348,13 +357,11 @@ class MCPMesh:
         arguments: dict[str, Any],
         registered_name: str,
     ) -> Any:
-        """Invoke once; reconnect+retry only on transport-level failures.
+        """调用一次；仅在传输层故障时重连重试。
 
-        Application / protocol errors are not retried — avoids double-executing
-        non-idempotent tools when the server already applied the side effect.
-        ``MCPError`` is caught before the transport classifier because its
-        ``message`` text may contain markers like "closed"/"eof" that would
-        otherwise trip ``_is_transport_failure``.
+        应用/协议错误不重试——避免服务端已生效副作用时非幂等工具被二次执行。
+        ``MCPError`` 须在传输层分类器之前捕获，因为其 ``message`` 可能含
+        "closed"/"eof" 等会误触 ``_is_transport_failure`` 的标记。
         """
         try:
             return await asyncio.wait_for(
@@ -364,7 +371,7 @@ class MCPMesh:
         except asyncio.TimeoutError:
             raise
         except MCPError:
-            # v2 protocol/app error — never retry (side effect may be applied).
+            # v2 协议/应用错误——绝不重试（副作用可能已生效）。
             raise
         except Exception as first_exc:
             if not _is_transport_failure(first_exc):
@@ -441,8 +448,8 @@ class MCPMesh:
                 len(discovered),
             )
         else:
-            # Empty when already connected (lazy/ensure race) or server exposed
-            # no tools — avoid implying a fresh zero-tool connect.
+            # 返回空说明已连接（惰性/ensure 竞争）或 server 未暴露工具——
+            # 不要误导性地记录一次零工具连接。
             logger.debug(
                 "MCP server '%s' connect returned 0 new tools",
                 config.name,
@@ -486,12 +493,12 @@ class MCPMesh:
     async def _validate_tool_arguments(
         self, original_name: str, arguments: dict[str, Any]
     ) -> str | None:
-        """Reject SSRF-prone URLs in external MCP tool arguments.
+        """拒绝外部 MCP 工具参数中 SSRF 风险的 URL。
 
-        Validates http(s) strings nested up to a small depth, plus common
-        URL-named fields — not only Playwright's ``browser_navigate``.
-        ``original_name`` is kept for call-site clarity / future per-tool
-        allowlists. DNS runs off the event loop via ``validate_http_url_async``.
+        校验嵌套至小深度的 http(s) 字符串，以及常见 URL 命名字段——
+        不只针对 Playwright 的 ``browser_navigate``。
+        ``original_name`` 保留用于调用点清晰性 / 未来按工具放行白名单。
+        DNS 解析经 ``validate_http_url_async`` 在事件循环之外进行。
         """
         _ = original_name
         for url in self._iter_url_candidates(arguments):
@@ -503,7 +510,7 @@ class MCPMesh:
 
     @classmethod
     def _iter_url_candidates(cls, arguments: dict[str, Any], *, max_depth: int = 3) -> list[str]:
-        """Collect http(s) URL strings from tool arguments (depth-limited walk)."""
+        """从工具参数中收集 http(s) URL 字符串（限深遍历）。"""
         candidates: list[str] = []
 
         def _maybe_add(key: str, value: str) -> None:
@@ -535,11 +542,11 @@ class MCPMesh:
             self._configs[config.name] = config
             existing = self._connections.get(config.name)
             if existing is not None and existing.session is not None:
-                # Already connected (e.g. lazy task raced with ensure_server).
+                # 已连接（如惰性任务与 ensure_server 竞争）——无需重复连接。
                 return []
 
             if existing is not None:
-                # Dead session left behind — close before replacing.
+                # 遗留死会话——替换前先关闭。
                 try:
                     await existing.close()
                 except Exception:
@@ -555,8 +562,8 @@ class MCPMesh:
             self._connections[config.name] = conn
             self._connect_errors.pop(config.name, None)
 
-            # Reconnect after a prior successful discovery (including forbidden-only
-            # servers that never entered ``_tool_index``): reuse existing index.
+            # 此前已成功发现过（含仅 forbidden、从未进入 ``_tool_index`` 的
+            # server）：复用既有索引，避免重复注册。
             if config.name in self._discovered_servers:
                 return []
 
@@ -595,8 +602,8 @@ class MCPMesh:
                         policy_risk=risk,
                     )
                 )
-                # Forbidden tools stay in discovered (governance deny) but are
-                # not callable via the mesh index.
+                # forbidden 工具保留在 discovered（交给治理层 deny），
+                # 但不进 mesh 索引，不可经此调用。
                 if risk != "forbidden":
                     self._tool_index[registered] = (config.name, tool.name)
 
@@ -605,7 +612,7 @@ class MCPMesh:
             return discovered
 
     def list_server_tools(self, server_name: str) -> list[dict[str, str]]:
-        """Public read of tools for a connected server (empty if disconnected)."""
+        """公开读取某已连接 server 的工具清单（未连接返回空）。"""
         conn = self._connections.get(server_name)
         if conn is None or conn.session is None:
             return []
@@ -618,11 +625,10 @@ class MCPMesh:
         ]
 
     def get_server_status(self, server_name: str | None = None) -> dict:
-        """Return connection status for external MCP servers.
+        """返回外部 MCP server 的连接状态。
 
-        When ``server_name`` is set, returns a single-server dict with
-        ``connected`` / ``tool_count`` (plus status fields). Otherwise returns
-        the full mesh status payload.
+        指定 ``server_name`` 时返回单 server 字典（``connected`` /
+        ``tool_count`` 等状态字段）；否则返回整个 mesh 的状态负载。
         """
         from app.core.harness.mcp_config import load_external_server_configs, mcp_external_enabled
 
