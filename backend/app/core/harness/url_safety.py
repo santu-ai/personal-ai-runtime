@@ -1,16 +1,15 @@
-"""URL safety checks for HTTP fetch tools — SSRF mitigation.
+"""HTTP 抓取类工具的 URL 安全检查——SSRF 防护。
 
-Two layers of defense:
+两层防御：
 
-1. ``validate_http_url`` — pre-flight URL validation (scheme, hostname, DNS).
-   Used by ``shell.py`` for curl/wget and as the first gate for fetch tools.
+1. ``validate_http_url`` —— 请求前的 URL 校验（scheme、hostname、DNS）。
+   ``shell.py`` 的 curl/wget 及抓取工具的首道闸门使用它。
 
-2. ``create_ssrf_safe_async_client`` — DNS-pinned transport that pins every
-   outbound connection to an IP resolved and validated *at request time*,
-   eliminating the TOCTOU/DNS-rebinding window between hook validation and
-   httpx's own resolution. Without pinning, a malicious authoritative resolver
-   with TTL=0 can return a public IP to the validation hook and then resolve to
-   127.0.0.1 / 169.254.169.254 when httpx actually opens the socket.
+2. ``create_ssrf_safe_async_client`` —— DNS 钉扎传输层：把每次出站连接
+   固定到「请求时解析并校验」的 IP 上，消除校验钩子与 httpx 自行解析之间
+   的 TOCTOU/DNS-rebinding 窗口。若不做钉扎，恶意权威解析器可在 TTL=0
+   时先给校验钩子返回公网 IP，再在 httpx 真正建连时改指 127.0.0.1 /
+   169.254.169.254。
 """
 
 from __future__ import annotations
@@ -25,14 +24,14 @@ import httpx
 
 
 class UnsafeUrlError(ValueError):
-    """Raised when a URL targets a disallowed host or scheme."""
+    """目标 URL 命中禁止的主机或 scheme。"""
 
 
 def _is_blocked_ip(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    """Return True if ``addr`` must not be contacted outbound.
+    """判断某 IP 是否禁止出站访问。
 
-    IPv4-mapped IPv6 (``::ffff:x.x.x.x``) is checked via the embedded IPv4
-    address as well — some platforms report misleading flags on the mapped form.
+    IPv4-mapped IPv6（``::ffff:x.x.x.x``）需按内嵌的 IPv4 地址再判一次——
+    部分平台在映射形态上报告的标志位不可靠。
     """
     mapped = getattr(addr, "ipv4_mapped", None)
     if mapped is not None:
@@ -50,15 +49,14 @@ def _is_blocked_ip(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
 
 
 def _resolve_and_check(hostname: str) -> list[str]:
-    """Resolve ``hostname`` and return the list of public IP strings.
+    """解析 ``hostname`` 并返回全部公网 IP 字符串。
 
-    Raises UnsafeUrlError if the host is blocked or cannot be resolved.
-    All returned addresses are individually validated, so a hostname with a mix
-    of public and private records is rejected wholesale.
+    主机被禁或无法解析时抛 UnsafeUrlError。所有返回地址都单独校验——
+    只要一个主机名混合了公网与私网记录，就整体拒绝。
 
-    No cross-request DNS cache: a positive cache would let pre-flight gates
-    (shell curl/wget, mesh Playwright args) approve a host whose A/AAAA record
-    later flips to a private address within the TTL window.
+    不做跨请求 DNS 缓存：正向缓存会让预检闸门（shell curl/wget、mesh
+    Playwright 参数）先放行某主机，而该主机的 A/AAAA 记录在 TTL 窗口内
+    随后翻转为私网地址。
     """
     host = hostname.strip().lower().rstrip(".")
     if not host:
@@ -66,7 +64,7 @@ def _resolve_and_check(hostname: str) -> list[str]:
     if host in {"localhost", "localhost.localdomain"} or host.endswith(".localhost"):
         raise UnsafeUrlError(f"Blocked hostname: {hostname}")
 
-    # Literal IP — validate directly, no DNS lookup needed.
+    # 字面量 IP 直接校验，无需 DNS。
     try:
         ip = ipaddress.ip_address(host)
     except ValueError:
@@ -97,12 +95,12 @@ def _resolve_and_check(hostname: str) -> list[str]:
 
 
 async def resolve_and_check_async(hostname: str) -> list[str]:
-    """Async wrapper — runs blocking DNS off the event loop."""
+    """异步封装——把阻塞式 DNS 移出事件循环。"""
     return await asyncio.to_thread(_resolve_and_check, hostname)
 
 
 def _hostname_blocked(hostname: str) -> bool:
-    """Backward-compatible boolean wrapper for pre-flight checks."""
+    """预检用的向后兼容布尔封装。"""
     try:
         _resolve_and_check(hostname)
     except UnsafeUrlError:
@@ -111,7 +109,7 @@ def _hostname_blocked(hostname: str) -> bool:
 
 
 def _validate_url_parts(url: str) -> tuple[str, str]:
-    """Parse and check scheme/credentials/hostname presence. Returns (normalized, hostname)."""
+    """解析并校验 scheme/凭据/hostname 存在性，返回 (归一化 URL, hostname)。"""
     parsed = urlparse(url.strip())
     if parsed.scheme not in {"http", "https"}:
         raise UnsafeUrlError(f"Unsupported URL scheme: {parsed.scheme or '(none)'}")
@@ -127,12 +125,11 @@ def _validate_url_parts(url: str) -> tuple[str, str]:
 
 
 def validate_http_url(url: str) -> str:
-    """Validate URL for outbound HTTP(S) fetch. Returns normalized URL string.
+    """校验出站 HTTP(S) 抓取 URL，返回归一化 URL 字符串。
 
-    Performs scheme/credential checks and a *pre-flight* DNS resolution. This is
-    the right gate for tools that do not use httpx (curl/wget in ``shell.py``);
-    httpx callers additionally use ``create_ssrf_safe_async_client`` to pin the
-    connection to the resolved IP at socket time.
+    执行 scheme/凭据检查与「预检」DNS 解析。这是非 httpx 工具（``shell.py``
+    的 curl/wget）的正确闸门；httpx 调用方还需用
+    ``create_ssrf_safe_async_client`` 把连接在 socket 层固定到已解析 IP。
     """
     normalized, hostname = _validate_url_parts(url)
     if _hostname_blocked(hostname):
@@ -141,7 +138,7 @@ def validate_http_url(url: str) -> str:
 
 
 async def validate_http_url_async(url: str) -> str:
-    """Async variant of ``validate_http_url`` — DNS via ``asyncio.to_thread``."""
+    """``validate_http_url`` 的异步变体——DNS 经 ``asyncio.to_thread``。"""
     normalized, hostname = _validate_url_parts(url)
     try:
         await resolve_and_check_async(hostname)
@@ -151,15 +148,14 @@ async def validate_http_url_async(url: str) -> str:
 
 
 def _pin_url_to_ip(url: str, ip: str) -> str:
-    """Rewrite the host of ``url`` to the literal ``ip``, preserving port.
+    """把 ``url`` 的主机改写为字面量 ``ip``，保留端口。
 
-    IPv6 literals are wrapped in brackets per RFC 3986 (``[2001:db8::1]``) so
-    the colon in the address is not mistaken for a port separator. The Host
-    header (used for TLS SNI and virtual hosting) is restored separately by
-    ``_restore_host_header`` so the origin server still sees the original name.
+    IPv6 字面量按 RFC 3986 加方括号（``[2001:db8::1]``），避免地址中的
+    冒号被误判为端口分隔符。Host 头（用于 TLS SNI 与虚拟主机路由）由
+    ``_restore_host_header`` 单独恢复，让源站仍看到原始域名。
     """
     parsed = urlparse(url)
-    # Detect IPv6 literal (colon present, not already bracketed).
+    # 识别 IPv6 字面量（含冒号且未加括号）。
     if ":" in ip and not ip.startswith("["):
         host_part = f"[{ip}]"
     else:
@@ -172,20 +168,19 @@ def _pin_url_to_ip(url: str, ip: str) -> str:
 
 
 def _restore_host_header(request: httpx.Request, original_host: str) -> None:
-    """Restore Host to the original hostname so TLS SNI / vhost routing works."""
+    """恢复 Host 为原始主机名，保证 TLS SNI / 虚拟主机路由正确。"""
     request.headers["Host"] = original_host
 
 
 class SSRFSafeTransport(httpx.AsyncBaseTransport):
-    """Async transport that pins every request to a validated, resolved IP.
+    """把每个请求钉扎到经校验解析 IP 的异步传输层。
 
-    Per-request resolution closes the DNS-rebinding window: the IP validated at
-    request time is the same IP the socket connects to. Each resolved address
-    is checked against ``_is_blocked_ip`` before any connection is attempted.
+    按请求解析可关闭 DNS-rebinding 窗口：请求时校验的 IP 与 socket 实际
+    连接的 IP 一致。任一解析结果在连接前都会经 ``_is_blocked_ip`` 检查。
     """
 
     def __init__(self, **kwargs: Any) -> None:
-        # follow_redirects is owned by httpx.AsyncClient, not the transport.
+        # follow_redirects 归 httpx.AsyncClient 管，不属于传输层。
         kwargs.pop("follow_redirects", None)
         self._inner = httpx.AsyncHTTPTransport(**kwargs)
 
@@ -203,23 +198,20 @@ class SSRFSafeTransport(httpx.AsyncBaseTransport):
 
         ips = await resolve_and_check_async(hostname)
         pinned_ip = ips[0]
-        # Host header should preserve the original port so HTTP vhost routing
-        # on non-standard ports works correctly. For SNI only the name matters,
-        # but including the port is harmless for TLS.
+        # Host 头保留原始端口，非标准端口的 HTTP 虚拟主机路由才正确；
+        # SNI 只关心域名，但带上端口对 TLS 无副作用。
         original_host = f"{hostname}:{parsed.port}" if parsed.port else hostname
 
-        # Materialize the request body before rewriting the URL. Reusing
-        # ``request.stream`` directly fails for POST/PUT/PATCH because the
-        # stream is a single-consumer SyncByteStream that cannot be replayed
-        # into a new Request. Reading it to bytes here is safe — the body
-        # has not been consumed yet at transport entry time.
+        # 改写 URL 前先物化请求体。直接复用 ``request.stream`` 在
+        # POST/PUT/PATCH 会失败——该流是单次消费的 SyncByteStream，
+        # 无法重放进新 Request。传输层入口处请求体尚未被消费，此处
+        # 读到 bytes 是安全的。
         body_bytes = await request.aread()
 
         pinned_url = _pin_url_to_ip(url, pinned_ip)
-        # When the URL host is an IP literal, TLS must still use the original
-        # hostname for SNI + certificate verification — otherwise OpenSSL
-        # checks the cert against the IP and fails with
-        # "certificate is not valid for '<ip>'".
+        # URL 主机是 IP 字面量时，TLS 仍需用原始主机名做 SNI 与证书校验，
+        # 否则 OpenSSL 会拿 IP 对证书校验并报
+        # "certificate is not valid for '<ip>'"。
         extensions = dict(request.extensions)
         if parsed.scheme == "https":
             extensions["sni_hostname"] = hostname
@@ -235,23 +227,21 @@ class SSRFSafeTransport(httpx.AsyncBaseTransport):
 
 
 async def _validate_redirect_target(response: httpx.Response) -> None:
-    """Validate redirect destinations through the same host checks.
+    """用同一套主机校验检查重定向目标。
 
-    The pinned transport already enforces pinning for the redirect's actual
-    request; this hook adds an explicit, logged rejection of obviously-internal
-    redirect targets (defense in depth).
+    钉扎传输层已对重定向的实际请求强制钉扎；此钩子额外对明显指向内网的
+    重定向目标做显式、带日志的拒绝（纵深防御）。
     """
     if response.is_redirect and response.next_request is not None:
         await validate_http_url_async(str(response.next_request.url))
 
 
 def create_ssrf_safe_async_client(**kwargs: Any) -> httpx.AsyncClient:
-    """Build an httpx client with DNS-pinned outbound connections.
+    """构建出站连接 DNS 钉扎的 httpx 客户端。
 
-    The transport pins each request to an IP resolved and validated at request
-    time, so a DNS resolver that flips records between validation and connection
-    (DNS rebinding) cannot redirect the socket to a private/internal address.
-    A response hook still validates redirect targets for defense in depth.
+    传输层把每个请求钉扎到「请求时解析并校验」的 IP，解析器无法在
+    校验与建连之间翻转记录（DNS rebinding）来把 socket 指向私网地址。
+    响应钩子仍校验重定向目标，作为纵深防御。
     """
     follow_redirects = kwargs.pop("follow_redirects", True)
     transport = SSRFSafeTransport()

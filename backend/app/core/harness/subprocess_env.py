@@ -1,7 +1,7 @@
-"""Minimal subprocess environment shared by shell and external MCP servers.
+"""构建子进程最小化环境，防止凭据经工具子进程泄漏。
 
-Never inherit the full parent process env — it commonly contains LLM_API_KEY,
-EMAIL_PASS, and other secrets that must not leak into tool children.
+shell 工具与外部 MCP server 通过 stdio 派生子进程；若直接继承父进程
+完整环境，LLM_API_KEY、EMAIL_PASS 等密钥会被一并带入工具子进程。
 """
 
 from __future__ import annotations
@@ -9,8 +9,7 @@ from __future__ import annotations
 import os
 import sys
 
-# Locale / temp / identity keys that tools legitimately need, without pulling
-# in credential-bearing variables from the parent process.
+# 工具正常运行所需的定位/临时目录/身份变量；刻意排除凭据类变量。
 _BASE_KEYS = (
     "PATH",
     "HOME",
@@ -35,9 +34,9 @@ _WIN_KEYS = (
 
 
 def minimal_subprocess_env(*, extra: dict[str, str] | None = None) -> dict[str, str]:
-    """Return a sanitized env suitable for ``subprocess.run`` / MCP stdio.
+    """返回经白名单过滤的环境，供 ``subprocess.run`` / MCP stdio 使用。
 
-    ``extra`` is applied last (e.g. MCP server-specific API keys from settings).
+    ``extra`` 最后应用，用于注入 MCP server 各自所需的凭据（取自 settings）。
     """
     env: dict[str, str] = {}
     for key in _BASE_KEYS:

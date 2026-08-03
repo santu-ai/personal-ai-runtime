@@ -1,4 +1,8 @@
-"""Load and validate MCP mesh configuration from mcp_config.json."""
+"""加载并校验 mcp_config.json 中的 MCP mesh 配置。
+
+外部 MCP server 的声明（启动命令、env、策略默认值）全部源自该文件；
+本地个人服务器声明放在被 gitignore 的 local 覆盖文件中。
+"""
 
 from __future__ import annotations
 
@@ -14,29 +18,29 @@ logger = logging.getLogger(__name__)
 
 _VALID_POLICY_DEFAULTS = frozenset({"auto_allow", "needs_user", "forbidden"})
 
-# Cache key = (main_path, local_path, main_mtime, local_mtime); value = parsed data.
+# 缓存键 = (主文件路径, local 覆盖路径, 两者 mtime)；值 = 解析后的数据。
 _mcp_config_cache: tuple[tuple[str, str, float, float], dict[str, Any]] | None = None
 
 
 def normalize_tool_name(name: str) -> str:
-    """Normalize MCP tool name for LLM registration (alphanumeric + underscore)."""
+    """把 MCP 工具名规整为 LLM 注册用的形态（字母数字 + 下划线）。"""
     return re.sub(r"[^a-zA-Z0-9_]", "_", name)
 
 
 def external_tool_id(server_name: str, tool_name: str) -> str:
-    """Build a stable, collision-resistant capability name."""
+    """构造稳定、抗碰撞的能力名（用于 capability 治理登记）。"""
     return f"{server_name}_{normalize_tool_name(tool_name)}"
 
 
 def mcp_external_enabled() -> bool:
-    """Single source of truth for whether external MCP mesh is active."""
+    """判断外部 MCP mesh 是否启用的唯一事实源。"""
     from app.config import settings
 
     return settings.mcp_external_enabled
 
 
 def parse_builtin_tools_enabled() -> set[str] | None:
-    """Optional env override: comma-separated server names. None = use json config."""
+    """可选的 env 覆盖：逗号分隔的 server 名单。None = 采用 json 配置。"""
     from app.config import settings
 
     raw = settings.builtin_tools_enabled.strip()
@@ -46,17 +50,17 @@ def parse_builtin_tools_enabled() -> set[str] | None:
 
 
 def _matches_tool_pattern(tool_name: str, pattern: str) -> bool:
-    """Match tool names with fnmatch globs (``create_*``) or exact equality."""
+    """按 fnmatch 通配（``create_*``）或精确相等匹配工具名。"""
     if any(ch in pattern for ch in "*?["):
         return fnmatch.fnmatchcase(tool_name, pattern)
     return tool_name == pattern
 
 
 def _settings_env_map() -> dict[str, str]:
-    """Map env var names (as declared in mcp_config.json) to settings values.
+    """把 mcp_config.json 声明的 env key 映射到 settings 中的凭据值。
 
-    独立于 config 文件声明 env 之外，凭据统一来自 settings，
-    保证「配置声明了某个 env key」与「实际拥有该凭据」用同一张表判断。
+    凭据统一从 settings 读取，保证「配置声明了某 env key」与「实际拥有
+    该凭据」用同一张表判断，避免新增凭据时两处失同步。
     """
     from app.config import settings
 
@@ -75,6 +79,8 @@ def _settings_env_map() -> dict[str, str]:
 
 @dataclass
 class ExternalMCPServerConfig:
+    """单个外部 MCP server 的运行时配置视图（从 json 条目构建）。"""
+
     name: str
     command: str
     args: list[str]
@@ -98,7 +104,7 @@ class ExternalMCPServerConfig:
         return self.tool_prefix or self.name
 
     def is_available(self) -> bool:
-        """Server can start when required env vars are set (or none required)."""
+        """所需 env 就绪（或无需 env）时该 server 才能启动。"""
         if not self.enabled:
             return False
         if self.required_env:
@@ -149,13 +155,13 @@ class ExternalMCPServerConfig:
 
 
 def clear_mcp_config_cache() -> None:
-    """Test helper — drop the mtime-based config cache."""
+    """测试辅助——丢弃基于 mtime 的配置缓存。"""
     global _mcp_config_cache
     _mcp_config_cache = None
 
 
 def _load_config_file(path: Path) -> dict[str, Any]:
-    """Load a single config file, returning ``{}`` on missing/invalid."""
+    """加载单个配置文件；缺失或非法时返回 ``{}``。"""
     if not path.is_file():
         return {}
     try:
@@ -169,11 +175,11 @@ def _merge_external_servers(
     main: list[dict[str, Any]],
     local: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Merge ``external_servers`` lists; local overrides main by ``name``.
+    """合并两份 ``external_servers``；local 按 ``name`` 覆盖 main。
 
-    Order is preserved: main servers first (less local shadows one of them),
-    then local-only servers. This keeps builtin ordering stable while letting
-    personal MCPs (TAPD, Jira, internal tools) live in a gitignored file.
+    顺序保持：main 的 server 在前（除非被 local 同名覆盖），local 独有
+    的排在后。这样内置顺序稳定，同时允许个人 MCP（TAPD、Jira、内部工具）
+    存放在被 gitignore 的文件中。
     """
     local_by_name = {entry.get("name"): entry for entry in local if entry.get("name")}
     merged: list[dict[str, Any]] = []
@@ -185,7 +191,7 @@ def _merge_external_servers(
             continue
         seen.add(name)
         merged.append(local_by_name.pop(name, entry))
-    # Local-only servers (not shadowing any main entry).
+    # 仅存在于 local 的 server（未覆盖任何 main 条目）。
     for name, entry in local_by_name.items():
         if name not in seen:
             merged.append(entry)
@@ -198,8 +204,8 @@ def load_mcp_config(path: str | Path | None = None) -> dict[str, Any]:
     global _mcp_config_cache
 
     config_path = Path(path or settings.mcp_config_path)
-    # Local override only applies when reading the configured main config —
-    # tests passing an explicit ``path`` get pure single-file semantics.
+    # local 覆盖仅在读取配置的主路径时生效——测试传显式 ``path``
+    # 时得到纯单文件语义。
     use_local = path is None
     local_path_str = (settings.mcp_local_config_path or "") if use_local else ""
     local_path = Path(local_path_str) if local_path_str else Path()
@@ -207,7 +213,7 @@ def load_mcp_config(path: str | Path | None = None) -> dict[str, Any]:
     main_data = _load_config_file(config_path)
     local_data = _load_config_file(local_path) if local_path_str else {}
 
-    # Cache key includes both paths + mtimes so edits to either file invalidate.
+    # 缓存键包含两个路径与 mtime，任一侧文件被改都会失效。
     main_mtime = config_path.stat().st_mtime if config_path.is_file() else 0.0
     local_mtime = local_path.stat().st_mtime if local_path.is_file() else 0.0
     cache_key = (str(config_path.resolve()), str(local_path), main_mtime, local_mtime)
@@ -221,7 +227,7 @@ def load_mcp_config(path: str | Path | None = None) -> dict[str, Any]:
             main_data.get("external_servers", []),
             local_data.get("external_servers", []),
         )
-        # Allow local to also extend builtin ``servers`` if present.
+        # 允许 local 同时扩展内置 ``servers`` 列表。
         local_servers = local_data.get("servers", [])
         if local_servers:
             data.setdefault("servers", [])
@@ -254,7 +260,7 @@ def load_external_server_configs(path: str | Path | None = None) -> list[Externa
             continue
         policy_default = str(raw.get("policy_default", "auto_allow"))
         if policy_default not in _VALID_POLICY_DEFAULTS:
-            # Fail closed: a typo must not silently open the whole server.
+            # Fail closed：策略值拼写错误时不能静默放开整个 server。
             logger.warning(
                 "MCP server %r has invalid policy_default %r; skipping server",
                 name,
