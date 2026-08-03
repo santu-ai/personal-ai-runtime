@@ -253,7 +253,7 @@ async def test_call_with_reconnect_retries_transport_once():
 
 @pytest.mark.asyncio
 async def test_connect_failure_cleans_up_partial_session():
-    """initialize() failure must __aexit__ session and transport."""
+    """initialize() failure must exit session and transport (via owner task)."""
     from unittest.mock import AsyncMock, MagicMock, patch
 
     from app.core.harness.mcp_config import ExternalMCPServerConfig
@@ -279,10 +279,58 @@ async def test_connect_failure_cleans_up_partial_session():
         with pytest.raises(RuntimeError, match="handshake failed"):
             await conn.connect()
 
+    # Owner task exits the contexts (async with) before completing.
     session.__aexit__.assert_awaited_once()
     transport.__aexit__.assert_awaited_once()
     assert conn.session is None
-    assert conn._transport is None
+    assert conn._owner_task is None
+
+@pytest.mark.asyncio
+async def test_close_from_different_task_does_not_raise():
+    """close() from a foreign task must not raise anyio cancel-scope errors.
+
+    Regression for uvicorn reload: startup runs in one task, lifespan
+    shutdown runs in another. The anyio-backed stdio transport + session
+    require __aexit__ from the task that __aenter__'d; the owner-task
+    pattern guarantees this.
+    """
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from app.core.harness.mcp_config import ExternalMCPServerConfig
+    from app.core.harness.mcp_mesh import _ServerConnection
+
+    cfg = ExternalMCPServerConfig(name="ok", command="true", args=[])
+
+    transport = MagicMock()
+    transport.__aenter__ = AsyncMock(return_value=(MagicMock(), MagicMock()))
+    transport.__aexit__ = AsyncMock(return_value=None)
+
+    session = MagicMock()
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=None)
+    session.initialize = AsyncMock(return_value=None)
+    listed = MagicMock()
+    listed.tools = []
+    session.list_tools = AsyncMock(return_value=listed)
+
+    conn = _ServerConnection(cfg)
+    with patch(
+        "app.core.harness.mcp_mesh.stdio_client", return_value=transport
+    ), patch(
+        "app.core.harness.mcp_mesh.ClientSession", return_value=session
+    ), patch.object(cfg, "resolve_env", return_value={}):
+        await conn.connect()
+
+    # Simulate the reload scenario: close from a *different* task.
+    async def _closer():
+        await conn.close()
+
+    await asyncio.get_running_loop().create_task(_closer())
+
+    session.__aexit__.assert_awaited_once()
+    transport.__aexit__.assert_awaited_once()
+    assert conn.session is None
 
 @pytest.mark.asyncio
 async def test_reconnect_does_not_rediscover_forbidden_only_server():

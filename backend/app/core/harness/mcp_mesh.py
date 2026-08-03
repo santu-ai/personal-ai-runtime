@@ -85,86 +85,113 @@ class DiscoveredMCPTool:
 
 
 class _ServerConnection:
+    """Owns a stdio MCP connection within a dedicated asyncio task.
+
+    ``stdio_client`` and ``ClientSession`` both create anyio task groups
+    whose cancel scopes must be entered *and* exited from the same task.
+    On uvicorn reload the lifespan shutdown hook (and therefore
+    ``close``) runs in a different task than startup ``connect``, so we
+    pin the entire transport + session lifetime to a single owner task
+    and drive it with an :class:`~asyncio.Event` (stop signal) and a
+    :class:`~asyncio.Future` (setup result).
+    """
+
     def __init__(self, config: ExternalMCPServerConfig):
         self.config = config
         self.session: ClientSession | None = None
-        self._transport: tuple | None = None  # (read_stream, write_stream)
         self.tools: list[MCPTool] = []
         self._connect_lock = asyncio.Lock()
+        self._owner_task: asyncio.Task | None = None
+        self._stop_event: asyncio.Event | None = None
+        self._ready: asyncio.Future | None = None
 
     async def connect(self) -> None:
         async with self._connect_lock:
             if self.session is not None:
                 return
-            params = StdioServerParameters(
-                command=self.config.command,
-                args=self.config.args,
-                env=self.config.resolve_env(),
+            self._stop_event = asyncio.Event()
+            self._ready = asyncio.get_running_loop().create_future()
+            self._owner_task = asyncio.create_task(
+                self._run(), name=f"mcp-conn-{self.config.name}"
             )
-            transport = None
-            session = None
             try:
-                transport = stdio_client(params)
-                read, write = await transport.__aenter__()
-                session = ClientSession(read, write)
-                await session.__aenter__()
-                await asyncio.wait_for(
-                    session.initialize(),
-                    timeout=self.config.connect_timeout_seconds,
-                )
-                listed = await asyncio.wait_for(
-                    session.list_tools(),
-                    timeout=self.config.connect_timeout_seconds,
-                )
-            except Exception:
-                # Partial __aenter__ success must not leak transport/session.
-                if session is not None:
-                    try:
-                        await session.__aexit__(None, None, None)
-                    except Exception:
-                        logger.warning(
-                            "Error cleaning up failed MCP session for %s",
-                            self.config.name,
-                            exc_info=True,
-                        )
-                if transport is not None:
-                    try:
-                        await transport.__aexit__(None, None, None)
-                    except Exception:
-                        logger.warning(
-                            "Error cleaning up failed MCP transport for %s",
-                            self.config.name,
-                            exc_info=True,
-                        )
-                self.session = None
-                self._transport = None
-                self.tools = []
+                await self._ready
+            except BaseException:
+                # Setup failed or caller cancelled — reclaim the owner task.
+                await self._teardown(cancel=True)
                 raise
 
-            self.session = session
-            self._transport = (transport, read, write)
-            self.tools = list(listed.tools)
+    async def _run(self) -> None:
+        """Owner task — enters and holds transport + session contexts."""
+        stop_event = self._stop_event
+        ready = self._ready
+        params = StdioServerParameters(
+            command=self.config.command,
+            args=self.config.args,
+            env=self.config.resolve_env(),
+        )
+        try:
+            async with stdio_client(params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    try:
+                        await asyncio.wait_for(
+                            session.initialize(),
+                            timeout=self.config.connect_timeout_seconds,
+                        )
+                        listed = await asyncio.wait_for(
+                            session.list_tools(),
+                            timeout=self.config.connect_timeout_seconds,
+                        )
+                    except Exception as exc:
+                        if ready is not None and not ready.done():
+                            ready.set_exception(exc)
+                        return
+                    self.session = session
+                    self.tools = list(listed.tools)
+                    if ready is not None and not ready.done():
+                        ready.set_result(None)
+                    # Park here until close() signals stop — holding the
+                    # transport + session contexts open in this task so
+                    # __aexit__ always runs from the task that __aenter__'d.
+                    if stop_event is not None:
+                        await stop_event.wait()
+        except Exception as exc:
+            # Transport/session __aenter__ failed before the inner try.
+            if ready is not None and not ready.done():
+                ready.set_exception(exc)
+            raise
+        finally:
+            # Guarantee connect() never hangs if we exit without resolving.
+            if ready is not None and not ready.done():
+                ready.set_exception(
+                    RuntimeError("MCP owner task exited before setup completed")
+                )
 
     async def close(self) -> None:
         """Best-effort cleanup — swallow all errors so shutdown never breaks."""
-        if self.session is not None:
-            try:
-                await self.session.__aexit__(None, None, None)
-            except Exception:
-                logging.getLogger(__name__).warning(
-                    "Error closing MCP session for server %s", self.config.name, exc_info=True
-                )
+        await self._teardown(cancel=False)
         self.session = None
-        if self._transport is not None:
-            transport, _read, _write = self._transport
-            try:
-                await transport.__aexit__(None, None, None)
-            except Exception:
-                logging.getLogger(__name__).warning(
-                    "Error closing MCP transport for server %s", self.config.name, exc_info=True
-                )
-        self._transport = None
+        self._stop_event = None
+        self._ready = None
         self.tools = []
+
+    async def _teardown(self, *, cancel: bool) -> None:
+        """Signal the owner task to stop, optionally cancel, then join it."""
+        if self._stop_event is not None:
+            self._stop_event.set()
+        task = self._owner_task
+        if task is not None and not task.done():
+            if cancel:
+                task.cancel()
+            try:
+                await task
+            except BaseException:
+                logger.debug(
+                    "MCP owner task for %s raised during teardown",
+                    self.config.name,
+                    exc_info=True,
+                )
+        self._owner_task = None
 
 
 class MCPMesh:
