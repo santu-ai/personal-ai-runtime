@@ -21,10 +21,6 @@ export async function getWorkItem(itemId: string, include?: string): Promise<Wor
   return request<WorkItem>(`${API_BASE}/work-items/${itemId}${qs}`);
 }
 
-export async function getChildren(itemId: string): Promise<WorkItem[]> {
-  return request<WorkItem[]>(`${API_BASE}/work-items/${itemId}/children`);
-}
-
 export interface CreateWorkItemPayload {
   title: string;
   description?: string;
@@ -72,21 +68,8 @@ export async function updateWorkItem(
   });
 }
 
-export async function transitionStatus(itemId: string, status: string): Promise<WorkItem> {
-  return request<WorkItem>(`${API_BASE}/work-items/${itemId}/status`, {
-    method: "POST",
-    body: JSON.stringify({ status }),
-  });
-}
-
 export async function deleteWorkItem(itemId: string): Promise<void> {
   await request(`${API_BASE}/work-items/${itemId}`, { method: "DELETE" });
-}
-
-export async function executeWorkItem(itemId: string): Promise<WorkItem> {
-  return request<WorkItem>(`${API_BASE}/work-items/${itemId}/execute`, {
-    method: "POST",
-  });
 }
 
 export async function decomposeWorkItem(itemId: string): Promise<{ steps: string[] }> {

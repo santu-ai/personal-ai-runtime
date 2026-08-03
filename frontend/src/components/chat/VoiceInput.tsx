@@ -54,16 +54,6 @@ function getSpeechRecognition(): SpeechRecognition | null {
   return rec;
 }
 
-function speak(text: string) {
-  if (typeof speechSynthesis === "undefined") return;
-  speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = "zh-CN";
-  utterance.rate = 1.1;
-  utterance.pitch = 1.0;
-  speechSynthesis.speak(utterance);
-}
-
 interface VoiceInputProps {
   onTranscript: (text: string) => void;
   disabled?: boolean;
@@ -146,5 +136,3 @@ export default function VoiceInput({ onTranscript, disabled }: VoiceInputProps) 
     </div>
   );
 }
-
-export { speak };

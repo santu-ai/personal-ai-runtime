@@ -12,11 +12,11 @@ from __future__ import annotations
 import asyncio
 import threading
 
+from app.core.runtime.kernel.event import Event
 from app.core.runtime.kernel.event_dispatch import (
     dispatch,
     set_dispatch_loop,
 )
-from app.core.runtime.kernel.event import Event
 
 
 class _StubKernel:
@@ -81,8 +81,17 @@ def test_dispatch_worker_thread_without_bound_loop_does_not_raise():
         payload={"content": "x"},
     )
 
-    t = threading.Thread(target=lambda: dispatch(kernel, evt))
+    errors: list[BaseException] = []
+
+    def run() -> None:
+        try:
+            dispatch(kernel, evt)
+        except BaseException as exc:
+            errors.append(exc)
+
+    t = threading.Thread(target=run)
     t.start()
     t.join(timeout=5)
-    # No exception, no crash.
-    assert True
+
+    assert not t.is_alive()
+    assert errors == []

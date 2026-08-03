@@ -17,7 +17,7 @@ import {
 import { useApprovalsQuery } from "../../hooks/useApprovalsQuery";
 import { useInboxQuery } from "../../hooks/useInboxQuery";
 
-const PRIMARY_NAV = [{ path: "/", label: "对话", icon: MessageSquare, matchChat: true }];
+const PRIMARY_NAV = [{ path: "/", label: "对话", icon: MessageSquare }];
 
 const DATA_NAV = [
   { path: "/dashboard", label: "概览", icon: BarChart3, badgeKey: null },

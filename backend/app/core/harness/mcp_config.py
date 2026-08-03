@@ -52,6 +52,27 @@ def _matches_tool_pattern(tool_name: str, pattern: str) -> bool:
     return tool_name == pattern
 
 
+def _settings_env_map() -> dict[str, str]:
+    """Map env var names (as declared in mcp_config.json) to settings values.
+
+    独立于 config 文件声明 env 之外，凭据统一来自 settings，
+    保证「配置声明了某个 env key」与「实际拥有该凭据」用同一张表判断。
+    """
+    from app.config import settings
+
+    return {
+        "BRAVE_API_KEY": settings.brave_api_key,
+        "CONTEXT7_API_KEY": settings.context7_api_key,
+        "GITHUB_PERSONAL_ACCESS_TOKEN": settings.github_personal_access_token,
+        "TAVILY_API_KEY": settings.tavily_api_key,
+        "NOTION_TOKEN": settings.notion_token,
+        "TAPD_ACCESS_TOKEN": settings.tapd_access_token,
+        "TAPD_DEFAULT_WORKSPACE_ID": settings.tapd_default_workspace_id,
+        "TAPD_NICK_NAME": settings.tapd_nick_name,
+        "TUSHARE_TOKEN": settings.tushare_token,
+    }
+
+
 @dataclass
 class ExternalMCPServerConfig:
     name: str
@@ -85,21 +106,9 @@ class ExternalMCPServerConfig:
         return True
 
     def resolve_env(self) -> dict[str, str]:
-        from app.config import settings
         from app.core.harness.subprocess_env import minimal_subprocess_env
 
-        settings_env = {
-            "BRAVE_API_KEY": settings.brave_api_key,
-            "CONTEXT7_API_KEY": settings.context7_api_key,
-            "GITHUB_PERSONAL_ACCESS_TOKEN": settings.github_personal_access_token,
-            "TAVILY_API_KEY": settings.tavily_api_key,
-            "NOTION_TOKEN": settings.notion_token,
-            "TAPD_ACCESS_TOKEN": settings.tapd_access_token,
-            "TAPD_DEFAULT_WORKSPACE_ID": settings.tapd_default_workspace_id,
-            "TAPD_NICK_NAME": settings.tapd_nick_name,
-            "TUSHARE_TOKEN": settings.tushare_token,
-        }
-        # Minimal base env + config file overrides + credential keys from settings.
+        settings_env = _settings_env_map()
         extra = dict(self.env)
         for key in self.required_env + self.optional_env:
             val = settings_env.get(key, "").strip()
@@ -108,19 +117,7 @@ class ExternalMCPServerConfig:
         return minimal_subprocess_env(extra=extra)
 
     def has_required_credentials(self) -> bool:
-        from app.config import settings
-
-        settings_env = {
-            "BRAVE_API_KEY": settings.brave_api_key,
-            "CONTEXT7_API_KEY": settings.context7_api_key,
-            "GITHUB_PERSONAL_ACCESS_TOKEN": settings.github_personal_access_token,
-            "TAVILY_API_KEY": settings.tavily_api_key,
-            "NOTION_TOKEN": settings.notion_token,
-            "TAPD_ACCESS_TOKEN": settings.tapd_access_token,
-            "TAPD_DEFAULT_WORKSPACE_ID": settings.tapd_default_workspace_id,
-            "TAPD_NICK_NAME": settings.tapd_nick_name,
-            "TUSHARE_TOKEN": settings.tushare_token,
-        }
+        settings_env = _settings_env_map()
         for key in self.required_env:
             if self.env.get(key, "").strip():
                 continue

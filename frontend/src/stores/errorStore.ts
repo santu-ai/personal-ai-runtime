@@ -13,7 +13,6 @@ interface ErrorState {
   addError: (message: string, source?: string) => void;
   dismissError: (id: string) => void;
   setBackendUnavailable: (unavailable: boolean) => void;
-  clearErrors: () => void;
 }
 
 let errorSeq = 0;
@@ -35,6 +34,4 @@ export const useErrorStore = create<ErrorState>((set) => ({
     })),
 
   setBackendUnavailable: (unavailable) => set({ backendUnavailable: unavailable }),
-
-  clearErrors: () => set({ errors: [], backendUnavailable: false }),
 }));
