@@ -123,24 +123,36 @@ def _list_pending_enriched(kernel, limit: int | None = None) -> list[dict]:
         pending = pending[:limit]
 
     approval_ids = [a["id"] for a in pending]
+    # Batch-read ApprovalRequested events for all pending approvals in one
+    # SQL (N+1 → 1). Original per-approval semantics: earliest event wins.
     correlation_map: dict[str, str] = {}
-    for aid in approval_ids:
-        events = kernel.read_events(
-            aggregate_type="approval", aggregate_id=aid,
-            type="ApprovalRequested", limit=1,
+    if approval_ids:
+        batch_events = kernel.read_events(
+            aggregate_type="approval",
+            aggregate_ids=approval_ids,
+            type="ApprovalRequested",
+            order="asc",
         )
-        if events:
-            correlation_map[aid] = events[0].correlation_id or ""
+        for evt in batch_events:
+            # First occurrence per aggregate_id (events arrive seq-ascending).
+            if evt.aggregate_id not in correlation_map:
+                correlation_map[evt.aggregate_id] = evt.correlation_id or ""
 
     task_ids = {str(a["task_id"]) for a in pending if a.get("task_id")}
+    # Batch-resolve work item titles in one SQL (N+1 → 1).
     task_map: dict[str, str] = {}
-    for tid in task_ids:
+    if task_ids:
         try:
-            item = read_ports.query_work_item(tid)
-            if item:
-                task_map[tid] = item.get("title", "")
+            items = read_ports.query_work_items(id_in=list(task_ids))
+            for item in items:
+                title = item.get("title")
+                if title:
+                    task_map[item["id"]] = title
         except Exception:
-            logger.debug("Failed to resolve work item title for %s", tid, exc_info=True)
+            logger.debug(
+                "Batch work_items lookup failed; titles will be missing",
+                exc_info=True,
+            )
 
     enriched = []
     for a in pending:

@@ -183,7 +183,7 @@ BASELINE = {
     # 15: INV-W5 merged background_tasks into work_items
     "governed_tables": 15,
     "projector_files": 6,              # telemetry in projectors_governance
-    "god_object_max_loc": 631,  # after INV-W5 projector/event cleanup
+    "god_object_max_loc": 633,  # 631 → 633: read_events gained aggregate_ids batch param
     "dead_code_files": 0,
 }
 

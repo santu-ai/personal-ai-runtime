@@ -236,6 +236,7 @@ def fetch_event_log_rows(
     *,
     aggregate_type: str | None = None,
     aggregate_id: str | None = None,
+    aggregate_ids: list[str] | None = None,
     type: str | None = None,
     types: list[str] | None = None,
     correlation_id: str | None = None,
@@ -257,7 +258,17 @@ def fetch_event_log_rows(
     if aggregate_type is not None:
         clauses.append("aggregate_type = ?")
         params.append(aggregate_type)
-    if aggregate_id is not None:
+    if aggregate_ids is not None:
+        # Explicit aggregate_ids list (even empty) is a filter: empty means
+        # "match nothing". Falls back to aggregate_id only when aggregate_ids
+        # was not provided at all.
+        if aggregate_ids:
+            placeholders = ",".join("?" * len(aggregate_ids))
+            clauses.append(f"aggregate_id IN ({placeholders})")
+            params.extend(aggregate_ids)
+        else:
+            clauses.append("1 = 0")
+    elif aggregate_id is not None:
         clauses.append("aggregate_id = ?")
         params.append(aggregate_id)
     if types:
@@ -310,6 +321,10 @@ def query_work_items(db, filters: dict[str, Any]) -> list[dict] | int:
     Serves all work types (task / action / background / goal).
     """
     item_id = filters.get("id")
+    item_ids = filters.get("id_in")
+    # Explicit empty id_in means "match nothing" — must short-circuit before
+    # the general clause path (which would otherwise return all rows).
+    item_ids_provided = item_ids is not None
     status = filters.get("status")
     status_in = filters.get("status_in")
     work_type = filters.get("work_type")
@@ -343,6 +358,25 @@ def query_work_items(db, filters: dict[str, Any]) -> list[dict] | int:
                 return int(row["c"]) if row else 0
             row = conn.execute("SELECT * FROM work_items WHERE id = ?", (item_id,)).fetchone()
             return [dict(row)] if row else []
+
+        if item_ids_provided:
+            # Batch lookup by id list (N+1 avoidance for enrichment paths).
+            # Empty list is an explicit "match nothing" filter.
+            unique_ids = list(dict.fromkeys(str(i) for i in (item_ids or []) if i))
+            if not unique_ids:
+                return [] if not count_only else 0
+            placeholders = ",".join("?" * len(unique_ids))
+            if count_only:
+                row = conn.execute(
+                    f"SELECT COUNT(*) as c FROM work_items WHERE id IN ({placeholders})",
+                    unique_ids,
+                ).fetchone()
+                return int(row["c"]) if row else 0
+            rows = conn.execute(
+                f"SELECT * FROM work_items WHERE id IN ({placeholders})",
+                unique_ids,
+            ).fetchall()
+            return [dict(r) for r in rows]
 
         clauses: list[str] = []
         params: list[Any] = []

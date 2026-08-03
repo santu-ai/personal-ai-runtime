@@ -309,7 +309,7 @@ Reaction 不是独立"概念"，而是 `subscribe + invoke + produce` 的组合�
 | Fragment 注册数 | 10 | `fragments` |
 | Governed 投影表数 | 15 | `governed_tables` |
 | Projector 文件数 | 6 | `projector_files` |
-| God Object 最大 LOC（Kernel/Brain/MCPHub） | 631 | `god_object_max_loc` |
+| God Object 最大 LOC（Kernel/Brain/MCPHub） | 633 | `god_object_max_loc` |
 
 权威源是 [`check_concept_growth.py`](../../backend/scripts/check_concept_growth.py) 的 `BASELINE`；本表必须与之逐项一致（CI 校验）。原则说明见 [architecture-principles.md](architecture-principles.md)。
 
