@@ -1,8 +1,8 @@
-"""MCP Client Hub — manages tool registration, discovery, and invocation.
+"""MCP Client Hub——工具注册、发现与调用的统一入口。
 
-Supports both sync and async tool handlers. Builtin tool wiring lives in
-``mcp_builtin_registration`` (extracted to keep this file within the
-Architecture Contract God Object budget).
+同时支持同步与异步工具 handler。内置工具接线放在
+``mcp_builtin_registration``，保持本文件不超 Architecture Contract
+对 God Object 的体量约束。
 """
 
 import inspect
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ToolDef:
-    """Definition of a tool that can be called by the LLM."""
+    """供 LLM 调用的工具定义。"""
 
     name: str
     description: str
@@ -30,9 +30,10 @@ class ToolDef:
 
 
 def _filter_tool_kwargs(handler: Callable[..., Any], arguments: dict) -> dict:
-    """Drop unexpected kwargs when the handler has a fixed signature.
+    """当 handler 是固定签名时，丢弃 LLM 传入的意外参数。
 
-    Handlers that accept ``**kwargs`` (e.g. mesh proxies) keep all arguments.
+    接受 ``**kwargs`` 的 handler（如 mesh 代理）保留全部参数；否则只保留
+    与签名参数名匹配的 key，避免把模型幻觉出的字段透传给底层工具。
     """
     try:
         sig = inspect.signature(handler)
@@ -52,18 +53,16 @@ def _filter_tool_kwargs(handler: Callable[..., Any], arguments: dict) -> dict:
 
 
 class MCPHub:
-    """Central hub for managing tools and routing LLM tool calls."""
+    """工具中枢：注册、查询并转发 LLM 的工具调用。"""
 
-    # Categories registered by default — the lean core that every chat turn
-    # sees. Keeping this small saves prompt tokens and shrinks the attack
-    # surface (write-class tools visible to the model).
+    # 默认启用的核心类目——每个对话回合都会暴露给模型。刻意保持精简：
+    # 减少提示词 token 占用，也压缩暴露给模型的写类工具攻击面。
     CORE_CATEGORIES: frozenset[str] = frozenset({
         "time", "filesystem", "web", "calendar", "email",
         "shell", "git", "goals",
     })
-    # Advanced categories that depend on host GUI/messaging/hardware and are
-    # therefore opt-in via settings.builtin_tool_categories.
-    # Browser automation lives in the external Playwright MCP, not builtins.
+    # 依赖宿主 GUI/消息/硬件的高级类目，需经 settings.builtin_tool_categories
+    # 显式开启。浏览器自动化归外部 Playwright MCP 管，不在内置之列。
     ADVANCED_CATEGORIES: frozenset[str] = frozenset({
         "telegram", "computer_use", "voice", "clipboard_ocr",
     })
@@ -76,8 +75,8 @@ class MCPHub:
                 raw = settings.builtin_tool_categories.strip()
             except Exception:
                 raw = ""
-            # Opt-in categories are *added* to CORE — listing ``telegram``
-            # must not drop filesystem/shell/etc.
+            # 选择加入的类目是*叠加*在 CORE 之上——只写 ``telegram``
+            # 不应把 filesystem/shell 等核心类目挤掉。
             opt_in = {c.strip() for c in raw.split(",") if c.strip()} if raw else set()
             enabled_categories = set(self.CORE_CATEGORIES) | opt_in
         self._enabled_categories = enabled_categories
@@ -88,7 +87,7 @@ class MCPHub:
         reg._register_all_tools(self)
 
     def register_mesh_tools(self, tool_defs: list) -> int:
-        """Register tools discovered from the MCP Mesh. Returns count added."""
+        """注册 MCP Mesh 发现到的外部工具，返回新增数量。"""
         from app.core.harness import mcp_builtin_registration as reg
         return reg.register_mesh_tools(self, tool_defs)
 
@@ -99,10 +98,10 @@ class MCPHub:
         self._tools.pop(name, None)
 
     def get_tool_defs_for_llm(self) -> list[dict]:
-        """Return OpenAI-style tool schemas visible to the model.
+        """返回暴露给模型看的 OpenAI 风格工具 schema。
 
-        Forbidden capabilities are omitted so they neither consume prompt
-        tokens nor appear as callable options.
+        被禁止的能力在此被滤掉，既不消耗 prompt token，也不作为可调用选项
+        出现在模型面前。
         """
         from app.core.runtime.capability_governance import capability_governance
 
@@ -132,7 +131,7 @@ class MCPHub:
         return tool.is_async if tool else False
 
     async def invoke_tool(self, name: str, arguments: dict) -> str:
-        """Invoke a tool by name. Supports both sync and async handlers. Returns the result string."""
+        """按名调用工具，兼容同步/异步 handler，返回结果字符串。"""
         tool = self._tools.get(name)
         if not tool:
             return json.dumps({"error": f"Unknown tool: {name}"})
@@ -144,11 +143,7 @@ class MCPHub:
             else:
                 result = cast(str, tool.handler(**kwargs))
 
-            # tool_calls is a governed projection. Capability* events emitted
-            # by kernel.invoke_capability flow through projectors_governance
-            # (in projectors_governance), which owns the
-            # INSERT. Recording here was a dual-write that could drift.
-
+            # 超长输出截断到 8000 字符，避免一次工具结果把整个上下文撑爆。
             if isinstance(result, str) and len(result) > 8000:
                 result = result[:8000] + "\n... [output truncated]"
             return result
@@ -160,7 +155,7 @@ class MCPHub:
             return json.dumps({"error": str(e)})
 
 
-# Singleton — lazy proxy to RuntimeContainer so runtime.reset() rebuilds it.
+# 单例——经 RuntimeContainer 惰性代理，runtime.reset() 后重建。
 if TYPE_CHECKING:
     mcp_hub: MCPHub
 else:
