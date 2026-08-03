@@ -12,7 +12,7 @@ def test_generate_morning_brief_assembles_text(monkeypatch):
     )
     monkeypatch.setattr(
         "app.core.runtime.read_ports.query_active_goals",
-        lambda limit=10: [{"title": "Ship dogfood", "progress": 40}],
+        lambda limit=10: [{"title": "Ship dogfood", "progress": 0.4}],
     )
     monkeypatch.setattr(
         "app.core.runtime.read_ports.query_inbox_emails",
@@ -22,6 +22,7 @@ def test_generate_morning_brief_assembles_text(monkeypatch):
     result = generate_morning_brief()
 
     assert "Ship dogfood" in result.brief
+    assert "(进度 40%)" in result.brief
     assert "未读邮件: 3 封" in result.brief
     assert "今日日程: 2 个" in result.brief
     assert result.goals_count == 1

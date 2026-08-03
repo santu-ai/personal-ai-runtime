@@ -41,6 +41,21 @@ def _resolve_tz() -> tzinfo:
         return UTC
 
 
+def _format_progress(raw: object) -> str:
+    """将 work_item.progress（规范存储为 0-1 浮点）转成百分比文本。
+
+    兼容历史数据里可能存在的 0-100 整数形态：<=1 按比例放大，>1 视为已是百分数。
+    """
+    if raw is None or raw == "":
+        return "0"
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return "0"
+    pct = int(round(value * 100)) if value <= 1.0 else int(round(value))
+    return str(max(0, min(100, pct)))
+
+
 def generate_morning_brief() -> MorningBriefResult:
     """Assemble the morning brief text. Does not persist or notify.
 
@@ -92,7 +107,7 @@ def generate_morning_brief() -> MorningBriefResult:
         result.goals_count = len(active_goals) if active_goals else 0
         if active_goals:
             goal_lines = "\n".join(
-                f"  · {g.get('title', '')} (进度 {g.get('progress', 0)}%)"
+                f"  · {g.get('title', '')} (进度 {_format_progress(g.get('progress'))}%)"
                 for g in active_goals[:5]
             )
         logger.info(

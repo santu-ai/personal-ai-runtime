@@ -163,27 +163,17 @@ async def list_connectors():
 
     builtin = [
         {
-            "name": "mail",
+            "name": name,
             "enabled": True,
             "available": True,
             "connected": True,
-            "tool_count": 4,
+            "tool_count": len(_get_builtin_tools(name)),
             "has_credentials": True,
             "required_env": [],
-            "description": "邮件收发管理",
+            "description": _BUILTIN_DESCRIPTIONS[name],
             "builtin": True,
-        },
-        {
-            "name": "calendar",
-            "enabled": True,
-            "available": True,
-            "connected": True,
-            "tool_count": 3,
-            "has_credentials": True,
-            "required_env": [],
-            "description": "日历事件管理",
-            "builtin": True,
-        },
+        }
+        for name in ("mail", "calendar")
     ]
 
     return {"connectors": builtin + connectors}
@@ -267,7 +257,7 @@ async def get_connector(connector_name: str):
             "enabled": True,
             "available": True,
             "connected": True,
-            "tool_count": 3,
+            "tool_count": len(_get_builtin_tools(connector_name)),
             "has_credentials": True,
             "required_env": [],
             "description": _get_connector_description(connector_name),
