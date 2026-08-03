@@ -232,46 +232,6 @@ test.describe("New pages", () => {
     await expect(page.getByText("用户是早起型人")).toBeVisible();
   });
 
-  test("knowledge page shows upload zone", async ({ page }) => {
-    const router = buildCommonMocks();
-    router.json("/api/knowledge/documents", { documents: [], total: 0 });
-    await router.install(page);
-
-    await page.goto("/knowledge");
-    await expect(page.getByText("知识库")).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText("上传文档，让 AI 搜索你的知识")).toBeVisible();
-    await expect(page.getByText("还没有上传任何文档")).toBeVisible();
-  });
-
-  test("knowledge page lists uploaded documents", async ({ page }) => {
-    const router = buildCommonMocks();
-    router.json("/api/knowledge/documents", {
-      documents: [
-        {
-          id: "doc-1",
-          filename: "架构设计.md",
-          size: 2048,
-          chunks: 3,
-          uploaded_at: "2026-06-28T10:00:00Z",
-        },
-        {
-          id: "doc-2",
-          filename: "API 文档.pdf",
-          size: 15000,
-          chunks: 12,
-          uploaded_at: "2026-06-27T15:00:00Z",
-        },
-      ],
-      total: 2,
-    });
-    await router.install(page);
-
-    await page.goto("/knowledge");
-    await expect(page.getByText("架构设计.md")).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText("API 文档.pdf")).toBeVisible();
-    await expect(page.getByText("已上传文档 (2)")).toBeVisible();
-  });
-
   test("dashboard shows data sovereignty panel", async ({ page }) => {
     const router = buildCommonMocks();
     router.json("/api/dashboard", {

@@ -158,7 +158,6 @@ export function buildCommonMocks(): MockApiRouter {
       forbidden: [],
       external_ingestion: [],
     })
-    .json("/api/knowledge/documents", { documents: [], total: 0 })
     .json("/api/memory/memories/grouped", {
       memories: [
         {

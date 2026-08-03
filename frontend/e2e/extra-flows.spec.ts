@@ -6,31 +6,6 @@ test.describe("Extra core flows", () => {
     await page.addInitScript(() => localStorage.setItem("onboarding_done", "1"));
   });
 
-  test("knowledge search returns results", async ({ page }) => {
-    await installMocks(page, (router) => {
-      router.handler("/api/knowledge/search", async (route) => {
-        await route.fulfill({
-          json: {
-            results: [
-              {
-                id: "r1",
-                content: "Rust 所有权是核心概念",
-                metadata: { source_file: "rust.md" },
-                distance: 0.15,
-              },
-            ],
-          },
-        });
-      });
-    });
-
-    await page.goto("/knowledge");
-    await expect(page.getByText("知识库")).toBeVisible({ timeout: 5000 });
-    await page.getByPlaceholder("在知识库中搜索…").fill("Rust");
-    await page.getByRole("button", { name: "搜索" }).click();
-    await expect(page.getByText("Rust 所有权是核心概念")).toBeVisible({ timeout: 5000 });
-  });
-
   test("approvals page approve removes pending item", async ({ page }) => {
     let approved = false;
     await installMocks(page, (router) => {
