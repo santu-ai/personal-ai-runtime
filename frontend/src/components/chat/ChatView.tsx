@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Zap, MailSearch, Target as TargetIcon, BrainCircuit, Lightbulb } from "lucide-react";
-import { type MemoryRow } from "../../api/client";
-import { type StreamEvent } from "../../api/client";
+import { type MemoryRow, type StreamEvent } from "../../api/client";
 import { listWorkItems } from "../../api/workItems";
 import { useErrorStore } from "../../stores/errorStore";
 import { useChatStore } from "../../stores/chatStore";
@@ -11,36 +10,11 @@ import { useMemoriesGroupedQuery } from "../../hooks/useMemoriesQuery";
 import MessageItem from "./MessageItem";
 import ConfirmationDialog from "./ConfirmationDialog";
 import ContextPanel from "./ContextPanel";
-import VoiceInput from "./VoiceInput";
+import ChatComposer from "./ChatComposer";
+import WelcomeScreen from "./WelcomeScreen";
 
 interface Props {
   conversationId: string;
-}
-
-const SUGGESTION_META: Record<
-  string,
-  { icon: React.ComponentType<{ size?: number; className?: string }> }
-> = {
-  目标: { icon: TargetIcon },
-  收件箱: { icon: MailSearch },
-  对话: { icon: BrainCircuit },
-  规划: { icon: Lightbulb },
-};
-
-const CAPABILITY_CHIPS: Array<{ icon: string; label: string; prompt: string }> = [
-  { icon: "📄", label: "读写文件", prompt: "帮我在桌面创建一个 todo.md，列出今天的任务" },
-  { icon: "🌐", label: "搜索网页", prompt: "帮我搜索最新的 Python 3.13 特性并总结" },
-  { icon: "📬", label: "处理邮件", prompt: "帮我看看收件箱有什么重要的邮件" },
-  { icon: "📅", label: "管理日程", prompt: "我这周有什么日历日程？" },
-  { icon: "🎯", label: "规划目标", prompt: "帮我设定一个本周目标并拆解步骤" },
-  { icon: "🧠", label: "记住信息", prompt: "我想让你记住一些关于我的事情" },
-];
-
-function getSuggestionIcon(label: string) {
-  for (const [key, meta] of Object.entries(SUGGESTION_META)) {
-    if (label.includes(key)) return meta.icon;
-  }
-  return Zap;
 }
 
 export default function ChatView({ conversationId }: Props) {
@@ -61,10 +35,6 @@ export default function ChatView({ conversationId }: Props) {
   const prevMemoryTotalRef = useRef<number | null>(null);
 
   const addError = useErrorStore((s) => s.addError);
-  const handleVoiceTranscript = useCallback((transcript: string) => {
-    setInput((prev) => (prev ? prev + " " + transcript : transcript));
-    inputRef.current?.focus();
-  }, []);
   const pendingPrompt = useChatStore((s) => s.pendingPrompt);
   const setPendingPrompt = useChatStore((s) => s.setPendingPrompt);
 
@@ -90,24 +60,12 @@ export default function ChatView({ conversationId }: Props) {
 
   const { pendingConfirmation, setFromEvent, confirm, deny } = useApprovalFlow(conversationId);
 
-  const adjustTextareaHeight = useCallback(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-  }, []);
-
-  useEffect(() => {
-    adjustTextareaHeight();
-  }, [input, adjustTextareaHeight]);
-
   useEffect(() => {
     if (pendingPrompt) {
       setInput(pendingPrompt);
       setPendingPrompt(null);
-      adjustTextareaHeight();
     }
-  }, [pendingPrompt, setPendingPrompt, adjustTextareaHeight]);
+  }, [pendingPrompt, setPendingPrompt]);
 
   // Read memories via ref so WS `memory_changed` (which changes memData
   // identity every time) does NOT re-create this callback or re-fetch goals —
@@ -297,12 +255,10 @@ export default function ChatView({ conversationId }: Props) {
     await deny(setMessages, addError);
   }, [deny, setMessages, addError]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
+  const handlePickPrompt = useCallback((prompt: string) => {
+    setInput(prompt);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }, []);
 
   // Mark initial load complete once messages are loaded or user sends a message
   useEffect(() => {
@@ -315,110 +271,20 @@ export default function ChatView({ conversationId }: Props) {
   if (initialLoad && messages.length === 0 && !isLoading) {
     return (
       <div className="flex-1 flex flex-col min-h-0">
-        <div className="flex-1 flex items-center justify-center px-4">
-          <div className="max-w-lg w-full text-center">
-            <div className="text-4xl mb-4">🧠</div>
-            <h2 className="text-xl font-semibold text-fg-primary mb-2">开始对话</h2>
-            <p className="text-sm text-fg-tertiary mb-4">
-              我是你的个人 AI 助手。所有数据保存在你的机器上，完全私有。
-            </p>
-
-            {/* 我记得你 —— 记忆驱动连续性 */}
-            {recentMemories.length > 0 && (
-              <div className="mb-5 text-left bg-insight/10 border border-insight/30 rounded-xl p-4">
-                <div className="flex items-center gap-1.5 mb-2">
-                  <span className="text-sm">🧠</span>
-                  <span className="text-xs text-insight font-medium">我记得你</span>
-                </div>
-                <div className="space-y-1.5">
-                  {recentMemories.map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => {
-                        setInput(
-                          `你记得我${m.category === "preference" ? "喜欢" : m.category === "fact" ? "" : "的"}「${m.content.slice(0, 60)}」，基于这个继续聊聊`,
-                        );
-                        adjustTextareaHeight();
-                        setTimeout(() => inputRef.current?.focus(), 0);
-                      }}
-                      className="block w-full text-left text-xs text-fg-secondary hover:text-insight transition-colors truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
-                      title={m.content}
-                    >
-                      · {m.content.slice(0, 60)}
-                      {m.content.length > 60 ? "…" : ""}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="flex flex-wrap justify-center gap-1.5 mb-4">
-              {CAPABILITY_CHIPS.map((c) => (
-                <button
-                  key={c.label}
-                  type="button"
-                  onClick={() => {
-                    setInput(c.prompt);
-                    adjustTextareaHeight();
-                    setTimeout(() => inputRef.current?.focus(), 0);
-                  }}
-                  className="flex items-center gap-1 text-xs px-2.5 py-1.5 bg-surface-overlay/60 hover:bg-surface-overlay text-fg-secondary hover:text-fg-primary rounded-full border border-border-subtle hover:border-border-strong transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-                  title={c.prompt}
-                >
-                  <span>{c.icon}</span>
-                  <span>{c.label}</span>
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-fg-disabled mb-6">点击能力胶囊快速开始，或在下方直接输入</p>
-            <div className="flex flex-wrap justify-center gap-2 mb-8">
-              {suggestions.map((s) => {
-                const SIcon = getSuggestionIcon(s);
-                return (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => {
-                      setInput(s);
-                      adjustTextareaHeight();
-                      setTimeout(() => inputRef.current?.focus(), 0);
-                    }}
-                    className="flex items-center gap-1.5 text-xs px-3 py-2 bg-surface-overlay hover:bg-border-strong text-fg-secondary hover:text-fg-primary rounded-full border border-border-subtle hover:border-border-strong transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-                  >
-                    <SIcon size={13} className="text-fg-secondary" />
-                    <span>{s.length > 50 ? s.slice(0, 50) + "…" : s}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
+        <WelcomeScreen
+          recentMemories={recentMemories}
+          suggestions={suggestions}
+          onPickPrompt={handlePickPrompt}
+        />
         <div className="border-t border-border-subtle p-4">
           <div className="max-w-3xl mx-auto">
-            <div className="flex gap-3 items-end bg-surface-raised rounded-xl border border-border-strong focus-within:border-focus-ring transition-colors p-3">
-              <VoiceInput
-                onTranscript={handleVoiceTranscript}
-                disabled={isLoading || !!pendingConfirmation}
-              />
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onInput={adjustTextareaHeight}
-                onKeyDown={handleKeyDown}
-                placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
-                rows={1}
-                className="flex-1 bg-transparent border-none outline-none resize-none text-fg-primary placeholder:text-fg-tertiary min-h-[24px] max-h-[200px] py-1"
-              />
-              <button
-                onClick={handleSend}
-                disabled={!input.trim()}
-                className="px-4 py-2 bg-surface-overlay hover:bg-border-strong disabled:bg-surface-overlay disabled:text-fg-disabled rounded-lg text-sm font-medium text-white transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-              >
-                发送
-              </button>
-            </div>
+            <ChatComposer
+              value={input}
+              onChange={setInput}
+              onSend={handleSend}
+              disabled={isLoading || !!pendingConfirmation}
+              inputRef={inputRef}
+            />
             <p className="text-xs text-fg-disabled mt-2 text-center">
               Personal AI Runtime 可能会犯错，请验证重要信息。
             </p>
@@ -489,11 +355,7 @@ export default function ChatView({ conversationId }: Props) {
                     <button
                       key={s}
                       type="button"
-                      onClick={() => {
-                        setInput(s);
-                        adjustTextareaHeight();
-                        inputRef.current?.focus();
-                      }}
+                      onClick={() => handlePickPrompt(s)}
                       className="flex items-center gap-1 text-xs px-3 py-1.5 bg-surface-overlay hover:bg-border-strong text-fg-secondary hover:text-fg-primary rounded-full border border-border-subtle hover:border-border-strong transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                     >
                       <SIcon size={12} className="text-fg-secondary" />
@@ -503,56 +365,13 @@ export default function ChatView({ conversationId }: Props) {
                 })}
               </div>
             )}
-            <div className="flex gap-3 items-end bg-surface-raised rounded-xl border border-border-strong focus-within:border-focus-ring transition-colors p-3">
-              <VoiceInput
-                onTranscript={handleVoiceTranscript}
-                disabled={isLoading || !!pendingConfirmation}
-              />
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onInput={adjustTextareaHeight}
-                onKeyDown={handleKeyDown}
-                placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
-                rows={1}
-                className="flex-1 bg-transparent border-none outline-none resize-none text-fg-primary placeholder:text-fg-tertiary min-h-[24px] max-h-[200px] py-1"
-                disabled={isLoading || !!pendingConfirmation}
-              />
-              <button
-                onClick={handleSend}
-                disabled={isLoading || !input.trim() || !!pendingConfirmation}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
-                  isLoading
-                    ? "bg-surface-overlay/50 text-fg-secondary cursor-not-allowed"
-                    : "bg-surface-overlay hover:bg-border-strong disabled:bg-surface-overlay disabled:text-fg-disabled text-white"
-                }`}
-              >
-                {isLoading ? (
-                  <span className="flex items-center gap-2">
-                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                        fill="none"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                      />
-                    </svg>
-                    思考中
-                  </span>
-                ) : (
-                  "发送"
-                )}
-              </button>
-            </div>
+            <ChatComposer
+              value={input}
+              onChange={setInput}
+              onSend={handleSend}
+              disabled={isLoading || !!pendingConfirmation}
+              inputRef={inputRef}
+            />
             <p className="text-xs text-fg-disabled mt-2 text-center">
               Personal AI Runtime 可能会犯错，请验证重要信息。
             </p>
@@ -568,4 +387,20 @@ export default function ChatView({ conversationId }: Props) {
       />
     </div>
   );
+}
+
+function getSuggestionIcon(label: string) {
+  // Kept local to ChatView for the inline suggestion chips; the welcome
+  // screen has its own copy inside WelcomeScreen.
+  const meta: Record<string, { icon: React.ComponentType<{ size?: number; className?: string }> }> =
+    {
+      目标: { icon: TargetIcon },
+      收件箱: { icon: MailSearch },
+      对话: { icon: BrainCircuit },
+      规划: { icon: Lightbulb },
+    };
+  for (const [key, m] of Object.entries(meta)) {
+    if (label.includes(key)) return m.icon;
+  }
+  return Zap;
 }
