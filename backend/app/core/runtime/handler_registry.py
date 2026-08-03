@@ -1,7 +1,7 @@
-"""HandlerRegistry — maps event types to business-logic handlers (Lane A).
+"""HandlerRegistry——把事件类型映射到业务逻辑 handler（Lane A）。
 
-Fan-out: one event type may register N handlers. The Scheduler creates one
-ScheduledExecution per handler. Handlers are never silently overwritten.
+扇出：一个事件类型可注册 N 个 handler。Scheduler 为每个 handler 创建一条
+ScheduledExecution。handler 永远不会被静默覆盖。
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ _registry: dict[str, list[Handler]] = {}
 
 
 def subscribe(*event_types: str):
-    """Decorator: append a handler for one or more event types (fan-out)."""
+    """装饰器：为一个或多个事件类型追加 handler（扇出）。"""
 
     def deco(fn: Handler) -> Handler:
         for et in event_types:
@@ -40,12 +40,12 @@ def subscribe(*event_types: str):
 
 
 def get_handlers(event_type: str) -> list[Handler]:
-    """Return all handlers registered for an event type (may be empty)."""
+    """返回某事件类型注册的全部 handler（可能为空）。"""
     return list(_registry.get(event_type, []))
 
 
 def get_handler_named(event_type: str, handler_name: str) -> Handler | None:
-    """Resolve a specific handler by function name for a ScheduledExecution."""
+    """为一条 ScheduledExecution 按函数名解析具体 handler。"""
     for handler in get_handlers(event_type):
         if handler.__name__ == handler_name:
             return handler
@@ -53,10 +53,10 @@ def get_handler_named(event_type: str, handler_name: str) -> Handler | None:
 
 
 def registered_types() -> list[str]:
-    """Return all registered event types (for debugging / introspection)."""
+    """返回全部已注册事件类型（调试 / 内省用）。"""
     return sorted(_registry.keys())
 
 
 def reset_handlers() -> None:
-    """Clear all registered handlers — for test isolation."""
+    """清空全部已注册 handler——测试隔离用。"""
     _registry.clear()

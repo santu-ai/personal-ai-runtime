@@ -1,4 +1,4 @@
-"""Approval projection read ports."""
+"""Approval 投影读端口。"""
 
 from __future__ import annotations
 

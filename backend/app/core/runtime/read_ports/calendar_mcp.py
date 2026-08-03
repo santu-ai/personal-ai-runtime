@@ -1,4 +1,4 @@
-"""Calendar, world-model, and MCP connector read ports."""
+"""Calendar、world-model 与 MCP 连接器读端口。"""
 
 from __future__ import annotations
 

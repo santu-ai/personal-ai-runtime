@@ -1,4 +1,4 @@
-"""Notification ports — projection reads plus push / SSE bridge ABI."""
+"""通知端口——投影读取 + push / SSE 桥 ABI。"""
 
 from __future__ import annotations
 

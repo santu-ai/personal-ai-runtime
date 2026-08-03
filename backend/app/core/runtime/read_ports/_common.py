@@ -1,4 +1,4 @@
-"""Shared Kernel accessor for read ports."""
+"""read_ports 共享的 Kernel 访问器。"""
 
 from __future__ import annotations
 
@@ -8,6 +8,6 @@ logger = logging.getLogger("app.core.runtime.read_ports")
 
 
 def kernel():
-    """Resolve Kernel at call time (supports test patches / RuntimeContainer.reset)."""
+    """在调用时解析 Kernel（支持测试补丁 / RuntimeContainer.reset）。"""
     from app.core.runtime.kernel_instance import kernel as k
     return k

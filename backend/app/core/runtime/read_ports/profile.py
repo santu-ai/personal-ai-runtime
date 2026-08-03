@@ -1,4 +1,4 @@
-"""User-profile read ports."""
+"""用户画像读端口。"""
 
 from __future__ import annotations
 

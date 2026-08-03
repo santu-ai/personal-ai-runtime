@@ -1,20 +1,19 @@
-"""Runtime Ports ABI — Fragment / API / Product-facing port surface.
+"""Runtime Ports ABI——Fragment / API / Product 面向的端口面。
 
-Package path remains ``app.core.runtime.read_ports`` for stability; the role is
-broader than projection reads. Callers use these ports instead of opening DB
-sessions, importing ORM models, or reaching deep Runtime modules
-(``task_engine``, ``reaction_registry``, bridges, scheduler internals).
+包路径保持 ``app.core.runtime.read_ports`` 不变以维持稳定；其角色比投影
+读取更广。调用方经这些端口而不是直接开 DB 会话、导入 ORM 模型或触达深层
+Runtime 模块（``task_engine``、``reaction_registry``、桥、调度器内部）。
 
-    Caller → Port → Kernel / Runtime internals
+    调用方 → Port → Kernel / Runtime 内部
 
-Split by domain under this package. Includes:
+按域拆分在本包下。包括：
 
-- **Reads** — governed projection queries (``query_*`` / ``count_*``)
-- **Commands** — Work mutations, trigger registration (lazy wrappers)
-- **Bridges** — SSE queue register/unregister, notification push
+- **读** —— 受治理投影查询（``query_*`` / ``count_*``）
+- **命令** —— Work 变更、触发器注册（惰性包装）
+- **桥** —— SSE 队列注册/注销、通知推送
 
-Import via ``from app.core.runtime.read_ports import …`` or
-``from app.core.runtime import read_ports``.
+经 ``from app.core.runtime.read_ports import …`` 或
+``from app.core.runtime import read_ports`` 导入。
 """
 
 from app.core.runtime.notification_bridge import NotificationPayload

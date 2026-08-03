@@ -1,4 +1,4 @@
-"""Conversation / message ports — projection reads and context-pipeline sources."""
+"""Conversation / message 端口——投影读取与上下文管道来源。"""
 
 from __future__ import annotations
 

@@ -1,16 +1,15 @@
-"""Kernel singleton — the one and only entry point for User Space.
+"""Kernel 单例——User Space 唯一入口。
 
-User-space code must never instantiate Kernel directly; it must import this
-singleton. This is what enforces the GOLDEN RULE: User Space never touches
-storage; everything goes through the kernel.
+User-space 代码绝不可直接实例化 Kernel，必须导入本单例。这是「金律」的
+强制保证：User Space 永不触碰存储，一切经 kernel 通行。
 
-The concrete Kernel instance lives on RuntimeContainer; ``kernel`` here is a
-lazy proxy that forwards every attribute access to ``runtime.kernel``. This
-keeps ``from app.core.runtime.kernel_instance import kernel`` working while
-making ``runtime.reset()`` the single point of test isolation.
+具体 Kernel 实例挂在 RuntimeContainer 上；此处 ``kernel`` 是惰性代理，
+把每次属性访问转发到 ``runtime.kernel``。这样 ``from
+app.core.runtime.kernel_instance import kernel`` 保持可用，同时让
+``runtime.reset()`` 成为测试隔离的唯一入口。
 
-Scheduler / execution helpers below are thin ABI wrappers so API and Product
-do not import deep Runtime modules directly.
+下方的 Scheduler / execution 助手是薄 ABI 包装，让 API 与 Product 层无需
+直接导入深层的 Runtime 模块。
 """
 
 from __future__ import annotations
@@ -29,28 +28,28 @@ else:
 
 
 async def ensure_runtime_scheduler() -> None:
-    """Bind and start the process Scheduler if needed (API/Product ABI)."""
+    """按需绑定并启动进程 Scheduler（API/Product ABI）。"""
     from app.core.runtime.agent_scheduler import ensure_scheduler
 
     await ensure_scheduler(kernel)
 
 
 def get_runtime_scheduler() -> Any:
-    """Return the process Scheduler singleton (API/Product ABI)."""
+    """返回进程 Scheduler 单例（API/Product ABI）。"""
     from app.core.runtime.agent_scheduler import get_scheduler
 
     return get_scheduler(kernel)
 
 
 def get_current_execution_id() -> str | None:
-    """Current Execution context id, if any (Product ABI)."""
+    """当前 Execution 上下文 id（若有）（Product ABI）。"""
     from app.core.runtime.execution import get_current_execution_id as _get
 
     return _get()
 
 
 def bind_inbox_poll_applier(fn) -> None:
-    """Register Product inbox poll applier on RuntimeContainer (ABI)."""
+    """在 RuntimeContainer 上注册 Product 收件箱轮询应用器（ABI）。"""
     from app.core.runtime.runtime_container import runtime
 
     runtime.bind_inbox_poll_applier(fn)

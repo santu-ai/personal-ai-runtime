@@ -1,4 +1,4 @@
-"""LLM / tool-call telemetry read ports."""
+"""LLM / 工具调用遥测读端口。"""
 
 from __future__ import annotations
 
@@ -54,9 +54,9 @@ def summarize_call_failure_rates(*, days: int = 1) -> dict[str, Any]:
 
 
 def query_recent_tool_names(*, limit: int = 3) -> list[str]:
-    """Return the names of the most recently invoked capabilities."""
+    """返回最近被调用的能力名称。"""
     try:
-        # Fetch a wider window so duplicates can be deduped to ``limit`` names.
+        # 拉取更宽窗口，使去重后仍能凑够 ``limit`` 个名称。
         events = kernel().read_events(
             type="CapabilityInvoked", limit=max(limit * 5, limit), order="desc"
         )

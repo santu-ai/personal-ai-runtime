@@ -1,10 +1,10 @@
-"""Timer, policy reads, and Triggers registration ABI.
+"""Timer、policy 读取与 Triggers 注册 ABI。
 
-Trigger helpers live here because reactions participate in the periodic
-RuntimeLoop cycle alongside timers — not because they are timer rows.
+Trigger 助手放这里，是因为 reactions 与 timers 一起参与周期性 RuntimeLoop
+循环——不是因为它们是 timer 行。
 
-Background work lives under ``read_ports.work`` as
-``work_items(work_type='background')`` (INV-W5).
+后台工作归 ``read_ports.work`` 下的 ``work_items(work_type='background')``
+（INV-W5）。
 """
 
 from __future__ import annotations

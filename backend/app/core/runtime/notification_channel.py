@@ -1,11 +1,11 @@
-"""Notification Channel — pluggable external delivery (desktop, webhook, ntfy).
+"""通知通道——可插拔的外部投递（桌面、webhook、ntfy）。
 
-In-app / WebSocket fan-out stays in ``notification_bridge`` (persist + WS).
-This module is for *external* channels used by cron digests and product jobs.
+应用内 / WebSocket 扇出留在 ``notification_bridge``（持久化 + WS）。
+本模块负责 cron 摘要与 product 任务使用的*外部*通道。
 
-Use ``NotificationRouter.notify(..., persist=True)`` when the alert should also
-appear in the in-app notification center (replaces separate
-``create_notification`` + ``notify`` call pairs).
+需要通知也出现在应用内通知中心时，用
+``NotificationRouter.notify(..., persist=True)``（取代原先分开的
+``create_notification`` + ``notify`` 调用对）。
 """
 
 from __future__ import annotations
@@ -30,14 +30,14 @@ class NotificationPayload:
 
 
 class BaseChannel:
-    """Abstract notification channel."""
+    """抽象通知通道。"""
 
     async def send(self, payload: NotificationPayload) -> bool:
         raise NotImplementedError
 
 
 class DesktopChannel(BaseChannel):
-    """Desktop / UI tip via the shared notification_bridge transport."""
+    """经共享 notification_bridge 传输层的桌面 / UI 提示。"""
 
     async def send(self, payload: NotificationPayload) -> bool:
         try:
@@ -56,9 +56,9 @@ class DesktopChannel(BaseChannel):
 
 
 class WebhookChannel(BaseChannel):
-    """Generic webhook notification (replaces Telegram).
+    """通用 webhook 通知（取代 Telegram）。
 
-    Posts JSON to a user-configured webhook URL.
+    把 JSON POST 到用户配置的 webhook URL。
     """
 
     def __init__(self, webhook_url: str):
@@ -92,7 +92,7 @@ class WebhookChannel(BaseChannel):
 
 
 class NtfyChannel(BaseChannel):
-    """ntfy.sh push notification channel."""
+    """ntfy.sh 推送通道。"""
 
     def __init__(self, topic: str, server: str = "https://ntfy.sh"):
         self.topic = topic
@@ -122,7 +122,7 @@ class NtfyChannel(BaseChannel):
 
 
 class NotificationRouter:
-    """Route notification to configured channels (+ optional in-app persist)."""
+    """把通知路由到已配置通道（+ 可选应用内持久化）。"""
 
     def __init__(self):
         self.desktop = DesktopChannel()
@@ -155,11 +155,10 @@ class NotificationRouter:
         persist: bool = False,
         kernel: "Kernel | None" = None,
     ) -> dict:
-        """Deliver to desktop/webhook/ntfy.
+        """投递给桌面 / webhook / ntfy。
 
-        When ``persist=True``, also write an in-app notification via
-        ``notification_bridge.push_notification`` (and skip the extra
-        desktop WS tip — the persist path already broadcasts).
+        ``persist=True`` 时，还经 ``notification_bridge.push_notification``
+        写应用内通知（并跳过额外桌面 WS 提示——持久化路径已广播）。
         """
         payload = NotificationPayload(
             title=title, content=content, type=type_, priority=priority

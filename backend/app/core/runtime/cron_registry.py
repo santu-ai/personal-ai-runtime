@@ -1,8 +1,8 @@
-"""Cron scheduler — timer-driven scheduling via Runtime Timer Engine.
+"""Cron 调度——经 Runtime Timer Engine 的定时任务调度。
 
-``ensure_schedules`` is inlined in RuntimeLoop. ``init_scheduler`` seeds
-TimerCreated rows and dependency triggers; ``shutdown_scheduler`` removes
-those event subscriptions (timer scanning itself stays in RuntimeLoop).
+``ensure_schedules`` 内联在 RuntimeLoop 中。``init_scheduler`` 播种
+TimerCreated 行与依赖触发器；``shutdown_scheduler`` 移除这些事件订阅
+（定时扫描本身留在 RuntimeLoop）。
 """
 from __future__ import annotations
 
@@ -31,8 +31,8 @@ _unsubscribe_hooks: list[Callable[[], None]] = []
 
 
 def init_scheduler():
-    """Register timer schedules and dependency triggers."""
-    shutdown_scheduler()  # idempotent re-init
+    """注册定时任务与依赖触发器。"""
+    shutdown_scheduler()  # 幂等重初始化
     _unsubscribe_hooks.append(
         kernel.subscribe_events(_on_task_completed, type="WorkItemCompleted")
     )
@@ -43,7 +43,7 @@ def init_scheduler():
 
 
 def _init_timers():
-    """Register TimerCreated events for all scheduled cron jobs."""
+    """为所有定时 cron 任务注册 TimerCreated 事件。"""
     for sched in SCHEDULES:
         name = sched["name"]
         existing = read_ports.query_timer(name)
@@ -64,7 +64,7 @@ def _init_timers():
 
 
 def _on_task_completed(event):
-    """When a work item completes, start dependents whose dependencies are met."""
+    """工作项完成时，启动依赖已满足的后继任务。"""
     if event.type == "WorkItemStatusChanged":
         status = (event.payload or {}).get("status")
         if status not in ("completed", "failed"):
@@ -82,7 +82,7 @@ def _on_task_completed(event):
 
 
 def _deadline_target_dates() -> set:
-    """Return the set of dates (local) that trigger deadline alerts."""
+    """返回触发 deadline 提醒的日期集合（本地时区）。"""
     from datetime import tzinfo
     from zoneinfo import ZoneInfo
     try:
@@ -94,11 +94,10 @@ def _deadline_target_dates() -> set:
 
 
 def shutdown_scheduler() -> None:
-    """Unsubscribe cron dependency triggers registered by ``init_scheduler``.
+    """注销 ``init_scheduler`` 注册的 cron 依赖触发器。
 
-    Timer scanning itself remains owned by RuntimeLoop; this only clears
-    WorkItemCompleted / WorkItemStatusChanged subscriptions so tests and
-    process shutdown do not leak handlers across Kernel resets.
+    定时扫描本身仍归 RuntimeLoop；这里只清除 WorkItemCompleted /
+    WorkItemStatusChanged 订阅，避免测试与进程关闭在 Kernel 重置后泄漏 handler。
     """
     while _unsubscribe_hooks:
         unsub = _unsubscribe_hooks.pop()
@@ -109,7 +108,7 @@ def shutdown_scheduler() -> None:
 
 
 def run_memory_decay(threshold: float = 0.3, decay_to: float = 0.1) -> int:
-    """Emit MemoryDecayed for stale low-confidence memories (daily cron)."""
+    """为陈旧低置信度记忆发出 MemoryDecayed（每日 cron）。"""
     count = 0
     candidates = read_ports.query_memories(
         confidence_gt=decay_to,

@@ -1,4 +1,4 @@
-"""Inbox email projection read ports."""
+"""收件箱邮件投影读端口。"""
 
 from __future__ import annotations
 

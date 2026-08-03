@@ -1,4 +1,4 @@
-"""Event-log formatting and UI-facing event adapters."""
+"""事件日志格式化与 UI 侧事件适配器。"""
 
 from __future__ import annotations
 
@@ -31,9 +31,9 @@ _LEGACY_TYPE: dict[str, str] = {
 
 
 def _goal_id_for(event: Event) -> str | None:
-    """Extract goal_id from an event's aggregate or payload.
+    """从事件的聚合或 payload 提取 goal_id。
 
-    v1.0: Goal aggregate retired. goal_id comes from work_item payload or parent_goal_id.
+    v1.0：Goal 聚合已退休。goal_id 来自 work_item payload 或 parent_goal_id。
     """
     if event.aggregate_type == "work_item":
         return event.payload.get("parent_goal_id") or event.aggregate_id
@@ -43,7 +43,7 @@ def _goal_id_for(event: Event) -> str | None:
 
 
 def _summary_for(event: Event) -> str:
-    """Generate a human-readable summary string for an event."""
+    """为事件生成人类可读的摘要字符串。"""
     p = event.payload
     t = event.type
     if t == "ActionCreated":
@@ -74,7 +74,7 @@ def _summary_for(event: Event) -> str:
 
 
 def to_legacy_dict(event: Event) -> dict:
-    """Convert a Kernel Event to a UI-friendly dict shape."""
+    """把 Kernel 事件转成 UI 友好的 dict 形状。"""
     legacy_type = _LEGACY_TYPE.get(event.type, event.type.lower())
     payload = event.payload or {}
     return {
@@ -88,7 +88,7 @@ def to_legacy_dict(event: Event) -> dict:
 
 
 def goal_events(goal_id: str, *, limit: int = 20) -> list[dict]:
-    """Return goal-scoped events from event_log (goal + related actions/work_items)."""
+    """返回目标范围内的事件（goal + 相关 actions/work_items）。"""
     from app.core.runtime.kernel_instance import kernel
 
     goal_ev = kernel.read_events(
@@ -98,8 +98,8 @@ def goal_events(goal_id: str, *, limit: int = 20) -> list[dict]:
         aggregate_type="action", payload_goal_id=goal_id,
         order="desc", limit=limit,
     )
-    # work_item: the goal's own events (aggregate_id == goal_id) plus children
-    # linked via payload.parent_goal_id.
+    # work_item：goal 自身事件（aggregate_id == goal_id）加经
+    # payload.parent_goal_id 关联的子项。
     own_ev = kernel.read_events(
         aggregate_type="work_item", aggregate_id=goal_id, order="desc", limit=limit,
     )
@@ -119,7 +119,7 @@ def recent_events(
     event_type: str | None = None,
     goal_id: str | None = None,
 ) -> list[dict]:
-    """Read recent events from event_log and return UI-friendly rows."""
+    """从 event_log 读取近期事件并返回 UI 友好的行。"""
     since_ts = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     filters: dict = {"since_ts": since_ts, "limit": limit, "order": "desc"}
     if event_type:

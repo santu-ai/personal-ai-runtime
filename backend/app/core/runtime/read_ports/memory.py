@@ -1,4 +1,4 @@
-"""Memory projection and retrieval read ports."""
+"""记忆投影与召回读端口。"""
 
 from __future__ import annotations
 

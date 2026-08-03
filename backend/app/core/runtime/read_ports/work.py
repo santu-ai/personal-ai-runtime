@@ -1,8 +1,8 @@
-"""Work-item / goal ports — projections and Work mutations (API ABI).
+"""Work-item / goal 端口——投影读取与 Work 变更（API ABI）。
 
-Read helpers query governed ``work_items``. Mutation helpers are thin,
-lazy wrappers over ``task_engine`` so API does not import that module
-directly (avoids task_engine ↔ read_ports import cycles).
+读助手查询受治理的 ``work_items``。变更助手是对 ``task_engine`` 的薄
+惰性包装，使 API 不直接导入该模块（避免 task_engine ↔ read_ports 的
+导入环）。
 """
 
 from __future__ import annotations
@@ -315,8 +315,8 @@ def notify_goal_action_completed(
     try:
         all_items = query_work_items_by_parent_goal(goal_id, limit=500)
 
-        # Ensure the just-completed action is counted even if a concurrent
-        # read races the projector (emit is sync, but belt-and-suspenders).
+        # 确保刚完成的 action 被计入，即使并发读与投影器竞争
+        #（emit 是同步的，但此处做双保险）。
         for item in all_items:
             if item["id"] == action_id:
                 item["status"] = "completed"
