@@ -49,7 +49,10 @@ def _format_progress(raw: object) -> str:
     if raw is None or raw == "":
         return "0"
     try:
-        value = float(raw)
+        if isinstance(raw, (int, float)):
+            value = float(raw)
+        else:
+            value = float(str(raw).strip())
     except (TypeError, ValueError):
         return "0"
     pct = int(round(value * 100)) if value <= 1.0 else int(round(value))

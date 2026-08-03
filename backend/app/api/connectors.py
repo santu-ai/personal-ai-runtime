@@ -161,7 +161,7 @@ async def list_connectors():
         if config.name not in builtin_names
     ]
 
-    builtin = [
+    builtin: list[dict[str, object]] = [
         {
             "name": name,
             "enabled": True,
