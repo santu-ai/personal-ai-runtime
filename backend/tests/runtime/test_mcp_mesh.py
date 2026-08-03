@@ -7,6 +7,7 @@ from app.core.harness.mcp_mesh import MCPMesh
 from app.core.runtime.capability_governance import capability_governance
 from app.core.runtime.taint import register_external_write_tool, taint_registry
 
+
 @pytest.fixture
 def kernel(isolated_kernel):
     k, _db = isolated_kernel
@@ -250,6 +251,40 @@ async def test_call_with_reconnect_retries_transport_once():
     mesh._ensure_server.assert_awaited_once_with("demo")
     assert first_session.call_tool.await_count == 1
     assert second_session.call_tool.await_count == 1
+
+@pytest.mark.asyncio
+async def test_call_with_reconnect_does_not_retry_mcp_error():
+    """MCPError must never trigger reconnect/retry, even if its message text
+    contains transport markers like 'closed' or 'eof'.
+
+    Regression: _is_transport_failure's string classifier matched some
+    MCPError.message values, which would double-execute non-idempotent
+    tools whose side effect was already applied.
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    from mcp.shared.exceptions import MCPError
+
+    mesh = MCPMesh()
+    session = MagicMock()
+    # Message deliberately contains transport markers.
+    session.call_tool = AsyncMock(
+        side_effect=MCPError(code=-32603, message="tool execution closed the session (eof)")
+    )
+    conn = MagicMock()
+    conn.session = session
+    conn.config.call_timeout_seconds = 5.0
+
+    mesh._mark_disconnected = AsyncMock()  # type: ignore[method-assign]
+    mesh._ensure_server = AsyncMock()  # type: ignore[method-assign]
+
+    with pytest.raises(MCPError, match="closed the session"):
+        await mesh._call_with_reconnect(conn, "demo", "t", {}, "demo_t")
+
+    # No reconnect, no second call — side effect must not be re-applied.
+    mesh._mark_disconnected.assert_not_awaited()
+    mesh._ensure_server.assert_not_awaited()
+    assert session.call_tool.await_count == 1
 
 @pytest.mark.asyncio
 async def test_connect_failure_cleans_up_partial_session():

@@ -323,8 +323,7 @@ class MCPMesh:
         except MCPError as exc:
             # v2: tool failures surface as JSON-RPC errors — pass the message
             # through so the LLM can self-correct (v1 returned is_error content).
-            msg = getattr(exc, "message", None) or str(exc)
-            return json.dumps({"error": f"MCP tool error: {msg}"})
+            return json.dumps({"error": f"MCP tool error: {exc.message}"})
         except Exception as exc:
             return json.dumps({"error": _safe_mcp_error(server_name, exc)})
 
@@ -353,6 +352,9 @@ class MCPMesh:
 
         Application / protocol errors are not retried — avoids double-executing
         non-idempotent tools when the server already applied the side effect.
+        ``MCPError`` is caught before the transport classifier because its
+        ``message`` text may contain markers like "closed"/"eof" that would
+        otherwise trip ``_is_transport_failure``.
         """
         try:
             return await asyncio.wait_for(
@@ -360,6 +362,9 @@ class MCPMesh:
                 timeout=conn.config.call_timeout_seconds,
             )
         except asyncio.TimeoutError:
+            raise
+        except MCPError:
+            # v2 protocol/app error — never retry (side effect may be applied).
             raise
         except Exception as first_exc:
             if not _is_transport_failure(first_exc):
