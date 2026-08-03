@@ -11,3 +11,4 @@
 | [ADR-R013](ADR-R013-knowledge-path-b.md) | Knowledge 保持 Path B（核实后决策门） |
 | [ADR-R014](ADR-R014-handler-executions-soft-prune.md) | handler_executions 终端态 soft-prune（维护特权） |
 | [ADR-R015](ADR-R015-policy-register-idempotent.md) | Policy 注册幂等：MCP stop/start 不 revoke+recreate |
+| [ADR-R016](ADR-R016-defer-mcp-v2.md) | 暂缓 mcp 2.0.0 迁移（钉住 mcp==1.28.1） |
