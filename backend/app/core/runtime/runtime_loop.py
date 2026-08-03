@@ -406,56 +406,59 @@ class RuntimeLoop:
             limit=1,
             order="created_at_asc",
         )
-        for row in rows:
-            work_id = row["id"]
-            kernel.emit_event(
-                EVENT_WORK_ITEM_STATUS_CHANGED,
-                AGGREGATE_WORK_ITEM,
-                work_id,
-                payload={"status": "running"},
-                actor="background",
-            )
-            kernel.emit_event(
-                EVENT_WORK_ITEM_UPDATED,
-                AGGREGATE_WORK_ITEM,
-                work_id,
-                payload={"progress": 0.1},
-                actor="background",
-            )
-            await ensure_scheduler(kernel)
-            sch = get_scheduler(kernel)
-            await sch.start()
+        # 每个 maintenance tick 只派发最早的一个 pending 后台任务，
+        # 防止积压任务在同一 tick 内爆发（天然限流）。
+        if not rows:
+            return
+        work_id = rows[0]["id"]
+        kernel.emit_event(
+            EVENT_WORK_ITEM_STATUS_CHANGED,
+            AGGREGATE_WORK_ITEM,
+            work_id,
+            payload={"status": "running"},
+            actor="background",
+        )
+        kernel.emit_event(
+            EVENT_WORK_ITEM_UPDATED,
+            AGGREGATE_WORK_ITEM,
+            work_id,
+            payload={"progress": 0.1},
+            actor="background",
+        )
+        await ensure_scheduler(kernel)
+        sch = get_scheduler(kernel)
+        await sch.start()
 
-            async def _dispatch_bg(w_id: str) -> None:
+        async def _dispatch_bg(w_id: str) -> None:
+            try:
+                await kernel.submit_command(
+                    EVENT_EXECUTE_REQUESTED,
+                    "action",
+                    f"exec_{w_id}",
+                    payload={"action_id": w_id},
+                    actor="background",
+                    timeout=settings.submit_command_timeout_background_task,
+                )
+            except asyncio.CancelledError:
+                # Shutdown cancel: leave row as running; start() recovery
+                # re-queues it as pending on next process boot.
+                raise
+            except Exception:
+                logger.exception("Background work item %s failed", w_id)
                 try:
-                    await kernel.submit_command(
-                        EVENT_EXECUTE_REQUESTED,
-                        "action",
-                        f"exec_{w_id}",
-                        payload={"action_id": w_id},
+                    kernel.emit_event(
+                        EVENT_WORK_ITEM_STATUS_CHANGED,
+                        AGGREGATE_WORK_ITEM,
+                        w_id,
+                        payload={"status": "failed"},
                         actor="background",
-                        timeout=settings.submit_command_timeout_background_task,
                     )
-                except asyncio.CancelledError:
-                    # Shutdown cancel: leave row as running; start() recovery
-                    # re-queues it as pending on next process boot.
-                    raise
                 except Exception:
-                    logger.exception("Background work item %s failed", w_id)
-                    try:
-                        kernel.emit_event(
-                            EVENT_WORK_ITEM_STATUS_CHANGED,
-                            AGGREGATE_WORK_ITEM,
-                            w_id,
-                            payload={"status": "failed"},
-                            actor="background",
-                        )
-                    except Exception:
-                        logger.exception(
-                            "Failed to mark background work item %s as failed", w_id
-                        )
+                    logger.exception(
+                        "Failed to mark background work item %s as failed", w_id
+                    )
 
-            self._spawn_background_task(_dispatch_bg(work_id))
+        self._spawn_background_task(_dispatch_bg(work_id))
 
     def _spawn_background_task(self, coro: Coroutine[Any, Any, None]) -> None:
         """Create a tracked fire-and-forget task.
