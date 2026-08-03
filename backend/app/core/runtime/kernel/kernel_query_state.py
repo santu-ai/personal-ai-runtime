@@ -1,8 +1,8 @@
 # mypy: disable-error-code="attr-defined"
-"""Kernel Query State Mixin — read-only projection queries.
+"""Kernel Query State Mixin——只读投影查询。
 
-SQL executors live in ``query_builder`` (not counted toward God Object LOC).
-This mixin keeps the ``query_state`` selector router and thin ABI wrappers.
+SQL 执行器在 ``query_builder``（不计入 God Object LOC）。本 mixin 保留
+``query_state`` 选择器路由与薄 ABI 包装。
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from typing import Any
 
 from . import query_builder as qb
 
-# Selectors that support efficient SQL COUNT via ``count_state``.
+# 支持经 ``count_state`` 高效 SQL COUNT 的选择器。
 COUNT_STATE_SELECTORS: frozenset[str] = frozenset({
     "work_items",
     "memories",
@@ -23,12 +23,12 @@ COUNT_STATE_SELECTORS: frozenset[str] = frozenset({
 })
 
 
-class QueryStateMixin:  # type: ignore[attr-defined]  # mixed into Kernel which provides _db
-    """Read layer: query_state and projection table accessors."""
+class QueryStateMixin:  # type: ignore[attr-defined]  # 混入 Kernel，其提供 _db
+    """读层：query_state 与投影表访问器。"""
 
     def query_state(self, selector: str, **filters: Any) -> list[dict]:
-        """Read a projection. Prefer ``read_ports`` helpers for new call sites."""
-        if selector == "work_items":  # unified task + action + goal
+        """读取投影。新调用点优先用 ``read_ports`` 助手。"""
+        if selector == "work_items":  # 统一的 task + action + goal
             return self._as_rows(self._query_work_items(filters))
         if selector == "approvals":
             return self._as_rows(self._query_approvals(filters))
@@ -62,11 +62,11 @@ class QueryStateMixin:  # type: ignore[attr-defined]  # mixed into Kernel which 
 
     @staticmethod
     def supports_count_state(selector: str) -> bool:
-        """Return True when ``count_state`` has a real COUNT path for selector."""
+        """selector 是否有真正的 COUNT 路径。"""
         return selector in COUNT_STATE_SELECTORS
 
     def count_state(self, selector: str, **filters: Any) -> int:
-        """Count projection rows efficiently without loading them into memory."""
+        """高效统计投影行数，不把行加载进内存。"""
         filters["count_only"] = True
         dispatch = {
             "work_items": self._query_work_items,
@@ -86,7 +86,7 @@ class QueryStateMixin:  # type: ignore[attr-defined]  # mixed into Kernel which 
         return result
 
     def aggregate_state(self, selector: str, **filters: Any) -> Any:
-        """SQL aggregations over governed projections (no silent row caps)."""
+        """对受治理投影做 SQL 聚合（无静默行上限）。"""
         if selector == "llm_calls_summary":
             return qb.aggregate_llm_calls_summary(self._db, filters)
         if selector == "llm_calls_by_model":
@@ -112,13 +112,13 @@ class QueryStateMixin:  # type: ignore[attr-defined]  # mixed into Kernel which 
         return qb.query_notifications(self._db, filters)
 
     def list_capability_definitions(self) -> list[dict]:
-        """Thin forward to harness — prefer ``mcp_hub.get_tool_defs_for_llm``."""
+        """薄转发到 harness——优先用 ``mcp_hub.get_tool_defs_for_llm``。"""
         from app.core.harness.mcp_hub import mcp_hub
 
         return mcp_hub.get_tool_defs_for_llm()
 
     def recall_memory(self, query: str, k: int = 5) -> list[dict]:
-        """Semantic recall via injected MemoryIndexPort (no global vector bypass)."""
+        """经注入的 MemoryIndexPort 做语义召回（不绕过全局向量）。"""
         port = getattr(self, "_memory_index", None)
         if port is None:
             return []

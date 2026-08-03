@@ -1,8 +1,8 @@
-"""Post-commit memory vector-index sync + durable repair queue.
+"""提交后的记忆向量索引同步 + 持久化修复队列。
 
-Extracted from ``kernel.py`` so the God Object LOC budget can shrink without
-growing ``runtime_files`` (paired with folding ``projectors.py`` into the
-registry). Kernel Space still owns this module.
+从 ``kernel.py`` 抽出，让 God Object 的 LOC 预算可以收缩而不扩张
+``runtime_files``（与把 ``projectors.py`` 折进注册表配套）。本模块仍属
+Kernel Space。
 """
 
 from __future__ import annotations
@@ -21,16 +21,14 @@ logger = logging.getLogger(__name__)
 
 MEMORY_INDEX_RECONCILE_EVENT = "MemoryIndexReconcile"
 MEMORY_INDEX_RECONCILE_AGGREGATE = "__full_reconcile__"
-# Serializes restore/reconcile, normal post-commit memory sync, and repair
-# draining so an old repair cannot overwrite a newly restored vector state.
+# 串行化 restore/reconcile、常规提交后记忆同步与修复排空，防止旧的修复
+# 覆盖新恢复的向量状态。
 memory_index_operation_lock = threading.RLock()
 
-# In-process queue of memory events whose Chroma index sync failed.
-# Kept as an in-memory mirror of the durable `memory_index_repairs` table for
-# cheap runtime observability. The authoritative repair queue lives in
-# SQLite and is drained by RuntimeLoop._maintenance; this deque only holds
-# the most recent failures (maxlen) so dashboards can surface them without
-# hitting the DB.
+# Chroma 索引同步失败的记忆事件进程内队列。
+# 作为持久化 ``memory_index_repairs`` 表的内存镜像，用于廉价的可观测性。
+# 权威修复队列在 SQLite 中，由 RuntimeLoop._maintenance 排空；此 deque
+# 只保留最近失败（maxlen），让仪表盘无需查库即可呈现。
 _MAX_PENDING_MEMORY_INDEX_REPAIRS = 1000
 _pending_memory_index_repairs: deque[dict[str, object]] = deque(
     maxlen=_MAX_PENDING_MEMORY_INDEX_REPAIRS
@@ -38,17 +36,16 @@ _pending_memory_index_repairs: deque[dict[str, object]] = deque(
 
 
 def get_pending_memory_index_repairs() -> list[dict[str, object]]:
-    """Return a snapshot of memory index events awaiting Chroma reconciliation."""
+    """返回等待 Chroma 对账的记忆索引事件快照。"""
     return list(_pending_memory_index_repairs)
 
 
 def clear_pending_memory_index_repairs() -> int:
-    """Clear the in-process repair queue; returns number of entries removed.
+    """清空进程内修复队列，返回移除条数。
 
-    NOTE: this only clears the in-memory mirror. The durable rows in
-    ``memory_index_repairs`` survive process restarts and are drained by the
-    RuntimeLoop repair worker. Tests that need a clean slate should also
-    truncate the table.
+    注意：只清内存镜像。``memory_index_repairs`` 中的持久化行在进程重启
+    后仍存在，由 RuntimeLoop 修复工作线程排空。需要干净起点的测试还应
+    截断该表。
     """
     count = len(_pending_memory_index_repairs)
     _pending_memory_index_repairs.clear()
@@ -62,11 +59,10 @@ def persist_memory_index_repair(
     event_seq: int,
     error: str,
 ) -> None:
-    """Append a failed memory index sync to the durable repair queue.
+    """把一次失败的记忆索引同步追加进持久化修复队列。
 
-    Idempotent on (aggregate_id, event_seq): if a row already exists for the
-    same event we leave it untouched so the retry counter and status reflect
-    the original failure rather than being reset on every emit.
+    在 (aggregate_id, event_seq) 上幂等：同一事件已有行则不动它，让重试
+    计数与状态反映最初的失败，而不是每次 emit 都被重置。
     """
     from datetime import UTC, datetime
 
@@ -87,8 +83,7 @@ def persist_memory_index_repair(
                 (aggregate_id, event_type, event_seq, error[:500], now_iso),
             )
     except Exception:
-        # If the table does not exist yet (pre-migration) we cannot persist;
-        # fall back to in-memory only so emit_event is not blocked.
+        # 迁移前表尚不存在时无法持久化；退回仅内存，保证 emit_event 不被阻塞。
         logger.debug(
             "Could not persist memory index repair for %s — table unavailable",
             aggregate_id,
@@ -97,19 +92,17 @@ def persist_memory_index_repair(
 
 
 def sync_memory_index(kernel: Any, event: "Event") -> None:
-    """Synchronise one event while excluding restore and repair operations."""
+    """同步单个事件，排除 restore 与 repair 操作。"""
     with memory_index_operation_lock:
         _sync_memory_index_locked(kernel, event)
 
 
 def _sync_memory_index_locked(kernel: Any, event: "Event") -> None:
-    """Synchronise memory events with the MemoryIndexPort (if configured).
+    """把记忆事件同步到 MemoryIndexPort（若配置了）。
 
-    Post-commit vector index sync. Called after emit_event has durably
-    written the event + projection in a single SQLite transaction.
-    Because the event is already durable, a ChromaDB failure here can
-    never orphan an event — it only leaves embedding_id NULL until the
-    repair queue retries.
+    提交后的向量索引同步。在 emit_event 已把事件 + 投影以单个 SQLite
+    事务持久化之后调用。因为事件已经落盘，这里的 ChromaDB 失败永远不
+    会让事件成为孤儿——只会让 embedding_id 保持 NULL，直到修复队列重试。
     """
     if event.type not in MEMORY_INDEX_EVENT_TYPES:
         return
@@ -140,8 +133,8 @@ def _sync_memory_index_locked(kernel: Any, event: "Event") -> None:
                         exc_info=True,
                     )
     except Exception as exc:
-        # Compensating delete: if index_memory failed partway, attempt to
-        # remove any partial ChromaDB state so the repair retry starts clean.
+        # 补偿删除：若 index_memory 中途失败，尝试清除部分 ChromaDB 状态，
+        # 让修复重试从干净状态开始。
         if event.type != "MemoryDeleted" and kernel._memory_index is not None:
             try:
                 kernel._memory_index.delete_memory(event.aggregate_id)
@@ -173,18 +166,17 @@ def _sync_memory_index_locked(kernel: Any, event: "Event") -> None:
 
 
 def drain_memory_index_repairs(kernel: Any) -> None:
-    """Retry pending memory_index_repairs rows (Kernel Space; holds the lock)."""
+    """重试 pending 的 memory_index_repairs 行（Kernel Space；持锁）。"""
     with memory_index_operation_lock:
         _drain_memory_index_repairs_locked(kernel)
 
 
 def _drain_memory_index_repairs_locked(kernel: Any) -> None:
-    """Re-attempt ChromaDB index syncs that previously failed.
+    """重试此前失败的 ChromaDB 索引同步。
 
-    Pulls a bounded batch of pending rows, retries each one, and either
-    deletes the row (success) or bumps retry_count. Rows that exceed the
-    retry budget are marked ``failed_permanent`` and emit
-    ``MemoryIndexRepairFailed``.
+    拉取有界批次 pending 行，逐条重试；成功删行，失败则 bump retry_count。
+    超过重试预算的行标记为 ``failed_permanent`` 并发出
+    ``MemoryIndexRepairFailed``。
     """
     from datetime import UTC, datetime
 
@@ -314,37 +306,36 @@ def _drain_memory_index_repairs_locked(kernel: Any) -> None:
                 )
 
 
-# ── MemoryIndexPort protocol (relocated from runtime/ports.py) ─────────────
+# ── MemoryIndexPort 协议（从 runtime/ports.py 迁移而来）──────────────────
 
 
 class MemoryIndexPort(Protocol):
-    """Semantic memory index for storage and recall.
+    """语义记忆索引：存储与召回。
 
-    The Kernel uses this to synchronise memory events with a vector index
-    and to serve ``recall_memory``. If None is injected, index sync and
-    recall are no-ops.
+    Kernel 用它与向量索引同步记忆事件，并服务 ``recall_memory``。
+    若注入 None，索引同步与召回都是 no-op。
     """
 
     def index_memory(
         self, content: str, metadata: dict | None = None, memory_id: str | None = None
     ) -> str:
-        """Index content and return an embedding_id.  Idempotent per memory_id."""
+        """索引内容并返回 embedding_id。按 memory_id 幂等。"""
         ...
 
     def delete_memory(self, memory_id: str) -> None:
-        """Remove a memory from the vector index."""
+        """从向量索引移除一条记忆。"""
         ...
 
     def list_memory_ids(self) -> list[str]:
-        """Return all memory IDs currently present in the vector index."""
+        """返回向量索引中当前的全部记忆 ID。"""
         ...
 
     def search_memories(self, query: str, n_results: int = 5) -> list[dict]:
-        """Semantic search over derived memories."""
+        """对派生记忆做语义搜索。"""
         ...
 
     def search_memories_batch(
         self, queries: list[str], n_results: int = 5
     ) -> list[list[dict]]:
-        """Batch semantic search; return one hit list per query."""
+        """批量语义搜索；每个 query 返回一个命中列表。"""
         ...

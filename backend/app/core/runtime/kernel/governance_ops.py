@@ -1,8 +1,8 @@
 # mypy: disable-error-code="attr-defined"
-"""Governance operations — approvals + invoke_capability.
+"""治理操作——审批 + invoke_capability。
 
-Extracted from ``kernel_governance.GovernanceMixin`` so the God Object LOC
-budget can shrink. Functions take a Kernel-like object.
+从 ``kernel_governance.GovernanceMixin`` 抽出，让 God Object 的 LOC
+预算可以收缩。函数接收 Kernel 类对象。
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-DEFAULT_APPROVAL_TTL_SECONDS = 86_400  # 24 hours
+DEFAULT_APPROVAL_TTL_SECONDS = 86_400  # 24 小时
 
 
 
@@ -24,11 +24,11 @@ def request_approval(
     correlation_id: str | None = None,
     expires_in_seconds: int = DEFAULT_APPROVAL_TTL_SECONDS,
 ) -> dict:
-    """Request approval for a capability invocation.
+    """请求一次能力调用的审批。
 
-    Risk policy:
-      - "low"  → auto_allow, emit ApprovalGranted immediately
-      - "high" → needs_user, emit ApprovalRequested and return pending
+    风险策略：
+      - "low"  → 自动放行，立即发出 ApprovalGranted
+      - "high" → 需要用户确认，发出 ApprovalRequested 并返回 pending
     """
     approval_id = f"apr_{uuid.uuid4().hex}"
     expires_at = (datetime.now(UTC) + timedelta(seconds=expires_in_seconds)).isoformat()
@@ -68,12 +68,12 @@ def request_approval(
     }
 
 def expire_stale_approvals(kernel) -> int:
-    """Expire pending approvals whose expires_at has passed.
+    """过期所有 expires_at 已到的 pending 审批。
 
-    Emit-only path: GOVERNED ``approvals`` is updated solely by the
-    ApprovalDenied projector (``reason=auto_expired`` → status expired).
-    Projector uses ``UPDATE ... WHERE status='pending'`` for idempotent
-    convergence. Duplicate emits are safe under single-process RuntimeLoop.
+    纯 emit 路径：受治理的 ``approvals`` 表仅由 ApprovalDenied 投影器
+    更新（``reason=auto_expired`` → status expired）。投影器用
+    ``UPDATE ... WHERE status='pending'`` 做幂等收敛。单进程 RuntimeLoop
+    下重复 emit 是安全的。
     """
     now_iso = datetime.now(UTC).isoformat()
 
@@ -111,7 +111,7 @@ def grant_approval(
     reason: str = "",
     correlation_id: str | None = None,
 ) -> None:
-    """Record an approval grant on the governed approval projection."""
+    """在受治理的审批投影上记录一次批准。"""
     kernel.emit_event(
         type="ApprovalGranted",
         aggregate_type="approval",
@@ -132,7 +132,7 @@ def deny_approval(
     reason: str = "",
     correlation_id: str | None = None,
 ) -> None:
-    """Record an approval denial on the governed approval projection."""
+    """在受治理的审批投影上记录一次拒绝。"""
     kernel.emit_event(
         type="ApprovalDenied",
         aggregate_type="approval",
@@ -153,7 +153,7 @@ def _notify_approval_changed(
     action: str,
     event_type: str,
 ) -> None:
-    """Push a lightweight WS hint so Approvals / Trust caches refresh."""
+    """推送轻量 WS 提示，让 Approvals / Trust 缓存刷新。"""
     from app.core.runtime.notification_bridge import broadcast_event
 
     broadcast_event({
@@ -184,13 +184,12 @@ async def invoke_capability(
     principal: Any | None = None,
     execution_id: str | None = None,
 ) -> dict:
-    """Invoke a capability through the Kernel, with approval gating.
+    """经 Kernel 调用能力，带审批门控。
 
-    Execution 契约 §9: authorization is delegated to CapabilityGateway,
-    which uses typed Principal (§8) for identity-based checks.
+    Execution 契约 §9：授权委托给 CapabilityGateway，其用类型化
+    Principal（§8）做基于身份的判断。
 
-    When execution_id is provided, this invocation is attributed to the
-    owning Execution aggregate via caused_by.
+    提供 execution_id 时，本次调用通过 caused_by 归属到所属 Execution 聚合。
     """
     args = args or {}
     from app.core.harness.mcp_hub import mcp_hub
