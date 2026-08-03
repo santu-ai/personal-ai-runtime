@@ -44,6 +44,26 @@ def test_update_email_settings(client: TestClient):
     assert r.json()["config"]["user"] == "test@gmail.com"
 
 
+def test_invalid_default_provider_rejected_without_persisting(client: TestClient):
+    """A bad default_provider must fail before persisting anything.
+
+    Regression: the endpoint used to write the config + reload the router
+    first, then validate default_provider — leaving the config half-updated
+    on a 400.
+    """
+    r = client.put(
+        "/api/settings/llm",
+        json={"default_provider": "no-such-provider", "temperature": 0.7},
+    )
+    assert r.status_code == 400
+    assert "default_provider" in r.json()["detail"]
+
+    # The rejected temperature must not have been persisted.
+    llm = client.get("/api/settings/llm").json()
+    assert llm["config"]["temperature"] != 0.7
+
+
+
 def test_get_capability_policy(client: TestClient):
     r = client.get("/api/settings/capability-policy")
     assert r.status_code == 200

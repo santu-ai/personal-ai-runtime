@@ -122,13 +122,24 @@ async def update_llm_settings(body: UpdateLlmConfigRequest):
         if len(ids) != len(set(ids)):
             raise HTTPException(status_code=400, detail="Duplicate provider id")
 
+    # Validate default_provider against the *incoming* providers before any
+    # persistence: a bad reference must not leave the config half-updated.
+    if body.default_provider is not None:
+        if body.providers is not None:
+            known = {p.id for p in body.providers}
+        else:
+            known = {
+                p["id"]
+                for p in runtime_config.get_llm_config().get("providers", [])
+            }
+        if body.default_provider not in known:
+            raise HTTPException(
+                status_code=400,
+                detail="default_provider not found in providers",
+            )
+
     updated = runtime_config.update_llm_config(payload)
     llm_router.reload()
-
-    if body.default_provider and body.default_provider not in {
-        p["id"] for p in updated.get("providers", [])
-    }:
-        raise HTTPException(status_code=400, detail="default_provider not found in providers")
 
     default_model, providers_public = _llm_status_from_config(updated)
 
