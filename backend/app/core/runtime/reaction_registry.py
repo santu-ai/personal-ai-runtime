@@ -6,7 +6,7 @@ Reactions are declared via ``@reaction`` and fired by ``evaluate_cycle``.
          - ``state_selector`` + ``count_gte`` (+ optional ``state_filters``)
            are a pre-gate: the handler is skipped when matching state rows
            are below the threshold.
-         - ``event_type`` / ``window_days`` / ``payload_check`` remain
+         - ``event_type`` / ``window_days`` / ``aggregate_type`` remain
            descriptive metadata for the Triggers API (not yet an event bus).
 """
 
@@ -35,8 +35,7 @@ class ReactionWhen:
         ``state_selector`` is set and ``count_gte > 0``, the handler is only
         invoked if at least ``count_gte`` rows match.
 
-    ``event_type`` / ``event_types`` / ``aggregate_type`` / ``window_days`` /
-    ``payload_check``
+    ``event_type`` / ``event_types`` / ``aggregate_type`` / ``window_days``
         Descriptive metadata (Triggers API / future event-driven paths).
         Not consulted by ``evaluate_cycle``.
     """
@@ -49,7 +48,6 @@ class ReactionWhen:
     event_types: list[str] = field(default_factory=list)
     aggregate_type: str = ""
     window_days: int = 1
-    payload_check: dict[str, Any] = field(default_factory=dict)
 
     def matches_event(self, event: "Event") -> bool:
         types = self.event_types if self.event_types else ([self.event_type] if self.event_type else [])
@@ -77,7 +75,6 @@ class ReactionThen:
     notification_template: str = ""  # e.g. "收件箱积压 {count} 封"
     notification_title: str = ""
     notification_severity: str = "info"
-    emit_event_type: str = ""       # emit a new event type when triggered
 
 
 class Reaction:

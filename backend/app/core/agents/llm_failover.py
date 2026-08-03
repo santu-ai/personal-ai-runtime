@@ -69,50 +69,47 @@ class LLMRouter:
         """Reload providers after runtime config changes."""
         self._load_providers()
 
+    @staticmethod
+    def _build_client(provider: LLMProvider) -> AsyncOpenAI:
+        """按 provider 配置构造 OpenAI 兼容 client。
+
+        延迟构造（首次访问时）而非在 _load_providers 里预热，
+        避免启动阶段因 LLM 配置尚未就绪而失败；client 缓存于 _clients。
+        """
+        from app.config import settings
+
+        return AsyncOpenAI(
+            api_key=provider.api_key,
+            base_url=provider.base_url,
+            timeout=float(settings.llm_timeout_seconds),
+            max_retries=3,
+        )
+
+    def _client_for(self, provider: LLMProvider) -> AsyncOpenAI:
+        if provider.name not in self._clients:
+            self._clients[provider.name] = self._build_client(provider)
+        return self._clients[provider.name]
+
     def get_client(self, provider_name: str | None = None) -> tuple[AsyncOpenAI, LLMProvider]:
         """Get a client for the specified provider, or the default one."""
         if provider_name:
             for p in self.providers:
                 if p.name == provider_name:
-                    if p.name not in self._clients:
-                        from app.config import settings
-                        self._clients[p.name] = AsyncOpenAI(
-                            api_key=p.api_key,
-                            base_url=p.base_url,
-                            timeout=float(settings.llm_timeout_seconds),
-                            max_retries=3,
-                        )
-                    return self._clients[p.name], p
+                    return self._client_for(p), p
 
         for p in self.providers:
             if p.is_default:
-                if p.name not in self._clients:
-                    from app.config import settings
-                    self._clients[p.name] = AsyncOpenAI(
-                        api_key=p.api_key,
-                        base_url=p.base_url,
-                        timeout=float(settings.llm_timeout_seconds),
-                        max_retries=3,
-                    )
-                return self._clients[p.name], p
+                return self._client_for(p), p
 
         raise RuntimeError("No LLM provider configured")
 
     def get_fallback_clients(self) -> list[tuple[AsyncOpenAI, LLMProvider]]:
         """Get all non-default clients for fallback."""
-        result = []
-        for p in self.providers:
-            if not p.is_default:
-                if p.name not in self._clients:
-                    from app.config import settings
-                    self._clients[p.name] = AsyncOpenAI(
-                        api_key=p.api_key,
-                        base_url=p.base_url,
-                        timeout=float(settings.llm_timeout_seconds),
-                        max_retries=3,
-                    )
-                result.append((self._clients[p.name], p))
-        return result
+        return [
+            (self._client_for(p), p)
+            for p in self.providers
+            if not p.is_default
+        ]
 
     def _provider_available(self, provider: LLMProvider) -> bool:
         if provider.provider_type == "ollama":

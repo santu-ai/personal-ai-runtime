@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from app.core.agents.llm_failover import llm_router
 from app.core.agents.tool_markup import strip_tool_markup
@@ -20,6 +20,33 @@ if TYPE_CHECKING:
     from app.core.agents.conversation import ConversationManager
 
 logger = logging.getLogger(__name__)
+
+
+async def _complete_text(
+    client: Any,
+    model: str,
+    messages: list[dict],
+    *,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+) -> str:
+    """非流式文本补全——统一生成参数解析与调用模板。
+
+    无 tools 的普通补全（continue/synthesize/complete_text_only）共用此路径；
+    生成参数只解析一次，避免每个调用点重复调 get_generation_params()。
+    返回补全文本（可能为空串）。
+    """
+    if temperature is None or max_tokens is None:
+        gen_temp, gen_max = runtime_config.get_generation_params()
+        temperature = temperature if temperature is not None else gen_temp
+        max_tokens = max_tokens if max_tokens is not None else gen_max
+    response = await client.chat.completions.create(
+        model=model,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+    return response.choices[0].message.content or ""
 
 
 async def continue_after_tool_result(
@@ -65,13 +92,7 @@ async def continue_after_tool_result(
 
     content = ""
     try:
-        response = await llm.client.chat.completions.create(
-            model=llm.provider.model,
-            messages=egress_messages,
-            temperature=runtime_config.get_generation_params()[0],
-            max_tokens=runtime_config.get_generation_params()[1],
-        )
-        content = response.choices[0].message.content or ""
+        content = await _complete_text(llm.client, llm.provider.model, egress_messages)
     except Exception as e:
         logger.warning("continue_after_tool_result first attempt failed: %s", e)
 
@@ -89,13 +110,7 @@ async def continue_after_tool_result(
             "content": "请只用文字回复，不要调用任何工具。",
         })
         try:
-            response = await llm.client.chat.completions.create(
-                model=llm.provider.model,
-                messages=retry_messages,
-                temperature=runtime_config.get_generation_params()[0],
-                max_tokens=runtime_config.get_generation_params()[1],
-            )
-            content = response.choices[0].message.content or ""
+            content = await _complete_text(llm.client, llm.provider.model, retry_messages)
             cleaned = strip_tool_markup(content)
             if not cleaned.strip():
                 logger.warning(
@@ -201,13 +216,8 @@ async def synthesize_from_tool_results(llm, messages: list[dict]) -> str:
         synth_messages, purpose="synthesize_tool_results",
     )
     try:
-        response = await llm.client.chat.completions.create(
-            model=llm.provider.model,
-            messages=egress_messages,
-            temperature=runtime_config.get_generation_params()[0],
-            max_tokens=runtime_config.get_generation_params()[1],
-        )
-        return strip_tool_markup((response.choices[0].message.content or "").strip())
+        content = await _complete_text(llm.client, llm.provider.model, egress_messages)
+        return strip_tool_markup(content.strip())
     except Exception:
         logger.exception("synthesize_from_tool_results failed")
         return ""
@@ -226,13 +236,8 @@ async def complete_text_only(llm, messages: list[dict], user_message: str) -> st
         retry_messages, purpose="complete_text_only",
     )
     try:
-        response = await llm.client.chat.completions.create(
-            model=llm.provider.model,
-            messages=egress_messages,
-            temperature=runtime_config.get_generation_params()[0],
-            max_tokens=runtime_config.get_generation_params()[1],
-        )
-        return strip_tool_markup((response.choices[0].message.content or "").strip())
+        content = await _complete_text(llm.client, llm.provider.model, egress_messages)
+        return strip_tool_markup(content.strip())
     except Exception:
         logger.exception("complete_text_only retry failed")
         return "抱歉，我暂时无法生成回复，请再试一次。"
@@ -280,13 +285,10 @@ async def complete_text_with_failover(
     errors: list[str] = []
     for client, provider in candidates:
         try:
-            response = await client.chat.completions.create(
-                model=provider.model,
-                messages=audited_messages,  # type: ignore[arg-type]
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            content = (response.choices[0].message.content or "").strip()
+            content = (await _complete_text(
+                client, provider.model, audited_messages,
+                temperature=temperature, max_tokens=max_tokens,
+            )).strip()
             if content:
                 return content, provider.name
             errors.append(f"{provider.name}(empty response)")
