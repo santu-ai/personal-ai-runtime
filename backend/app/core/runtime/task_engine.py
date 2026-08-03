@@ -17,6 +17,13 @@ from app.core.runtime.runtime_container import _LazyProxy, runtime
 
 # ── State Manager (folded from state_manager.py) ─────────────────────────
 
+_GOAL_STATUSES = frozenset({"active", "completed", "paused"})
+_WORK_ITEM_STATUSES = frozenset({
+    "pending", "running", "blocked", "waiting_approval",
+    "completed", "failed", "cancelled", "retrying",
+})
+
+
 class TaskStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
@@ -151,14 +158,31 @@ def update_work_item_fields(
     last_activity_at: str | None = None,
     parent_work_id: str | None = None,
 ) -> dict | None:
-    """Update arbitrary fields on a work_item via WorkItemUpdated event.
+    """Update non-status fields on a work_item via WorkItemUpdated event.
 
     Supports goal fields (progress/deadline/etc.) so /api/work-items can
-    update them. Status transitions still go through update_work_item_status
-    (which validates the state machine).
+    update them. A status value passed here is validated against the item's
+    work_type vocabulary (goal: active/completed/paused; others: the task
+    status vocabulary) instead of being silently persisted. Full transition
+    validation lives in update_work_item_status (the /status endpoint).
     """
-    if not get_work_item(item_id):
+    item = get_work_item(item_id)
+    if not item:
         return None
+
+    if status is not None:
+        work_type = item.get("work_type", "task")
+        if work_type == "goal":
+            if status not in _GOAL_STATUSES:
+                raise ValueError(
+                    f"Invalid goal status: {status}. "
+                    f"Allowed: {sorted(_GOAL_STATUSES)}"
+                )
+        elif status not in _WORK_ITEM_STATUSES:
+            raise ValueError(
+                f"Invalid work item status: {status}. "
+                f"Allowed: {sorted(_WORK_ITEM_STATUSES)}"
+            )
 
     payload: dict = {}
     if title is not None:
@@ -183,7 +207,7 @@ def update_work_item_fields(
         payload["parent_work_id"] = parent_work_id
 
     if not payload:
-        return get_work_item(item_id)
+        return item
 
     kernel.emit_event(
         type="WorkItemUpdated",

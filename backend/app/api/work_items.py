@@ -237,7 +237,10 @@ async def update_work_item(item_id: str, body: UpdateWorkItemRequest):
     else:
         need_completed_at = False
 
-    updated = read_ports.update_work_item_fields(item_id, **update_kwargs)
+    try:
+        updated = read_ports.update_work_item_fields(item_id, **update_kwargs)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if need_completed_at:
         kernel.emit_event(
             type="WorkItemUpdated",

@@ -329,3 +329,26 @@ def test_execute_not_found(client):
     r = client.post("/api/work-items/missing/execute")
     assert r.status_code == 404
 
+
+def test_patch_rejects_invalid_status_vocabulary(client):
+    """PATCH /{id} must reject a status outside the work_type vocabulary.
+
+    Guards update_work_item_fields from silently persisting a bogus status
+    (previously the status kwarg bypassed all validation).
+    """
+    goal = client.post("/api/work-items/", json={"title": "G", "work_type": "goal"})
+    gid = goal.json()["id"]
+    # Goal vocabulary is active/completed/paused — "running" is invalid.
+    r = client.patch(f"/api/work-items/{gid}", json={"status": "running"})
+    assert r.status_code == 400
+
+    task = client.post("/api/work-items/", json={"title": "T", "work_type": "task"})
+    tid = task.json()["id"]
+    # Task vocabulary has no "paused".
+    r = client.patch(f"/api/work-items/{tid}", json={"status": "paused"})
+    assert r.status_code == 400
+    # Valid task status still works.
+    r = client.patch(f"/api/work-items/{tid}", json={"status": "running"})
+    assert r.status_code == 200
+    assert r.json()["status"] == "running"
+
