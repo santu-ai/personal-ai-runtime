@@ -1,17 +1,17 @@
-"""Tests for the Runtime Gateway MCP server (FastMCP + HTTP tools)."""
+"""Tests for the Runtime Gateway MCP server (MCPServer + HTTP tools)."""
 
 import asyncio
 import json
 
 import pytest
-from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ToolError
 
 from mcp_servers.runtime_gateway import server
 from mcp_servers.runtime_gateway.http_client import HttpResult, reset_base_url_cache
 from mcp_servers.runtime_gateway.tools import ToolOutput, resolve_enabled_tools
 
 
-class TestFastMcpProtocol:
+class TestMCPServerProtocol:
     def test_list_tools_default_all(self):
         tools = asyncio.run(server.mcp.list_tools())
         names = {t.name for t in tools}
@@ -24,7 +24,7 @@ class TestFastMcpProtocol:
 
     def test_server_info_version(self):
         assert server.mcp.name == "personal-ai-runtime"
-        assert server.mcp._mcp_server.version == server.GATEWAY_VERSION
+        assert server.mcp.version == server.GATEWAY_VERSION
 
     def test_call_tool_sets_error_via_exception(self, monkeypatch):
         monkeypatch.setattr(

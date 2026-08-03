@@ -120,7 +120,7 @@ async def test_discovery_skips_forbidden_in_tool_index():
     tool = MagicMock()
     tool.name = "danger"
     tool.description = "x"
-    tool.inputSchema = {"type": "object", "properties": {}}
+    tool.input_schema = {"type": "object", "properties": {}}
 
     class FakeConn:
         def __init__(self, config):
@@ -225,7 +225,7 @@ async def test_call_with_reconnect_retries_transport_once():
     mesh = MCPMesh()
     ok_result = MagicMock()
     ok_result.content = []
-    ok_result.isError = False
+    ok_result.is_error = False
 
     first_session = MagicMock()
     first_session.call_tool = AsyncMock(side_effect=ConnectionError("broken pipe"))
@@ -365,7 +365,7 @@ async def test_reconnect_does_not_rediscover_forbidden_only_server():
     tool = MagicMock()
     tool.name = "danger"
     tool.description = "x"
-    tool.inputSchema = {"type": "object", "properties": {}}
+    tool.input_schema = {"type": "object", "properties": {}}
 
     live = MagicMock()
     live.session = object()

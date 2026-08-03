@@ -10,6 +10,7 @@ from typing import Any
 
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.shared.exceptions import MCPError
 from mcp.types import Tool as MCPTool
 
 from app.core.harness.mcp_config import (
@@ -319,6 +320,11 @@ class MCPMesh:
             )
         except asyncio.TimeoutError:
             return json.dumps({"error": f"MCP tool timed out: {registered_name}"})
+        except MCPError as exc:
+            # v2: tool failures surface as JSON-RPC errors — pass the message
+            # through so the LLM can self-correct (v1 returned is_error content).
+            msg = getattr(exc, "message", None) or str(exc)
+            return json.dumps({"error": f"MCP tool error: {msg}"})
         except Exception as exc:
             return json.dumps({"error": _safe_mcp_error(server_name, exc)})
 
@@ -329,7 +335,9 @@ class MCPMesh:
                 parts.append(text)
             else:
                 parts.append(str(block))
-        if result.isError:
+        # Keep is_error for v1-protocol external servers that still return
+        # CallToolResult(is_error=True) instead of raising MCPError.
+        if result.is_error:
             return json.dumps({"error": "\n".join(parts) or "MCP tool returned error"})
         return "\n".join(parts) if parts else json.dumps({"status": "ok", "result": None})
 
@@ -565,7 +573,7 @@ class MCPMesh:
                 else:
                     risk = "low"
 
-                parameters = tool.inputSchema if isinstance(tool.inputSchema, dict) else {
+                parameters = tool.input_schema if isinstance(tool.input_schema, dict) else {
                     "type": "object",
                     "properties": {},
                 }

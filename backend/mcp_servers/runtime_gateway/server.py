@@ -1,7 +1,7 @@
 """Runtime Gateway MCP Server — exposes Personal AI Runtime's HTTP surface
 to external agents (Cursor, Claude Code, any MCP-compatible client).
 
-Built on the official ``mcp`` FastMCP SDK (stdio). Tool logic lives in
+Built on the official ``mcp`` MCPServer SDK (stdio). Tool logic lives in
 ``tools.py`` and talks to the local backend over HTTP — it does NOT import
 runtime internals.
 
@@ -25,7 +25,7 @@ Usage from Cursor / Claude Desktop config:
   }
 """
 
-# NOTE: do not enable ``from __future__ import annotations`` here — FastMCP
+# NOTE: do not enable ``from __future__ import annotations`` here — MCPServer
 # inspects live type objects when registering tools and breaks on stringized hints.
 import json
 import logging
@@ -34,7 +34,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from mcp_servers.runtime_gateway.http_client import (
     HttpResult,
@@ -76,32 +76,19 @@ GATEWAY_VERSION = _read_gateway_version()
 GATEWAY_NAME = "personal-ai-runtime"
 ENABLED_TOOLS = resolve_enabled_tools()
 
-mcp = FastMCP(
+mcp = MCPServer(
     GATEWAY_NAME,
     instructions=(
         "Personal AI Runtime gateway. Use recall before answering personal "
         "questions; store_memory for durable user facts. "
         "list_pending_approvals and recent_timeline are read-only when enabled."
     ),
+    version=GATEWAY_VERSION,
 )
 
 
-def _apply_server_version(server: FastMCP, version: str) -> None:
-    """Set MCP serverInfo.version.
-
-    FastMCP 1.x constructs the low-level Server without a version kwarg, so we
-    assign the public ``version`` attribute when present.
-    """
-    lowlevel = getattr(server, "_mcp_server", None)
-    if lowlevel is not None and hasattr(lowlevel, "version"):
-        lowlevel.version = version
-
-
-_apply_server_version(mcp, GATEWAY_VERSION)
-
-
 def _unwrap(output: ToolOutput) -> str:
-    """Return tool text, or raise so FastMCP marks the call as isError."""
+    """Return tool text, or raise so MCPServer marks the call as is_error."""
     if output.is_error:
         raise ValueError(output.text)
     return output.text
