@@ -180,6 +180,13 @@ def _reset_runtime():
     test assigned a concrete Kernel without monkeypatch cleanup. Otherwise
     ``task_engine`` (holds the proxy) and ``read_ports`` (re-imports
     ``ki.kernel``) can point at different Kernel/DB instances.
+
+    ``task_engine.kernel`` is bound at module import from ``ki.kernel``. If the
+    first import happens while an ``isolated_kernel`` monkeypatch has replaced
+    ``ki.kernel`` with a concrete instance, that binding freezes onto the old
+    Kernel and leaks across tests (work-item writes land in a previous test's
+    DB while reads hit the new one). Re-bind it to the runtime-backed LazyProxy
+    so every call resolves the current test's Kernel.
     """
     import app.core.runtime.kernel_instance as ki
     from app.core.runtime.runtime_container import _LazyProxy, runtime
@@ -187,6 +194,11 @@ def _reset_runtime():
     runtime.reset()
     if not isinstance(ki.kernel, _LazyProxy):
         ki.kernel = _LazyProxy(lambda: runtime.kernel)
+
+    import app.core.runtime.task_engine as _task_engine
+    if not isinstance(_task_engine.kernel, _LazyProxy):
+        _task_engine.kernel = _LazyProxy(lambda: runtime.kernel)
+
     yield
 
 
