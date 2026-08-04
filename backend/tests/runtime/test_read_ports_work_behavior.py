@@ -405,9 +405,13 @@ def test_all_actions_completed_creates_goal_complete_notification(goal_with_acti
     assert len(engine.stored) == 2
 
 
-def test_notify_without_children_creates_zero_progress_notification(
+def test_notify_without_children_skips_notification_but_stores_memory(
     isolated_kernel, monkeypatch,
 ):
+    """目标无子项（孤儿 action）时跳过进度/完成通知，但仍记录 memory。
+
+    锁定的真实行为：all_items 为空 → 不产生 "0/0 步已完成" 噪音通知。
+    """
     k, _db = isolated_kernel
     engine = _FakeMemoryEngine()
     monkeypatch.setattr("app.core.agents.memory_engine.memory_engine", engine)
@@ -415,7 +419,6 @@ def test_notify_without_children_creates_zero_progress_notification(
     goal = work_port.create_work_item(title="空目标", work_type="goal")
     work_port.notify_goal_action_completed(goal["id"], "orphan-action", "动作")
 
-    rows = _notification_rows(k, "goal_progress")
-    assert len(rows) == 1
-    assert "0/0" in rows[0]["content"]
+    assert _notification_rows(k, "goal_progress") == []
     assert _notification_rows(k, "goal_complete") == []
+    assert engine.stored and engine.stored[0]["source"] == "action:orphan-action"

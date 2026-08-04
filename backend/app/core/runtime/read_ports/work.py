@@ -321,34 +321,32 @@ def notify_goal_action_completed(
             if item["id"] == action_id:
                 item["status"] = "completed"
 
-        completed = (
-            sum(1 for a in all_items if a.get("status") == "completed")
-            if all_items
-            else 0
-        )
-
         goal_row = query_goal(goal_id)
         goal_title = goal_row["title"] if goal_row else "目标"
-        all_done = bool(all_items) and all(
-            a.get("status") == "completed" for a in all_items
-        )
-        if all_done:
+
+        if all_items:
+            # 目标有子项才统计进度；无子项（孤儿 action / 数据不一致）时
+            # 跳过通知，避免产生 "0/0 步已完成" 的噪音。
+            completed = sum(
+                1 for a in all_items if a.get("status") == "completed"
+            )
+            all_done = all(
+                a.get("status") == "completed" for a in all_items
+            )
             from app.core.runtime.read_ports.notifications import create_notification
 
-            create_notification(
-                "goal_complete",
-                f"目标「{goal_title}」的所有步骤已完成",
-                f"你完成了所有行动步骤：{goal_title}。可以去目标页标记完成，或让 AI 帮你总结经验。",
-            )
-        else:
-            from app.core.runtime.read_ports.notifications import create_notification
-
-            total = len(all_items) if all_items else 0
-            create_notification(
-                "goal_progress",
-                f"完成一步：{action_title}",
-                f"目标「{goal_title}」进度：{completed}/{total} 步已完成。",
-            )
+            if all_done:
+                create_notification(
+                    "goal_complete",
+                    f"目标「{goal_title}」的所有步骤已完成",
+                    f"你完成了所有行动步骤：{goal_title}。可以去目标页标记完成，或让 AI 帮你总结经验。",
+                )
+            else:
+                create_notification(
+                    "goal_progress",
+                    f"完成一步：{action_title}",
+                    f"目标「{goal_title}」进度：{completed}/{len(all_items)} 步已完成。",
+                )
 
         from app.core.agents.memory_engine import memory_engine
 
