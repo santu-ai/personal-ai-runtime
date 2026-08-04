@@ -1,6 +1,8 @@
 # 命令速查
 
-> Windows 用户：`Makefile.ps1` 提供子集（`help / install / install-hooks / test-backend / test-frontend / lint / typecheck / boundary / layer-deps / backend-ci-* / docker-up / docker-down`），调用方式 `powershell -File Makefile.ps1 -Task <name>`；PowerShell 下 `backend-ci-*` 为顺序执行（非并行）。完整目标见 [docs/06-reference/makefile-targets.md](../docs/06-reference/makefile-targets.md)。
+> **Windows 用户必读**：[powershell-tips.md](powershell-tips.md) 记录本机 PowerShell 实战陷阱（`&&` 不可用、无 heredoc、`.venv` 在根目录等）。
+>
+> 常规注意：`Makefile.ps1` 提供子集（`help / install / install-hooks / test-backend / test-frontend / lint / typecheck / boundary / layer-deps / backend-ci-* / docker-up / docker-down`），调用方式 `powershell -File Makefile.ps1 -Task <name>`；PowerShell 下 `backend-ci-*` 为顺序执行（非并行）。完整目标见 [docs/06-reference/makefile-targets.md](../docs/06-reference/makefile-targets.md)。
 
 ## 开发循环
 

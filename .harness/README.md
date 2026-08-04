@@ -23,6 +23,7 @@
 |---|---|---|
 | [project-map.md](project-map.md) | 目录地图 + 代码↔文档映射 | 活事实 |
 | [commands.md](commands.md) | 常用命令速查 + Windows 注意 | 活事实 |
+| [powershell-tips.md](powershell-tips.md) | Windows PowerShell 实战陷阱（`&&`/heredoc/cwd） | 活事实 |
 | [architecture-redlines.md](architecture-redlines.md) | 红线与不可侵犯区域（**改代码前必读**） | 活事实 |
 | [decision-log.md](decision-log.md) | ADR 一行式摘要 + Still valid 状态 | 活事实（索引） |
 | [conventions.md](conventions.md) | 编码/提交/文档约定 | 活事实 |
