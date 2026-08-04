@@ -1,0 +1,88 @@
+"""Conversation 投影——chat 读模型。
+
+conversations/messages 仅由 Conversation* 与 MessageAppended 事件派生，
+可完全从事件日志重建。
+"""
+
+import json
+from typing import Any
+
+from .event import Event
+from .projectors_registry import _OWNED_TABLES, projector
+
+_OWNED_TABLES["conversation"] = ["conversations", "messages"]
+
+
+@projector("ConversationCreated")
+def _on_conversation_created(event: Event, conn) -> None:
+    p = event.payload
+    conn.execute(
+        """INSERT OR REPLACE INTO conversations (id, title, summary, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        (
+            event.aggregate_id,
+            p.get("title", "New Conversation"),
+            p.get("summary"),
+            p.get("created_at", event.ts),
+            event.ts,
+        ),
+    )
+
+
+@projector("ConversationUpdated")
+def _on_conversation_updated(event: Event, conn) -> None:
+    p = event.payload
+    fields: list[str] = ["updated_at = ?"]
+    params: list[Any] = [event.ts]
+    if "title" in p:
+        fields.append("title = ?")
+        params.append(p["title"])
+    if "summary" in p:
+        fields.append("summary = ?")
+        params.append(p["summary"])
+    params.append(event.aggregate_id)
+    conn.execute(
+        f"UPDATE conversations SET {', '.join(fields)} WHERE id = ?",
+        params,
+    )
+
+
+@projector("ConversationDeleted")
+def _on_conversation_deleted(event: Event, conn) -> None:
+    conn.execute("DELETE FROM messages WHERE conversation_id = ?", (event.aggregate_id,))
+    conn.execute("DELETE FROM conversations WHERE id = ?", (event.aggregate_id,))
+
+
+@projector("MessageAppended")
+def _on_message_appended(event: Event, conn) -> None:
+    p = event.payload
+    msg_id = p.get("message_id") or event.id
+    conv_id = event.aggregate_id
+    tool_calls = p.get("tool_calls")
+    if tool_calls is not None and not isinstance(tool_calls, str):
+        tool_calls = json.dumps(tool_calls)
+    sources = p.get("sources")
+    if sources is not None and not isinstance(sources, str):
+        sources = json.dumps(sources)
+    conn.execute(
+        """INSERT OR REPLACE INTO messages
+           (id, conversation_id, role, content,
+            tool_calls, tool_call_id, sources, created_at, source_event_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            msg_id,
+            conv_id,
+            p.get("role", "user"),
+            p.get("content", ""),
+            tool_calls,
+            p.get("tool_call_id"),
+            sources,
+            p.get("created_at", event.ts),
+            event.id,
+        ),
+    )
+    conn.execute(
+        "UPDATE conversations SET updated_at = ? WHERE id = ?",
+        (event.ts, conv_id),
+    )
+

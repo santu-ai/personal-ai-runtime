@@ -1,0 +1,62 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+
+# Data (local only)
+backend/data/
+data/
+backend/backend/
+*.db
+*.sqlite3
+*.sqlite
+
+# Local debug dumps
+full_chat.txt
+*.chat.txt
+
+# Node
+node_modules/
+frontend/dist/
+desktop/dist/
+desktop/frontend-dist/
+desktop/bundled-python/
+desktop/.cache/
+*.tsbuildinfo
+frontend/test-results/
+frontend/playwright-report/
+backend/.e2e-write-*.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Terminal files
+.cursor/
+.junie/
+backend/.coverage
+
+# MCP server runtime artifacts
+backend/.playwright-mcp/
+
+# Personal MCP config (gitignored — TAPD/Jira/internal tools go here)
+backend/mcp_config.local.json

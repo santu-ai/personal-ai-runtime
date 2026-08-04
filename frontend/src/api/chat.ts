@@ -1,0 +1,179 @@
+/** Chat API — conversations, messages and SSE streaming. */
+
+import { API_BASE, request, getAuthToken } from "./core";
+import type { Conversation, Message, StreamEvent } from "./types";
+
+export async function createConversation(title?: string): Promise<Conversation> {
+  const url = title
+    ? `${API_BASE}/chat/conversations?title=${encodeURIComponent(title)}`
+    : `${API_BASE}/chat/conversations`;
+  return request<Conversation>(url, { method: "POST" });
+}
+
+export async function listConversations(): Promise<Conversation[]> {
+  return request<Conversation[]>(`${API_BASE}/chat/conversations`);
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  await request<void>(`${API_BASE}/chat/conversations/${id}`, { method: "DELETE" });
+}
+
+export async function updateConversation(id: string, title: string): Promise<{ status: string }> {
+  const url = `${API_BASE}/chat/conversations/${id}?title=${encodeURIComponent(title)}`;
+  return request<{ status: string }>(url, { method: "PATCH" });
+}
+
+export async function getMessages(convId: string): Promise<Message[]> {
+  return request<Message[]>(`${API_BASE}/chat/conversations/${convId}/messages`);
+}
+
+export async function sendMessage(
+  convId: string,
+  content: string,
+  onEvent: (event: StreamEvent) => void,
+  onError: (error: string) => void,
+  onDone: () => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const url = `${API_BASE}/chat/conversations/${convId}/messages`;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const token = getAuthToken();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ content }),
+      signal,
+    });
+  } catch (err) {
+    if (signal?.aborted || (err instanceof DOMException && err.name === "AbortError")) {
+      onDone();
+      return;
+    }
+    onError(err instanceof Error ? err.message : "网络错误");
+    return;
+  }
+
+  if (res.status === 401) {
+    onError("认证失败，请检查 AUTH_TOKEN 与 VITE_AUTH_TOKEN 是否一致");
+    return;
+  }
+
+  if (!res.ok) {
+    onError(`请求失败 (HTTP ${res.status})`);
+    return;
+  }
+
+  const reader = res.body?.getReader();
+  if (!reader) {
+    onError("响应体为空");
+    return;
+  }
+
+  const onAbort = () => {
+    reader.cancel().catch(() => {});
+  };
+  signal?.addEventListener("abort", onAbort);
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let lastByteTime = Date.now();
+  const SSE_IDLE_TIMEOUT_MS = 30_000;
+
+  const readWithIdleTimeout = (): Promise<ReadableStreamReadResult<Uint8Array>> => {
+    let timer: ReturnType<typeof setInterval> | undefined;
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        if (timer !== undefined) clearInterval(timer);
+        fn();
+      };
+      timer = setInterval(() => {
+        if (signal?.aborted) {
+          finish(() => reject(new DOMException("Aborted", "AbortError")));
+        } else if (Date.now() - lastByteTime > SSE_IDLE_TIMEOUT_MS) {
+          finish(() => reject(new Error("SSE_IDLE_TIMEOUT")));
+        }
+      }, 1000);
+      reader.read().then(
+        (result) => finish(() => resolve(result)),
+        (err) => finish(() => reject(err)),
+      );
+    });
+  };
+
+  try {
+    while (true) {
+      if (signal?.aborted) {
+        onDone();
+        return;
+      }
+
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try {
+        chunk = await readWithIdleTimeout();
+      } catch (err) {
+        if (signal?.aborted || (err instanceof DOMException && err.name === "AbortError")) {
+          onDone();
+          return;
+        }
+        if (err instanceof Error && err.message === "SSE_IDLE_TIMEOUT") {
+          reader.cancel().catch(() => {});
+          onError("连接超时，服务端无响应。请重试。");
+          return;
+        }
+        throw err;
+      }
+
+      const { done, value } = chunk;
+      if (done) {
+        onDone();
+        break;
+      }
+
+      lastByteTime = Date.now();
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith("data: ")) continue;
+
+        const data = trimmed.slice(6);
+        if (data === "[DONE]") {
+          onDone();
+          return;
+        }
+
+        try {
+          const event: StreamEvent = JSON.parse(data);
+          if (event.type !== "ping") {
+            onEvent(event);
+          }
+          if (event.type === "done" || event.type === "error") {
+            onDone();
+            return;
+          }
+        } catch {
+          // Skip parse errors
+        }
+      }
+    }
+  } catch (err) {
+    if (signal?.aborted || (err instanceof DOMException && err.name === "AbortError")) {
+      onDone();
+      return;
+    }
+    onError(err instanceof Error ? err.message : "读取流失败");
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
+  }
+}

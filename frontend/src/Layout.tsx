@@ -1,0 +1,204 @@
+import { useEffect, useState, Suspense } from "react";
+import { Outlet, useNavigate, useLocation } from "react-router-dom";
+import { useChatStore } from "./stores/chatStore";
+import { useErrorStore } from "./stores/errorStore";
+import { deleteConversation, isAuthConfigured, ApiError, type Notification } from "./api/client";
+import { useQuickChat } from "./hooks/useQuickChat";
+import { useConversationsQuery, useConversationCacheActions } from "./hooks/useConversationsQuery";
+import { useSettingsHealthQuery } from "./hooks/useSettingsQuery";
+import Sidebar from "./components/layout/Sidebar";
+import Dialog from "./components/ui/Dialog";
+import NotificationBell from "./components/layout/NotificationBell";
+import NotificationDetailModal from "./components/notifications/NotificationDetailModal";
+import OnboardingWizard from "./components/onboarding/OnboardingWizard";
+import ErrorBoundary from "./components/ui/ErrorBoundary";
+import QuickCaptureDialog from "./components/quickcapture/QuickCaptureDialog";
+import { useNotifications } from "./hooks/useNotifications";
+import { useWsInvalidationBridge } from "./hooks/useWsInvalidationBridge";
+
+export default function Layout() {
+  const { conversations, activeConversationId, setActiveConversation } = useChatStore();
+  const quickChat = useQuickChat();
+  const { remove: removeConversationCached } = useConversationCacheActions();
+
+  // Server-state: conversations + health (auth banner). WS bridge drives other keys.
+  useConversationsQuery();
+  const { data: health } = useSettingsHealthQuery();
+  const authRequired = Boolean(health?.auth_required);
+
+  const { toasts, dismissToast } = useNotifications();
+  useWsInvalidationBridge();
+  const { errors, dismissError, backendUnavailable, addError } = useErrorStore();
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(
+    () => !localStorage.getItem("onboarding_done"),
+  );
+  const [toastDetail, setToastDetail] = useState<Notification | null>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const match = location.pathname.match(/^\/chat\/([^/]+)/);
+    const convId = match?.[1] ?? null;
+    if (convId && convId !== activeConversationId) {
+      setActiveConversation(convId);
+    } else if (location.pathname === "/" && activeConversationId) {
+      setActiveConversation(null);
+    }
+  }, [location.pathname, activeConversationId, setActiveConversation]);
+
+  const handleNewChat = () => quickChat();
+
+  const handleDeleteChat = (id: string) => {
+    const conv = conversations.find((c) => c.id === id);
+    setDeleteTarget({ id, title: conv?.title || "新对话" });
+  };
+
+  const confirmDeleteChat = async () => {
+    if (!deleteTarget) return;
+    const { id } = deleteTarget;
+    setDeleteTarget(null);
+    try {
+      await deleteConversation(id);
+      removeConversationCached(id);
+      if (activeConversationId === id) {
+        navigate("/");
+      }
+    } catch (e) {
+      addError(e instanceof ApiError ? e.message : "删除对话失败", "对话");
+    }
+  };
+
+  const handleSelectConversation = (id: string) => {
+    setActiveConversation(id);
+    navigate(`/chat/${id}`);
+  };
+
+  return (
+    <div className="flex h-screen bg-surface-base text-fg-primary">
+      <Sidebar
+        conversations={conversations}
+        activeConversationId={activeConversationId}
+        onSelectConversation={handleSelectConversation}
+        onNewChat={handleNewChat}
+        onDeleteChat={handleDeleteChat}
+        footer={<NotificationBell />}
+      />
+
+      {authRequired && !isAuthConfigured() && (
+        <div className="fixed top-0 left-64 right-0 z-50 bg-warning/20 border-b border-warning/40 px-4 py-2 text-center">
+          <span className="text-warning text-sm">
+            后端已启用认证，请在 .env 中设置 VITE_AUTH_TOKEN（与 AUTH_TOKEN 保持一致）后重启前端
+          </span>
+        </div>
+      )}
+
+      {backendUnavailable && (
+        <div className="fixed top-0 left-64 right-0 z-50 bg-danger/20 border-b border-danger/40 px-4 py-2 text-center">
+          <span className="text-danger text-sm">无法连接到后端服务，请确认后端已启动</span>
+        </div>
+      )}
+
+      <div className="fixed top-4 right-4 z-50 space-y-2 max-w-sm">
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            className="bg-surface-raised border border-border-strong rounded-lg p-3 shadow-lg group relative"
+          >
+            <div
+              className="cursor-pointer flex-1"
+              onClick={() =>
+                setToastDetail({
+                  id: t.id,
+                  type: t.type,
+                  title: t.title,
+                  content: t.content,
+                  created_at: t.created_at,
+                })
+              }
+            >
+              <div className="text-sm font-medium text-fg-primary">{t.title}</div>
+              <div className="text-xs text-fg-secondary mt-1 line-clamp-2">{t.content}</div>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                dismissToast(t.id);
+              }}
+              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-fg-tertiary hover:text-fg-primary transition-opacity"
+              aria-label="关闭"
+            >
+              &#x2715;
+            </button>
+          </div>
+        ))}
+        {errors.map((err) => (
+          <div
+            key={err.id}
+            className="bg-surface-raised border border-danger/50 rounded-lg p-3 shadow-lg group relative"
+          >
+            <div className="cursor-pointer flex-1" onClick={() => dismissError(err.id)}>
+              <div className="text-sm font-medium text-danger">
+                {err.source ? `[${err.source}] ` : ""}错误
+              </div>
+              <div className="text-xs text-fg-secondary mt-1 line-clamp-2">{err.message}</div>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                dismissError(err.id);
+              }}
+              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-fg-tertiary hover:text-fg-primary transition-opacity"
+              aria-label="关闭"
+            >
+              &#x2715;
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <main className="flex-1 flex flex-col min-w-0">
+        <Suspense
+          fallback={
+            <div className="flex-1 flex items-center justify-center text-fg-secondary animate-pulse">
+              加载中…
+            </div>
+          }
+        >
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
+        </Suspense>
+      </main>
+
+      <Dialog
+        open={!!deleteTarget}
+        title="删除对话"
+        description={
+          deleteTarget ? `确定删除对话「${deleteTarget.title}」？此操作不可撤销。` : undefined
+        }
+        confirmLabel="删除"
+        variant="danger"
+        onConfirm={confirmDeleteChat}
+        onCancel={() => setDeleteTarget(null)}
+      />
+
+      {showOnboarding && <OnboardingWizard onComplete={() => setShowOnboarding(false)} />}
+
+      <NotificationDetailModal
+        notification={toastDetail}
+        onClose={() => {
+          if (toastDetail) dismissToast(toastDetail.id);
+          setToastDetail(null);
+        }}
+      />
+
+      <QuickCaptureDialog />
+    </div>
+  );
+}

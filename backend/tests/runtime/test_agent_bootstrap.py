@@ -1,0 +1,45 @@
+"""Test ensure_scheduler covers the cache path and dispatcher registration.
+"""
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_ensure_scheduler_creates_and_caches(monkeypatch, tmp_path):
+    """Calling ensure_scheduler twice only initialises once."""
+    from app.core.runtime.kernel import Kernel
+    from app.store.database import Database
+
+    k = Kernel(db=Database(db_path=str(tmp_path / "boot.db")))
+    monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", k)
+
+    import app.core.runtime.agent_scheduler as boot
+    boot._started = False
+
+    await boot.ensure_scheduler(k)
+    assert boot._started is True
+
+    # Second call: covers the cached return path
+    await boot.ensure_scheduler(k)
+    assert boot._started is True
+
+
+@pytest.mark.asyncio
+async def test_ensure_scheduler_registers_async_dispatcher(monkeypatch, tmp_path):
+    """ensure_scheduler should register a dispatcher with the kernel."""
+    from app.core.runtime.kernel import Kernel
+    from app.store.database import Database
+
+    k = Kernel(db=Database(db_path=str(tmp_path / "boot2.db")))
+    monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", k)
+
+    import app.core.runtime.agent_scheduler as boot
+    boot._started = False
+
+    # Before ensure_scheduler, no dispatcher set
+    assert k._async_dispatcher is None
+
+    await boot.ensure_scheduler(k)
+
+    # After ensure_scheduler, dispatcher is set (single field, not list)
+    assert k._async_dispatcher is not None
+    assert callable(k._async_dispatcher)

@@ -1,0 +1,152 @@
+"""Unit tests for email MCP server helpers."""
+
+import email
+import json
+from types import SimpleNamespace
+
+from app.core.harness.builtin_tools.email import (
+    EmailServer,
+    _format_date,
+    _stable_message_id,
+)
+
+
+def test_format_date_converts_to_local_timezone():
+  # 06:38 UTC -> 14:38 in UTC+8
+  raw = "Wed, 10 Jun 2026 06:38:12 +0000"
+  formatted = _format_date(raw)
+  assert "2026-06-10" in formatted
+  assert formatted.endswith(":38") or formatted.endswith(":38:12") is False
+
+
+def test_message_id_from_header_bytes_matches_full_message():
+    header = (
+        b"Message-ID: <test@example.com>\r\n"
+        b"From: Alice <alice@example.com>\r\n"
+        b"Subject: Hello\r\n"
+        b"Date: Wed, 10 Jun 2026 06:38:12 +0000\r\n"
+    )
+    from_header = EmailServer._message_id_from_header_bytes(header)
+    full = email.message_from_bytes(header + b"\r\nbody")
+    from_full = _stable_message_id(
+        full,
+        "Alice <alice@example.com>",
+        "Hello",
+        full.get("Date"),
+    )
+    assert from_header == from_full
+
+
+def test_check_inbox_unread_only_includes_all_unread_emails(monkeypatch):
+    server = EmailServer()
+    monkeypatch.setattr(server, "_connect_inbox", lambda: object())
+    monkeypatch.setattr(
+        server,
+        "_fetch_unread_emails_connected",
+        lambda _mail: [
+            {"message_id": "<id-1@example.com>", "from": "u1", "subject": "s1", "date": "d1"},
+            {"message_id": "<id-2@example.com>", "from": "u2", "subject": "s2", "date": "d2"},
+        ],
+    )
+    monkeypatch.setattr(
+        server,
+        "_fetch_sorted_emails_connected",
+        lambda _mail, limit, unread_only, body_max=300: [
+            {
+                "message_id": "<id-2@example.com>",
+                "from": "user2@example.com",
+                "subject": "Mail 2",
+                "date": "2026-06-10 14:38",
+                "preview": "preview",
+            }
+        ],
+    )
+
+    data = __import__("json").loads(server.check_inbox(limit=1, unread_only=True))
+    assert data["count"] == 1
+    mids = {e["message_id"] for e in data["all_unread_emails"]}
+    assert mids == {"<id-1@example.com>", "<id-2@example.com>"}
+
+
+def test_mark_inbox_email_read_by_message_id(monkeypatch):
+    server = EmailServer()
+    store_calls: list[tuple] = []
+
+    mail = SimpleNamespace(
+        search=lambda charset, criterion: ("OK", [b""]), # Return empty to test fallback
+        store=lambda seq, op, flags: store_calls.append((seq, op, flags)) or ("OK", [b"OK"]),
+        logout=lambda: None,
+    )
+    monkeypatch.setattr(server, "_connect_inbox", lambda: mail)
+    monkeypatch.setattr(
+        server,
+        "_fetch_sorted_emails_connected",
+        lambda _mail, limit, unread_only, body_max=0: [
+            {
+                "seq_num": 42,
+                "message_id": "<msg-1@example.com>",
+                "from": "alice@example.com",
+                "subject": "Hello",
+                "date": "2026-06-10 14:38",
+                "preview": "preview",
+            }
+        ],
+    )
+
+    data = json.loads(
+        server.mark_inbox_email_read(message_id="<msg-1@example.com>")
+    )
+    assert data["success"] is True
+    assert data["message_id"] == "<msg-1@example.com>"
+    assert store_calls == [("42", "+FLAGS", "\\Seen")]
+
+
+def test_mark_inbox_email_read_requires_selector():
+    server = EmailServer()
+    data = json.loads(server.mark_inbox_email_read())
+    assert "error" in data
+
+
+def test_mark_inbox_email_read_by_mid_alias(monkeypatch):
+    server = EmailServer()
+    store_calls: list[tuple] = []
+
+    mail = SimpleNamespace(
+        search=lambda charset, criterion: ("OK", [b"100"]),
+        store=lambda seq, op, flags: store_calls.append((seq, op, flags)) or ("OK", [b"OK"]),
+        logout=lambda: None,
+    )
+    monkeypatch.setattr(server, "_connect_inbox", lambda: mail)
+
+    # Use 'mid' instead of 'message_id' to test alias and search logic
+    data = json.loads(server.mark_inbox_email_read(mid="<msg-1@example.com>"))
+    assert data["success"] is True
+    assert data.get("method") == "imap_search"
+    assert store_calls == [("100", "+FLAGS", "\\Seen")]
+
+
+def test_email_config_refresh_is_ttl_cached(monkeypatch):
+    server = EmailServer()
+    calls = {"n": 0}
+
+    def fake_creds():
+        calls["n"] += 1
+        return {
+            "imap_host": "imap.example.com",
+            "smtp_host": "smtp.example.com",
+            "smtp_port": "465",
+            "user": "u",
+            "password": "p",
+        }
+
+    monkeypatch.setattr(
+        "app.core.runtime.runtime_config.runtime_config.get_email_credentials",
+        fake_creds,
+    )
+    server._refresh_config(force=True)
+    server._refresh_config()
+    server._get_credentials()
+    assert calls["n"] == 1
+    # Force bypasses TTL.
+    server._refresh_config(force=True)
+    assert calls["n"] == 2

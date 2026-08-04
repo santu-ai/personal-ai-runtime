@@ -1,0 +1,60 @@
+{
+  "name": "personal-ai-runtime-desktop",
+  "version": "1.0.0",
+  "description": "Personal AI Runtime Desktop Client",
+  "author": "Personal AI Runtime",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "prebuild": "node prebuild.js",
+    "build": "node build-desktop.js",
+    "clean:dist": "node clean-pack-output.js",
+    "test": "vitest run --config vitest.config.js",
+    "postinstall": "node postinstall.js"
+  },
+  "dependencies": {
+    "ws": "^8.21.1"
+  },
+  "devDependencies": {
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
+    "vitest": "^4.1.10"
+  },
+  "build": {
+    "appId": "com.personalairuntime.desktop",
+    "productName": "Personal AI Runtime",
+    "directories": {
+      "output": "dist",
+      "buildResources": "."
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "run-backend.py",
+      "icon.png",
+      "generate_icon.py",
+      "frontend-dist/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend",
+        "to": "backend",
+        "filter": ["**/*", "!__pycache__", "!*.pyc", "!data/**"]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": ["dmg", "zip"],
+      "icon": "icon.png"
+    },
+    "win": {
+      "target": ["nsis", "portable"],
+      "icon": "icon.png"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "icon.png",
+      "category": "Office"
+    }
+  }
+}

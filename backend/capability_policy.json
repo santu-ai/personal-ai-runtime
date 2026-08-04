@@ -1,0 +1,52 @@
+{
+  "auto_allow": [
+    "get_current_time",
+    "read_file",
+    "list_directory",
+    "search_files",
+    "web_search",
+    "fetch_url",
+    "list_calendar_events",
+    "get_upcoming_events",
+    "check_inbox",
+    "read_inbox_email",
+    "mark_inbox_email_read",
+    "mark_inbox_email_unread",
+    "get_clipboard",
+    "ocr_image",
+    "git_status",
+    "git_log",
+    "git_diff",
+    "telegram_updates",
+    "list_active_goals",
+    "computer_screen_size",
+    "voice_tts",
+    "voice_stt",
+    "set_timer"
+  ],
+  "needs_user": [
+    "apply_patch",
+    "write_file",
+    "add_calendar_event",
+    "send_email",
+    "shell_exec",
+    "telegram_send",
+    "computer_screenshot",
+    "computer_click",
+    "computer_type",
+    "computer_move",
+    "computer_scroll",
+    "computer_key",
+    "create_goal",
+    "update_goal_progress",
+    "complete_goal",
+    "delete_goal"
+  ],
+  "external_ingestion": [
+    "check_inbox",
+    "read_inbox_email",
+    "web_search",
+    "fetch_url"
+  ],
+  "forbidden": []
+}
