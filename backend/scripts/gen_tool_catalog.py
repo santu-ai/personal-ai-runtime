@@ -19,6 +19,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from scripts._bootstrap import prepare_script_env
 
@@ -31,7 +32,7 @@ REGISTRY = ROOT / "mcp_registry.json"
 CONFIG = ROOT / "mcp_config.json"
 
 
-def _load(path: Path) -> object:
+def _load(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
