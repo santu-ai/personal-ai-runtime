@@ -2,6 +2,9 @@
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = ["-v", "--tb=short"]
+markers = [
+    "live_llm: requires a real LLM_API_KEY; excluded by default via -m 'not live_llm'",
+]
 
 [project]
 name = "personal-ai-runtime-backend"
@@ -44,10 +47,5 @@ follow_imports = "normal"
 
 [tool.coverage.run]
 source = ["app/api", "app/product"]
-# NOTE: Several runtime modules are omitted from coverage enforcement.
-# These are lifecycle/initialization code exercised via integration tests
-# or modules whose uncovered paths require heavy mocking (subprocess, network).
-omit = [
-    "app/core/runtime/runtime_loop.py",
-    "app/core/runtime/capability_governance.py",
-]
+# Runtime modules are covered via make test-backend-coverage (--cov=app/core/runtime).
+# Do not omit critical governance / loop modules.

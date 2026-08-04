@@ -65,9 +65,10 @@ flowchart TB
 
 ```bash
 make test-backend     # cd backend && pytest tests/ -q -m "not live_llm"
+make test-live        # RUN_LIVE_LLM=1 pytest tests/e2e_live/ -m live_llm（需真实 LLM_API_KEY）
 ```
 
-`-m "not live_llm"` 排除需要真实 LLM API 的测试。
+`-m "not live_llm"` 排除需要真实 LLM API 的测试。`make test-live` 是显式启用的真 LLM 冒烟通道（见 [`tests/e2e_live/`](../../backend/tests/e2e_live/)）。
 
 ### 覆盖率策略
 
@@ -135,7 +136,6 @@ CI 报告用 `--cov-report=term-missing` 让缺失部分可见，开发者按需
 | 脚本 | 用途 |
 |---|---|
 | [`seed_demo.py`](../../backend/scripts/seed_demo.py) | 幂等播种演示数据 |
-| [`demo_data_sovereignty.py`](../../backend/scripts/demo_data_sovereignty.py) | 引导式 CLI 演示数据主权叙事（非不变量） |
 
 ## 层 3：端到端
 
@@ -202,7 +202,7 @@ python scripts/soak_dogfood_report.py --db path/to/other.db
 
 [`backend/pyproject.toml`](../../backend/pyproject.toml) 的 `[tool.coverage.run]`：
 
-- `source = ["app/api", "app/product"]`
-- `omit`：`runtime_loop.py`、`capability_governance.py`（生命周期/重 mock 路径；行为由 verify 脚本与集成测试覆盖）
+- `source = ["app/api", "app/product"]`（默认 coverage 作用域）
+- `runtime_loop.py` / `capability_governance.py` **不再 omit**；cron 边界与治理决策矩阵由 `tests/runtime/test_runtime_loop_cron.py`、`tests/runtime/test_capability_governance_matrix.py` 覆盖
 
 CI 两个 `--fail-under` 门（见 [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)）：`app/core/runtime/*` ≥75%、`app/api/*` ≥50%。
