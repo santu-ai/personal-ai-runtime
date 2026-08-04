@@ -168,8 +168,13 @@ def test_scheduler_cancel_executions_for(kernel):
 
 
 @pytest.mark.asyncio
-async def test_cancel_background_task_api(kernel, monkeypatch):
-    from app.api import background_tasks as api
+async def test_cancel_background_task_clears_plan_resume(kernel, monkeypatch):
+    """Cancel via Ports ABI 清除 plan_resume 并设置 execution 取消 flag。
+
+    原测试走已下线的 /api/tasks/background HTTP handler；改为直接验证
+    read_ports.cancel_background_work_item（HTTP 端点只是它的薄包装）。
+    """
+    from app.core.runtime import read_ports
     from app.core.runtime.plan_resume import (
         PlanResume,
         configure_plan_resume_db,
@@ -193,7 +198,7 @@ async def test_cancel_background_task_api(kernel, monkeypatch):
         None,
     )
 
-    result = await api.cancel_background_task("c1")
+    result = read_ports.cancel_background_work_item("c1")
     assert result["status"] == "cancelled"
     # Flag stays until a handler acknowledges; durable row is authoritative.
     assert is_execution_cancelled("exec_c1")

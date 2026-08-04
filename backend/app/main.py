@@ -17,7 +17,6 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.api import (
     approvals,
-    background_tasks,
     chat,
     connectors,
     dashboard,
@@ -623,7 +622,6 @@ app.include_router(memory.router, prefix="/api/memory")
 app.include_router(notifications.router, prefix="/api/notifications")
 app.include_router(telemetry_api.router, prefix="/api/telemetry")
 app.include_router(approvals.router, prefix="/api/approvals")
-app.include_router(background_tasks.router, prefix="/api/tasks/background")
 app.include_router(triggers.router, prefix="/api/triggers")
 app.include_router(inbox.router, prefix="/api/inbox")
 app.include_router(connectors.router, prefix="/api/connectors")

@@ -1,6 +1,6 @@
 """B1 integration — background work-item lifecycle auditable via event_log (INV-W5).
 
-Tests use the background_tasks API module (shim over work_items).
+后台任务以 work_items(work_type=background) 表达；本测试验证其事件链可审计。
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def bg_env(tmp_path, monkeypatch):
 
 
 def _create_bg_task(kernel, user_request, plan=None):
-    """Inline create — mirrors background_tasks API (WorkItemCreated)."""
+    """Inline create — 与已下线的 background_tasks API 同语义（WorkItemCreated）。"""
     import json
     import uuid
     from datetime import UTC, datetime

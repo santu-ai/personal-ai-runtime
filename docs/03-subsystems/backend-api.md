@@ -8,11 +8,11 @@
 
 ### 路由挂载
 
-14 个 router 在 [`main.py`](../../backend/app/main.py) 挂载：
+13 个 router 在 [`main.py`](../../backend/app/main.py) 挂载：
 
 ```
 chat, dashboard, system, settings_api, memory, notifications,
-telemetry_api, approvals, background_tasks(兼容,见下), triggers, inbox,
+telemetry_api, approvals, triggers, inbox,
 connectors, timeline, work_items
 ```
 
@@ -53,7 +53,6 @@ connectors, timeline, work_items
 | chat | `/api/chat` | 会话 CRUD、`POST /conversations/{id}/messages`（**SSE**）、`POST /chat/approvals/{id}/resolve` | Kernel 事件 + LLM + 工具执行 |
 | memory | `/api/memory` | memories CRUD、search、ratify/reject/contest、portrait、graph | Kernel 事件 + Chroma |
 | work_items | `/api/work-items` | 统一 goal/task/action CRUD、`include=`、`decompose` | Kernel 事件 + LLM |
-| background_tasks | `/api/tasks/background` | **已弃用（INV-W5）**，仅为兼容旧前端保留；后台任务底层栈已删除，请直连 `GET /api/work-items?work_type=background` 与 `POST /api/work-items/{id}/execute` | Kernel `WorkItem*` 事件 |
 | approvals | `/api/approvals` | 列表、`/{id}/approve`、`/{id}/reject` | `submit_command("ApproveRequested")` + 工具执行 |
 | inbox | `/api/inbox` | 列表、`/poll`（IMAP）、`/digest`、状态更新 | 网络出口 + Kernel 事件 |
 | triggers | `/api/triggers` | CRUD、`/evaluate` | Kernel 事件 |
@@ -124,6 +123,6 @@ connectors, timeline, work_items
 
 ## 请求/响应模型
 
-所有 Pydantic 模型定义于 [`backend/app/api/models.py`](../../backend/app/api/models.py)（如 `SendMessageRequest`、`ResolveApprovalRequest`、`CreateMemoryRequest`、`UpdateMemoryRequest`（category 必须在 `{fact, preference, habit, belief, insight, work, personal}`）、`CreateBackgroundTaskRequest`、`CreateTriggerRequest`、`ExportRequest`/`ImportRequest`/`EncryptedExportRequest`/`EncryptedImportRequest`、`UpdateInboxStatusRequest`、`LlmProviderInput`/`UpdateLlmConfigRequest`/`UpdateEmailConfigRequest`/`TestEmailRequest`/`TestLlmRequest`/`PromptConfig`/`NotificationSettings`、`InstallConnectorRequest`）。Work item 请求体定义在 [`work_items.py`](../../backend/app/api/work_items.py)。
+所有 Pydantic 模型定义于 [`backend/app/api/models.py`](../../backend/app/api/models.py)（如 `SendMessageRequest`、`ResolveApprovalRequest`、`CreateMemoryRequest`、`UpdateMemoryRequest`（category 必须在 `{fact, preference, habit, belief, insight, work, personal}`）、`CreateTriggerRequest`、`ExportRequest`/`ImportRequest`/`EncryptedExportRequest`/`EncryptedImportRequest`、`UpdateInboxStatusRequest`、`LlmProviderInput`/`UpdateLlmConfigRequest`/`UpdateEmailConfigRequest`/`TestEmailRequest`/`TestLlmRequest`/`PromptConfig`/`NotificationSettings`、`InstallConnectorRequest`）。Work item 请求体定义在 [`work_items.py`](../../backend/app/api/work_items.py)。
 
 确认码常量（[`system.py`](../../backend/app/api/system.py)）：`EXPORT_CONFIRM="EXPORT_ALL_DATA"`、`DESTROY_CONFIRM="DESTROY_ALL_DATA"`、`IMPORT_CONFIRM="DESTROY_AND_IMPORT"`。

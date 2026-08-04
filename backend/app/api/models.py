@@ -127,11 +127,6 @@ class CreateTriggerRequest(BaseModel):
     action_config: dict | None = None
 
 
-class CreateBackgroundTaskRequest(BaseModel):
-    user_request: str
-    plan: dict | None = None
-
-
 class InstallConnectorRequest(BaseModel):
     name: str
     config: dict = Field(default_factory=dict)

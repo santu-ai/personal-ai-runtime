@@ -49,17 +49,6 @@
 | DELETE | `/{id}` | path | `{"status":"ok"}` | goal 级联删除子项 |
 | POST | `/{id}/decompose` | path（仅 goal） | `{"steps": string[]}` | LLM 拆解 |
 
-## background_tasks — `/api/tasks/background`（[`api/background_tasks.py`](../../backend/app/api/background_tasks.py)）
-
-**已弃用（INV-W5）**：后台任务底层栈（handlers / projectors / DB 表）已删除；此 router 仅保留 HTTP 兼容层，内部直接 emit `WorkItemCreated(work_type=background)` 并经 `read_ports` 查询 `work_items`。新前端请改用 `POST /api/work-items`（`work_type=background`）+ `POST /api/work-items/{id}/execute`。
-
-| 方法 | 路径 | 请求 | 响应 | 副作用 |
-|---|---|---|---|---|
-| POST | `/` | `CreateBackgroundTaskRequest{user_request, plan?}` | task dict / 400 | `WorkItemCreated(work_type=background)` |
-| GET | `/` | query `limit=50` | list | 无 |
-| GET | `/{task_id}` | path | task / 404 | 无 |
-| POST | `/{task_id}/cancel` | path | task / 404 / 409 | `WorkItemStatusChanged(cancelled)` + cooperative cancel |
-
 ## approvals — `/api/approvals`（[`api/approvals.py`](../../backend/app/api/approvals.py)）
 
 | 方法 | 路径 | 行 | 请求 | 响应 | 副作用 |
