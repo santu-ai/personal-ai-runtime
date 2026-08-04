@@ -125,7 +125,10 @@ class LLMRouter:
                 sock = socket.create_connection((host, port), timeout=0.5)
                 sock.close()
                 return True
-            except OSError:
+            except (OSError, ValueError):
+                # OSError 覆盖 gaierror(DNS) / timeout / herror 等 socket 失败；
+                # ValueError 覆盖 urlparse 对非法端口（如 "host:abc"）的拒绝。
+                # 探测失败一律视为不可用，不让单条配置拖垮整个 provider 列表。
                 return False
         return bool(provider.api_key)
 
