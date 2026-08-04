@@ -12,6 +12,8 @@ import time
 
 from openai import AsyncOpenAI
 
+from app.core.agents.fact_parsing import parse_facts_from_text
+
 logger = logging.getLogger(__name__)
 
 
@@ -69,7 +71,7 @@ class LocalLLM:
                 temperature=0.3,
             )
             text = response.choices[0].message.content or ""
-            facts = [line.strip("- ").strip() for line in text.split("\n") if line.strip()]
+            facts = parse_facts_from_text(text)
             from app.core.agents.token_counter import count_text_tokens
 
             self._record(

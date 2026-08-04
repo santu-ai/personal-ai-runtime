@@ -16,6 +16,7 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
+from app.core.agents.fact_parsing import parse_facts_from_text
 from app.core.agents.memory_engine import memory_engine
 from app.core.runtime.runtime_container import _LazyProxy, runtime
 
@@ -83,7 +84,7 @@ class MemoryExtractor:
                 temperature=0.3,
             )
             text = response.choices[0].message.content or ""
-            facts = [line.strip("- ").strip() for line in text.split("\n") if line.strip()]
+            facts = parse_facts_from_text(text)
             from app.core.agents.token_counter import count_text_tokens
 
             record_llm_outcome(
