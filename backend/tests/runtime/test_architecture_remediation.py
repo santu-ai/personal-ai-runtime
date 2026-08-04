@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -130,8 +129,22 @@ def test_chat_continue_after_tool_is_one_shot_without_tools():
                     "(one-shot completion only; ADR-R011)"
                 )
 
-    src = inspect.getsource(brain_llm_ops.continue_after_tool_result)
-    assert "chat.completions.create" in src
+    # The one-shot completion helper _complete_text must also be tools-free:
+    # the ADR-R011 contract holds for the whole call path, not just the
+    # inline call. (Previously asserted `chat.completions.create` inline,
+    # which broke when the call was extracted into _complete_text.)
+    for node in tree.body:
+        if isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef)) and node.name == "_complete_text":
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call):
+                    for kw in sub.keywords:
+                        assert kw.arg != "tools", (
+                            "_complete_text must not pass tools= "
+                            "(one-shot completion only; ADR-R011)"
+                        )
+            break
+    else:
+        raise AssertionError("_complete_text helper missing")
 
 
 def test_prune_handler_executions_respects_retention(kernel):
