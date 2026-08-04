@@ -4,8 +4,15 @@ Targets the endpoints that contributed most to the <50% API coverage gate.
 Uses the shared ``client`` fixture (fresh isolated DB, no real LLM).
 
 Deep work-item contract tests live in ``test_work_items_api.py``; this file
-only keeps a thin smoke surface for coverage.
+keeps a thin smoke surface and upgrades a few cases into behaviour assertions
+(seed → query round-trip) without dropping coverage contribution.
 """
+
+
+def _kernel():
+    from app.core.runtime.kernel_instance import kernel
+
+    return kernel
 
 
 # ── Memory API ────────────────────────────────────────────────────────────
@@ -13,9 +20,22 @@ only keeps a thin smoke surface for coverage.
 
 class TestMemoryAPI:
     def test_list_returns_list(self, client):
+        """Empty DB returns [] ; after seed the memory appears by content."""
         resp = client.get("/api/memory/memories")
         assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
+        assert resp.json() == []
+
+        created = client.post(
+            "/api/memory/memories",
+            json={"content": "seed preference", "category": "preference"},
+        )
+        assert created.status_code == 200
+        mid = created.json()["id"]
+
+        resp = client.get("/api/memory/memories")
+        assert resp.status_code == 200
+        match = next(m for m in resp.json() if m["id"] == mid)
+        assert match["content"] == "seed preference"
 
     def test_create_and_list(self, client):
         resp = client.post("/api/memory/memories", json={"content": "likes python", "category": "fact"})
@@ -145,12 +165,25 @@ class TestApprovalsAPI:
     def test_list_returns_data(self, client):
         resp = client.get("/api/approvals/")
         assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
+        assert resp.json() == []
+
+        _kernel().emit_event(
+            "ApprovalRequested",
+            "approval",
+            "ap-smoke-1",
+            payload={"action": "shell_exec", "risk": "high", "ctx": {}},
+            actor="agent:test",
+        )
+        resp = client.get("/api/approvals/?pending_only=true")
+        assert resp.status_code == 200
+        rows = resp.json()
+        assert any(r["id"] == "ap-smoke-1" for r in rows)
 
     def test_list_pending_only(self, client):
         resp = client.get("/api/approvals/?pending_only=true")
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
+        assert all(r.get("status") == "pending" for r in resp.json())
 
     def test_list_enriched(self, client):
         resp = client.get("/api/approvals/?pending_only=true&enriched=true")
@@ -285,7 +318,7 @@ class TestInboxAPI:
     def test_digest_empty(self, client):
         resp = client.get("/api/inbox/digest")
         assert resp.status_code == 200
-        assert "message" in resp.json()
+        assert resp.json() == {"message": "no digest yet"}
 
     def test_patch_status_not_found(self, client):
         resp = client.patch("/api/inbox/nonexistent/status", json={"status": "read"})
@@ -306,7 +339,19 @@ class TestNotificationsAPI:
     def test_list(self, client):
         resp = client.get("/api/notifications/")
         assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
+        assert resp.json() == []
+
+        _kernel().emit_event(
+            "NotificationCreated",
+            "notification",
+            "n-smoke-1",
+            payload={"type": "info", "title": "hello", "content": "body"},
+            actor="system",
+        )
+        resp = client.get("/api/notifications/")
+        assert resp.status_code == 200
+        rows = resp.json()
+        assert any(r["id"] == "n-smoke-1" and r["title"] == "hello" for r in rows)
 
     def test_list_unread_only(self, client):
         resp = client.get("/api/notifications/?unread_only=true")
@@ -352,6 +397,23 @@ class TestTimelineAPI:
         data = resp.json()
         assert isinstance(data, dict)
         assert "items" in data
+        assert data["items"] == [] or isinstance(data["items"], list)
+
+        _kernel().emit_event(
+            "WorkItemCreated",
+            "work_item",
+            "g-timeline-1",
+            payload={"title": "Timeline Goal", "work_type": "goal", "status": "active"},
+            actor="user",
+        )
+        resp = client.get("/api/timeline/events")
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert any(
+            item.get("type") == "WorkItemCreated"
+            and "Timeline Goal" in item.get("description", "")
+            for item in items
+        )
 
     def test_events_with_pagination(self, client):
         resp = client.get("/api/timeline/events?page=1&page_size=10")
@@ -381,6 +443,26 @@ class TestTelemetryAPI:
         data = resp.json()
         assert "total_calls" in data
         assert "total_cost" in data
+        assert data["total_calls"] == 0
+
+        _kernel().emit_event(
+            "LLMCallRecorded",
+            "llm_call",
+            "llm-smoke-1",
+            payload={
+                "provider": "test",
+                "model": "smoke-model",
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "cost": 0.01,
+                "latency_ms": 12,
+                "success": True,
+            },
+            actor="test",
+        )
+        resp = client.get("/api/telemetry/cost/summary")
+        assert resp.status_code == 200
+        assert resp.json()["total_calls"] >= 1
 
     def test_cost_by_model(self, client):
         resp = client.get("/api/telemetry/cost/by-model")
@@ -388,14 +470,40 @@ class TestTelemetryAPI:
         assert isinstance(resp.json(), list)
 
     def test_llm_calls(self, client):
+        _kernel().emit_event(
+            "LLMCallRecorded",
+            "llm_call",
+            "llm-list-1",
+            payload={
+                "provider": "test",
+                "model": "list-model",
+                "prompt_tokens": 1,
+                "completion_tokens": 1,
+                "cost": 0.0,
+                "latency_ms": 1,
+                "success": True,
+            },
+            actor="test",
+        )
         resp = client.get("/api/telemetry/llm-calls")
         assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
+        rows = resp.json()
+        assert isinstance(rows, list)
+        assert any(r.get("model") == "list-model" for r in rows)
 
     def test_tool_calls(self, client):
+        _kernel().emit_event(
+            "CapabilityInvoked",
+            "capability",
+            "cap-smoke-1",
+            payload={"name": "read_file", "latency_ms": 3},
+            actor="agent:test",
+        )
         resp = client.get("/api/telemetry/tool-calls")
         assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
+        rows = resp.json()
+        assert isinstance(rows, list)
+        assert any(r.get("tool_name") == "read_file" for r in rows)
 
     def test_tool_summary(self, client):
         resp = client.get("/api/telemetry/tool-summary")
