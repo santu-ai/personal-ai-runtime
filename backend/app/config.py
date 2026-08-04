@@ -179,7 +179,7 @@ class Settings(BaseSettings):
 
     # --- Multi-Agent Runtime ---
     # The legacy AgentOrchestrator has been removed (M3 single-track).
-    # AgentManager is always active via api/tasks.py.
+    # Agent scheduling is owned by AgentScheduler + work_items API.
 
     # --- Optional LLM fallback providers ---
     openai_api_key: str = ""

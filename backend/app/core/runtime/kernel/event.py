@@ -1,6 +1,6 @@
 """事件原语——Runtime 中唯一不可变的事实来源。
 
-按 docs/RUNTIME_SPEC.md（v1.0 FROZEN）：事件只追加、按 ``seq`` 排序、
+按 docs/01-overview/architecture.md：事件只追加、按 ``seq`` 排序、
 不可变、可重放。State 与 Memory 都是由事件派生的投影；事件日志本身
 是唯一不可重建的东西。
 """

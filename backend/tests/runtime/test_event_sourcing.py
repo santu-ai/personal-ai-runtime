@@ -1,6 +1,6 @@
 """Slice 0 proof: State is a projection of the Event Log and can be rebuilt from it.
 
-The decisive test (per docs/RUNTIME_SPEC.md): after wiping the `goals` projection,
+The decisive test (per docs/01-overview/architecture.md): after wiping the `goals` projection,
 replaying the Event Log alone must reconstruct it identically.
 """
 
