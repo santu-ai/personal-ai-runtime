@@ -22,4 +22,10 @@
 - 改生成源（API 路由 / Makefile / `capability_policy.json` / `mcp_*`）后必须 `make docs-gen && make docs-gen-check`。
 - 概念压缩基线操作见 [task-recipes.md](task-recipes.md) §7（`--ratchet --yes`）。
 
+## 测试隔离与行为断言
+
+- **模块级单例绑定是测试隔离的坑**：`from kernel_instance import kernel` 在模块级绑定后，若在 `ki.kernel` 被 monkeypatch 成 concrete 实例期间首次 import，会冻结旧 Kernel 引用，跨测试泄漏（写入落旧 DB、读取落新 DB）。测试出现"跨测试偶发失败"先怀疑这类绑定；conftest `_reset_runtime` 已恢复 `ki.kernel` 与 `task_engine.kernel` 为 LazyProxy。
+- **行为测试先锁定真实行为，再判断对错**：断言失败先读实现确认是"测试假设错误"还是"产品 bug"。已被测试锁定的真实语义（如 cascade 不递归孙级、`notify_goal_action_completed` 对不存在 action 产生 0/0 通知）不要按直觉改断言，应作为产品决策单独立项。
+- **测防御分支用 fake kernel 直接构造输入**：真实 `query_state` 会在 SQL 层过滤掉非法输入（如非法日期字符串），测不到防御逻辑；用 fake kernel 注入这类行来锁定回退行为。
+
 文档语言与交叉引用纪律见 [`docs/05-engineering/development.md`](../docs/05-engineering/development.md)。
