@@ -75,8 +75,9 @@
 
 | 文档 | 内容 |
 |---|---|
-| [api-endpoints.md](06-reference/api-endpoints.md) | 全端点签名表（方法 / 路径 / 请求 / 响应 / 副作用） |
-| [makefile-targets.md](06-reference/makefile-targets.md) | 全 Makefile 目标清单与说明 |
+| [api-endpoints.md](06-reference/api-endpoints.md) | 全端点表（**自动生成**：`make docs-gen`） |
+| [makefile-targets.md](06-reference/makefile-targets.md) | Makefile 目标清单（**自动生成**） |
+| [tool-catalog.md](06-reference/tool-catalog.md) | 能力策略 + 外部 MCP 目录（**自动生成**） |
 
 ### 07 · ADR
 

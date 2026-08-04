@@ -1,40 +1,25 @@
 # 工程约定
 
-> 浓缩自 `docs/05-engineering/`（development / testing / ci-cd）与钩子实现。权威细节见各文档。
+> 权威细节在 [`docs/05-engineering/`](../docs/05-engineering/)（development / testing / ci-cd）。本文件只保留 agent 高频约束，避免第二套 SSOT。
 
 ## 提交（commit-msg 钩子强制）
 
-- **Conventional Commits**：`^(feat|fix|docs|style|refactor|perf|test|chore|revert)(\(scope\))?: <subject>`
-- subject 长度 2–100，**禁止以句号结尾**。
-- 示例：`feat(harness): add agent workspace docs`
+- Conventional Commits：`^(feat|fix|docs|style|refactor|perf|test|chore|revert)(\(scope\))?: <subject>`
+- subject 长度 2–100，**禁止以句号结尾**
 
-## 后端
+## 最短检查清单
 
-- Python ≥ 3.12；`line-length = 100`；ruff select `["E","F","W","I"]`、ignore `["E501"]`。
-- mypy：`python_version="3.12"`、`ignore_missing_imports=true`、`check_untyped_defs=true`、`follow_imports="normal"`。
-- 运行依赖以 `backend/requirements.txt` 为权威，全部 exact pins；`requirements-dev.txt` 在之上追加最小工具集。
-- **改依赖**：`pyproject.toml` + `requirements.txt` 同步 → `make dependency-sync` → `make lockfile`（见 `architecture-redlines.md §7`）。
+- 后端：`make lint && make test-backend`（`-m "not live_llm"` 为默认门；真 LLM 用 `make test-live`）
+- 改依赖：`make dependency-sync` → `make lockfile`（见 [architecture-redlines.md](architecture-redlines.md) §7）
+- 改架构：`make boundary && make layer-deps && make architecture-check`
+- 本地完整 CI：`make ci-local`
+- Windows：先读 [powershell-tips.md](powershell-tips.md)；子集任务用 `Makefile.ps1`
 
-## 测试
+## 文档生成脚本纪律（`docs/06-reference/` 自动生成部分）
 
-- 后端测试放 `backend/tests/`，pytest，`-m "not live_llm"` 为常规门（live_llm 单独跑）。
-- 前端：`tsc --noEmit && npm test`（Vitest）。
-- e2e：Playwright；`test-e2e-real` 用真实 backend + fake LLM。
+- 生成脚本写文件统一 `newline="\n"`（`OUT.write_text(..., encoding="utf-8", newline="\n")`），避免 Windows CRLF 污染 git diff。
+- `gen_api_docs.py` 的认证豁免 import `app.main` 的 `SKIP_AUTH_EXACT`/`SKIP_AUTH_PREFIXES`，**不要手抄清单**；新增公共端点改 main.py 常量，而不是生成脚本。
+- 改生成源（API 路由 / Makefile / `capability_policy.json` / `mcp_*`）后必须 `make docs-gen && make docs-gen-check`。
+- 概念压缩基线操作见 [task-recipes.md](task-recipes.md) §7（`--ratchet --yes`）。
 
-## 文档
-
-- 叙述用中文，代码标识符 / 路径 / 命令保留英文原文。
-- 相对链接交叉引用，避免内容重复；每篇文档表述"与代码一致，以代码为准"。
-- 概念红线数字只作为 CI 契约出现，不作规模预测。
-- 架构行为变更必须同步 docs（`docs-links` / `docs-table-sync` / `docs-line-refs` / `docs-numbers` 守护）。
-
-## 工作流程
-
-- 编辑代码前先读相关文件；小改动用 patch，新文件 / 全量重写用 write。
-- 提交前建议：`make lint && make typecheck && make test-backend`（改动架构时加不变量目标）。
-- 本地完整 CI 等价：`make ci-local`。
-
-## Windows 注意
-
-- 仓库提供 `Makefile.ps1`（子集目标，顺序执行）。macOS/Linux 用 `make`。
-- `make dev` 依赖 bash 脚本 `scripts/wait_for_health.sh`，Windows 请用 `Makefile.ps1 -Task` 或 WSL。
+文档语言与交叉引用纪律见 [`docs/05-engineering/development.md`](../docs/05-engineering/development.md)。
