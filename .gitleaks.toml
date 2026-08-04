@@ -8,6 +8,7 @@ description = "Allow example/template values that look like secrets"
 paths = [
   '''\.env\.example$''',
   '''docs/.*\.md$''',
+  '''\.harness/.*\.md$''',
   '''README.*\.md$''',
   '''CONTRIBUTING\.md$''',
 ]

@@ -1,7 +1,9 @@
 # Dogfood Week 1 — 2026-07-29 至 2026-08-04
 
 > 不是"用一下试试"，而是用真实使用压力测试 4 个核心子系统，并每天记录一次"卡点"。
-> 这份日志本身就是下一轮重构的输入——参考 [runtime-algebra.md §5.3](../02-concepts/runtime-algebra.md) 的「优先用 dogfood 证据驱动」。
+> 这份日志本身就是下一轮重构的输入——参考 [runtime-algebra.md §5.3](../../docs/02-concepts/runtime-algebra.md) 的「优先用 dogfood 证据驱动」。
+>
+> 原位于 `docs/05-engineering/`，2026-08-04 作为过程痕迹迁入 `.harness/dogfood/`。
 
 ## 起点状态（Day 0 — 2026-07-29 周三）
 
