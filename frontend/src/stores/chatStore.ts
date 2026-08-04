@@ -2,6 +2,12 @@ import { create } from "zustand";
 import type { Conversation } from "../api/client";
 
 interface ChatState {
+  /** Query 缓存的乐观镜像——不要作为独立真相源。
+
+   * 真实列表在 TanStack Query 的 `["conversations"]` key；本字段仅用于
+   * 跨组件共享乐观更新（新建/删除/改标题即时反馈，防 refetch 回滚）。
+   * 见 useConversationsQuery.ts 的双写 helper。
+   */
   conversations: Conversation[];
   activeConversationId: string | null;
   pendingPrompt: string | null;
