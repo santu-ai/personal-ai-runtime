@@ -18,6 +18,10 @@ from app.core.runtime.runtime_container import _LazyProxy, runtime
 _DEFAULT_PROMPT_TOKEN_PRICE = 0.000001
 _DEFAULT_COMPLETION_TOKEN_PRICE = 0.000002
 
+# Ollama 默认端口——与 config.py 的 ollama_base_url 默认值保持一致。
+# 探测 base_url 未显式携带端口时回退到该值。
+_OLLAMA_DEFAULT_PORT = 11434
+
 
 @dataclass
 class LLMProvider:
@@ -128,7 +132,7 @@ class LLMRouter:
 
                 parsed = urllib.parse.urlparse(provider.base_url)
                 host = parsed.hostname or "localhost"
-                port = parsed.port or 11434
+                port = parsed.port or _OLLAMA_DEFAULT_PORT
                 sock = socket.create_connection((host, port), timeout=0.5)
                 sock.close()
                 return True
