@@ -83,8 +83,17 @@ def _emit_work_item_progress(
     )
 
 
+# 执行中进度被压缩在 [10%, 90%]：起始即有 10% 基线，最多到 90%，
+# 剩余的 10% 留给 WorkItemStatusChanged(completed) 时跳到 100%，
+# 避免"任务还在跑就显示接近完成"的误导。
+_PROGRESS_BASE = 0.1
+_PROGRESS_RANGE = 0.8
+
+
 def _progress_ratio(completed_steps: int, total_steps: int) -> float:
-    return 0.1 + (0.8 * max(completed_steps, 0) / max(total_steps, 1))
+    return _PROGRESS_BASE + (
+        _PROGRESS_RANGE * max(completed_steps, 0) / max(total_steps, 1)
+    )
 
 
 async def _run_work_plan(

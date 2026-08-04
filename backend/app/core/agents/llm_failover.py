@@ -13,6 +13,11 @@ from openai import AsyncOpenAI
 from app.core.runtime.runtime_config import effective_api_key, runtime_config
 from app.core.runtime.runtime_container import _LazyProxy, runtime
 
+# 每 token 价格默认值（USD）——按 DeepSeek 定价估算，供遥测成本计算。
+# 接入其他厂商时应显式传入，而非依赖默认。
+_DEFAULT_PROMPT_TOKEN_PRICE = 0.000001
+_DEFAULT_COMPLETION_TOKEN_PRICE = 0.000002
+
 
 @dataclass
 class LLMProvider:
@@ -24,9 +29,11 @@ class LLMProvider:
     model: str
     provider_type: str = "openai_compatible"
     is_default: bool = False
-    # Pricing per token (USD). Defaults to ~DeepSeek pricing; override per provider.
-    price_per_prompt_token: float = 0.000001
-    price_per_completion_token: float = 0.000002
+    # 每 token 价格（USD），仅用于遥测成本估算（brain_telemetry）。
+    # 当前 runtime_config 不提供价格字段，这是唯一生效的价格来源；
+    # 默认值按 DeepSeek 定价估算，若接入其他厂商应显式传值。
+    price_per_prompt_token: float = _DEFAULT_PROMPT_TOKEN_PRICE
+    price_per_completion_token: float = _DEFAULT_COMPLETION_TOKEN_PRICE
 
 
 class LLMRouter:
