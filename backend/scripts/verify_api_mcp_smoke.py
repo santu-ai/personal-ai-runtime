@@ -73,7 +73,6 @@ EXPECTED_ROUTE_PREFIXES = {
     "/api/system/health",
     "/api/telemetry/",
     "/api/approvals/",
-    "/api/tasks/background",
     "/api/triggers/",
     "/api/inbox/",
 }
