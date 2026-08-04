@@ -33,6 +33,7 @@ import sys
 from pathlib import Path
 
 from scripts._bootstrap import prepare_script_env
+from scripts._cli import run_as_main
 
 prepare_script_env()
 
@@ -343,4 +344,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    run_as_main(main)

@@ -1,4 +1,4 @@
-.PHONY: install setup init-db dev demo screenshots test test-backend test-backend-coverage test-frontend test-e2e test-e2e-real ci-local backend-ci-core backend-ci-static backend-ci-runtime backend-compileall backend-smoke lint typecheck dependency-sync desktop desktop-test desktop-build boundary layer-deps layer-deps-inventory layer-deps-strict docs-links docs-table-sync docs-line-refs docs-numbers policy-consistency rebuild-verify export-roundtrip-verify snapshot-verify egress-verify connector-verify alembic-verify vector-consistency-verify memory-repair-verify tool-calls-audit-verify architecture-check architecture-check-strict architecture-snapshot architecture-record event-schema event-schema-snapshot event-schema-record non-sovereign-attachments single-process-control-plane dynamic-imports except-hygiene dashboard dashboard-write docker-up docker-down projection-provenance conversation-rebuild goal-rebuild work-items-goal-rebuild memory-lifecycle-verify inbox-audit-verify lockfile secrets-scan
+.PHONY: install setup init-db dev demo screenshots test test-backend test-backend-coverage test-live test-frontend test-e2e test-e2e-real ci-local backend-ci-core backend-ci-static backend-ci-runtime backend-compileall backend-smoke lint typecheck dependency-sync desktop desktop-test desktop-build boundary layer-deps layer-deps-inventory layer-deps-strict docs-links docs-table-sync docs-line-refs docs-numbers docs-gen docs-gen-check policy-consistency rebuild-verify export-roundtrip-verify snapshot-verify egress-verify connector-verify alembic-verify vector-consistency-verify memory-repair-verify tool-calls-audit-verify architecture-check architecture-check-strict architecture-snapshot architecture-record event-schema event-schema-snapshot event-schema-record non-sovereign-attachments single-process-control-plane dynamic-imports except-hygiene dashboard dashboard-write docker-up docker-down projection-provenance conversation-rebuild goal-rebuild work-items-goal-rebuild memory-lifecycle-verify inbox-audit-verify lockfile secrets-scan
 
 # Backend
 BACKEND_DIR := backend
@@ -48,6 +48,10 @@ test-backend-coverage:
 	cd $(BACKEND_DIR) && python3 -m coverage report --include='app/core/runtime/*' --fail-under=75
 	cd $(BACKEND_DIR) && python3 -m coverage report --include='app/api/*' --fail-under=50
 
+# Opt-in live LLM smoke (requires RUN_LIVE_LLM=1 and a real LLM_API_KEY).
+test-live:
+	cd $(BACKEND_DIR) && RUN_LIVE_LLM=1 python3 -m pytest tests/e2e_live/ -v -m live_llm
+
 test-frontend:
 	cd $(FRONTEND_DIR) && npx tsc --noEmit && npm test
 
@@ -67,7 +71,8 @@ dependency-sync:
 BACKEND_CI_STATIC := dependency-sync backend-compileall lint typecheck version-sync \
 	policy-consistency docs-links docs-table-sync docs-line-refs docs-numbers boundary \
 	layer-deps execution-ownership architecture-check event-schema \
-	non-sovereign-attachments single-process-control-plane dynamic-imports except-hygiene
+	non-sovereign-attachments single-process-control-plane dynamic-imports except-hygiene \
+	docs-gen-check
 
 # Runtime verifies — ephemeral DBs / tmp paths; parallel after static wave.
 BACKEND_CI_RUNTIME := alembic-verify backend-smoke test-backend-coverage \
@@ -135,6 +140,17 @@ docs-line-refs:
 
 docs-numbers:
 	cd $(BACKEND_DIR) && python3 -m scripts.check_doc_numbers
+
+docs-gen:
+	cd $(BACKEND_DIR) && python3 -m scripts.gen_api_docs
+	cd $(BACKEND_DIR) && python3 -m scripts.gen_tool_catalog
+	cd $(BACKEND_DIR) && python3 -m scripts.gen_makefile_targets
+
+docs-gen-check:
+	cd $(BACKEND_DIR) && python3 -m scripts.gen_api_docs --check
+	cd $(BACKEND_DIR) && python3 -m scripts.gen_tool_catalog --check
+	cd $(BACKEND_DIR) && python3 -m scripts.gen_makefile_targets --check
+
 
 except-hygiene:
 	cd $(BACKEND_DIR) && python3 -m scripts.check_except_hygiene

@@ -11,6 +11,9 @@ Usage:
     python -m scripts.check_concept_growth            # check against baseline
     python -m scripts.check_concept_growth --snapshot # print current values
     python -m scripts.check_concept_growth --strict   # also fail on non-zero dead_code_files
+    python -m scripts.check_concept_growth --ratchet  # preview baseline + docs §4.4 changes (no write)
+    python -m scripts.check_concept_growth --ratchet --yes  # apply the reduction
+    python -m scripts.check_concept_growth --record   # append JSONL history snapshot
 """
 from __future__ import annotations
 
@@ -175,15 +178,16 @@ def count_dead_code_files() -> int:
 BASELINE = {
     # read_ports/ domain-scoped package — same Read Port concept.
     # Aligned to measured tree after domain split (handlers/governance/egress/read_ports).
-    # 63: INV-W5 removed background_task_handlers (merged into execute_handlers).
-    "runtime_files": 63,
+    # Ratcheted 2026-08: INV-W5 leftovers closed (runtime_files 63→62, fragments 10→9,
+    # god_object_max_loc 633→612). Use --ratchet after intentional reductions.
+    "runtime_files": 62,
     "event_types": 46,  # INV-W5: dropped 4 BackgroundTask* events
     "query_state_selectors": 17,  # INV-W5: dropped background_tasks selector
-    "fragments": 10,
+    "fragments": 9,
     # 15: INV-W5 merged background_tasks into work_items
     "governed_tables": 15,
     "projector_files": 6,              # telemetry in projectors_governance
-    "god_object_max_loc": 633,  # 631 → 633: read_events gained aggregate_ids batch param
+    "god_object_max_loc": 612,
     "dead_code_files": 0,
 }
 
@@ -278,7 +282,6 @@ def check(verbose: bool = True, strict: bool = False) -> int:
         if cur > limit:
             violations += 1
             if verbose:
-                direction = ">" if cur > baseline_val else ">"
                 print(
                     f"  [FAIL] {key}: {cur} > {limit} "
                     f"(+{cur - limit})"
@@ -286,6 +289,13 @@ def check(verbose: bool = True, strict: bool = False) -> int:
         elif verbose:
             status = "  [OK]"
             print(f"  {status} {key}: {cur} (<= {limit})")
+            if key != "dead_code_files" and cur < baseline_val:
+                print(
+                    f"         hint: {key} is below baseline "
+                    f"({cur} < {baseline_val}) — run "
+                    "`python -m scripts.check_concept_growth --ratchet` "
+                    "to lock the reduction"
+                )
 
     if verbose:
         print()
@@ -345,11 +355,92 @@ def snapshot():
     print(f"| Dead Code 文件数 | {current['dead_code_files']} | 0 |")
 
 
+def _ratchet_baseline() -> int:
+    """Lower BASELINE (and docs §4.4) to match current measurements.
+
+    Only decreases values — never raises a ceiling. Refuses to write anything
+    unless ``--yes`` is passed; run without it to preview the exact edits.
+    Returns 0 on success, 1 when guarded or a rewrite failed.
+    """
+    current = measure_all()
+    script_path = Path(__file__).resolve()
+    text = script_path.read_text(encoding="utf-8")
+    lowered: list[str] = []
+
+    for key, baseline_val in list(BASELINE.items()):
+        if key == "dead_code_files":
+            continue
+        cur = current[key]
+        if cur >= baseline_val:
+            continue
+        # Replace the integer assigned to this key inside BASELINE = {...}.
+        pattern = re.compile(
+            rf'(BASELINE\s*=\s*\{{[\s\S]*?"{re.escape(key)}"\s*:\s*){baseline_val}\b'
+        )
+        new_text, n = pattern.subn(rf"\g<1>{cur}", text, count=1)
+        if n != 1:
+            print(f"  [FAIL] could not rewrite BASELINE[{key}] in {script_path.name}")
+            return 1
+        text = new_text
+        lowered.append(f"{key}: {baseline_val} → {cur}")
+        BASELINE[key] = cur
+
+    if not lowered:
+        print("No baselines to ratchet (current >= baseline for all metrics).")
+        return 0
+
+    # Compute the docs §4.4 rewrite as well; only write files when confirmed.
+    doc = ROOT / "docs" / "02-concepts" / "runtime-algebra.md"
+    doc_text = doc.read_text(encoding="utf-8")
+    section_parts = doc_text.split("### 4.4", 1)
+    if len(section_parts) < 2:
+        print("  [FAIL] docs missing ### 4.4 section")
+        return 1
+    head, rest = section_parts
+    body_end_markers = ["\n---", "\n## "]
+    body = rest
+    tail = ""
+    for marker in body_end_markers:
+        if marker in rest:
+            body, tail_rest = rest.split(marker, 1)
+            tail = marker + tail_rest
+            break
+
+    def repl_row(m: re.Match[str]) -> str:
+        limit_s, key = m.group(1), m.group(2)
+        if key in BASELINE and key != "dead_code_files":
+            return m.group(0).replace(f"| {limit_s} |", f"| {BASELINE[key]} |", 1)
+        return m.group(0)
+
+    row_re = re.compile(
+        r"^\|\s*[^|]+\|\s*(\d+)\s*\|\s*`([a-z_]+)`\s*\|",
+        re.MULTILINE,
+    )
+    new_doc = head + "### 4.4" + row_re.sub(repl_row, body) + tail
+
+    if "--yes" not in sys.argv:
+        print("Would ratchet the following — pass --yes to apply:")
+        for line in lowered:
+            print(f"  {line}")
+        print(f"  docs §4.4 → {doc.relative_to(ROOT)}")
+        return 1
+
+    script_path.write_text(text, encoding="utf-8", newline="\n")
+    print("Ratcheted BASELINE:")
+    for line in lowered:
+        print(f"  {line}")
+    doc.write_text(new_doc, encoding="utf-8", newline="\n")
+    print(f"Synced docs §4.4 → {doc.relative_to(ROOT)}")
+    return 0
+
+
 if __name__ == "__main__":
     if "--snapshot" in sys.argv:
         snapshot()
     elif "--record" in sys.argv:
         _record_snapshot()
+    elif "--ratchet" in sys.argv:
+        sys.exit(_ratchet_baseline())
     else:
         strict = "--strict" in sys.argv
         code = check(strict=strict)

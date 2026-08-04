@@ -24,6 +24,7 @@ if _BACKEND not in sys.path:
     sys.path.insert(0, _BACKEND)
 
 from scripts._bootstrap import prepare_script_env
+from scripts._cli import run_as_main
 
 prepare_script_env()
 
@@ -81,9 +82,7 @@ def _capability_subsystem_file(rel: Path) -> bool:
     if rel.parts[:2] == ("core", "runtime") and rel.parts[2:3] == ("read_ports",):
         return True  # Fragment-facing read abstractions (package)
     return rel in {
-        Path("core/runtime/capability_governance.py"),  # includes SensitiveRouter
-        Path("core/runtime/capability_decision.py"),  # CapabilityGateway
-        Path("core/runtime/capability_governance.py"),  # governance module
+        Path("core/runtime/capability_governance.py"),  # includes SensitiveRouter + governance
         Path("core/runtime/runtime_container.py"),  # DI container for all subsystems
     }
 
@@ -105,9 +104,9 @@ def _is_app_storage_file(rel: Path) -> bool:
     APP_STORAGE operational workers may be excluded from the User Space
     GOVERNED scan. Note: ``inbox_emails`` is GOVERNED, not APP_STORAGE.
     """
-    return rel in {
-        Path("core/runtime/background_worker.py"),
-    }
+    # Historical APP_STORAGE workers (e.g. background_worker.py) were removed.
+    # Keep the predicate for P8 clarity; currently no files need this exemption.
+    return False
 
 
 def _is_projector_module(rel: Path) -> bool:
@@ -292,4 +291,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    run_as_main(main)

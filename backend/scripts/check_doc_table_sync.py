@@ -15,6 +15,7 @@ import re
 import sys
 
 from scripts._bootstrap import BACKEND_ROOT, prepare_script_env
+from scripts._cli import report_failures, report_ok, run_as_main
 
 prepare_script_env()
 
@@ -129,21 +130,17 @@ def main() -> int:
             violations.append(f"prose '{label}' says {claimed}, registry has {len(registry_all)}")
 
     if violations:
-        print("DOC TABLE SYNC FAILED", file=sys.stderr)
-        for v in violations:
-            print(f"  {v}", file=sys.stderr)
-        print(
-            "\nUpdate docs/04-data/data-model.md or backend/app/store/table_registry.py",
-            file=sys.stderr,
+        return report_failures(
+            "DOC TABLE SYNC FAILED",
+            violations,
+            hint="\nUpdate docs/04-data/data-model.md or backend/app/store/table_registry.py",
         )
-        return 1
 
-    print(
+    return report_ok(
         f"DOC TABLE SYNC OK — {len(governed)} governed + "
         f"{len(app_storage)} app_storage tables aligned with docs"
     )
-    return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    run_as_main(main)

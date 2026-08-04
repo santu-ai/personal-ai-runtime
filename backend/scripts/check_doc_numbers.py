@@ -27,6 +27,7 @@ import re
 import sys
 
 from scripts._bootstrap import BACKEND_ROOT
+from scripts._cli import report_failures, report_ok, run_as_main
 
 _DOCS = BACKEND_ROOT.parent / "docs"
 
@@ -122,22 +123,17 @@ def main() -> int:
                         )
 
     if violations:
-        print("DOC NUMBERS GUARD FAILED — narrative numbers drifted from code", file=sys.stderr)
-        print(
-            "Update the prose in docs/ to match the current codebase, or "
-            "drop the precise number and use a range (e.g. 150+).",
-            file=sys.stderr,
+        return report_failures(
+            "DOC NUMBERS GUARD FAILED — narrative numbers drifted from code",
+            violations,
+            hint=(
+                "Update the prose in docs/ to match the current codebase, or "
+                "drop the precise number and use a range (e.g. 150+)."
+            ),
         )
-        print()
-        for v in violations:
-            print(f"  {v}", file=sys.stderr)
-        return 1
 
-    print(
-        "DOC NUMBERS GUARD OK — narrative numbers in docs/ match code"
-    )
-    return 0
+    return report_ok("DOC NUMBERS GUARD OK — narrative numbers in docs/ match code")
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    run_as_main(main)

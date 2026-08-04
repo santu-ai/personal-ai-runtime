@@ -29,6 +29,8 @@ import re
 import sys
 from pathlib import Path
 
+from scripts._cli import build_parser, report_ok
+
 # Root of the repo: scripts/ lives under backend/, repo root is two levels up.
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -78,7 +80,7 @@ def _doc_files() -> list[Path]:
     docs = REPO_ROOT / "docs"
     if docs.is_dir():
         files.extend(sorted(docs.rglob("*.md")))
-    for top in ("README.md", "CHANGELOG.md"):
+    for top in ("README.md", "CHANGELOG.md", "AGENTS.md"):
         p = REPO_ROOT / top
         if p.is_file():
             files.append(p)
@@ -184,11 +186,7 @@ def check_file(md_path: Path) -> list[tuple[int, str, str]]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--quiet", action="store_true",
-        help="Only print broken references, not the scanning progress.",
-    )
+    parser = build_parser(__doc__ or "Doc link guard", add_quiet=True)
     args = parser.parse_args(argv)
 
     md_files = _doc_files()
@@ -209,10 +207,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\nFAIL: {total_broken} broken doc reference(s) found.")
         return 1
 
-    if not args.quiet:
-        print("OK: all markdown file references resolve.")
-    return 0
+    return report_ok("OK: all markdown file references resolve.", quiet=args.quiet)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    from scripts._cli import run_as_main
+
+    run_as_main(lambda: main())

@@ -55,7 +55,7 @@ connectors, timeline, work_items
 | work_items | `/api/work-items` | 统一 goal/task/action CRUD、`include=`、`decompose` | Kernel 事件 + LLM |
 | approvals | `/api/approvals` | 列表、`/{id}/approve`、`/{id}/reject` | `submit_command("ApproveRequested")` + 工具执行 |
 | inbox | `/api/inbox` | 列表、`/poll`（IMAP）、`/digest`、状态更新 | 网络出口 + Kernel 事件 |
-| triggers | `/api/triggers` | CRUD、`/evaluate` | Kernel 事件 |
+| triggers | `/api/triggers` | CRUD | Kernel 事件 |
 | notifications | `/api/notifications` | 列表、`/{id}/read`、`/read-all` | Kernel 事件 |
 | dashboard | `/api/dashboard` | `GET /` | **只用 Kernel ABI**（一致性测试床） |
 | system | `/api/system` | health/live/ready/info/mcp-status、export/import/encrypted、`DELETE /data` | 数据主权（含破坏性） |

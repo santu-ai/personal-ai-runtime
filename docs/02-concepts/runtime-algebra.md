@@ -302,13 +302,13 @@ Reaction 不是独立"概念"，而是 `subscribe + invoke + produce` 的组合�
 
 | 指标 | 红线（上限） | 对应 `BASELINE` 键 |
 |---|---|---|
-| `core/runtime/` 文件数 | 63 | `runtime_files` |
+| `core/runtime/` 文件数 | 62 | `runtime_files` |
 | `constants.py` 事件类型数 | 46 | `event_types` |
 | `query_state` selector 分支数 | 17 | `query_state_selectors` |
-| Fragment 注册数 | 10 | `fragments` |
+| Fragment 注册数 | 9 | `fragments` |
 | Governed 投影表数 | 15 | `governed_tables` |
 | Projector 文件数 | 6 | `projector_files` |
-| God Object 最大 LOC（Kernel/Brain/MCPHub） | 633 | `god_object_max_loc` |
+| God Object 最大 LOC（Kernel/Brain/MCPHub） | 612 | `god_object_max_loc` |
 
 权威源是 [`check_concept_growth.py`](../../backend/scripts/check_concept_growth.py) 的 `BASELINE`；本表必须与之逐项一致（CI 校验）。原则说明见 [architecture-principles.md](architecture-principles.md)。
 

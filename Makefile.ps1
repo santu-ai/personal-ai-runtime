@@ -76,6 +76,7 @@ Available tasks:
   dependency-sync      Verify requirements / pyproject / lock stamps
   install-hooks        Install git hooks (or run: .\install-hooks.cmd)
   test-backend         Run backend pytest
+  test-live            Run opt-in live LLM smoke (needs RUN_LIVE_LLM=1 + LLM_API_KEY)
   test-frontend        Run frontend unit tests
   lint                 Run ruff on backend
   typecheck            Run mypy on backend
@@ -111,6 +112,10 @@ PowerShell runs modules sequentially for reliable exit codes; use make/WSL for p
     }
     "test-backend" {
         Invoke-Backend @("-m", "pytest", "tests/", "-q", "-m", "not live_llm")
+    }
+    "test-live" {
+        $env:RUN_LIVE_LLM = "1"
+        Invoke-Backend @("-m", "pytest", "tests/e2e_live/", "-v", "-m", "live_llm")
     }
     "test-frontend" {
         Push-Location $Frontend

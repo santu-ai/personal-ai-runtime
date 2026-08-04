@@ -92,22 +92,15 @@
 
 ## 外部 MCP 配置文件
 
+完整工具/策略表见自动生成的 [tool-catalog.md](../06-reference/tool-catalog.md)（由 `capability_policy.json` / `mcp_registry.json` / `mcp_config.json` 生成，勿手工复制）。
+
 ### `backend/mcp_config.json`
 
-声明 6 个外部 MCP server，全部 `type: stdio`、`enabled`、可选 `startup_connect`、`command`/`args`（均 `npx -y <pkg>`）、每服务器工具白名单（`enabled_tools`/`needs_user_tools`/`ingestion_tools`）、`policy_default: auto_allow`：
-
-| Server | 工具数 | 需审批工具 | 环境变量 |
-|---|---|---|---|
-| **playwright** | 7 | click、type | —（`startup_connect: false`；容器内需另装浏览器依赖才可用） |
-| **brave** | — | — | `BRAVE_API_KEY`（必需） |
-| **context7** | — | — | `CONTEXT7_API_KEY`（可选） |
-| **github** | 8 | — | `GITHUB_PERSONAL_ACCESS_TOKEN`（必需） |
-| **tavily** | — | — | `TAVILY_API_KEY`（可选） |
-| **notion** | — | — | `NOTION_TOKEN`（必需） |
+声明外部 MCP server，全部 `type: stdio`、`enabled`、可选 `startup_connect`、`command`/`args`（均 `npx -y <pkg>`）、每服务器工具白名单（`enabled_tools`/`needs_user_tools`/`ingestion_tools`）、`policy_default`。当前仓库内置清单与策略以 [tool-catalog.md](../06-reference/tool-catalog.md) 为准。
 
 ### `backend/mcp_registry.json`
 
-用户面向 UI 目录，镜像同样 6 个服务器，附中文描述、类别（`browser`/`search`/`developer`/`productivity`）、安装命令（**与 `mcp_config.json` 同 pin**）、中文环境变量提示（如 `BRAVE_API_KEY`：「从 https://brave.com/search/api/ 获取」）、图标名，以及安装时写入 `mcp_config` 的运行时字段（`required_env` / `enabled_tools` / `ingestion_tools` 等）。是可安装 MCP marketplace 元数据；`env_vars` 仅作 UI 提示，不会写入运行时 `env`。
+用户面向 UI 目录，镜像同样的服务器，附中文描述、类别、安装命令（**与 `mcp_config.json` 同 pin**）、中文环境变量提示、图标名，以及安装时写入 `mcp_config` 的运行时字段。是可安装 MCP marketplace 元数据；`env_vars` 仅作 UI 提示，不会写入运行时 `env`。目录表见 [tool-catalog.md](../06-reference/tool-catalog.md)。
 
 ### `mcp_config.local.json`（个人 opt-in，gitignored）
 
