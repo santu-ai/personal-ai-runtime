@@ -129,7 +129,7 @@ CI 报告用 `--cov-report=term-missing` 让缺失部分可见，开发者按需
 |---|---|
 | [`verify_vector_consistency.py`](../../backend/scripts/verify_vector_consistency.py) | 自测：发 2 个 MemoryDerived，比对 SQLite `memories` id 集合 vs Chroma `memories` collection；可选 `--db`/`--vector-dir`/`--check-default` 对账真实数据目录 |
 | [`verify_memory_index_repairs.py`](../../backend/scripts/verify_memory_index_repairs.py) | 强制索引失败，验证 durable repair queue 落盘且重试未过早进入永久失败 |
-| [`verify_alembic.py`](../../backend/scripts/verify_alembic.py) | 在 ephemeral DB 上查 `sqlite_master`，验证 `table_registry.ALL_CLASSIFIED_TABLES`（当前 19 张）存在 + `PRAGMA foreign_keys=1` |
+| [`verify_alembic.py`](../../backend/scripts/verify_alembic.py) | 必需表存在 + `PRAGMA foreign_keys=1` + 线性 Alembic revision 链 + 无 orphan `__pycache__` |
 
 ### 演示
 

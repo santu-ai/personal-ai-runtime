@@ -301,11 +301,11 @@ async def on_execute_requested(ctx: "ExecutionContext", event: "Event") -> None:
     if is_background and wi_status in (
         "waiting_approval", "failed", "completed",
     ):
-        progress = (
+        progress_value = (
             1.0 if wi_status == "completed"
             else _progress_ratio(outcome.completed_steps, len(steps))
         )
-        _emit_work_item_progress(ctx, event, action_id, progress)
+        _emit_work_item_progress(ctx, event, action_id, progress_value)
 
     if wi_status and wi_status != "cancelled":
         _sync_work_item_status(ctx, event, action_id, wi_status)

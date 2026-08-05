@@ -467,7 +467,22 @@ def query_memories(db, filters: dict[str, Any]) -> list[dict] | int:
     confidence_lt = filters.get("confidence_lt")
     decay_eligible = filters.get("decay_eligible")
     limit = filters.get("limit", 50)
+    order = filters.get("order")
     count_only = filters.get("count_only", False)
+
+    # Default preserves historical ranking (confidence, then recency).
+    # ``created_desc`` is an alias for dashboard / casual callers.
+    order_sql = safe_order(
+        order,
+        {
+            "confidence_desc": "confidence DESC, created_at DESC",
+            "created_at_desc": "created_at DESC",
+            "created_desc": "created_at DESC",
+            "created_at_asc": "created_at ASC",
+            "created_asc": "created_at ASC",
+        },
+        default_key="confidence_desc",
+    )
 
     with db.get_db() as conn:
         if memory_id:
@@ -509,7 +524,7 @@ def query_memories(db, filters: dict[str, Any]) -> list[dict] | int:
 
         params.append(limit)
         rows = conn.execute(
-            f"SELECT * FROM memories{where} ORDER BY confidence DESC, created_at DESC LIMIT ?",
+            f"SELECT * FROM memories{where}{order_sql} LIMIT ?",
             params,
         ).fetchall()
     return [dict(r) for r in rows]

@@ -156,6 +156,35 @@ def check_projectors_declared(*, verbose: bool = True) -> int:
     return 0
 
 
+def check_upcasters(*, verbose: bool = True) -> int:
+    """Fail when a type's registered version lacks a full upcaster chain from v1."""
+    from app.core.runtime.kernel.constants import (
+        EVENT_PAYLOAD_UPCASTERS,
+        event_schema_version,
+    )
+
+    missing: list[tuple[str, int, int]] = []
+    for etype in parse_declared_event_types():
+        target = int(event_schema_version(etype))
+        for from_ver in range(1, target):
+            if (etype, from_ver) not in EVENT_PAYLOAD_UPCASTERS:
+                missing.append((etype, from_ver, from_ver + 1))
+    if missing:
+        if verbose:
+            print("  [FAIL] missing EVENT_PAYLOAD_UPCASTERS entries:")
+            for etype, frm, to in missing:
+                print(f"    {etype}: v{frm}→v{to}")
+            print(
+                "    Register upcasters in constants.EVENT_PAYLOAD_UPCASTERS "
+                "before bumping EVENT_SCHEMA_VERSION_OVERRIDES."
+            )
+        return 1
+    if verbose:
+        n = len(EVENT_PAYLOAD_UPCASTERS)
+        print(f"  [OK] upcaster chain complete ({n} registered step(s))")
+    return 0
+
+
 def check(*, verbose: bool = True) -> int:
     current = compute_versions()
     baseline = baseline_versions(load_baseline())
@@ -177,6 +206,9 @@ def check(*, verbose: bool = True) -> int:
                 print(f"  [FAIL] {etype}: override version {ver} < 1")
 
     if check_projectors_declared(verbose=verbose) != 0:
+        violations += 1
+
+    if check_upcasters(verbose=verbose) != 0:
         violations += 1
 
     if not baseline:
@@ -207,8 +239,8 @@ def check(*, verbose: bool = True) -> int:
                 if current[t] < baseline[t]:
                     print("      (version downgrade is forbidden)")
             print(
-                f"    Update intentionally, then: "
-                f"python -m scripts.check_event_schema --record"
+                "    Update intentionally, then: "
+                "python -m scripts.check_event_schema --record"
             )
 
     if verbose and violations == 0:

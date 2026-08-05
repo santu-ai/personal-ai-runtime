@@ -16,7 +16,7 @@
 | `aggregate_type` | 聚合根类型（`work_item`、`conversation`、`memory`、`execution` 等） |
 | `aggregate_id` | 聚合实例 id |
 | `actor` | 触发者（`user`、`system`、`agent:{instance_id}`、`scheduler`、`connector:*` 等） |
-| `payload` | JSON 业务数据 |
+| `payload` | JSON 业务数据（写出时压入 `schema_version`；读出经 `upcast_event_payload` 升到当前版本） |
 | `caused_by` | 一跳因果前驱事件 id |
 | `correlation_id` | 跨事件链的关联 id（如一次聊天回合） |
 | `ts` | 时间戳 |
@@ -38,6 +38,12 @@ flowchart LR
 ```
 
 关键不变量：投影与触发事件在同一事务内完成，因此投影状态始终与其原因一致。ChromaDB 同步发生在事务提交后；若失败，事件被加入 `_pending_memory_index_repairs`（上限 1000），由 [`scripts/verify_vector_consistency.py`](../../backend/scripts/verify_vector_consistency.py) 对账修复。
+
+## Payload schema 演进
+
+- **写出**：`Event.create` → `stamp_event_payload` 压入 `schema_version`（[`constants.py`](../../backend/app/core/runtime/kernel/constants.py)）。
+- **读出 / rebuild**：`Event.from_row` → `upcast_event_payload` 按 `EVENT_PAYLOAD_UPCASTERS` 逐步升到当前版本；缺 upcaster 或前向不兼容版本直接报错。
+- **CI**：`scripts.check_event_schema` 校验版本基线，并强制 `version>1` 时存在完整 upcaster 链。零新增事件类型约束下，形状变更只 bump payload 版本。
 
 ## 同步命令包装：`submit_command`
 

@@ -88,11 +88,16 @@ class Event:
 
     @classmethod
     def from_row(cls, row: Any) -> "Event":
+        """从 ``event_log`` 行重建事件，并做读时 payload upcast。"""
+        from app.core.runtime.kernel.constants import upcast_event_payload
+
+        raw = json.loads(row["payload"]) if row["payload"] else {}
+        event_type = row["type"]
         return cls(
-            type=row["type"],
+            type=event_type,
             aggregate_type=row["aggregate_type"],
             aggregate_id=row["aggregate_id"],
-            payload=json.loads(row["payload"]) if row["payload"] else {},
+            payload=upcast_event_payload(event_type, raw),
             actor=row["actor"],
             caused_by=row["caused_by"],
             correlation_id=row["correlation_id"],

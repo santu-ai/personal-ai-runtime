@@ -20,6 +20,43 @@ class TestQueryStateW3:
         results2 = k.query_state("memories", claim_status="ratified")
         assert not any(r["id"] == "m-claim" for r in results2)
 
+    def test_memories_order_created_at_desc(self, isolated_kernel):
+        """order=created_at_desc must beat default confidence ranking."""
+        k, _db = isolated_kernel
+        k.emit_event(
+            "MemoryDerived", "memory", "m-old-hi",
+            payload={
+                "category": "fact", "content": "old high", "source": "chat",
+                "confidence": 0.99,
+            },
+        )
+        k.emit_event(
+            "MemoryDerived", "memory", "m-new-lo",
+            payload={
+                "category": "fact", "content": "new low", "source": "chat",
+                "confidence": 0.1,
+            },
+        )
+        # Force created_at so ordering is deterministic across the same txn.
+        with k._db.get_db() as conn:
+            conn.execute(
+                "UPDATE memories SET created_at = ? WHERE id = ?",
+                ("2020-01-01T00:00:00+00:00", "m-old-hi"),
+            )
+            conn.execute(
+                "UPDATE memories SET created_at = ? WHERE id = ?",
+                ("2026-01-01T00:00:00+00:00", "m-new-lo"),
+            )
+
+        by_conf = k.query_state("memories", limit=1)
+        assert by_conf[0]["id"] == "m-old-hi"
+
+        by_time = k.query_state("memories", limit=1, order="created_at_desc")
+        assert by_time[0]["id"] == "m-new-lo"
+
+        by_alias = k.query_state("memories", limit=1, order="created_desc")
+        assert by_alias[0]["id"] == "m-new-lo"
+
     def test_goals_has_deadline(self, isolated_kernel):
         k, _db = isolated_kernel
         k.emit_event("WorkItemCreated", "work_item", "g-dl", payload={'work_type': 'goal',

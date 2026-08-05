@@ -21,7 +21,7 @@ from typing import Any
 
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
-from mcp.shared.exceptions import MCPError
+from mcp.shared.exceptions import MCPError  # type: ignore[attr-defined]
 from mcp.types import Tool as MCPTool
 
 from app.core.harness.mcp_config import (
@@ -585,7 +585,11 @@ class MCPMesh:
                 else:
                     risk = "low"
 
-                parameters = tool.input_schema if isinstance(tool.input_schema, dict) else {
+                # mcp>=2 uses snake_case; stubs may still advertise inputSchema.
+                raw_schema = getattr(tool, "input_schema", None)
+                if raw_schema is None:
+                    raw_schema = getattr(tool, "inputSchema", None)
+                parameters = raw_schema if isinstance(raw_schema, dict) else {
                     "type": "object",
                     "properties": {},
                 }

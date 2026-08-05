@@ -34,6 +34,9 @@ desktop/dist/
 desktop/frontend-dist/
 desktop/bundled-python/
 desktop/.cache/
+# Stale Vite build copied into desktop/ root (production uses frontend-dist/).
+desktop/index.html
+desktop/assets/
 *.tsbuildinfo
 frontend/test-results/
 frontend/playwright-report/

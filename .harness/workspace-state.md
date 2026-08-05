@@ -6,7 +6,7 @@
 ## 当前状态
 
 - 当前分支：`main`（开发阶段）
-- 进行中任务 / WIP：P0 正确性/安全 + 删除休眠子系统（builtin_reactions / core/connectors）
+- 进行中任务 / WIP：无（P0 遗留 4 项已收口）
 - 已知坏点 / 待办：无阻塞项；God 拆分仍受 runtime_files 零和约束
 
 ## 产品观察（后续规划候选）
@@ -17,7 +17,8 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
-| 2026-08-05 | P0：删 builtin_reactions + core/connectors；死代码清理；原子 take_plan_resume；审批 helper；Scheduler.requeue；connectors/sovereignty 白名单；prompt SSOT；ADR-R017；Makefile.ps1 `$Args`→`-PyArgs` + CI 对齐 | 未提交 |
+| 2026-08-05 | 收口审查遗留：payload upcast 读路径+CI 链守卫；alembic 线性链/orphan pyc 校验；删 stale `desktop/index.html`；belief/fact 注释+dashboard 查询对齐；memories `order` 经 safe_order 生效；修正「Alembic 失败回退 DDL」文档 | 即将提交 |
+| 2026-08-05 | P0：删 builtin_reactions + core/connectors；死代码清理；原子 take_plan_resume；审批 helper；Scheduler.requeue；connectors/sovereignty 白名单；prompt SSOT；ADR-R017；Makefile.ps1 `$Args`→`-PyArgs` + CI 对齐 | commit `fddafb3` |
 | 2026-08-05 | 提炼到 harness：`decision-log` R017（执行可信化 E-1~E-9）、`conventions` 工具索引滞后陷阱、`task-recipes` §8 全量修复闭环复核 SOP、`powershell-tips` §6-7（-Args 卡死 / Get-ChildItem 空输出兜底） | 未提交 |
 | 2026-08-05 | 复核收口：删除 `read_ports.get_work_item` 别名（统一 `query_work_item`，12 处 API 调用改齐）；`MemoryRevoked` 幽灵测试改 `MemoryUpdated(confidence=0)` | 148 测试通过；**未提交** |
 | 2026-08-05 | 全量修复闭环：死代码/文档/API 契约/概念压缩/`parent_work_id`/执行可信化(E-1…E-9)/数据层/边界守卫；防回归测试+守卫 | alembic `e5f6…dead_letter` + `f6a7…drop_parent_goal`；**未提交** |

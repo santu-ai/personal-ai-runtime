@@ -10,7 +10,7 @@ Widgets:
   - data_sovereignty: total events, memories (self-report/claim), goals, conversations
   - active_goals: active goal count + top 3 by importance
   - recent_events: last 5 system events (what happened)
-  - recent_memories: semantic recall of recent beliefs
+  - recent_memories: semantic recall of recent memories
   - timer_status: active timer count (Time dimension)
   - governance_status: active policy + grant counts (Governance)
 """
@@ -84,8 +84,10 @@ def _widget_data_sovereignty() -> dict:
         goals_completed = 0
 
     try:
-        beliefs = read_ports.query_memories(category="belief", limit=1, order="created_desc")
-        last_reflection = beliefs[0].get("created_at") if beliefs else None
+        # Extractor stores category="fact"; "belief" is a rare manual category.
+        # Newest by created_at (order honored by query_memories via safe_order).
+        recent = read_ports.query_memories(limit=1, order="created_at_desc")
+        last_reflection = recent[0].get("created_at") if recent else None
     except Exception:
         logger.warning("Dashboard: Failed to fetch last reflection", exc_info=True)
         last_reflection = None
@@ -156,7 +158,7 @@ def _widget_recent_events(since_ts: str) -> dict:
 
 
 def _widget_recent_memories() -> dict:
-    """Recent beliefs — what the system thinks it knows (recall_memory only)."""
+    """Recent memories — what the system thinks it knows (recall_memory only)."""
     try:
         memories = kernel.recall_memory("recent activities goals preferences", k=_MAX_RECENT_MEMORIES)
         return {

@@ -120,7 +120,7 @@ class MemoryExtractor:
         source_document_id: str | None = None,
         source_document_name: str | None = None,
     ) -> list[str]:
-        """Extract facts and store each as a MemoryDerived belief. Returns stored facts.
+        """Extract facts and store each as MemoryDerived with category=fact.
 
         Deduplication: before storing a fact, a semantic recall is performed.
         If an existing memory is highly similar, the fact is skipped to avoid
@@ -129,6 +129,10 @@ class MemoryExtractor:
         When source_document_id is provided, every extracted memory is linked
         back to that document. (Knowledge Base was removed; the field remains
         available for future document-sourced extraction.)
+
+        Note: philosophically every memory is a decaying belief (see
+        test_memory_belief), but the storage taxonomy uses ``category="fact"``
+        for extractor output — not ``category="belief"``.
         """
         if not conversation_text.strip():
             return []

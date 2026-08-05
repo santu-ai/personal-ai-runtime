@@ -3,6 +3,11 @@
 把这些字符串字面量集中，防止 Kernel、投影器、CI 检查与验证脚本之间漂移。
 """
 
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
 # ── 事件类型 ─────────────────────────────────────────────────────────────
 
 # ── WorkItem（task + action + goal 统一聚合，v1.0）─────────────────
@@ -122,6 +127,10 @@ MEMORY_INDEX_EVENT_TYPES = frozenset({
 # 随后经 ``python -m scripts.check_event_schema --record`` 重新记录
 # ``scripts/baselines/event_schema_versions.json``
 # （仅在有意回滚时使用 ``--allow-downgrade``）。
+#
+# 读路径：``Event.from_row`` / rebuild 经 ``upcast_event_payload`` 把历史
+# payload 升到当前版本。Bump 到 N>1 时必须登记
+# ``EVENT_PAYLOAD_UPCASTERS[(type, N-1)]``（CI 守卫强制）。
 
 PAYLOAD_SCHEMA_VERSION_KEY = "schema_version"
 EVENT_SCHEMA_VERSION_DEFAULT = 1
@@ -133,6 +142,13 @@ EVENT_SCHEMA_VERSION_OVERRIDES: dict[str, int] = {
     EVENT_WORK_ITEM_UPDATED: 1,
     EVENT_WORK_ITEM_STATUS_CHANGED: 1,
 }
+
+# ``(event_type, from_version) → payload → payload``：把 from_version 升到
+# from_version+1。当前全部为 v1，注册表为空；首次不兼容变更时在此登记。
+EVENT_PAYLOAD_UPCASTERS: dict[
+    tuple[str, int],
+    Callable[[dict[str, Any]], dict[str, Any]],
+] = {}
 
 
 def declared_event_types() -> frozenset[str]:
@@ -158,3 +174,42 @@ def stamp_event_payload(
     stamped = dict(payload or {})
     stamped[PAYLOAD_SCHEMA_VERSION_KEY] = event_schema_version(event_type)
     return stamped
+
+
+def upcast_event_payload(
+    event_type: str,
+    payload: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """把历史 payload 升到 ``event_schema_version(event_type)``。
+
+    缺省 ``schema_version`` 视为 1（stamping 引入前写入的行）。
+    存储版本高于当前注册表 → 前向不兼容，拒绝静默降级。
+    缺口版本缺少 upcaster → 显式报错（禁止 silent identity）。
+    """
+    out: dict[str, Any] = dict(payload or {})
+    target = event_schema_version(event_type)
+    raw = out.get(PAYLOAD_SCHEMA_VERSION_KEY, EVENT_SCHEMA_VERSION_DEFAULT)
+    try:
+        stored = int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"invalid schema_version {raw!r} on {event_type}"
+        ) from exc
+    if stored > target:
+        raise ValueError(
+            f"payload schema_version {stored} for {event_type} exceeds "
+            f"registered version {target} (forward-incompatible)"
+        )
+    while stored < target:
+        fn = EVENT_PAYLOAD_UPCASTERS.get((event_type, stored))
+        if fn is None:
+            raise ValueError(
+                f"missing payload upcaster for {event_type} "
+                f"v{stored}→v{stored + 1}"
+            )
+        out = dict(fn(out))
+        stored += 1
+        out[PAYLOAD_SCHEMA_VERSION_KEY] = stored
+    if PAYLOAD_SCHEMA_VERSION_KEY not in out:
+        out[PAYLOAD_SCHEMA_VERSION_KEY] = stored
+    return out

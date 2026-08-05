@@ -228,7 +228,7 @@ def _rebuild_aggregate_on_conn(kernel, conn, aggregate_type: str) -> int:
         "DELETE FROM projection_checkpoints WHERE aggregate_type = ?",
         (aggregate_type,),
     )
-    # Read events directly from the same connection.
+    # Read events directly from the same connection (via from_row → upcast).
     rows = conn.execute(
         "SELECT * FROM event_log WHERE aggregate_type = ? ORDER BY seq",
         (aggregate_type,),
@@ -236,19 +236,7 @@ def _rebuild_aggregate_on_conn(kernel, conn, aggregate_type: str) -> int:
     from .event import Event
     replayed = 0
     for row in rows:
-        event = Event(
-            seq=int(row["seq"]),
-            id=row["id"],
-            type=row["type"],
-            aggregate_type=str(row["aggregate_type"]),
-            aggregate_id=row["aggregate_id"],
-            actor=row["actor"],
-            payload=json.loads(row["payload"]) if row["payload"] else {},
-            caused_by=row["caused_by"],
-            correlation_id=row["correlation_id"],
-            ts=row["ts"],
-        )
-        projectors.apply(event, conn)
+        projectors.apply(Event.from_row(row), conn)
         replayed += 1
     return replayed
 

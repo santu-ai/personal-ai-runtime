@@ -195,14 +195,15 @@ frozenset({
 
 [`backend/app/store/schema_init.py`](../../backend/app/store/schema_init.py) 的 `ensure_schema(db)`：
 
-- 若 `db_path == settings.sqlite_path`（生产路径）→ 应用 Alembic schema（失败回退 raw DDL）。
+- 若 `db_path == settings.sqlite_path`（生产路径）→ **只**走 Alembic（失败即中止启动，**不**回退 raw DDL，避免不可见偏离）。
 - 否则（测试/自定义路径）→ 跑 `apply_raw_ddl`。
+- 两路径列契约由 [`test_projection_schema_contract.py`](../../backend/tests/runtime/test_projection_schema_contract.py) 双跑对齐；[`scripts/verify_alembic.py`](../../backend/scripts/verify_alembic.py) 另校验线性 revision 链与 orphan `__pycache__`。
 
 ## 一致性验证
 
 | 脚本 | 验证 |
 |---|---|
-| [`scripts/verify_alembic.py`](../../backend/scripts/verify_alembic.py) | 19 张必需表存在 + `PRAGMA foreign_keys=1` |
+| [`scripts/verify_alembic.py`](../../backend/scripts/verify_alembic.py) | 必需表存在 + `PRAGMA foreign_keys=1` + 线性 Alembic 链 + 无 orphan `__pycache__` |
 | [`scripts/check_projection_provenance.py`](../../backend/scripts/check_projection_provenance.py) | 每条 governed 投影行有对应 `event_log` 事件 |
 | [`scripts/verify_vector_consistency.py`](../../backend/scripts/verify_vector_consistency.py) | SQLite memories 集合 = Chroma `memories` collection 集合 |
 | [`scripts/verify_export_roundtrip.py`](../../backend/scripts/verify_export_roundtrip.py) | export → import 后 event_log/conversations/messages/work_items/memories/notifications 计数一致 |
