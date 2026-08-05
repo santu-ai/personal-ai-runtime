@@ -349,7 +349,7 @@ class NotificationSettings(BaseModel):
 
 @router.get("/notifications")
 async def get_notification_settings():
-    """Get current notification channel configuration."""
+    """Get current notification channel configuration. **@internal** — no SPA consumer yet."""
     from app.core.runtime.runtime_config import runtime_config
 
     data = runtime_config.get_prompt("notifications")
@@ -393,7 +393,7 @@ async def get_capability_policy():
 
 @router.put("/notifications")
 async def update_notification_settings(body: NotificationSettings):
-    """Update notification channel configuration."""
+    """Update notification channel configuration. **@internal** — no SPA consumer yet."""
     from app.core.runtime.runtime_config import runtime_config
 
     runtime_config.save_prompt("notifications", body.model_dump_json())

@@ -35,8 +35,8 @@ def _on_execution_requested(event: Event, conn) -> None:
         """INSERT OR REPLACE INTO handler_executions
            (id, event_seq, event_id, event_type, handler_name, instance_id,
             status, retry_count, policy_json, correlation_id,
-            created_at, started_at, completed_at, error)
-           VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, '', '', '')""",
+            created_at, started_at, completed_at, error, dead_letter)
+           VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?, '', '', '', 0)""",
         (
             event.aggregate_id,
             int(p.get("event_seq", 0)),
@@ -56,7 +56,7 @@ def _on_execution_started(event: Event, conn) -> None:
     p = event.payload
     conn.execute(
         """UPDATE handler_executions
-           SET status = 'running', started_at = ?
+           SET status = 'running', started_at = ?, dead_letter = 0
            WHERE id = ?""",
         (p.get("started_at", event.ts), event.aggregate_id),
     )
@@ -68,7 +68,7 @@ def _on_execution_retried(event: Event, conn) -> None:
     status = p.get("status", "retrying")
     conn.execute(
         """UPDATE handler_executions
-           SET status = ?, retry_count = ?, error = ?
+           SET status = ?, retry_count = ?, error = ?, dead_letter = 0
            WHERE id = ?""",
         (
             status,
@@ -84,7 +84,7 @@ def _on_execution_completed(event: Event, conn) -> None:
     p = event.payload
     conn.execute(
         """UPDATE handler_executions
-           SET status = 'completed', completed_at = ?, error = ''
+           SET status = 'completed', completed_at = ?, error = '', dead_letter = 0
            WHERE id = ?""",
         (p.get("completed_at", event.ts), event.aggregate_id),
     )
@@ -93,14 +93,17 @@ def _on_execution_completed(event: Event, conn) -> None:
 @projector("ExecutionFailed")
 def _on_execution_failed(event: Event, conn) -> None:
     p = event.payload
+    dead = 1 if p.get("dead_letter") else 0
     conn.execute(
         """UPDATE handler_executions
-           SET status = 'failed', completed_at = ?, error = ?, retry_count = ?
+           SET status = 'failed', completed_at = ?, error = ?,
+               retry_count = ?, dead_letter = ?
            WHERE id = ?""",
         (
             p.get("failed_at", event.ts),
             p.get("error", ""),
             int(p.get("attempt", 0)),
+            dead,
             event.aggregate_id,
         ),
     )

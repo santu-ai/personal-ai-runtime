@@ -35,7 +35,7 @@ class TestTimelineCollect:
             raise RuntimeError("db down")
 
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.query_pending_actions",
+            "app.core.runtime.read_ports.query_pending_work_items",
             _boom,
         )
         monkeypatch.setattr(
@@ -51,7 +51,7 @@ class TestTimelineCollect:
     @pytest.mark.asyncio
     async def test_casual_filters_noisy_events(self, monkeypatch):
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.query_pending_actions",
+            "app.core.runtime.read_ports.query_pending_work_items",
             lambda **kwargs: [],
         )
         monkeypatch.setattr(
@@ -78,7 +78,7 @@ class TestTimelineCollect:
             return []
 
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.query_pending_actions",
+            "app.core.runtime.read_ports.query_pending_work_items",
             _pending,
         )
         monkeypatch.setattr(
@@ -94,7 +94,7 @@ class TestTimelineCollect:
     @pytest.mark.asyncio
     async def test_pending_and_events_format(self, monkeypatch):
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.query_pending_actions",
+            "app.core.runtime.read_ports.query_pending_work_items",
             lambda **kwargs: [
                 {"status": "pending", "title": "Task A"},
                 {"status": "pending", "title": "Task B"},
@@ -117,7 +117,7 @@ class TestTimelineCollect:
     @pytest.mark.asyncio
     async def test_empty_actions_and_events_returns_empty(self, monkeypatch):
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.query_pending_actions",
+            "app.core.runtime.read_ports.query_pending_work_items",
             lambda **kwargs: [],
         )
         monkeypatch.setattr(

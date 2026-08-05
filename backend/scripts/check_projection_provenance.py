@@ -30,10 +30,14 @@ prepare_script_env()
 
 from app.core.runtime.kernel.constants import (  # noqa: E402
     AGGREGATE_APPROVAL,
+    AGGREGATE_CAPABILITY,
     AGGREGATE_CONVERSATION,
     AGGREGATE_EXECUTION,
     AGGREGATE_INBOX_EMAIL,
     AGGREGATE_MEMORY,
+    AGGREGATE_NOTIFICATION,
+    AGGREGATE_POLICY,
+    AGGREGATE_TIMER,
     AGGREGATE_WORK_ITEM,
     EVENT_EXECUTION_REQUESTED,
     EVENT_INBOX_EMAIL_RECORDED,
@@ -175,7 +179,7 @@ def check_provenance(conn: Any) -> list[Violation]:
             )
 
     for row in conn.execute(
-        "SELECT id, parent_goal_id as goal_id FROM work_items WHERE work_type = 'action'"
+        "SELECT id, parent_work_id as goal_id FROM work_items WHERE work_type = 'action'"
     ).fetchall():
         action_id = row["id"]
         goal_id = row["goal_id"] or ""
@@ -240,6 +244,51 @@ def check_provenance(conn: Any) -> list[Violation]:
                 ),
             )
 
+    # notifications / policy_events / timer_events — id == event aggregate_id.
+    for table, aggregate in (
+        ("notifications", AGGREGATE_NOTIFICATION),
+        ("policy_events", AGGREGATE_POLICY),
+        ("timer_events", AGGREGATE_TIMER),
+    ):
+        for row in conn.execute(f"SELECT id FROM {table}").fetchall():
+            row_id = row["id"]
+            found = conn.execute(
+                """SELECT 1 FROM event_log
+                   WHERE aggregate_type = ? AND aggregate_id = ?
+                   LIMIT 1""",
+                (aggregate, row_id),
+            ).fetchone()
+            if not found:
+                violations.append(
+                    (
+                        table,
+                        row_id,
+                        f"no event_log row for aggregate_type={aggregate!r}",
+                    ),
+                )
+
+    # tool_calls — capability aggregate; llm_calls — llm_call aggregate.
+    for table, aggregate in (
+        ("tool_calls", AGGREGATE_CAPABILITY),
+        ("llm_calls", "llm_call"),
+    ):
+        for row in conn.execute(f"SELECT id FROM {table}").fetchall():
+            row_id = row["id"]
+            found = conn.execute(
+                """SELECT 1 FROM event_log
+                   WHERE aggregate_type = ? AND aggregate_id = ?
+                   LIMIT 1""",
+                (aggregate, row_id),
+            ).fetchone()
+            if not found:
+                violations.append(
+                    (
+                        table,
+                        row_id,
+                        f"no event_log row for aggregate_type={aggregate!r}",
+                    ),
+                )
+
     return violations
 
 
@@ -289,7 +338,7 @@ def bootstrap_sample_scenario(kernel: Any) -> None:
         "WorkItemCreated",
         "work_item",
         "prov_act_1",
-        payload={"parent_goal_id": "prov_goal_1", "title": "Provenance action", "status": "pending", "work_type": "action"},
+        payload={"parent_work_id": "prov_goal_1", "title": "Provenance action", "status": "pending", "work_type": "action"},
         actor="verify",
     )
     # Memory provenance

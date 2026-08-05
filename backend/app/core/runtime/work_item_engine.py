@@ -88,7 +88,6 @@ def create_work_item(
     *,
     description: str = "",
     work_type: str = "task",
-    parent_goal_id: str | None = None,
     parent_work_id: str | None = None,
     priority: int = 0,
     dependencies: list[str] | None = None,
@@ -109,7 +108,6 @@ def create_work_item(
         "title": title,
         "description": description,
         "work_type": work_type,
-        "parent_goal_id": parent_goal_id,
         "parent_work_id": parent_work_id,
         "priority": priority,
         "dependencies_json": deps_json,
@@ -230,7 +228,7 @@ def get_sub_work_items(parent_work_id: str) -> list[dict]:
 
 
 def get_work_items_for_goal(goal_id: str, *, work_type: str | None = None) -> list[dict]:
-    filters: dict = {"parent_goal_id": goal_id, "order": "priority_desc"}
+    filters: dict = {"parent_work_id": goal_id, "order": "priority_desc"}
     if work_type:
         filters["work_type"] = work_type
     return read_ports.query_work_items(**filters)
@@ -275,7 +273,6 @@ def list_work_items(
     work_type: str | None = None,
     limit: int = 50,
     parent_work_id: str | None = None,
-    parent_goal_id: str | None = None,
 ) -> list[dict]:
     filters: dict = {"limit": limit}
     if status:
@@ -287,8 +284,6 @@ def list_work_items(
         filters["work_type"] = work_type
     if parent_work_id:
         filters["parent_work_id"] = parent_work_id
-    if parent_goal_id:
-        filters["parent_goal_id"] = parent_goal_id
     return read_ports.query_work_items(**filters)
 
 
@@ -305,12 +300,17 @@ def are_dependencies_met(item_id: str) -> bool:
 
 
 def delete_work_item(item_id: str, *, cascade: bool = False) -> None:
-    """Delete a work item. When cascade=True (goals), also delete children."""
+    """Delete a work item. When cascade=True, also delete the full subtree."""
     if cascade:
-        for child in read_ports.query_work_items_by_parent_goal(item_id):
-            kernel.emit_event("WorkItemDeleted", "work_item", child["id"], actor="user")
-        for child in get_sub_work_items(item_id):
-            kernel.emit_event("WorkItemDeleted", "work_item", child["id"], actor="user")
+        def _flatten(nodes: list[dict]) -> list[str]:
+            ids: list[str] = []
+            for node in nodes:
+                ids.extend(_flatten(node.get("sub_items") or []))
+                ids.append(node["id"])
+            return ids
+
+        for child_id in _flatten(_get_subtree(item_id)):
+            kernel.emit_event("WorkItemDeleted", "work_item", child_id, actor="user")
     kernel.emit_event("WorkItemDeleted", "work_item", item_id, actor="user")
 
 

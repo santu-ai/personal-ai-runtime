@@ -36,7 +36,7 @@ class TestTaskEngine:
 
     def test_task_for_goal(self, isolated_kernel):
         task = create_work_item(title="Standalone Task", work_type="task")
-        assert task["parent_goal_id"] is None
+        assert task["parent_work_id"] is None
 
         tasks = list_work_items()
         assert any(t["id"] == task["id"] for t in tasks)

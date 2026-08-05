@@ -78,9 +78,27 @@ powershell -File Makefile.ps1 -Task test-backend
 
 可用任务：`help / install / install-hooks / test-backend / test-frontend / lint / typecheck / boundary / layer-deps / backend-ci-* / docker-up / docker-down`。注意 PowerShell 版 `backend-ci-*` 是**顺序执行**（非 Unix 的 `-j` 并行）。
 
+⚠️ `-Task test-backend` 后面的 pytest 参数**不要用 `-Args "..."`** 直接拼——本次实测 `powershell -File Makefile.ps1 -Task test-backend -Args "..."` 会卡死并触发 python REPL 的 WinError 循环。要跑子集测试，绕过 Makefile 直接用 venv python：
+
+```powershell
+C:\Users\zhouyao\PycharmProjects\personal-ai-runtime\.venv\Scripts\python.exe -m pytest tests/runtime/test_xxx.py -q
+```
+
+## 7. `Get-ChildItem` 过滤在路径不存在时静默空输出
+
+`Get-ChildItem -Recurse -Filter *.py | Select-String ...` 在目标文件缺失时**不报错、直接空结果**（且 `Get-ChildItem -File` 对纯文件名目录可能异常），容易被误读为"无残留"。兜底用 `cmd`：
+
+```powershell
+cmd /c "dir /b C:\path\to\dir"        # 列目录真实内容
+Test-Path C:\path\to\file             # 文件是否存在
+```
+
+这是 grep/索引滞后之外，第二个"以磁盘为准"的落地手段。
+
 ## 快速自查清单
 
 - [ ] 用了 `ls -la` / `find` / `sed` / `head` 等 Unix 惯用法？
 - [ ] 用了 `&&` 或 heredoc？
 - [ ] 确认当前 cwd 是根目录吗？`.venv` 路径写对了吗？
 - [ ] 中文乱码输出是否被误判为失败？
+- [ ] grep 报出的"残留"是否用 `Test-Path` / `cmd /c dir /b` 核实过磁盘真实存在？

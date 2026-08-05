@@ -105,7 +105,7 @@ CI 报告用 `--cov-report=term-missing` 让缺失部分可见，开发者按需
 | [`verify_rebuild.py`](../../backend/scripts/verify_rebuild.py) | 旗舰：发大型 `SAMPLE_SCENARIO`（work_items/approvals/memories/conversation+message/notification/policy/timer），快照 8 张投影表，`rebuild_all()`，再快照，字节比对 |
 | [`verify_snapshot_rebuild.py`](../../backend/scripts/verify_snapshot_rebuild.py) | 增量重建：`save_projection_snapshot("work_item")` 后发 2 个事件，`rebuild("work_item")`，验证只重放 2 个事件；再发 `WorkItemUpdated` 后保存 checkpoint，验证 `last_applied_seq` 严格前进 |
 | [`verify_conversation_rebuild.py`](../../backend/scripts/verify_conversation_rebuild.py) | 发 ConversationCreated + 2 MessageAppended，rebuild，验证 2 条消息且 `source_event_id` 可溯源 |
-| [`verify_goal_rebuild.py`](../../backend/scripts/verify_goal_rebuild.py) | 父子目标（`work_type='goal'`）+ WorkItemUpdated，验证 `parent_goal_id`/`progress` 重建后保留 |
+| [`verify_goal_rebuild.py`](../../backend/scripts/verify_goal_rebuild.py) | 父子目标（`work_type='goal'`）+ WorkItemUpdated，验证 `parent_work_id`/`progress` 重建后保留 |
 | [`verify_work_items_goal_rebuild.py`](../../backend/scripts/verify_work_items_goal_rebuild.py) | work_items 中 goal 字段、子任务派生进度在重建后字节一致 |
 | [`verify_memory_lifecycle.py`](../../backend/scripts/verify_memory_lifecycle.py) | MemoryDerived → Updated(0.7→0.9) → rebuild → 验证 0.9 保留 → Deleted → 验证消失 |
 

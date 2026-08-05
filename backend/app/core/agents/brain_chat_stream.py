@@ -52,6 +52,8 @@ async def chat_stream(
     conversation.correlation_id = correlation_id
 
     messages = brain.build_messages(conversation, user_message, system_prompt=system_prompt)
+    # E-8: save_user_message is idempotent per correlation_id so scheduler
+    # retries of ChatRequested do not duplicate the user turn.
     conversation.save_user_message(user_message)
 
     full_content = ""

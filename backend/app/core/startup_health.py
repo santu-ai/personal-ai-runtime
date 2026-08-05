@@ -82,6 +82,7 @@ def run_startup_checks() -> dict[str, Any]:
     checks["auth"] = {
         "enabled": bool(settings.auth_token),
         "host": settings.host,
+        "port": settings.port,
     }
 
     email_creds = runtime_config.get_email_credentials()

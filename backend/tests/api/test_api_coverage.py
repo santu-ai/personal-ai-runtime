@@ -146,7 +146,7 @@ class TestWorkItemsSmokeAPI:
 
     def test_create_action_goal_not_found(self, client):
         resp = client.post("/api/work-items/", json={
-            "title": "Step", "work_type": "action", "parent_goal_id": "missing",
+            "title": "Step", "work_type": "action", "parent_work_id": "missing",
         })
         assert resp.status_code == 404
 
@@ -229,6 +229,9 @@ class TestSystemAPI:
         data = resp.json()
         assert "conversations" in data
         assert "memories" in data
+        assert "event_log" in data
+        # Dead aggregate_type='event' counter removed — must not regress.
+        assert "events" not in data
 
     def test_llm_providers(self, client):
         resp = client.get("/api/system/llm-providers")

@@ -95,3 +95,138 @@ def count_scheduled_executions_by_status(db: Any) -> dict[str, int]:
             "SELECT status, COUNT(*) AS c FROM handler_executions GROUP BY status"
         ).fetchall()
     return {str(r["status"]): int(r["c"]) for r in rows}
+
+
+def list_stale_running_executions(
+    db: Any,
+    *,
+    ttl_seconds: int,
+) -> list["ScheduledExecution"]:
+    """Return ``running`` rows whose ``started_at`` is older than ``ttl_seconds``.
+
+    Used by RuntimeLoop lease expiry (E-4). Empty ``started_at`` is treated as
+    stale so rows that never recorded a start time cannot stick forever.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from app.core.runtime.scheduled_execution import ScheduledExecution
+
+    if ttl_seconds <= 0:
+        return []
+    cutoff = datetime.now(UTC) - timedelta(seconds=int(ttl_seconds))
+    order_sql = safe_order("asc", _ORDER_BY_CREATED_ASC, default_key="asc")
+    with db.get_db() as conn:
+        rows = conn.execute(
+            f"{_BASE_SELECT} WHERE status = ?{order_sql}",
+            (STATUS_RUNNING,),
+        ).fetchall()
+    stale: list[ScheduledExecution] = []
+    for row in rows:
+        item = ScheduledExecution.from_row(dict(row))
+        started = (item.started_at or "").strip()
+        if not started:
+            stale.append(item)
+            continue
+        try:
+            ts = datetime.fromisoformat(started.replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=UTC)
+        except ValueError:
+            stale.append(item)
+            continue
+        if ts <= cutoff:
+            stale.append(item)
+    return stale
+
+
+def list_dead_letter_executions(db: Any) -> list["ScheduledExecution"]:
+    """Return rows marked ``dead_letter=1`` (terminal ExecutionFailed)."""
+    from app.core.runtime.scheduled_execution import ScheduledExecution
+
+    order_sql = safe_order("asc", _ORDER_BY_CREATED_ASC, default_key="asc")
+    with db.get_db() as conn:
+        rows = conn.execute(
+            f"{_BASE_SELECT} WHERE dead_letter = 1{order_sql}",
+        ).fetchall()
+    return [ScheduledExecution.from_row(dict(r)) for r in rows]
+
+
+def expire_stale_running_leases(
+    kernel: Any,
+    *,
+    ttl_seconds: int | None = None,
+) -> int:
+    """Fail running executions past lease TTL; return count expired (E-4).
+
+    Prefer ``Scheduler.reclaim_stale_leases`` from RuntimeLoop (cancels
+    in-flight tasks and re-queues retries). This helper is the durable
+    event-only path used by tests / scripts.
+    """
+    from datetime import UTC, datetime
+
+    from app.config import settings
+    from app.core.runtime.execution_events import emit_execution_failed
+
+    ttl = (
+        int(ttl_seconds)
+        if ttl_seconds is not None
+        else int(settings.running_lease_ttl_seconds)
+    )
+    if ttl <= 0:
+        return 0
+    stale = list_stale_running_executions(kernel._db, ttl_seconds=ttl)
+    now = datetime.now(UTC).isoformat()
+    for item in stale:
+        item.error = "timeout"
+        item.completed_at = now
+        if item.status == "running":
+            item.transition_to("failed")
+        terminal = not item.can_retry()
+        emit_execution_failed(
+            kernel, item, terminal=terminal, dead_letter=terminal,
+        )
+    return len(stale)
+
+
+def replay_dead_letters(kernel: Any, *, limit: int = 50) -> list[str]:
+    """Re-queue dead-lettered executions as pending retries (E-3).
+
+    Clears ``dead_letter`` via ExecutionRetried → pending and enqueues
+    into the live Scheduler when available. Returns replayed execution ids.
+    """
+    from app.core.runtime.execution_events import emit_execution_retried
+
+    replayed: list[str] = []
+    items = list_dead_letter_executions(kernel._db)[: max(0, int(limit))]
+    for item in items:
+        item.dead_letter = False
+        item.error = ""
+        if item.status == "failed":
+            item.transition_to("retrying")
+        emit_execution_retried(
+            kernel, item, reason="dead_letter_replay", status="retrying",
+        )
+        item.transition_to("pending")
+        emit_execution_retried(
+            kernel, item, reason="dead_letter_replay", status="pending",
+        )
+        replayed.append(item.id)
+
+    if replayed:
+        try:
+            from app.core.runtime.agent_scheduler import get_scheduler
+
+            sch = get_scheduler(kernel)
+            by_id = {i.id: i for i in items}
+            pending_ids = {p.id for p in sch._pending}
+            for eid in replayed:
+                live = by_id.get(eid)
+                if live is not None and eid not in pending_ids and eid not in sch._active:
+                    if live._event is None and live.event_id:
+                        evs = kernel.read_events(id=live.event_id, limit=1)
+                        if evs:
+                            live._event = evs[0]
+                    sch._pending.append(live)
+        except Exception:
+            pass
+    return replayed

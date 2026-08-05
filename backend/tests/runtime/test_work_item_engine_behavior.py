@@ -150,10 +150,10 @@ def test_get_work_item_tree_nests_sub_items(isolated_kernel):
     k, _db = isolated_kernel
     goal = _create_task(k, title="目标", work_type="goal")
     action = _create_task(k, title="动作", work_type="action",
-                          parent_goal_id=goal["id"])
+                          parent_work_id=goal["id"])
     _create_task(k, title="子步骤", work_type="task", parent_work_id=action["id"])
 
-    # tree 根是 goal 的子 action（按 parent_goal_id 组装），逐层嵌套 sub_items
+    # tree 根是 goal 的子 action（按 parent_work_id 组装），逐层嵌套 sub_items
     tree = work_item_engine.get_work_item_tree(goal["id"])
     assert len(tree) == 1
     root = tree[0]
@@ -168,7 +168,7 @@ def test_delete_work_item_without_cascade_keeps_children(isolated_kernel):
     k, _db = isolated_kernel
     goal = _create_task(k, title="目标", work_type="goal")
     child = _create_task(k, title="动作", work_type="action",
-                         parent_goal_id=goal["id"])
+                         parent_work_id=goal["id"])
 
     work_item_engine.delete_work_item(goal["id"], cascade=False)
 
@@ -176,12 +176,12 @@ def test_delete_work_item_without_cascade_keeps_children(isolated_kernel):
     assert work_item_engine.get_work_item(child["id"]) is not None
 
 
-def test_delete_work_item_cascade_removes_direct_children(isolated_kernel):
+def test_delete_work_item_cascade_removes_subtree(isolated_kernel):
     k, _db = isolated_kernel
     goal = _create_task(k, title="目标", work_type="goal")
     action = _create_task(k, title="动作", work_type="action",
-                          parent_goal_id=goal["id"])
-    # 孙级（parent_work_id=action，parent_goal_id=None）不在 cascade 范围
+                          parent_work_id=goal["id"])
+    # 孙级经 parent_work_id 挂在 action 下，cascade 应递归删除
     subtask = _create_task(k, title="子步骤", work_type="task",
                            parent_work_id=action["id"])
 
@@ -189,7 +189,7 @@ def test_delete_work_item_cascade_removes_direct_children(isolated_kernel):
 
     assert work_item_engine.get_work_item(goal["id"]) is None
     assert work_item_engine.get_work_item(action["id"]) is None
-    assert work_item_engine.get_work_item(subtask["id"]) is not None
+    assert work_item_engine.get_work_item(subtask["id"]) is None
 
 
 # ── bump_parent_activity ───────────────────────────────────────────────────

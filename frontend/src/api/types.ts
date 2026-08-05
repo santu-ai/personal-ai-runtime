@@ -200,7 +200,6 @@ export interface WorkItem {
   description: string | null;
   work_type: WorkItemType;
   parent_work_id: string | null;
-  parent_goal_id: string | null;
   status: string;
   priority: number;
   dependencies_json: string | null;

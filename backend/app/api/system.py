@@ -114,15 +114,11 @@ async def system_info():
     from app.core.runtime import read_ports
     goal_count = read_ports.count_goals()
 
-    # Count legacy app events (aggregate_type='event') via kernel
-    legacy_event_count = kernel.count_events("event")
-
     return {
         "conversations": counts["conversations"],
         "messages": counts["messages"],
         "goals": goal_count,
         "event_log": counts["event_log"],
-        "events": legacy_event_count,
         "memories": counts["memories"],
         "llm_providers": len(llm_router.list_providers()),
     }

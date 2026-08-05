@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as client from "./client";
 import { ApiError, getSystemHealth, isAuthConfigured, setAuthToken } from "./client";
 
 describe("api client auth", () => {
+  it("does not export dead requestFormData helper", () => {
+    expect("requestFormData" in client).toBe(false);
+  });
+
   beforeEach(() => {
     setAuthToken("");
     vi.stubGlobal("fetch", vi.fn());

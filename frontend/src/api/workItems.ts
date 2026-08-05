@@ -23,7 +23,6 @@ export interface CreateWorkItemPayload {
   description?: string;
   work_type: WorkItemType;
   parent_work_id?: string;
-  parent_goal_id?: string;
   priority?: number;
   dependencies?: string[];
   executable_plan?: string;
@@ -115,7 +114,7 @@ export async function createGoalAction(goalId: string, title: string): Promise<W
   return createWorkItem({
     title,
     work_type: "action",
-    parent_goal_id: goalId,
+    parent_work_id: goalId,
     status: "pending",
   });
 }

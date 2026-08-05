@@ -22,6 +22,11 @@ EVENT_CAPABILITY_DENIED = "CapabilityDenied"  # 也覆盖 deferred（reason="def
 EVENT_MEMORY_DERIVED = "MemoryDerived"
 EVENT_MEMORY_UPDATED = "MemoryUpdated"
 EVENT_MEMORY_DELETED = "MemoryDeleted"
+EVENT_MEMORY_DECAYED = "MemoryDecayed"
+
+EVENT_CLAIM_RATIFIED = "ClaimRatified"
+EVENT_CLAIM_REJECTED = "ClaimRejected"
+EVENT_CLAIM_CONTESTED = "ClaimContested"
 # ChromaDB 索引修复耗尽重试预算时发出。记忆本身在 event_log + memories
 # 投影中仍是权威；只是派生的向量索引缺失，因此召回时将其静默排除。
 EVENT_MEMORY_INDEX_REPAIR_FAILED = "MemoryIndexRepairFailed"
@@ -122,7 +127,12 @@ PAYLOAD_SCHEMA_VERSION_KEY = "schema_version"
 EVENT_SCHEMA_VERSION_DEFAULT = 1
 
 # 类型字符串 → 版本。仍用默认值的条目可省略。
-EVENT_SCHEMA_VERSION_OVERRIDES: dict[str, int] = {}
+# WorkItem* 显式登记以启用 schema 版本机制（此前 OVERRIDES 为空、从未触发）。
+EVENT_SCHEMA_VERSION_OVERRIDES: dict[str, int] = {
+    EVENT_WORK_ITEM_CREATED: 1,
+    EVENT_WORK_ITEM_UPDATED: 1,
+    EVENT_WORK_ITEM_STATUS_CHANGED: 1,
+}
 
 
 def declared_event_types() -> frozenset[str]:

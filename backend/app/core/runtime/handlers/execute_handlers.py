@@ -16,7 +16,7 @@ from app.core.runtime.handlers.plan_runner import (
     parse_plan_steps,
     run_plan_steps,
 )
-from app.core.runtime.plan_resume import PlanResume
+from app.core.runtime.plan_resume import PlanResume, load_plan_progress
 
 if TYPE_CHECKING:
     from app.core.runtime.execution import ExecutionContext
@@ -108,10 +108,22 @@ async def _run_work_plan(
     """Shared plan_runner call; actor / cancel_check injected by caller."""
     from app.core.runtime.kernel_instance import kernel
 
-    resume_from = int(event.payload.get("resume_from") or 0)
+    # E-5: prefer explicit resume_from on the event (approve path), else
+    # durable progress:{action_id}, else 0 — never silently drop progress.
     previous_output = event.payload.get("previous_output")
     if previous_output is not None and not isinstance(previous_output, dict):
         previous_output = None
+
+    if "resume_from" in event.payload and event.payload.get("resume_from") is not None:
+        resume_from = int(event.payload.get("resume_from") or 0)
+    else:
+        progress = load_plan_progress(action_id, kernel=kernel)
+        if progress is not None:
+            resume_from = int(progress.resume_from)
+            if previous_output is None:
+                previous_output = progress.previous_output
+        else:
+            resume_from = 0
 
     def _resume_factory(outcome: PlanRunOutcome) -> PlanResume:
         return PlanResume(
@@ -131,6 +143,7 @@ async def _run_work_plan(
         previous_output=previous_output,
         resume_factory=_resume_factory,
         cancel_check=cancel_check,
+        action_id=action_id,
     )
 
 
@@ -239,7 +252,13 @@ async def on_execute_requested(ctx: "ExecutionContext", event: "Event") -> None:
         )
         return
 
-    resume_from = int(event.payload.get("resume_from") or 0)
+    progress = load_plan_progress(action_id, kernel=kernel)
+    if outcome.next_resume_from is not None:
+        resume_from = outcome.next_resume_from
+    elif progress is not None:
+        resume_from = int(progress.resume_from)
+    else:
+        resume_from = int(event.payload.get("resume_from") or 0)
 
     # Cancel acknowledged by plan_runner — durable cancel already emitted by API,
     # but re-stamp cancelled in case the handler raced past the API's emit.
@@ -291,11 +310,11 @@ async def on_execute_requested(ctx: "ExecutionContext", event: "Event") -> None:
     if wi_status and wi_status != "cancelled":
         _sync_work_item_status(ctx, event, action_id, wi_status)
         if wi_status == "completed":
-            parent_goal_id = action.get("parent_goal_id")
-            if parent_goal_id:
-                read_ports.bump_parent_activity(parent_goal_id)
+            parent_work_id = action.get("parent_work_id")
+            if parent_work_id:
+                read_ports.bump_parent_activity(parent_work_id)
                 read_ports.notify_goal_action_completed(
-                    parent_goal_id,
+                    parent_work_id,
                     action_id,
                     action.get("title", "") or "",
                 )

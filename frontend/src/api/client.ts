@@ -9,7 +9,6 @@ export {
   isAuthConfigured,
   authHeaders,
   request,
-  requestFormData,
   ApiError,
 } from "./core";
 

@@ -32,8 +32,8 @@ def fake_kernel(monkeypatch):
     return k
 
 
-def test_query_pending_actions_forwards(fake_kernel):
-    work_port.query_pending_actions(limit=3)
+def test_query_pending_work_items_forwards(fake_kernel):
+    work_port.query_pending_work_items(limit=3)
     assert fake_kernel.query_calls == [
         ("work_items", {"status": "pending", "limit": 3, "order": "created_at_asc"}),
     ]
@@ -97,7 +97,7 @@ def test_count_goals_forwards(fake_kernel):
 def test_query_goal_actions_forwards(fake_kernel):
     work_port.query_goal_actions("g1")
     assert fake_kernel.query_calls == [
-        ("work_items", {"parent_goal_id": "g1", "work_type": "action"}),
+        ("work_items", {"parent_work_id": "g1", "work_type": "action"}),
     ]
 
 
@@ -154,14 +154,7 @@ def test_query_goals_with_deadline_forwards(fake_kernel):
 def test_query_work_items_by_parent_goal_forwards(fake_kernel):
     work_port.query_work_items_by_parent_goal("g1", limit=100)
     assert fake_kernel.query_calls == [
-        ("work_items", {"parent_goal_id": "g1", "limit": 100}),
-    ]
-
-
-def test_query_pending_work_items_forwards(fake_kernel):
-    work_port.query_pending_work_items(limit=25)
-    assert fake_kernel.query_calls == [
-        ("work_items", {"status": "pending", "limit": 25}),
+        ("work_items", {"parent_work_id": "g1", "limit": 100}),
     ]
 
 
@@ -333,9 +326,9 @@ def goal_with_actions(isolated_kernel, monkeypatch):
 
     goal = work_port.create_work_item(title="目标", work_type="goal")
     a1 = work_port.create_work_item(title="动作A", work_type="action",
-                                    parent_goal_id=goal["id"])
+                                    parent_work_id=goal["id"])
     a2 = work_port.create_work_item(title="动作B", work_type="action",
-                                    parent_goal_id=goal["id"])
+                                    parent_work_id=goal["id"])
     return k, engine, goal, a1, a2
 
 

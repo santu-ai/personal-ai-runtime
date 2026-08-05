@@ -5,7 +5,6 @@ def test_default_timeout_values():
     from app.config import Settings
 
     s = Settings()
-    assert s.submit_command_timeout_chat == 60.0
     assert s.submit_command_timeout_approval == 60.0
     assert s.submit_command_timeout_background_task == 300.0
     assert s.submit_command_timeout_inbox == 300.0
@@ -13,16 +12,15 @@ def test_default_timeout_values():
 
 def test_timeout_values_overridable_via_env(monkeypatch):
     """Env vars override the per-call-site defaults."""
-    monkeypatch.setenv("SUBMIT_COMMAND_TIMEOUT_CHAT", "15")
+    monkeypatch.setenv("SUBMIT_COMMAND_TIMEOUT_APPROVAL", "15")
     monkeypatch.setenv("SUBMIT_COMMAND_TIMEOUT_BACKGROUND_TASK", "600")
 
     from app.config import Settings
 
     s = Settings()
-    assert s.submit_command_timeout_chat == 15.0
+    assert s.submit_command_timeout_approval == 15.0
     assert s.submit_command_timeout_background_task == 600.0
     # Unset ones keep defaults
-    assert s.submit_command_timeout_approval == 60.0
     assert s.submit_command_timeout_inbox == 300.0
 
 

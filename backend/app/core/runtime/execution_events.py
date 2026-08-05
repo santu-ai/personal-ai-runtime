@@ -95,7 +95,17 @@ def emit_execution_failed(
     item: "ScheduledExecution",
     *,
     terminal: bool,
+    dead_letter: bool | None = None,
 ) -> "Event":
+    """Emit ExecutionFailed.
+
+    ``dead_letter`` defaults to ``terminal`` (retries exhausted). Callers may
+    pass ``False`` for cancel / queue_full so those are not DLQ material.
+    """
+    if dead_letter is None:
+        dead_letter = bool(terminal)
+    if dead_letter:
+        item.dead_letter = True
     return kernel.emit_event(
         type=EVENT_EXECUTION_FAILED,
         aggregate_type=AGGREGATE_EXECUTION,
@@ -106,6 +116,7 @@ def emit_execution_failed(
             "error": item.error or "",
             "attempt": item.retry_count,
             "terminal": terminal,
+            "dead_letter": bool(dead_letter),
         },
         actor="scheduler",
         correlation_id=item.correlation_id or None,

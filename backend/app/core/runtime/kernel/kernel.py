@@ -327,6 +327,23 @@ class Kernel(QueryStateMixin, SovereigntyMixin):
         from . import execution_repository
         return execution_repository.count_scheduled_executions_by_status(self._db)
 
+    def list_dead_letter_executions(self) -> list:
+        """Return dead-lettered handler_executions (E-3)."""
+        from . import execution_repository
+        return execution_repository.list_dead_letter_executions(self._db)
+
+    def expire_stale_running_leases(self, *, ttl_seconds: int | None = None) -> int:
+        """Fail running executions past lease TTL (E-4)."""
+        from . import execution_repository
+        return execution_repository.expire_stale_running_leases(
+            self, ttl_seconds=ttl_seconds,
+        )
+
+    def replay_dead_letters(self, *, limit: int = 50) -> list[str]:
+        """Re-queue dead-lettered executions as pending (E-3)."""
+        from . import execution_repository
+        return execution_repository.replay_dead_letters(self, limit=limit)
+
     # --- 治理（ex-GovernanceMixin / governance_ops） -------------------------
 
     def request_approval(self, action: str, risk: str = 'low', ctx: dict[str, Any] | None = None, actor: str = 'system', correlation_id: str | None = None, expires_in_seconds: int = DEFAULT_APPROVAL_TTL_SECONDS) -> dict:

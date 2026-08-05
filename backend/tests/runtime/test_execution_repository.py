@@ -35,17 +35,25 @@ def seeded_db(tmp_path, monkeypatch):
                 created_at TEXT NOT NULL,
                 started_at TEXT NOT NULL DEFAULT '',
                 completed_at TEXT NOT NULL DEFAULT '',
-                error TEXT NOT NULL DEFAULT ''
+                error TEXT NOT NULL DEFAULT '',
+                dead_letter INTEGER NOT NULL DEFAULT 0
             );
             INSERT INTO handler_executions
               (id, event_seq, event_id, event_type, handler_name,
-               instance_id, status, created_at)
+               instance_id, status, created_at, started_at, dead_letter)
             VALUES
-              ('w_run_1', 1, 'e1', 'TimerFired', 'h1', 'inst_a', 'running', '2026-06-01T00:00:00'),
-              ('w_run_2', 2, 'e2', 'TimerFired', 'h2', 'inst_b', 'running', '2026-06-01T00:00:01'),
-              ('w_pen_1', 3, 'e3', 'ChatRequested', 'h3', 'inst_a', 'pending', '2026-06-01T00:00:02'),
-              ('w_pen_2', 4, 'e4', 'ChatRequested', 'h4', 'inst_c', 'retrying', '2026-06-01T00:00:03'),
-              ('w_done_1', 5, 'e5', 'ChatRequested', 'h5', 'inst_a', 'completed', '2026-06-01T00:00:04');
+              ('w_run_1', 1, 'e1', 'TimerFired', 'h1', 'inst_a', 'running',
+               '2026-06-01T00:00:00', '2020-01-01T00:00:00', 0),
+              ('w_run_2', 2, 'e2', 'TimerFired', 'h2', 'inst_b', 'running',
+               '2026-06-01T00:00:01', '2099-01-01T00:00:00', 0),
+              ('w_pen_1', 3, 'e3', 'ChatRequested', 'h3', 'inst_a', 'pending',
+               '2026-06-01T00:00:02', '', 0),
+              ('w_pen_2', 4, 'e4', 'ChatRequested', 'h4', 'inst_c', 'retrying',
+               '2026-06-01T00:00:03', '', 0),
+              ('w_done_1', 5, 'e5', 'ChatRequested', 'h5', 'inst_a', 'completed',
+               '2026-06-01T00:00:04', '', 0),
+              ('w_dlq_1', 6, 'e6', 'ChatRequested', 'h6', 'inst_a', 'failed',
+               '2026-06-01T00:00:05', '', 1);
             """
         )
     return db
@@ -61,7 +69,7 @@ def test_read_scheduled_execution_by_id(seeded_db):
 
 def test_read_scheduled_executions_no_filter_returns_all(seeded_db):
     items = er.read_scheduled_executions(seeded_db)
-    assert len(items) == 5
+    assert len(items) == 6
 
 
 def test_read_scheduled_executions_status_filter(seeded_db):
@@ -71,7 +79,7 @@ def test_read_scheduled_executions_status_filter(seeded_db):
 
 def test_read_scheduled_executions_instance_filter(seeded_db):
     inst_a = er.read_scheduled_executions(seeded_db, instance_id="inst_a")
-    assert {i.id for i in inst_a} == {"w_run_1", "w_pen_1", "w_done_1"}
+    assert {i.id for i in inst_a} == {"w_run_1", "w_pen_1", "w_done_1", "w_dlq_1"}
 
 
 def test_read_scheduled_executions_combined_filter(seeded_db):
@@ -89,6 +97,7 @@ def test_recover_excludes_completed(seeded_db):
     running, pending = er.recover_scheduled_executions(seeded_db)
     all_ids = {i.id for i in running} | {i.id for i in pending}
     assert "w_done_1" not in all_ids
+    assert "w_dlq_1" not in all_ids
 
 
 def test_count_scheduled_executions_by_status(seeded_db):
@@ -98,7 +107,19 @@ def test_count_scheduled_executions_by_status(seeded_db):
         "pending": 1,
         "retrying": 1,
         "completed": 1,
+        "failed": 1,
     }
+
+
+def test_list_stale_running_executions(seeded_db):
+    stale = er.list_stale_running_executions(seeded_db, ttl_seconds=600)
+    assert {i.id for i in stale} == {"w_run_1"}
+
+
+def test_list_dead_letter_executions(seeded_db):
+    dlq = er.list_dead_letter_executions(seeded_db)
+    assert {i.id for i in dlq} == {"w_dlq_1"}
+    assert dlq[0].dead_letter is True
 
 
 def test_constants_match_projection_vocabulary():

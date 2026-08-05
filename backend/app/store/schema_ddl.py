@@ -84,7 +84,6 @@ CREATE TABLE IF NOT EXISTS work_items (
     description TEXT,
     work_type TEXT DEFAULT 'task',
     parent_work_id TEXT,
-    parent_goal_id TEXT,
     status TEXT DEFAULT 'pending',
     priority INTEGER DEFAULT 0,
     dependencies_json TEXT,
@@ -239,12 +238,15 @@ CREATE TABLE IF NOT EXISTS handler_executions (
     created_at    TEXT    NOT NULL,
     started_at    TEXT    NOT NULL DEFAULT '',
     completed_at  TEXT    NOT NULL DEFAULT '',
-    error         TEXT    NOT NULL DEFAULT ''
+    error         TEXT    NOT NULL DEFAULT '',
+    dead_letter   INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_handler_executions_status
     ON handler_executions (status);
 CREATE INDEX IF NOT EXISTS idx_handler_executions_instance
     ON handler_executions (instance_id);
+CREATE INDEX IF NOT EXISTS idx_handler_executions_dead_letter
+    ON handler_executions (dead_letter);
 """
 
 TIMER_EVENTS_SCHEMA = """

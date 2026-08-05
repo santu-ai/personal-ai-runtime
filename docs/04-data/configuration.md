@@ -33,8 +33,6 @@ flowchart LR
 | `llm_temperature` | `0.7` | `LLM_TEMPERATURE` |
 | `llm_max_tokens` | `4096` | `LLM_MAX_TOKENS` |
 | `llm_timeout_seconds` | `60` | `LLM_TIMEOUT_SECONDS` |
-| `openai_api_key` | `""` | `OPENAI_API_KEY`（fallback） |
-| `anthropic_api_key` | `""` | `ANTHROPIC_API_KEY`（fallback） |
 | `ollama_base_url` | `http://localhost:11434/v1` | `OLLAMA_BASE_URL` |
 | `ollama_model` | `qwen2.5:7b` | `OLLAMA_MODEL` |
 
@@ -99,6 +97,7 @@ flowchart LR
 | `execution_shadow_compare` | `False` | `EXECUTION_SHADOW_COMPARE` |
 | `scheduler_max_concurrent` | `8` | `SCHEDULER_MAX_CONCURRENT` |
 | `scheduler_max_pending` | `256` | `SCHEDULER_MAX_PENDING` |
+| `running_lease_ttl_seconds` | `600` | `RUNNING_LEASE_TTL_SECONDS`（`0` 禁用 lease 回收） |
 | `handler_executions_retention_days` | `30` | `HANDLER_EXECUTIONS_RETENTION_DAYS`（`0` 禁用软清理） |
 
 ### 文件系统（agent coding）
@@ -124,11 +123,10 @@ flowchart LR
 
 | 字段 | 默认 | 环境变量 |
 |---|---|---|
-| `email_imap_host` | `imap.gmail.com` | `EMAIL_IMAP_HOST` |
-| `email_smtp_host` | `smtp.gmail.com` | `EMAIL_SMTP_HOST` |
-| `email_smtp_port` | `465` | `EMAIL_SMTP_PORT` |
 | `email_user` | `""` | `EMAIL_USER` |
 | `email_pass` | `""` | `EMAIL_PASS`（Gmail App Password，非登录密码） |
+
+Host/port 默认值在 `runtime_config.GMAIL_DEFAULTS`（非 Settings 字段）。`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` 由 `runtime_config` 经 `os.getenv` 读取，不进入 Settings。
 
 ### Telegram
 

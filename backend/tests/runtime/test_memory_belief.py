@@ -32,11 +32,15 @@ class TestMemoryBelief:
         assert dict(row)["decayed_at"] is not None
 
     def test_memory_revoked_zeroes_confidence(self, isolated_kernel):
+        """Revoke is modeled as MemoryUpdated(confidence=0) — no MemoryRevoked event."""
         k, _db = isolated_kernel
         k.emit_event("MemoryDerived", "memory", "m1", {
             "category": "fact", "content": "User works at Company X", "confidence": 0.6,
         }, actor="extractor")
-        k.emit_event("MemoryRevoked", "memory", "m1", {}, actor="extractor")
+        k.emit_event(
+            "MemoryUpdated", "memory", "m1",
+            {"confidence": 0.0}, actor="extractor",
+        )
 
         with k._db.get_db() as conn:
             row = conn.execute("SELECT * FROM memories WHERE id = ?", ("m1",)).fetchone()

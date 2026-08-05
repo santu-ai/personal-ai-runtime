@@ -36,7 +36,7 @@ async def test_execute_handler_marks_completed_and_emits(monkeypatch):
             "id": "act_1",
             "status": "running",
             "title": "Step 1",
-            "parent_goal_id": "goal_1",
+            "parent_work_id": "goal_1",
             "executable_plan": '{"steps":[{"tool":"echo","params":{"t":"1"}}]}',
         },
     )

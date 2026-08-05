@@ -76,24 +76,3 @@ export async function request<T>(url: string, options: RequestInit = {}): Promis
   }
   return JSON.parse(text) as T;
 }
-
-/** Multipart upload — do not set Content-Type (browser sets boundary). */
-export async function requestFormData<T>(url: string, formData: FormData): Promise<T> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: authHeaders(false),
-    body: formData,
-  });
-
-  if (res.status === 401) {
-    throw new ApiError("认证失败，请检查 AUTH_TOKEN 与 VITE_AUTH_TOKEN 是否一致", 401);
-  }
-  if (!res.ok) {
-    throw await parseError(res);
-  }
-  const text = await res.text();
-  if (!text) {
-    return undefined as T;
-  }
-  return JSON.parse(text) as T;
-}

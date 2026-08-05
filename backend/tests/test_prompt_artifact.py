@@ -518,7 +518,7 @@ class TestPromptCompilerArtifactAssembly:
             lambda msg, **kwargs: ("", []),
         )
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.query_pending_actions",
+            "app.core.runtime.read_ports.query_pending_work_items",
             lambda **kwargs: [],
         )
         monkeypatch.setattr(

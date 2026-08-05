@@ -8,13 +8,13 @@ class TestQueryStateW1:
             "WorkItemCreated",
             "work_item",
             "t-root",
-            payload={'work_type': 'goal', "title": "Root", "parent_goal_id": "g1", "parent_work_id": None},
+            payload={'work_type': 'goal', "title": "Root", "parent_work_id": "g1"},
         )
         k.emit_event(
             "WorkItemCreated",
             "work_item",
             "t-child",
-            payload={'work_type': 'goal', "title": "Child", "parent_goal_id": "g1", "parent_work_id": "t-root", "priority": 5},
+            payload={'work_type': 'goal', "title": "Child", "parent_work_id": "t-root", "priority": 5},
         )
 
         assert k.query_state("work_items", id="t-root")[0]["title"] == "Root"
@@ -22,9 +22,13 @@ class TestQueryStateW1:
         assert len(subs) == 1
         assert subs[0]["title"] == "Child"
 
-        roots = k.query_state("work_items", parent_goal_id="g1", root_only=True, order="priority_desc")
+        roots = k.query_state("work_items", parent_work_id="g1", order="priority_desc")
         assert len(roots) == 1
         assert roots[0]["id"] == "t-root"
+
+        top = k.query_state("work_items", root_only=True)
+        assert any(r["id"] == "g1" for r in top)
+        assert all(r["id"] != "t-root" for r in top)
 
     def test_tasks_status_and_limit(self, isolated_kernel):
         k, _db = isolated_kernel

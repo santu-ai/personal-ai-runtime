@@ -86,20 +86,19 @@ def test_progress_recalculation_byte_identical_after_rebuild(kernel):
         f"rebuild drift: before={dict(before)} after={dict(after)}"
     )
 
-def test_progress_supports_legacy_parent_goal_id(kernel):
-    """Children linked via parent_goal_id (legacy) also count toward goal progress."""
-    kernel.emit_event("WorkItemCreated", "work_item", "goal_legacy", payload={
-        "title": "Legacy-linked goal", "work_type": "goal", "progress": 0.0,
+def test_progress_counts_parent_work_id_children(kernel):
+    """Children linked via parent_work_id count toward goal progress."""
+    kernel.emit_event("WorkItemCreated", "work_item", "goal_linked", payload={
+        "title": "Linked goal", "work_type": "goal", "progress": 0.0,
     })
-    # Child with parent_goal_id (legacy pattern, e.g. /api/goals/{id}/actions)
-    kernel.emit_event("WorkItemCreated", "work_item", "task_legacy_1", payload={
-        "title": "Legacy child", "work_type": "task",
-        "parent_goal_id": "goal_legacy",
+    kernel.emit_event("WorkItemCreated", "work_item", "task_linked_1", payload={
+        "title": "Linked child", "work_type": "task",
+        "parent_work_id": "goal_linked",
     })
 
-    kernel.emit_event("WorkItemStatusChanged", "work_item", "task_legacy_1",
+    kernel.emit_event("WorkItemStatusChanged", "work_item", "task_linked_1",
                       payload={"status": "completed"})
-    parent = kernel.query_state("work_items", id="goal_legacy")[0]
+    parent = kernel.query_state("work_items", id="goal_linked")[0]
     assert parent["progress"] == 1.0
 
 def test_no_children_progress_unchanged(kernel):

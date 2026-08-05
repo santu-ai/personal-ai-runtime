@@ -138,7 +138,7 @@ def test_get_with_include_actions_events(client):
     goal = client.post("/api/work-items/", json={"title": "G", "work_type": "goal"})
     gid = goal.json()["id"]
     client.post("/api/work-items/", json={
-        "title": "A1", "work_type": "action", "parent_goal_id": gid,
+        "title": "A1", "work_type": "action", "parent_work_id": gid,
     })
 
     r = client.get(f"/api/work-items/{gid}?include=actions,events")
@@ -154,7 +154,7 @@ def test_get_with_include_tree(client):
     goal = client.post("/api/work-items/", json={"title": "G", "work_type": "goal"})
     gid = goal.json()["id"]
     client.post("/api/work-items/", json={
-        "title": "Child", "work_type": "task", "parent_goal_id": gid,
+        "title": "Child", "work_type": "task", "parent_work_id": gid,
     })
 
     r = client.get(f"/api/work-items/{gid}?include=tree")
@@ -184,7 +184,7 @@ def test_goal_delete_cascades_children(client):
     goal = client.post("/api/work-items/", json={"title": "G", "work_type": "goal"})
     gid = goal.json()["id"]
     child = client.post("/api/work-items/", json={
-        "title": "A1", "work_type": "action", "parent_goal_id": gid,
+        "title": "A1", "work_type": "action", "parent_work_id": gid,
     })
     child_id = child.json()["id"]
 
@@ -217,7 +217,7 @@ def test_action_completion_bumps_parent_activity(client):
     before = goal.json().get("last_activity_at")
 
     action = client.post("/api/work-items/", json={
-        "title": "A", "work_type": "action", "parent_goal_id": gid,
+        "title": "A", "work_type": "action", "parent_work_id": gid,
     })
     aid = action.json()["id"]
 
@@ -259,18 +259,18 @@ def test_decompose_not_found(client):
     assert r.status_code == 404
 
 
-def test_list_filters_by_parent_goal_id(client):
-    """GET /?parent_goal_id=X filters children of a goal."""
+def test_list_filters_by_parent_work_id(client):
+    """GET /?parent_work_id=X filters children of a goal."""
     goal = client.post("/api/work-items/", json={"title": "G", "work_type": "goal"})
     gid = goal.json()["id"]
     client.post("/api/work-items/", json={
-        "title": "A1", "work_type": "action", "parent_goal_id": gid,
+        "title": "A1", "work_type": "action", "parent_work_id": gid,
     })
     client.post("/api/work-items/", json={
         "title": "Other", "work_type": "task",
     })
 
-    r = client.get(f"/api/work-items/?parent_goal_id={gid}")
+    r = client.get(f"/api/work-items/?parent_work_id={gid}")
     assert r.status_code == 200
     titles = [item["title"] for item in r.json()]
     assert "A1" in titles

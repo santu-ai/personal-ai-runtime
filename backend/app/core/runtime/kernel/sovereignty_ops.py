@@ -310,8 +310,8 @@ def _reconcile_memory_index_after_restore(kernel) -> bool:
 def table_counts(kernel, tables: tuple[str, ...]) -> dict[str, int]:
     """Kernel-space row counts for sovereignty verification.
 
-    Tolerates dropped tables by returning 0 instead of raising — callers that
-    still reference removed table names get a sensible default.
+    Raises ``ValueError`` for unknown / missing tables so legacy table-name
+    references cannot be silently masked by a zero count.
     """
     out: dict[str, int] = {}
     with kernel._db.get_db() as conn:
@@ -319,8 +319,10 @@ def table_counts(kernel, tables: tuple[str, ...]) -> dict[str, int]:
             try:
                 row = conn.execute(f"SELECT COUNT(*) AS c FROM {table}").fetchone()
                 out[table] = int(row["c"])
-            except Exception:
-                out[table] = 0
+            except Exception as exc:
+                raise ValueError(
+                    f"table_counts: unknown or unreadable table {table!r}"
+                ) from exc
     return out
 
 def count_events(kernel, aggregate_type: str) -> int:
@@ -515,9 +517,7 @@ def snapshot(kernel) -> dict[str, Any]:
 def restore(kernel, snapshot: dict, read_only: bool = True) -> dict[str, Any]:
     """Import snapshot. Write import requires read_only=False.
 
-    This is the kernel-space equivalent of DigitalLegacy.import_all().
-    Only event_log-based snapshots are supported; legacy lossy snapshot
-    formats are rejected.
+    Only event_log-based snapshots are supported; other formats are rejected.
     """
     if read_only:
         return {
@@ -558,7 +558,6 @@ def _restore_from_snapshot(kernel, snapshot: dict) -> dict:
 def erase(kernel) -> dict:
     """Remove database and vector store files (irreversible).
 
-    This is the kernel-space equivalent of DigitalLegacy.destroy_all().
     After erasing, the Database singleton is reinitialized.
     """
     from app.config import settings

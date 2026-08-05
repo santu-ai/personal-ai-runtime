@@ -29,4 +29,10 @@
 - **修复"已锁定的现状"要同步更新锁定测试**：若产品决策改变了一个被测试锁定的行为（如 `notify_goal_action_completed` 从"0/0 噪音通知"改为"无子项跳过通知"），必须同步改写对应锁定测试为新行为，而不是留旧测试继续锁旧行为；修复先判定等价性（逐分支比对），再改测试。
 - **测防御分支用 fake kernel 直接构造输入**：真实 `query_state` 会在 SQL 层过滤掉非法输入（如非法日期字符串），测不到防御逻辑；用 fake kernel 注入这类行来锁定回退行为。
 
+## 工具索引滞后陷阱（本次实测两次）
+
+- IDE 的 Grep/Glob/Read 索引**可能滞后于磁盘**：文件已删除/重命名但 grep 仍显示存在（或反之）。本次 `task_engine.py`、`frontend/src/api/goals.ts` 均被 grep 报存在含 `parent_goal_id`，**磁盘上实际不存在**。
+- **裁决以磁盘为准**：搜到可疑残留时，先用 `Test-Path` / `cmd /c dir /b <dir>` 核实文件真实存在，再决定是否动手。避免基于 stale 索引做"删除/修复"导致白改或误删。
+- 同理，重命名/删除类全仓清理后，验证也要用磁盘扫描（`Get-ChildItem ... | Select-String`）而不是 grep 结果作为"清零"证据。
+
 文档语言与交叉引用纪律见 [`docs/05-engineering/development.md`](../docs/05-engineering/development.md)。

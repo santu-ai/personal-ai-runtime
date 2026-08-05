@@ -18,9 +18,25 @@ from app.store.database import Database
 
 def test_declared_event_types_match_constants_count():
     types = declared_event_types()
-    assert len(types) == 46
+    assert len(types) == 50
     assert EVENT_WORK_ITEM_CREATED in types
+    assert "ClaimRatified" in types
+    assert "MemoryDecayed" in types
     assert "schema_version" not in types
+
+
+def test_work_item_schema_versions_explicitly_registered():
+    """WorkItem* events must stay in EVENT_SCHEMA_VERSION_OVERRIDES (mechanism live)."""
+    from app.core.runtime.kernel.constants import (
+        EVENT_SCHEMA_VERSION_OVERRIDES,
+        EVENT_WORK_ITEM_STATUS_CHANGED,
+        EVENT_WORK_ITEM_UPDATED,
+    )
+
+    assert EVENT_WORK_ITEM_CREATED in EVENT_SCHEMA_VERSION_OVERRIDES
+    assert EVENT_WORK_ITEM_UPDATED in EVENT_SCHEMA_VERSION_OVERRIDES
+    assert EVENT_WORK_ITEM_STATUS_CHANGED in EVENT_SCHEMA_VERSION_OVERRIDES
+    assert event_schema_version(EVENT_WORK_ITEM_CREATED) >= 1
 
 
 def test_declared_event_types_match_ci_parser():

@@ -124,6 +124,38 @@ def record_baseline(
     return 0
 
 
+def parse_projector_event_types() -> set[str]:
+    """Collect event type strings registered via ``@projector(...)``."""
+    kernel_dir = ROOT / "backend" / "app" / "core" / "runtime" / "kernel"
+    found: set[str] = set()
+    projector_re = re.compile(
+        r'@projector\(\s*((?:"[^"]+"\s*,\s*)*"[^"]+")\s*\)',
+        re.MULTILINE,
+    )
+    string_re = re.compile(r'"([^"]+)"')
+    for path in kernel_dir.glob("projectors_*.py"):
+        text = path.read_text(encoding="utf-8")
+        for match in projector_re.finditer(text):
+            found.update(string_re.findall(match.group(1)))
+    return found
+
+
+def check_projectors_declared(*, verbose: bool = True) -> int:
+    """Fail when a projector registers an event type missing from constants."""
+    declared = set(parse_declared_event_types())
+    registered = parse_projector_event_types()
+    undeclared = sorted(registered - declared)
+    if undeclared:
+        if verbose:
+            print("  [FAIL] projector-registered event types not declared in constants.py:")
+            for etype in undeclared:
+                print(f"    {etype}")
+        return 1
+    if verbose:
+        print(f"  [OK] all {len(registered)} projector event type(s) declared")
+    return 0
+
+
 def check(*, verbose: bool = True) -> int:
     current = compute_versions()
     baseline = baseline_versions(load_baseline())
@@ -143,6 +175,9 @@ def check(*, verbose: bool = True) -> int:
             violations += 1
             if verbose:
                 print(f"  [FAIL] {etype}: override version {ver} < 1")
+
+    if check_projectors_declared(verbose=verbose) != 0:
+        violations += 1
 
     if not baseline:
         violations += 1

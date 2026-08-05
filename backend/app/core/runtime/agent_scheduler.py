@@ -29,7 +29,7 @@ from app.core.runtime.execution_events import (
 _SHADOW_FIELDS: tuple[str, ...] = (
     "id", "status", "retry_count", "created_at", "started_at", "completed_at",
     "error", "policy_json", "event_seq", "event_id", "handler_name",
-    "instance_id", "correlation_id",
+    "instance_id", "correlation_id", "dead_letter",
 )
 
 
@@ -313,7 +313,7 @@ class Scheduler:
             self._emit_verify(
                 item,
                 lambda it=item: emit_execution_failed(
-                    self._kernel, it, terminal=True,
+                    self._kernel, it, terminal=True, dead_letter=False,
                 ),
             )
             rejected.append(item)
@@ -342,21 +342,20 @@ class Scheduler:
     # --- scheduling loop -------------------------------------------------
 
     async def _scheduler_loop(self) -> None:
-        """Main scheduling loop — process pending ScheduledExecutions."""
+        """Main scheduling loop — process pending ScheduledExecutions.
+
+        E-7: fill concurrent slots per tick without awaiting the whole batch.
+        A slow ChatRequested (300s) must not block starting other pending items
+        once a slot frees.
+        """
         while self._running:
             try:
                 limit = _max_concurrent()
-                batch = self._pending[:limit]
-                self._pending = self._pending[limit:]
-
-                if batch:
-                    tasks: list[asyncio.Task] = []
-                    for item in batch:
-                        task = asyncio.create_task(self._process_work_item(item))
-                        self._active[item.id] = (item, task)
-                        task.add_done_callback(self._forget_active(item.id))
-                        tasks.append(task)
-                    await asyncio.gather(*tasks, return_exceptions=True)
+                while self._pending and len(self._active) < limit:
+                    item = self._pending.pop(0)
+                    task = asyncio.create_task(self._process_work_item(item))
+                    self._active[item.id] = (item, task)
+                    task.add_done_callback(self._forget_active(item.id))
 
                 await asyncio.sleep(self._tick_interval)
             except asyncio.CancelledError:
@@ -378,7 +377,9 @@ class Scheduler:
             item.transition_to("failed")
             self._emit_verify(
                 item,
-                lambda: emit_execution_failed(self._kernel, item, terminal=True),
+                lambda: emit_execution_failed(
+                    self._kernel, item, terminal=True, dead_letter=False,
+                ),
             )
             return
 
@@ -400,7 +401,9 @@ class Scheduler:
                 item.transition_to("failed")
                 self._emit_verify(
                     item,
-                    lambda: emit_execution_failed(self._kernel, item, terminal=True),
+                    lambda: emit_execution_failed(
+                        self._kernel, item, terminal=True, dead_letter=True,
+                    ),
                 )
                 return
 
@@ -416,7 +419,9 @@ class Scheduler:
                 item.transition_to("failed")
                 self._emit_verify(
                     item,
-                    lambda: emit_execution_failed(self._kernel, item, terminal=True),
+                    lambda: emit_execution_failed(
+                        self._kernel, item, terminal=True, dead_letter=False,
+                    ),
                 )
                 return
             item.error = None
@@ -435,7 +440,9 @@ class Scheduler:
                     item.transition_to("failed")
                     self._emit_verify(
                         item,
-                        lambda: emit_execution_failed(self._kernel, item, terminal=True),
+                        lambda: emit_execution_failed(
+                        self._kernel, item, terminal=True, dead_letter=False,
+                    ),
                     )
             raise
         except asyncio.TimeoutError:
@@ -456,7 +463,9 @@ class Scheduler:
             item.transition_to("failed")
             self._emit_verify(
                 item,
-                lambda: emit_execution_failed(self._kernel, item, terminal=True),
+                lambda: emit_execution_failed(
+                        self._kernel, item, terminal=True, dead_letter=True,
+                    ),
             )
             return
 
@@ -488,7 +497,9 @@ class Scheduler:
             item.transition_to("failed")
             self._emit_verify(
                 item,
-                lambda: emit_execution_failed(self._kernel, item, terminal=True),
+                lambda: emit_execution_failed(
+                    self._kernel, item, terminal=True, dead_letter=False,
+                ),
             )
             return
         if item.can_retry():
@@ -515,7 +526,7 @@ class Scheduler:
                 self._emit_verify(
                     item,
                     lambda: emit_execution_failed(
-                        self._kernel, item, terminal=True,
+                        self._kernel, item, terminal=True, dead_letter=False,
                     ),
                 )
                 logger.warning(
@@ -532,7 +543,9 @@ class Scheduler:
             item.transition_to("failed")
             self._emit_verify(
                 item,
-                lambda: emit_execution_failed(self._kernel, item, terminal=True),
+                lambda: emit_execution_failed(
+                    self._kernel, item, terminal=True, dead_letter=True,
+                ),
             )
             logger.warning(
                 "Scheduler: %s failed after %d retries: %s",
@@ -573,7 +586,7 @@ class Scheduler:
                 self._emit_verify(
                     item,
                     lambda it=item: emit_execution_failed(
-                        self._kernel, it, terminal=True,
+                        self._kernel, it, terminal=True, dead_letter=False,
                     ),
                 )
             else:
@@ -590,13 +603,100 @@ class Scheduler:
                 self._emit_verify(
                     item,
                     lambda it=item: emit_execution_failed(
-                        self._kernel, it, terminal=True,
+                        self._kernel, it, terminal=True, dead_letter=False,
                     ),
                 )
             if not task.done():
                 found = True
                 task.cancel()
         return found
+
+    def reclaim_stale_leases(self, ttl_seconds: float) -> int:
+        """Fail ``running`` executions whose lease (started_at) exceeded TTL (E-4).
+
+        Cancels in-flight tasks, emits ``ExecutionFailed(timeout)``, and either
+        re-queues (retries remaining) or marks ``dead_letter`` (exhausted).
+        Returns the number of reclaimed executions.
+        """
+        from datetime import UTC, datetime, timedelta
+
+        if ttl_seconds <= 0:
+            return 0
+        try:
+            running = self._kernel.read_scheduled_executions(status="running")
+        except Exception:
+            logger.exception("Scheduler: failed to scan running executions for lease")
+            return 0
+
+        cutoff = datetime.now(UTC) - timedelta(seconds=float(ttl_seconds))
+        reclaimed = 0
+        for item in running:
+            started = item.started_at or ""
+            if not started:
+                continue
+            try:
+                started_dt = datetime.fromisoformat(started.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if started_dt.tzinfo is None:
+                started_dt = started_dt.replace(tzinfo=UTC)
+            if started_dt > cutoff:
+                continue
+
+            # Drop in-flight task first so CancelledError path sees failed status.
+            active = self._active.pop(item.id, None)
+            if active is not None:
+                _it, task = active
+                if not task.done():
+                    task.cancel()
+
+            # Prefer live object from _active when present (has _event).
+            live = active[0] if active is not None else item
+            if live.status != "running":
+                # Already terminal elsewhere.
+                continue
+            live.error = "timeout"
+            live.transition_to("failed")
+            terminal = not live.can_retry()
+            self._emit_verify(
+                live,
+                lambda it=live, term=terminal: emit_execution_failed(
+                    self._kernel, it, terminal=term, dead_letter=term,
+                ),
+            )
+            if not terminal:
+                live.retry_count += 1
+                live.transition_to("retrying")
+                self._emit_verify(
+                    live,
+                    lambda it=live: emit_execution_retried(
+                        self._kernel, it, reason="timeout", status="retrying",
+                    ),
+                )
+                live.transition_to("pending")
+                self._emit_verify(
+                    live,
+                    lambda it=live: emit_execution_retried(
+                        self._kernel, it, reason="timeout", status="pending",
+                    ),
+                )
+                if len(self._pending) < _max_pending():
+                    self._pending.append(live)
+                else:
+                    live.error = QUEUE_FULL_ERROR
+                    live.transition_to("failed")
+                    self._emit_verify(
+                        live,
+                        lambda it=live: emit_execution_failed(
+                            self._kernel, it, terminal=True, dead_letter=True,
+                        ),
+                    )
+            reclaimed += 1
+            logger.warning(
+                "Scheduler: reclaimed stale lease %s (%s) after %ss",
+                live.id, live.handler_name, ttl_seconds,
+            )
+        return reclaimed
 
     def cancel_executions_for(self, action_id: str) -> int:
         """Cancel pending/in-flight ExecuteRequested handlers for ``action_id``."""
@@ -625,16 +725,18 @@ class Scheduler:
 
     async def flush(self) -> None:
         """Process ALL pending ScheduledExecutions immediately. For test use only."""
-        while self._pending:
-            items = self._pending[:]
-            self._pending = []
-            tasks: list[asyncio.Task] = []
-            for item in items:
+        while self._pending or self._active:
+            while self._pending and len(self._active) < _max_concurrent():
+                item = self._pending.pop(0)
                 task = asyncio.create_task(self._process_work_item(item))
                 self._active[item.id] = (item, task)
                 task.add_done_callback(self._forget_active(item.id))
-                tasks.append(task)
-            await asyncio.gather(*tasks, return_exceptions=True)
+            if not self._active:
+                break
+            await asyncio.gather(
+                *[t for _item, t in list(self._active.values())],
+                return_exceptions=True,
+            )
 
     def status_counts(self) -> dict[str, int]:
         """Return a snapshot of ScheduledExecution status distribution."""

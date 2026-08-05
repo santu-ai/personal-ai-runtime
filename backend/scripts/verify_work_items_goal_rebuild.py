@@ -50,7 +50,7 @@ SCENARIO: list[tuple] = [
     ("WorkItemCreated", "work_item", "wc_3", {
         "title": "Legacy action",
         "work_type": "task",
-        "parent_goal_id": "wg_1",
+        "parent_work_id": "wg_1",
     }),
 ]
 

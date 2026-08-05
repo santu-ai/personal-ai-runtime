@@ -70,7 +70,7 @@ dependency-sync:
 # Static checks — no shared DB; safe to run in parallel.
 BACKEND_CI_STATIC := dependency-sync backend-compileall lint typecheck version-sync \
 	policy-consistency docs-links docs-table-sync docs-line-refs docs-numbers boundary \
-	layer-deps execution-ownership architecture-check event-schema \
+	layer-deps execution-ownership architecture-check event-schema unused-config \
 	non-sovereign-attachments single-process-control-plane dynamic-imports except-hygiene \
 	docs-gen-check
 
@@ -197,6 +197,9 @@ event-schema-snapshot:
 
 event-schema-record:
 	cd $(BACKEND_DIR) && python3 -m scripts.check_event_schema --record
+
+unused-config:
+	cd $(BACKEND_DIR) && python3 -m scripts.check_unused_config
 
 non-sovereign-attachments:
 	cd $(BACKEND_DIR) && python3 -m scripts.check_non_sovereign_attachments

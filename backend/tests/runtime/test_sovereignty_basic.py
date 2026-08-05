@@ -32,6 +32,15 @@ def test_table_counts(kernel):
     assert counts["work_items"] >= 1
     assert counts["event_log"] >= 1
 
+
+def test_table_counts_rejects_unknown_table(kernel):
+    k = kernel
+    try:
+        k.table_counts(("definitely_not_a_table",))
+        raise AssertionError("expected ValueError for unknown table")
+    except ValueError as exc:
+        assert "definitely_not_a_table" in str(exc)
+
 def test_export_chat_rows(kernel):
     k = kernel
     k.emit_event(

@@ -303,16 +303,16 @@ Reaction 不是独立"概念"，而是 `subscribe + invoke + produce` 的组合�
 | 指标 | 红线（上限） | 对应 `BASELINE` 键 |
 |---|---|---|
 | `core/runtime/` 文件数 | 62 | `runtime_files` |
-| `constants.py` 事件类型数 | 46 | `event_types` |
+| `constants.py` 事件类型数 | 50 | `event_types` |
 | `query_state` selector 分支数 | 17 | `query_state_selectors` |
 | Fragment 注册数 | 9 | `fragments` |
 | Governed 投影表数 | 15 | `governed_tables` |
 | Projector 文件数 | 6 | `projector_files` |
-| God Object 最大 LOC（Kernel/Brain/MCPHub） | 604 | `god_object_max_loc` |
+| God Object 最大 LOC（Kernel/Brain/MCPHub） | 621 | `god_object_max_loc` |
 
 权威源是 [`check_concept_growth.py`](../../backend/scripts/check_concept_growth.py) 的 `BASELINE`；本表必须与之逐项一致（CI 校验）。原则说明见 [architecture-principles.md](architecture-principles.md)。
 
-**子系统 LOC 预算（G2，与 façade God Object 分离）**：`read_model_sql`（`sql_fragments.py` + `snapshot_export.py` + `query_builder.py`）≤900；`sovereignty`（`sovereignty_ops.py`）≤850；`mcp_registry`（`builtin_registration/` + shim）≤1200。文件清单锁定在脚本 `SUBSYSTEM_LOC_FILES`。
+**子系统 LOC 预算（G2，与 façade God Object 分离）**：`read_model_sql`（`query_builder.py`）≤900；`sovereignty`（`sovereignty_ops.py`）≤850；`mcp_registry`（`builtin_registration/`）≤1200；另对 `agent_scheduler`≤850、`mcp_mesh`≤800、`fastapi_main`≤800、`inbox_product`≤600、`read_ports_work`≤600 锁定护栏。文件清单锁定在脚本 `SUBSYSTEM_LOC_FILES`。`agent_scheduler` 850 含 E-4 lease reclaim / DLQ 路径；façade `god_object_max_loc` 621 仅含 E-3/E-4 薄包装（实现在 `execution_repository`）。
 
 ---
 

@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 from app.core.runtime.handler_registry import subscribe
 from app.core.runtime.plan_resume import (
     PlanResume,
-    peek_plan_resume,
     register_plan_resume,
     take_plan_resume,
 )
@@ -121,26 +120,22 @@ async def on_approve_requested(ctx: "ExecutionContext", event: "Event") -> None:
             logger.warning("Approve: conversation resume failed: %s", exc)
 
     # After the approved tool runs, continue any paused execute/background plan.
+    # E-6: take first (atomic claim) so concurrent Approve cannot double-resume;
+    # re-register on dispatch failure so a retry can succeed.
     plan_resumed = False
     if cap_result["status"] == "success":
-        resume = peek_plan_resume(approval_id, kernel=kernel)
+        resume = take_plan_resume(approval_id, kernel=kernel)
         if resume is not None:
-            # Fold the just-approved step output into previous_output for
-            # depends_on_output on subsequent steps.
             approved_step = max(resume.resume_from - 1, 0)
             updated = resume.with_step_output(approved_step, result_str)
             try:
                 if _dispatch_plan_resume(ctx, event, updated):
-                    take_plan_resume(approval_id, kernel=kernel)
                     plan_resumed = True
-                else:
-                    # Invalid resume record — drop it.
-                    take_plan_resume(approval_id, kernel=kernel)
+                # Invalid resume (no action_id) — already taken, leave dropped.
             except Exception:
                 logger.exception(
                     "Approve: failed to dispatch plan resume for %s", approval_id
                 )
-                # Keep updated resume so a retry/manual re-dispatch can succeed.
                 register_plan_resume(approval_id, updated, kernel=kernel)
     else:
         take_plan_resume(approval_id, kernel=kernel)

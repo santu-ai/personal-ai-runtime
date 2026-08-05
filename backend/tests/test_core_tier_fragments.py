@@ -70,7 +70,7 @@ class TestCoreTierCompile:
             ),
         )
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.query_pending_actions",
+            "app.core.runtime.read_ports.query_pending_work_items",
             lambda **kwargs: [{"status": "pending", "title": "Finish report"}],
         )
         monkeypatch.setattr(
@@ -115,7 +115,7 @@ class TestCoreTierCompile:
             _retrieve_with_sources,
         )
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.query_pending_actions",
+            "app.core.runtime.read_ports.query_pending_work_items",
             lambda **kwargs: [],
         )
         monkeypatch.setattr(
@@ -150,7 +150,7 @@ class TestCoreTierCompile:
             ),
         )
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.query_pending_actions",
+            "app.core.runtime.read_ports.query_pending_work_items",
             lambda **kwargs: [],
         )
         monkeypatch.setattr(
@@ -185,7 +185,7 @@ class TestEmptyFragmentBehavior:
         from app.fragments.register import register_all_fragments
 
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.query_pending_actions",
+            "app.core.runtime.read_ports.query_pending_work_items",
             lambda **kwargs: [],
         )
         monkeypatch.setattr(

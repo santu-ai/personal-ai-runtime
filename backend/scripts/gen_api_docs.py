@@ -91,6 +91,16 @@ def _module_link_from_tags(tags: list) -> str:
     return f"`{tag}`"
 
 
+def _surface_from_description(description: str | None, summary: str | None) -> str:
+    """Extract @public / @internal contract tag from OpenAPI description/summary."""
+    blob = f"{description or ''}\n{summary or ''}"
+    if "**@public**" in blob or "@public" in blob:
+        return "public"
+    if "**@internal**" in blob or "@internal" in blob:
+        return "internal"
+    return "—"
+
+
 def collect_routes() -> list[dict]:
     from app.main import app
 
@@ -112,6 +122,7 @@ def collect_routes() -> list[dict]:
                 "methods": [method.upper()],
                 "path": path,
                 "auth": _auth_label(path),
+                "surface": _surface_from_description(op.get("description"), summary),
                 "summary": summary,
                 "module": module,
             })
@@ -122,6 +133,7 @@ def collect_routes() -> list[dict]:
         "methods": ["WEBSOCKET"],
         "path": "/ws",
         "auth": "auth",
+        "surface": "—",
         "summary": "Real-time notification push",
         "module": "[`main.py`](../../backend/app/main.py)",
     })
@@ -146,12 +158,13 @@ def render(rows: list[dict]) -> str:
         else:
             prefix = f"/api/{group}"
             parts.append(f"## {group} — `{prefix}`（{module}）\n\n")
-        parts.append("| 方法 | 路径 | 认证 | 摘要 |\n|---|---|---|---|\n")
+        parts.append("| 方法 | 路径 | 认证 | 契约 | 摘要 |\n|---|---|---|---|---|\n")
         for row in group_rows:
             methods = ", ".join(row["methods"])
             summary = row["summary"].replace("|", "\\|").replace("\n", " ")
             parts.append(
-                f"| {methods} | `{row['path']}` | {row['auth']} | {summary} |\n"
+                f"| {methods} | `{row['path']}` | {row['auth']} | "
+                f"{row['surface']} | {summary} |\n"
             )
         parts.append("\n")
     return "".join(parts).rstrip() + "\n"

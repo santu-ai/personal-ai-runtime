@@ -138,6 +138,10 @@ class Settings(BaseSettings):
     """Hard cap on in-memory pending ScheduledExecutions. New enqueue beyond
     this limit is rejected (ExecutionFailed error=queue_full). Crash recovery
     may temporarily exceed the cap while draining durable pending rows."""
+    running_lease_ttl_seconds: int = 600
+    """Wall-clock TTL for ``handler_executions`` rows stuck in ``running``.
+    RuntimeLoop maintenance emits ExecutionFailed(timeout) so Scheduler
+    recovery can re-queue or dead-letter. 0 disables lease expiry."""
     handler_executions_retention_days: int = 30
     """Soft-prune terminal ``handler_executions`` projection rows older than
     this many days (completed/failed). Event log is unchanged; a full rebuild
@@ -171,8 +175,7 @@ class Settings(BaseSettings):
     # submit_command emits an event and awaits a matching *Completed event.
     # Each named timeout controls how long the await blocks before returning
     # {"error": "timeout"}. Tune per call site — short for interactive paths
-    # (chat / approval), long for background work (inbox, plan execution).
-    submit_command_timeout_chat: float = 60.0
+    # (approval), long for background work (inbox, plan execution).
     submit_command_timeout_approval: float = 60.0
     submit_command_timeout_background_task: float = 300.0
     submit_command_timeout_inbox: float = 300.0
@@ -182,15 +185,14 @@ class Settings(BaseSettings):
     # Agent scheduling is owned by AgentScheduler + work_items API.
 
     # --- Optional LLM fallback providers ---
-    openai_api_key: str = ""
-    anthropic_api_key: str = ""
+    # OPENAI_API_KEY / ANTHROPIC_API_KEY are read via os.getenv in runtime_config
+    # (not Settings fields) so provider keys stay out of the Settings surface.
     ollama_base_url: str = "http://localhost:11434/v1"
     ollama_model: str = "qwen2.5:7b"
 
     # --- Email (Gmail IMAP/SMTP) ---
-    email_imap_host: str = "imap.gmail.com"
-    email_smtp_host: str = "smtp.gmail.com"
-    email_smtp_port: int = 465
+    # Host/port defaults live in runtime_config.GMAIL_DEFAULTS; Settings only
+    # carries credentials that must be env-configurable.
     email_user: str = ""
     email_pass: str = ""
 

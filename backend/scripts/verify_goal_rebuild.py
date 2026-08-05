@@ -2,11 +2,11 @@
 """Goal rebuild verification — validate parent-child relationships in work_items.
 
 v1.0: goals table dropped; goal rows live in work_items (work_type='goal').
-Children reference the parent goal via parent_goal_id.
+Children reference the parent goal via parent_work_id.
 
 Verifies:
 1. All goal rows exist after rebuild
-2. parent_goal_id references are valid (parent exists + event_log)
+2. parent_work_id references are valid (parent exists + event_log)
 3. Goal parent-child chain is intact
 """
 
@@ -30,7 +30,7 @@ def main() -> int:
             "status": "active",
         }, actor="verify")
         k.emit_event("WorkItemCreated", "work_item", "goal_child", payload={
-            "title": "Child Goal", "parent_goal_id": "goal_parent",
+            "title": "Child Goal", "parent_work_id": "goal_parent",
             "importance": 0.5, "work_type": "goal", "status": "active",
         }, actor="verify")
         k.emit_event("WorkItemUpdated", "work_item", "goal_child", payload={
@@ -40,7 +40,7 @@ def main() -> int:
         with db.get_db() as conn:
             conn.execute("PRAGMA foreign_keys = OFF")
             rows = conn.execute(
-                "SELECT id, title, parent_goal_id, progress "
+                "SELECT id, title, parent_work_id, progress "
                 "FROM work_items WHERE work_type = 'goal' ORDER BY id"
             ).fetchall()
 
@@ -56,9 +56,9 @@ def main() -> int:
             if child is None:
                 print("FAIL: Child goal not found", file=sys.stderr)
                 return 1
-            if child["parent_goal_id"] != "goal_parent":
+            if child["parent_work_id"] != "goal_parent":
                 print(
-                    f"FAIL: Child parent_goal_id mismatch: {child['parent_goal_id']}",
+                    f"FAIL: Child parent_work_id mismatch: {child['parent_work_id']}",
                     file=sys.stderr,
                 )
                 return 1
@@ -69,10 +69,10 @@ def main() -> int:
             found = conn.execute(
                 "SELECT 1 FROM event_log "
                 "WHERE aggregate_type='work_item' AND aggregate_id=? LIMIT 1",
-                (child["parent_goal_id"],),
+                (child["parent_work_id"],),
             ).fetchone()
             if not found:
-                print(f"FAIL: parent {child['parent_goal_id']!r} not in event_log",
+                print(f"FAIL: parent {child['parent_work_id']!r} not in event_log",
                       file=sys.stderr)
                 return 1
 
@@ -89,7 +89,7 @@ def main() -> int:
                 return 1
 
     print("GOAL REBUILD VERIFICATION PASSED — "
-          "goals with parent_goal_id traceable to event_log")
+          "goals with parent_work_id traceable to event_log")
     return 0
 
 

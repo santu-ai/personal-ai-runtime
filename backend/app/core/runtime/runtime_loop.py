@@ -171,30 +171,45 @@ class RuntimeLoop:
 
                 if not handler_name:
                     continue
-                kernel.emit_event(
-                    "TimerFired", "timer", timer_id,
-                    payload={
-                        "handler_name": handler_name,
-                        "fired_at": now_iso,
-                        "cron_expr": cron_expr,
-                        "payload": payload,
-                    },
-                    actor="runtime_loop",
-                )
-                if schedule_type == "cron" and cron_expr:
-                    next_fire = self._next_cron_fire(cron_expr, now)
-                    new_tid = f"t_{uuid.uuid4().hex[:12]}"
+                # E-9: deactivate only via TimerFired projector (same txn as
+                # emit). If emit raises, the row stays ``active`` for retry.
+                try:
                     kernel.emit_event(
-                        "TimerCreated", "timer", new_tid,
+                        "TimerFired", "timer", timer_id,
                         payload={
                             "handler_name": handler_name,
-                            "schedule_type": "cron",
+                            "fired_at": now_iso,
                             "cron_expr": cron_expr,
-                            "fire_at": next_fire,
                             "payload": payload,
                         },
                         actor="runtime_loop",
                     )
+                except Exception:
+                    logger.exception(
+                        "RuntimeLoop TimerFired emit failed for %s — left active",
+                        timer_id,
+                    )
+                    continue
+                if schedule_type == "cron" and cron_expr:
+                    next_fire = self._next_cron_fire(cron_expr, now)
+                    new_tid = f"t_{uuid.uuid4().hex[:12]}"
+                    try:
+                        kernel.emit_event(
+                            "TimerCreated", "timer", new_tid,
+                            payload={
+                                "handler_name": handler_name,
+                                "schedule_type": "cron",
+                                "cron_expr": cron_expr,
+                                "fire_at": next_fire,
+                                "payload": payload,
+                            },
+                            actor="runtime_loop",
+                        )
+                    except Exception:
+                        logger.exception(
+                            "RuntimeLoop failed to reschedule cron timer %s",
+                            timer_id,
+                        )
         except Exception:
             logger.exception("RuntimeLoop timer scan error")
 
@@ -300,6 +315,11 @@ class RuntimeLoop:
         except Exception:
             logger.exception("handler_executions prune failed")
 
+        try:
+            await self._reclaim_stale_leases()
+        except Exception:
+            logger.exception("Running lease expiry failed")
+
     def _drain_memory_index_repairs(self) -> None:
         """Delegate durable repair drain to Kernel ABI (no private ``_db``)."""
         kernel.drain_memory_index_repairs()
@@ -316,6 +336,19 @@ class RuntimeLoop:
         if n:
             logger.info("Pruned %d stale handler_executions row(s)", n)
 
+    async def _reclaim_stale_leases(self) -> None:
+        """E-4: fail ``running`` handler_executions past ``running_lease_ttl_seconds``."""
+        from app.core.runtime.agent_scheduler import ensure_scheduler, get_scheduler
+
+        ttl = int(settings.running_lease_ttl_seconds)
+        if ttl <= 0:
+            return
+        await ensure_scheduler(kernel)
+        sch = get_scheduler(kernel)
+        n = sch.reclaim_stale_leases(ttl)
+        if n:
+            logger.info("Reclaimed %d stale running execution lease(s)", n)
+
     async def _check_reactions(self) -> None:
         """Evaluate registered Reactions.
 
@@ -327,7 +360,7 @@ class RuntimeLoop:
         registry = get_reaction_registry()
         await asyncio.to_thread(registry.evaluate_cycle, kernel)
 
-    # --- Backward compat (kept for the staleness reaction path) ----------------
+    # --- Crash recovery for background work items --------------------------------
 
     def _recover_interrupted_background_tasks(self) -> int:
         """Reset durable ``running`` background work items to ``pending`` after restart.
@@ -431,7 +464,7 @@ class RuntimeLoop:
 
         async def _dispatch_bg(w_id: str) -> None:
             try:
-                await kernel.submit_command(
+                result = await kernel.submit_command(
                     EVENT_EXECUTE_REQUESTED,
                     "action",
                     f"exec_{w_id}",
@@ -439,6 +472,30 @@ class RuntimeLoop:
                     actor="background",
                     timeout=settings.submit_command_timeout_background_task,
                 )
+                # submit_command returns error dicts (timeout / queue_full / …)
+                # instead of raising — mark the work item failed so it does not
+                # stay stuck in ``running`` until process restart (E-2).
+                if isinstance(result, dict):
+                    status = result.get("status")
+                    err = result.get("error") or ""
+                    if status in ("timeout", "error") or err in (
+                        "timeout", "queue_full",
+                    ) or err:
+                        logger.warning(
+                            "Background work item %s ended with error: %s",
+                            w_id,
+                            err or status,
+                        )
+                        kernel.emit_event(
+                            EVENT_WORK_ITEM_STATUS_CHANGED,
+                            AGGREGATE_WORK_ITEM,
+                            w_id,
+                            payload={
+                                "status": "failed",
+                                "error": str(err or status or "dispatch_failed"),
+                            },
+                            actor="background",
+                        )
             except asyncio.CancelledError:
                 # Shutdown cancel: leave row as running; start() recovery
                 # re-queues it as pending on next process boot.

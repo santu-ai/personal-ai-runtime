@@ -79,6 +79,7 @@ class ScheduledExecution:
     completed_at: str | None = None
 
     error: str | None = None
+    dead_letter: bool = False
 
     _event: object | None = field(default=None, repr=False, compare=False)
 
@@ -119,6 +120,7 @@ class ScheduledExecution:
             "started_at": self.started_at or "",
             "completed_at": self.completed_at or "",
             "error": self.error or "",
+            "dead_letter": 1 if self.dead_letter else 0,
         }
 
     @classmethod
@@ -147,4 +149,5 @@ class ScheduledExecution:
             started_at=row.get("started_at") or None,
             completed_at=row.get("completed_at") or None,
             error=row.get("error") or None,
+            dead_letter=bool(row.get("dead_letter") or 0),
         )

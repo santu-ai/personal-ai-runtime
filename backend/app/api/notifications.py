@@ -21,7 +21,7 @@ async def list_notifications(unread_only: bool = False, limit: int = Query(50, g
 
 @router.get("/unread-count")
 async def unread_count():
-    """Get count of unread notifications."""
+    """Get count of unread notifications. **@internal** — SPA derives count from list payload."""
     return {"count": read_ports.query_unread_notification_count()}
 
 

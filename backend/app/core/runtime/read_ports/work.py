@@ -15,8 +15,8 @@ from app.core.runtime.read_ports._common import kernel
 logger = logging.getLogger(__name__)
 
 
-def query_pending_actions(*, limit: int = 5) -> list[dict[str, Any]]:
-    """Query pending work items."""
+def query_pending_work_items(*, limit: int = 100) -> list[dict[str, Any]]:
+    """Query pending work items (timeline / cron / fragments)."""
     return kernel().query_state(
         "work_items",
         status="pending",
@@ -98,7 +98,7 @@ def query_goal(goal_id: str) -> dict[str, Any] | None:
 def query_goal_actions(goal_id: str) -> list[dict[str, Any]]:
     """Child actions of a goal."""
     return kernel().query_state(
-        "work_items", parent_goal_id=goal_id, work_type="action",
+        "work_items", parent_work_id=goal_id, work_type="action",
     )
 
 
@@ -107,7 +107,7 @@ def query_work_items_by_parent_goal(
     *,
     limit: int = 500,
 ) -> list[dict[str, Any]]:
-    return kernel().query_state("work_items", parent_goal_id=goal_id, limit=limit)
+    return kernel().query_state("work_items", parent_work_id=goal_id, limit=limit)
 
 
 def query_active_goals(
@@ -171,10 +171,6 @@ def query_goals_with_deadline(*, limit: int = 500) -> list[dict[str, Any]]:
     )
 
 
-def query_pending_work_items(*, limit: int = 100) -> list[dict[str, Any]]:
-    return kernel().query_state("work_items", status="pending", limit=limit)
-
-
 # ── Work mutations (API-facing ABI; lazy to avoid work_item_engine ↔ read_ports cycles)
 
 
@@ -183,7 +179,6 @@ def create_work_item(
     *,
     description: str = "",
     work_type: str = "task",
-    parent_goal_id: str | None = None,
     parent_work_id: str | None = None,
     priority: int = 0,
     dependencies: list[str] | None = None,
@@ -201,7 +196,6 @@ def create_work_item(
         title,
         description=description,
         work_type=work_type,
-        parent_goal_id=parent_goal_id,
         parent_work_id=parent_work_id,
         priority=priority,
         dependencies=dependencies,
@@ -258,11 +252,6 @@ def delete_work_item(item_id: str, *, cascade: bool = False) -> None:
     _delete(item_id, cascade=cascade)
 
 
-def get_work_item(item_id: str) -> dict[str, Any] | None:
-    """Alias of ``query_work_item`` — kept for Work API call sites."""
-    return query_work_item(item_id)
-
-
 def get_sub_work_items(parent_work_id: str) -> list[dict[str, Any]]:
     from app.core.runtime.work_item_engine import get_sub_work_items as _get
 
@@ -280,7 +269,6 @@ def list_work_items(
     work_type: str | None = None,
     limit: int = 50,
     parent_work_id: str | None = None,
-    parent_goal_id: str | None = None,
 ) -> list[dict[str, Any]]:
     from app.core.runtime.work_item_engine import list_work_items as _list
 
@@ -289,7 +277,6 @@ def list_work_items(
         work_type=work_type,
         limit=limit,
         parent_work_id=parent_work_id,
-        parent_goal_id=parent_goal_id,
     )
 
 

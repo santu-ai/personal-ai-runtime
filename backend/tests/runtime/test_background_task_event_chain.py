@@ -55,7 +55,7 @@ def _create_bg_task(kernel, user_request, plan=None):
             "description": "",
             "work_type": "background",
             "parent_work_id": None,
-            "parent_goal_id": None,
+            "parent_work_id": None,
             "status": "pending",
             "priority": 0,
             "executable_plan": plan_json,

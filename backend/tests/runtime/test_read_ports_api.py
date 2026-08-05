@@ -24,7 +24,7 @@ def test_query_goal_and_actions(kernel):
         payload={
             "title": "Step",
             "work_type": "action",
-            "parent_goal_id": "g1",
+            "parent_work_id": "g1",
             "status": "pending",
         },
         actor="user",

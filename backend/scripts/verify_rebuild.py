@@ -40,7 +40,7 @@ SAMPLE_SCENARIO: list[tuple[str, str, str, dict[str, Any]]] = [
         "description": "Build runtime",
         "work_type": "task",
         "parent_work_id": None,
-        "parent_goal_id": None,
+        "parent_work_id": None,
         "dependencies_json": None,
         "priority": 1,
         "status": "pending",

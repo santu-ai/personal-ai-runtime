@@ -95,7 +95,7 @@ class TimelineContextFragment(ContextFragment):
         events_part = ""
 
         try:
-            pending = read_ports.query_pending_actions(limit=pending_limit)
+            pending = read_ports.query_pending_work_items(limit=pending_limit)
         except Exception:
             pending = []
         if pending:

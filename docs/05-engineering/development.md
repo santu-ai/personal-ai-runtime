@@ -200,7 +200,7 @@ structlog + stdlib（[`backend/app/core/logging_config.py`](../../backend/app/co
 
 ### 数据主权检查
 
-`/trust` 页（需后端运行）展示存储位置、API、export/rebuild 命令。
+Dashboard 的信任报告面板（`?tab=trust`，需后端运行）展示存储位置、API、export/rebuild 命令。
 
 ## 锁文件
 

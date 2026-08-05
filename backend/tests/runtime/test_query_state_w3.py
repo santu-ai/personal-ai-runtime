@@ -97,11 +97,10 @@ class TestQueryStateW3:
         k, _db = isolated_kernel
         k.emit_event("WorkItemCreated", "work_item", "gp", payload={'work_type': 'goal', "title": "Parent"})
         k.emit_event("WorkItemCreated", "work_item", "t-p", payload={'work_type': 'goal',
-            "title": "Parent", "parent_goal_id": "gp",
+            "title": "Parent", "parent_work_id": "gp",
         })
         k.emit_event("WorkItemCreated", "work_item", "t-c", payload={'work_type': 'goal',
-            "title": "Child", "parent_goal_id": "gp",
-            "parent_work_id": "t-p", "priority": 1,
+            "title": "Child", "parent_work_id": "t-p", "priority": 1,
         })
         subs = k.query_state("work_items", parent_work_id="t-p")
         assert len(subs) == 1 and subs[0]["id"] == "t-c"
@@ -154,19 +153,19 @@ class TestKernelEdgePaths:
             async def _emit_later():
                 await asyncio.sleep(0.05)
                 k.emit_event(
-                    "WorkItemCompleted", "work_item", "ts",
+                    "WorkItemStatusChanged", "work_item", "ts",
                     payload={'work_type': 'goal', "status": "completed"},
                     correlation_id="corr-sc",
                 )
             task = asyncio.create_task(_emit_later())
             result = await k.submit_command(
-                type="WorkItemRequested",
+                type="WorkItemCreated",
                 aggregate_type="work_item",
                 aggregate_id="ts",
                 payload={'work_type': 'goal', "title": "Test"},
                 actor="user",
                 correlation_id="corr-sc",
-                completion_type="WorkItemCompleted",
+                completion_type="WorkItemStatusChanged",
                 timeout=2.0,
             )
             await task

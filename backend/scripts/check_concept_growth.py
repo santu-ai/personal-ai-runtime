@@ -129,12 +129,34 @@ SUBSYSTEM_LOC_FILES: dict[str, tuple[Path, ...]] = {
         ROOT / "backend/app/core/harness/builtin_registration/specs_core.py",
         ROOT / "backend/app/core/harness/builtin_registration/specs_domain.py",
     ),
+    "agent_scheduler": (
+        ROOT / "backend/app/core/runtime/agent_scheduler.py",
+    ),
+    "mcp_mesh": (
+        ROOT / "backend/app/core/harness/mcp_mesh.py",
+    ),
+    "fastapi_main": (
+        ROOT / "backend/app/main.py",
+    ),
+    "inbox_product": (
+        ROOT / "backend/app/product/inbox.py",
+    ),
+    "read_ports_work": (
+        ROOT / "backend/app/core/runtime/read_ports/work.py",
+    ),
 }
 
 SUBSYSTEM_LOC_BUDGETS: dict[str, int] = {
     "read_model_sql": 900,
     "sovereignty": 850,
     "mcp_registry": 1200,
+    # Headroom above current LOC so intentional growth is visible but not blocked
+    # by the first edit. Raise only with an accompanying split/delete plan.
+    "agent_scheduler": 850,
+    "mcp_mesh": 800,
+    "fastapi_main": 800,
+    "inbox_product": 600,
+    "read_ports_work": 600,
 }
 
 
@@ -181,13 +203,15 @@ BASELINE = {
     # god_object_max_loc 633→612). Use --ratchet after intentional reductions.
     # (same read_model_sql concept; +2 files).
     "runtime_files": 62,
-    "event_types": 46,  # INV-W5: dropped 4 BackgroundTask* events
+    "event_types": 50,  # +4: MemoryDecayed/ClaimRatified/Rejected/Contested were live but undeclared
     "query_state_selectors": 17,  # INV-W5: dropped background_tasks selector
     "fragments": 9,
     # 15: INV-W5 merged background_tasks into work_items
     "governed_tables": 15,
     "projector_files": 6,              # telemetry in projectors_governance
-    "god_object_max_loc": 604,
+    # god_object_max_loc: E-3/E-4 execution reliability ABI thin wrappers on Kernel;
+    # bodies live in execution_repository (not counted in façade). Was 604.
+    "god_object_max_loc": 621,
     "dead_code_files": 0,
 }
 

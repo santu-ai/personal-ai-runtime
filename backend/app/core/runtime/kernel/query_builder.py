@@ -275,7 +275,7 @@ def fetch_event_log_rows(
     if payload_goal_id is not None:
         clauses.append(
             "(json_extract(payload, '$.goal_id') = ? OR "
-            "json_extract(payload, '$.parent_goal_id') = ?)"
+            "json_extract(payload, '$.parent_work_id') = ?)"
         )
         params.append(payload_goal_id)
         params.append(payload_goal_id)
@@ -322,7 +322,6 @@ def query_work_items(db, filters: dict[str, Any]) -> list[dict] | int:
     status = filters.get("status")
     status_in = filters.get("status_in")
     work_type = filters.get("work_type")
-    parent_goal_id = filters.get("parent_goal_id")
     parent_work_id = filters.get("parent_work_id")
     root_only = filters.get("root_only")
     depends_on_work = filters.get("depends_on_work")
@@ -385,9 +384,6 @@ def query_work_items(db, filters: dict[str, Any]) -> list[dict] | int:
         if work_type is not None:
             clauses.append("work_type = ?")
             params.append(work_type)
-        if parent_goal_id is not None:
-            clauses.append("parent_goal_id = ?")
-            params.append(parent_goal_id)
         if parent_work_id is not None:
             clauses.append("parent_work_id = ?")
             params.append(parent_work_id)

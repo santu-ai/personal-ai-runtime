@@ -145,6 +145,65 @@ def scan_kernel_governed_dml(app_root: Path) -> list[tuple[Path, int, str, str, 
     return violations
 
 
+def scan_store_governed_dml(app_root: Path) -> list[tuple[Path, int, str, str, str]]:
+    """Fail store-layer DML on GOVERNED tables (SELECT-only exemption, not write)."""
+    violations: list[tuple[Path, int, str, str, str]] = []
+    store_root = app_root / "store"
+    if not store_root.is_dir():
+        return violations
+    for path in sorted(store_root.rglob("*.py")):
+        rel = path.relative_to(app_root)
+        if not _is_store_layer(rel):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            write_match = DML_WRITE_PATTERN.search(line)
+            if write_match:
+                violations.append(
+                    (
+                        rel,
+                        lineno,
+                        line.strip(),
+                        write_match.group(2).lower(),
+                        "store_dml_write",
+                    )
+                )
+    return violations
+
+
+# ``get_raw_connection`` escapes the TLS transaction scope — Kernel sovereignty
+# only. Definition site is exempt; all other callers must be allowlisted.
+RAW_CONNECTION_ALLOWLIST: frozenset[str] = frozenset({
+    "store/database.py",
+    "core/runtime/kernel/sovereignty_ops.py",
+})
+RAW_CONNECTION_CALL_PATTERN = re.compile(r"\bget_raw_connection\s*\(")
+
+
+def scan_raw_connection_callers(app_root: Path) -> list[tuple[Path, int, str, str, str]]:
+    """Fail ``get_raw_connection()`` outside the sovereignty allowlist (B-1)."""
+    violations: list[tuple[Path, int, str, str, str]] = []
+    for path in sorted(app_root.rglob("*.py")):
+        rel = path.relative_to(app_root)
+        rel_posix = rel.as_posix()
+        if rel_posix in RAW_CONNECTION_ALLOWLIST:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for match in RAW_CONNECTION_CALL_PATTERN.finditer(text):
+            line_no = text.count("\n", 0, match.start()) + 1
+            line = text.splitlines()[line_no - 1].strip()
+            violations.append(
+                (rel, line_no, line, "get_raw_connection", "raw_connection"),
+            )
+    return violations
+
+
 def _in_scan_scope(rel: Path) -> bool:
     """User Space: all app/ code except Kernel Space, store layer, and app-storage workers."""
     return not _is_kernel_space(rel) and not _is_store_layer(rel) and not _is_app_storage_file(rel)
@@ -244,7 +303,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: app root not found: {app_root}", file=sys.stderr)
         return 1
 
-    violations = scan_app_root(app_root) + scan_kernel_governed_dml(app_root)
+    violations = (
+        scan_app_root(app_root)
+        + scan_kernel_governed_dml(app_root)
+        + scan_store_governed_dml(app_root)
+        + scan_raw_connection_callers(app_root)
+    )
     known, new = partition_violations(violations, KNOWN_VIOLATION_ALLOWLIST)
 
     if args.inventory:

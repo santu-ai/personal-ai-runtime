@@ -42,7 +42,7 @@ append-only。索引：`idx_event_log_aggregate`、`idx_event_log_correlation`�
 ```python
 frozenset({
     "id", "title", "description", "work_type", "parent_work_id",
-    "parent_goal_id", "status", "priority", "dependencies_json",
+    "status", "priority", "dependencies_json",
     "executable_plan", "created_at", "updated_at", "completed_at",
     "progress", "importance", "urgency", "deadline", "last_activity_at",
 })

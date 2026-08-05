@@ -23,8 +23,6 @@
 | `/goals/:goalId` | `pages/Goals.tsx` | 目标详情 |
 | `/inbox` | `pages/Inbox.tsx` | 邮件分拣 |
 | `/memories` | `pages/Memories.tsx` | 记忆列表 + 图谱（含 `?tab=portrait` 画像面板） |
-| `/portrait` | — | **redirect** → `/memories?tab=portrait`（画像已折叠进 Memories） |
-| `/trust` | — | **redirect** → `/dashboard?tab=trust`（信任报告已折叠进 Dashboard） |
 | `/dashboard` | `pages/Dashboard.tsx` | 总览仪表盘（含 `?tab=trust` 信任报告面板） |
 | `/settings` | `pages/Settings.tsx` | LLM/邮件/MCP/数据设置 |
 | `/approvals` | `pages/Approvals.tsx` | 审批队列 |
@@ -43,11 +41,11 @@
 ```
 core.ts        ← fetch 包装 + auth header + ApiError
    ↑
-chat.ts, system.ts, goals.ts, memory.ts, inbox.ts,
+chat.ts, system.ts, workItems.ts, memory.ts, inbox.ts,
 settings.ts, telemetry.ts, approvals.ts,
 notifications.ts, portrait.ts, trustReport.ts
    ↑
-client.ts      ← barrel 再导出（向后兼容）
+client.ts      ← barrel 再导出
 types.ts       ← 共享 TS 接口
 ```
 
@@ -189,7 +187,7 @@ Layout 在根处挂三个副作用 hook：`useNotifications()`（持有 WS）、
 
 [`frontend/playwright.config.ts`](../../frontend/playwright.config.ts)：`testDir: "./e2e"`、60s 超时、headless、baseURL `http://localhost:5173`。`webServer.command: "npm run dev"`，复用已存在 server，120s 超时。
 
-唯一 e2e 文件：[`e2e/chat-approval.spec.ts`](../../frontend/e2e/chat-approval.spec.ts)，配合 [`e2e/helpers.ts`](../../frontend/e2e/helpers.ts) 的 `MockApiRouter`。覆盖导航、聊天发送、审批确认/拒绝流、仪表盘错误态、时间线/知识页、仪表盘数据主权面板——全部用 mock router。
+e2e 文件：[`e2e/chat-approval.spec.ts`](../../frontend/e2e/chat-approval.spec.ts)、[`e2e/extra-flows.spec.ts`](../../frontend/e2e/extra-flows.spec.ts)、[`e2e/real-backend.spec.ts`](../../frontend/e2e/real-backend.spec.ts)，配合 [`e2e/helpers.ts`](../../frontend/e2e/helpers.ts) 的 `MockApiRouter`。mock 套件覆盖导航、聊天发送、审批确认/拒绝流、仪表盘错误态、时间线、仪表盘数据主权面板；`real-backend.spec.ts` 走真实后端 + fake LLM。
 
 ### 单元测试
 

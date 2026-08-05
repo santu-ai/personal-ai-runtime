@@ -211,3 +211,98 @@ def clear_plan_resumes(*, db: Any | None = None) -> None:
     database = _resolve_db(db)
     with database.get_db() as conn:
         conn.execute("DELETE FROM plan_resumes")
+
+
+# ── Step progress / idempotency (APP_STORAGE via plan_resumes) ─────────────
+# Synthetic approval_id keys keep zero new tables / event types:
+#   progress:{action_id}              — last completed step_index + output
+#   idem:{correlation_id}:{step}      — successful step result for replay skip
+
+
+def progress_key(action_id: str) -> str:
+    return f"progress:{action_id}"
+
+
+def idempotency_key(correlation_id: str, step_index: int) -> str:
+    return f"idem:{correlation_id}:{int(step_index)}"
+
+
+def save_plan_progress(
+    action_id: str,
+    *,
+    resume_from: int,
+    previous_output: dict[str, Any] | None = None,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> None:
+    """Persist step progress so retries resume after the last success (E-5)."""
+    if not action_id:
+        return
+    register_plan_resume(
+        progress_key(action_id),
+        PlanResume(
+            kind="execute",
+            resume_from=int(resume_from),
+            previous_output=previous_output,
+            action_id=action_id,
+        ),
+        db=db,
+        kernel=kernel,
+    )
+
+
+def load_plan_progress(
+    action_id: str,
+    *,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> PlanResume | None:
+    if not action_id:
+        return None
+    return peek_plan_resume(progress_key(action_id), db=db, kernel=kernel)
+
+
+def record_step_success(
+    correlation_id: str,
+    step_index: int,
+    result: str,
+    *,
+    action_id: str = "",
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> None:
+    """Record a successful step under ``idempotency_key`` (E-1)."""
+    if not correlation_id:
+        return
+    register_plan_resume(
+        idempotency_key(correlation_id, step_index),
+        PlanResume(
+            kind="execute",
+            resume_from=int(step_index) + 1,
+            previous_output={"result": result, "status": "success"},
+            action_id=action_id or "",
+        ),
+        db=db,
+        kernel=kernel,
+    )
+
+
+def lookup_step_success(
+    correlation_id: str,
+    step_index: int,
+    *,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> str | None:
+    """Return cached step result if this correlation already succeeded at step."""
+    if not correlation_id:
+        return None
+    row = peek_plan_resume(
+        idempotency_key(correlation_id, step_index), db=db, kernel=kernel,
+    )
+    if row is None or not row.previous_output:
+        return None
+    if row.previous_output.get("status") != "success":
+        return None
+    result = row.previous_output.get("result")
+    return result if isinstance(result, str) else None

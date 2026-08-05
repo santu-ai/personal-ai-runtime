@@ -7,7 +7,13 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.core.runtime.plan_resume import PlanResume, register_plan_resume
+from app.core.runtime.plan_resume import (
+    PlanResume,
+    lookup_step_success,
+    record_step_success,
+    register_plan_resume,
+    save_plan_progress,
+)
 
 
 @dataclass
@@ -68,6 +74,7 @@ async def run_plan_steps(
     previous_output: dict[str, Any] | None = None,
     resume_factory: Callable[[PlanRunOutcome], PlanResume] | None = None,
     cancel_check: Callable[[], bool] | None = None,
+    action_id: str = "",
 ) -> PlanRunOutcome:
     """Run plan steps from ``resume_from``, stopping on failure or pending approval.
 
@@ -75,6 +82,11 @@ async def run_plan_steps(
     When ``resume_factory`` is set, pending approvals register resume *before*
     returning so a fast Approve cannot race an empty registry.
     ``cancel_check`` is polled between steps for cooperative cancellation.
+
+    Successful steps are recorded under ``idempotency_key(correlation_id,
+    step_index)`` so scheduler retries skip already-applied side effects (E-1).
+    Progress is also written to ``progress:{action_id}`` when ``action_id`` is
+    set (E-5).
     """
     if not steps:
         return PlanRunOutcome(stopped_reason="empty")
@@ -88,6 +100,7 @@ async def run_plan_steps(
 
     results: list[StepResult] = []
     output = dict(previous_output) if previous_output else None
+    corr = correlation_id or ""
 
     for i in range(start, len(steps)):
         if cancel_check is not None and cancel_check():
@@ -112,6 +125,22 @@ async def run_plan_steps(
                 previous_output=output,
             )
 
+        # E-1: skip side effects when this correlation already completed the step.
+        cached = lookup_step_success(corr, i, kernel=kernel) if corr else None
+        if cached is not None:
+            results.append(StepResult(
+                step=i, tool=tool_name, status="success", result=cached,
+            ))
+            output = {f"step_{i}_output": cached[:1000]}
+            if action_id:
+                save_plan_progress(
+                    action_id,
+                    resume_from=i + 1,
+                    previous_output=output,
+                    kernel=kernel,
+                )
+            continue
+
         params = dict(step.get("params") or {})
         if step.get("depends_on_output") and output:
             params["_previous_output"] = output
@@ -135,6 +164,17 @@ async def run_plan_steps(
             step_result = str(cap.get("result", ""))
             results.append(StepResult(step=i, tool=tool_name, status="success", result=step_result))
             output = {f"step_{i}_output": step_result[:1000]}
+            if corr:
+                record_step_success(
+                    corr, i, step_result, action_id=action_id, kernel=kernel,
+                )
+            if action_id:
+                save_plan_progress(
+                    action_id,
+                    resume_from=i + 1,
+                    previous_output=output,
+                    kernel=kernel,
+                )
             continue
 
         if cap.get("status") == "pending":
@@ -160,6 +200,13 @@ async def run_plan_steps(
                 register_plan_resume(
                     approval_id,
                     resume_factory(outcome),
+                    kernel=kernel,
+                )
+            if action_id:
+                save_plan_progress(
+                    action_id,
+                    resume_from=i + 1,
+                    previous_output=output,
                     kernel=kernel,
                 )
             return outcome

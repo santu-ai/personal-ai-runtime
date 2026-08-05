@@ -79,7 +79,7 @@ def test_goal_id_from_work_item_parent_or_self():
         "WorkItemCreated",
         aggregate_type="work_item",
         aggregate_id="a1",
-        payload={"parent_goal_id": "g1", "title": "Step"},
+        payload={"parent_work_id": "g1", "title": "Step"},
     )
     assert events_port._goal_id_for(child) == "g1"
 
@@ -115,7 +115,7 @@ def test_recent_events_filters_and_limit():
             _evt(
                 "WorkItemCreated",
                 aggregate_id="g2",
-                payload={"title": "B", "parent_goal_id": "g1"},
+                payload={"title": "B", "parent_work_id": "g1"},
                 seq=2,
             ),
             _evt("CapabilityInvoked", aggregate_type="capability", aggregate_id="c1",
@@ -140,13 +140,13 @@ def test_recent_events_filters_by_goal_id():
             _evt(
                 "WorkItemCreated",
                 aggregate_id="a1",
-                payload={"title": "child", "parent_goal_id": "g1"},
+                payload={"title": "child", "parent_work_id": "g1"},
                 seq=2,
             ),
             _evt(
                 "WorkItemCreated",
                 aggregate_id="a2",
-                payload={"title": "other", "parent_goal_id": "g2"},
+                payload={"title": "other", "parent_work_id": "g2"},
                 seq=1,
             ),
         ]
@@ -178,7 +178,7 @@ def test_goal_events_combines_work_item_own_and_children(kernel):
         payload={
             "title": "Step",
             "work_type": "action",
-            "parent_goal_id": "g1",
+            "parent_work_id": "g1",
             "status": "pending",
         },
         actor="user",

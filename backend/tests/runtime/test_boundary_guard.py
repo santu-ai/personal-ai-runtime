@@ -173,3 +173,42 @@ class TestBoundaryGuard:
             assert violations[0][4] == "kernel_dml_write"
         finally:
             sys.path.pop(0)
+
+    def test_store_governed_dml_flagged(self, tmp_path):
+        """store/ layer must not write GOVERNED projection tables."""
+        store = tmp_path / "app" / "store"
+        store.mkdir(parents=True)
+        (store / "memory_queries.py").write_text(
+            'conn.execute("UPDATE memories SET confidence = 0 WHERE id = ?", (mid,))\n',
+            encoding="utf-8",
+        )
+
+        sys.path.insert(0, str(BACKEND))
+        try:
+            from scripts.check_boundary import scan_store_governed_dml
+
+            violations = scan_store_governed_dml(tmp_path / "app")
+            assert len(violations) == 1
+            assert violations[0][4] == "store_dml_write"
+            assert violations[0][3] == "memories"
+        finally:
+            sys.path.pop(0)
+
+    def test_raw_connection_outside_allowlist_flagged(self, tmp_path):
+        """get_raw_connection() is sovereignty-only."""
+        product = tmp_path / "app" / "product"
+        product.mkdir(parents=True)
+        (product / "sneaky.py").write_text(
+            "conn = db.get_raw_connection()\n",
+            encoding="utf-8",
+        )
+
+        sys.path.insert(0, str(BACKEND))
+        try:
+            from scripts.check_boundary import scan_raw_connection_callers
+
+            violations = scan_raw_connection_callers(tmp_path / "app")
+            assert len(violations) == 1
+            assert violations[0][4] == "raw_connection"
+        finally:
+            sys.path.pop(0)

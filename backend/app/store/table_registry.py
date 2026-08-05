@@ -10,7 +10,7 @@ from __future__ import annotations
 GOVERNED_SCHEMA: dict[str, frozenset[str]] = {
     "work_items": frozenset({
         "id", "title", "description", "work_type", "parent_work_id",
-        "parent_goal_id", "status", "priority", "dependencies_json",
+        "status", "priority", "dependencies_json",
         "executable_plan", "created_at", "updated_at", "completed_at",
         # Goal 列（work_type='goal' 的行才会填充）：
         "progress", "importance", "urgency", "deadline", "last_activity_at",
@@ -46,6 +46,7 @@ GOVERNED_SCHEMA: dict[str, frozenset[str]] = {
         "id", "event_seq", "event_id", "event_type", "handler_name",
         "instance_id", "status", "retry_count", "policy_json",
         "correlation_id", "created_at", "started_at", "completed_at", "error",
+        "dead_letter",
     }),
     "timer_events": frozenset({
         "id", "handler_name", "schedule_type", "cron_expr", "delay_seconds",

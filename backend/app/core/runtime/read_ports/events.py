@@ -13,10 +13,10 @@ from app.core.runtime.read_ports._common import kernel
 def _goal_id_for(event: Event) -> str | None:
     """从事件的聚合或 payload 提取 goal_id。
 
-    goal_id 来自 work_item payload 的 parent_goal_id，或根 goal 自身的 aggregate_id。
+    goal_id 来自 work_item payload 的 parent_work_id，或根 goal 自身的 aggregate_id。
     """
     if event.aggregate_type == "work_item":
-        return event.payload.get("parent_goal_id") or event.aggregate_id
+        return event.payload.get("parent_work_id") or event.aggregate_id
     return event.payload.get("goal_id")
 
 
@@ -57,7 +57,7 @@ def to_event_dict(event: Event) -> dict:
 
 
 def goal_events(goal_id: str, *, limit: int = 20) -> list[dict]:
-    """返回目标范围内的事件（goal 自身 + 经 parent_goal_id 关联的子项）。"""
+    """返回目标范围内的事件（goal 自身 + 经 parent_work_id 关联的子项）。"""
     from app.core.runtime.kernel_instance import kernel
 
     own_ev = kernel.read_events(

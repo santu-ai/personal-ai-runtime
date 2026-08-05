@@ -50,7 +50,7 @@ def _create_running(kernel, work_id: str = "t1") -> None:
             "description": "",
             "work_type": "background",
             "parent_work_id": None,
-            "parent_goal_id": None,
+            "parent_work_id": None,
             "status": "pending",
             "priority": 0,
             "executable_plan": "{}",

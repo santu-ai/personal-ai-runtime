@@ -123,15 +123,6 @@ def _on_memory_decayed(event: Event, conn) -> None:
     )
 
 
-@projector("MemoryRevoked")
-def _on_memory_revoked(event: Event, conn) -> None:
-    """记忆被新证据反驳——置信度归零。"""
-    conn.execute(
-        "UPDATE memories SET confidence = 0.0, decayed_at = ? WHERE id = ?",
-        (event.ts, event.aggregate_id),
-    )
-
-
 @projector("MemoryUpdated")
 def _on_memory_updated(event: Event, conn) -> None:
     p = event.payload
@@ -168,17 +159,16 @@ def _on_work_item_created(event: Event, conn) -> None:
     # deadline/last_activity_at=NULL）。
     conn.execute(
         """INSERT OR REPLACE INTO work_items
-           (id, title, description, work_type, parent_work_id, parent_goal_id,
+           (id, title, description, work_type, parent_work_id,
             status, priority, dependencies_json, executable_plan, created_at, updated_at,
             progress, importance, urgency, deadline, last_activity_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             event.aggregate_id,
             p.get("title", ""),
             p.get("description", ""),
             p.get("work_type", "task"),
             p.get("parent_work_id"),
-            p.get("parent_goal_id"),
             p.get("status", "pending"),
             p.get("priority", 0),
             p.get("dependencies_json"),
@@ -206,7 +196,7 @@ def _on_work_item_updated(event: Event, conn) -> None:
     p = event.payload
     updatable = ("title", "description", "status", "priority",
                  "dependencies_json", "executable_plan", "completed_at",
-                 "parent_work_id", "parent_goal_id",
+                 "parent_work_id",
                  "progress", "importance", "urgency", "deadline",
                  "last_activity_at")
     fields = [k for k in updatable if k in p]
@@ -262,12 +252,12 @@ def _recalculate_parent_goal_progress(
     if parent_id is None:
         # 查找刚变更子项的父引用。
         row = conn.execute(
-            "SELECT parent_work_id, parent_goal_id FROM work_items WHERE id = ?",
+            "SELECT parent_work_id FROM work_items WHERE id = ?",
             (child_id,),
         ).fetchone()
         if row is None:
             return
-        parent_id = row["parent_work_id"] or row["parent_goal_id"]
+        parent_id = row["parent_work_id"]
     if not parent_id:
         return
 
@@ -278,12 +268,10 @@ def _recalculate_parent_goal_progress(
     if parent is None or parent["work_type"] != "goal":
         return
 
-    # 统计子项与已完成子项。子项经 parent_work_id 或 parent_goal_id
-    # 引用 goal。
+    # 统计子项与已完成子项（统一经 parent_work_id 引用）。
     children = conn.execute(
-        "SELECT status FROM work_items "
-        "WHERE parent_work_id = ? OR parent_goal_id = ?",
-        (parent_id, parent_id),
+        "SELECT status FROM work_items WHERE parent_work_id = ?",
+        (parent_id,),
     ).fetchall()
     if not children:
         # 没有子项了——重置进度为 0（避免残留陈旧非零值）。
@@ -308,15 +296,17 @@ def _recalculate_parent_goal_progress(
 def _on_work_item_deleted(event: Event, conn) -> None:
     # 删除前捕获父引用，以便子行消失后重算父 goal 进度。
     row = conn.execute(
-        "SELECT parent_work_id, parent_goal_id FROM work_items WHERE id = ?",
+        "SELECT parent_work_id FROM work_items WHERE id = ?",
         (event.aggregate_id,),
     ).fetchone()
-    parent_id = row["parent_work_id"] or row["parent_goal_id"] if row else None
+    parent_id = row["parent_work_id"] if row else None
 
     conn.execute("DELETE FROM work_items WHERE id = ?", (event.aggregate_id,))
 
     if parent_id:
-        _recalculate_parent_goal_progress(conn, event.aggregate_id, event.ts)
+        _recalculate_parent_goal_progress(
+            conn, event.aggregate_id, event.ts, parent_id_hint=parent_id,
+        )
 
 
 # --- Claim 权威投影（Meaning Boundary G1）------------------------------------
@@ -335,40 +325,6 @@ def _on_claim_rejected(event: Event, conn) -> None:
 @projector("ClaimContested")
 def _on_claim_contested(event: Event, conn) -> None:
     _set_claim_status_if_claim(conn, event.aggregate_id, "contested")
-
-
-@projector("ClaimReleased")
-def _on_claim_released(event: Event, conn) -> None:
-    _set_claim_status_if_claim(conn, event.aggregate_id, "released")
-
-
-@projector("ClaimReopened")
-def _on_claim_reopened(event: Event, conn) -> None:
-    _set_claim_status_if_claim(conn, event.aggregate_id, "contested")
-
-
-@projector("ClaimRevised")
-def _on_claim_revised(event: Event, conn) -> None:
-    p = event.payload
-    row = conn.execute(
-        "SELECT origin FROM memories WHERE id = ?", (event.aggregate_id,)
-    ).fetchone()
-    if not row or row["origin"] != "claim":
-        return
-    updatable = ("content", "confidence")
-    fields = [k for k in updatable if k in p]
-    if fields:
-        set_clause = ", ".join(f"{k} = ?" for k in fields)
-        params = [p[k] for k in fields]
-        params.append(event.aggregate_id)
-        conn.execute(
-            f"UPDATE memories SET {set_clause} WHERE id = ?",
-            params,
-        )
-    conn.execute(
-        "UPDATE memories SET claim_status = 'proposed' WHERE id = ?",
-        (event.aggregate_id,),
-    )
 
 
 # --- User Profile 投影 ----------------------------------------------------------

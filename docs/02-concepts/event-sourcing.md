@@ -101,7 +101,7 @@ State 是 Event Log 的纯投影，可随时清空并从日志重放重建。Ker
 | [`scripts/verify_rebuild.py`](../../backend/scripts/verify_rebuild.py) | 全量重建后投影状态字节一致 |
 | [`scripts/verify_snapshot_rebuild.py`](../../backend/scripts/verify_snapshot_rebuild.py) | 增量重建 + checkpoint 不回退 |
 | [`scripts/verify_conversation_rebuild.py`](../../backend/scripts/verify_conversation_rebuild.py) | 对话消息可重建且 `source_event_id` 可溯源 |
-| [`scripts/verify_goal_rebuild.py`](../../backend/scripts/verify_goal_rebuild.py) | work_items(goal) 的 `parent_goal_id`/`progress` 重建后保留 |
+| [`scripts/verify_goal_rebuild.py`](../../backend/scripts/verify_goal_rebuild.py) | work_items(goal) 的 `parent_work_id`/`progress` 重建后保留 |
 | [`scripts/verify_memory_lifecycle.py`](../../backend/scripts/verify_memory_lifecycle.py) | 记忆 Derived/Updated/Deleted 全生命周期可重建 |
 | [`scripts/verify_export_roundtrip.py`](../../backend/scripts/verify_export_roundtrip.py) | export → import 数据无损 |
 

@@ -30,7 +30,6 @@ class CreateWorkItemRequest(BaseModel):
     description: str = ""
     work_type: str = "task"
     parent_work_id: str | None = None
-    parent_goal_id: str | None = None
     priority: int = 0
     dependencies: list[str] | None = None
     executable_plan: str | None = None
@@ -87,9 +86,7 @@ async def create_work_item(body: CreateWorkItemRequest):
     if not title:
         raise HTTPException(status_code=400, detail="Title is required")
 
-    if body.parent_goal_id and not read_ports.get_work_item(body.parent_goal_id):
-        raise HTTPException(status_code=404, detail="Parent goal not found")
-    if body.parent_work_id and not read_ports.get_work_item(body.parent_work_id):
+    if body.parent_work_id and not read_ports.query_work_item(body.parent_work_id):
         raise HTTPException(status_code=404, detail="Parent work item not found")
 
     status = body.status
@@ -101,7 +98,6 @@ async def create_work_item(body: CreateWorkItemRequest):
         description=body.description,
         work_type=body.work_type,
         parent_work_id=body.parent_work_id,
-        parent_goal_id=body.parent_goal_id,
         priority=body.priority,
         dependencies=body.dependencies,
         executable_plan=body.executable_plan,
@@ -113,8 +109,8 @@ async def create_work_item(body: CreateWorkItemRequest):
         last_activity_at=body.last_activity_at,
     )
 
-    if body.parent_goal_id and body.work_type in ("action", "task"):
-        read_ports.bump_parent_activity(body.parent_goal_id)
+    if body.parent_work_id and body.work_type in ("action", "task"):
+        read_ports.bump_parent_activity(body.parent_work_id)
 
     return item
 
@@ -124,7 +120,6 @@ async def list_work_items(
     work_type: str | None = None,
     status: str | None = None,
     parent_work_id: str | None = None,
-    parent_goal_id: str | None = None,
     limit: int = 50,
 ):
     """List work items, optionally filtered by work_type / status / parent."""
@@ -133,14 +128,13 @@ async def list_work_items(
         work_type=work_type,
         limit=limit,
         parent_work_id=parent_work_id,
-        parent_goal_id=parent_goal_id,
     )
 
 
 @router.get("/{item_id}")
 async def get_work_item(item_id: str, include: str | None = None):
     """Get a work item. include=actions,events embeds goal children + recent events."""
-    item = read_ports.get_work_item(item_id)
+    item = read_ports.query_work_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Work item not found")
 
@@ -160,30 +154,17 @@ async def get_work_item(item_id: str, include: str | None = None):
 
 @router.get("/{item_id}/children")
 async def get_children(item_id: str):
-    """Return direct children.
-
-    Goals merge ``parent_goal_id`` rows with ``parent_work_id`` rows so both
-    action links and nested work trees are visible.
-    """
-    item = read_ports.get_work_item(item_id)
+    """Return direct children via parent_work_id."""
+    item = read_ports.query_work_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Work item not found")
-    by_work = read_ports.get_sub_work_items(item_id)
-    if item.get("work_type") != "goal":
-        return by_work
-    by_goal = read_ports.query_work_items_by_parent_goal(item_id)
-    seen = {row["id"] for row in by_work}
-    merged = list(by_work)
-    for row in by_goal:
-        if row["id"] not in seen:
-            merged.append(row)
-    return merged
+    return read_ports.get_sub_work_items(item_id)
 
 
 @router.get("/{item_id}/events")
 async def get_events(item_id: str, limit: int = 20):
     """Return recent UI-shaped events for a work item / goal."""
-    if not read_ports.get_work_item(item_id):
+    if not read_ports.query_work_item(item_id):
         raise HTTPException(status_code=404, detail="Work item not found")
     return read_ports.goal_events(item_id, limit=limit)
 
@@ -196,7 +177,7 @@ async def update_work_item(item_id: str, body: UpdateWorkItemRequest):
     use WorkItemUpdated. Action completion bumps parent activity and fires
     notification/memory side-effects.
     """
-    item = read_ports.get_work_item(item_id)
+    item = read_ports.query_work_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Work item not found")
 
@@ -229,7 +210,7 @@ async def update_work_item(item_id: str, body: UpdateWorkItemRequest):
             update_kwargs.pop("status", None)
             if update_kwargs:
                 read_ports.update_work_item_fields(item_id, **update_kwargs)
-            return read_ports.get_work_item(item_id)
+            return read_ports.query_work_item(item_id)
 
     if work_type == "action" and new_status == "completed":
         need_completed_at = True
@@ -248,13 +229,13 @@ async def update_work_item(item_id: str, body: UpdateWorkItemRequest):
             payload={"completed_at": datetime.now(UTC).isoformat()},
             actor="user",
         )
-        updated = read_ports.get_work_item(item_id)
+        updated = read_ports.query_work_item(item_id)
 
-    parent_goal_id = item.get("parent_goal_id")
-    if parent_goal_id and (new_status is not None or "title" in update_kwargs):
-        read_ports.bump_parent_activity(parent_goal_id)
+    parent_work_id = item.get("parent_work_id")
+    if parent_work_id and (new_status is not None or "title" in update_kwargs):
+        read_ports.bump_parent_activity(parent_work_id)
         if new_status == "completed":
-            _on_action_completed(parent_goal_id, item_id, item.get("title", ""))
+            _on_action_completed(parent_work_id, item_id, item.get("title", ""))
 
     return updated
 
@@ -266,7 +247,7 @@ async def update_status(item_id: str, body: dict):
     if not new_status:
         raise HTTPException(status_code=400, detail="status is required")
 
-    item = read_ports.get_work_item(item_id)
+    item = read_ports.query_work_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Work item not found")
 
@@ -293,28 +274,28 @@ async def update_status(item_id: str, body: dict):
                 actor="user",
             )
 
-        parent_goal_id = item.get("parent_goal_id")
-        if parent_goal_id and new_status == "completed":
-            read_ports.bump_parent_activity(parent_goal_id)
-            _on_action_completed(parent_goal_id, item_id, item.get("title", ""))
+        parent_work_id = item.get("parent_work_id")
+        if parent_work_id and new_status == "completed":
+            read_ports.bump_parent_activity(parent_work_id)
+            _on_action_completed(parent_work_id, item_id, item.get("title", ""))
 
-        return read_ports.get_work_item(item_id)
+        return read_ports.query_work_item(item_id)
 
     updated = read_ports.update_work_item_status(item_id, new_status)
     if not updated:
         raise HTTPException(status_code=404, detail="Work item not found")
 
-    parent_goal_id = item.get("parent_goal_id")
-    if parent_goal_id and new_status == "completed":
-        read_ports.bump_parent_activity(parent_goal_id)
-        _on_action_completed(parent_goal_id, item_id, item.get("title", ""))
+    parent_work_id = item.get("parent_work_id")
+    if parent_work_id and new_status == "completed":
+        read_ports.bump_parent_activity(parent_work_id)
+        _on_action_completed(parent_work_id, item_id, item.get("title", ""))
 
     return updated
 
 
 @router.delete("/{item_id}")
 async def delete_work_item(item_id: str):
-    item = read_ports.get_work_item(item_id)
+    item = read_ports.query_work_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Work item not found")
     cascade = item.get("work_type") == "goal"
@@ -344,7 +325,7 @@ async def execute_work_item(item_id: str):
 @router.post("/{item_id}/decompose")
 async def decompose_work_item(item_id: str):
     """Use AI to decompose a goal into actionable step titles."""
-    item = read_ports.get_work_item(item_id)
+    item = read_ports.query_work_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Work item not found")
     if item.get("work_type") != "goal":

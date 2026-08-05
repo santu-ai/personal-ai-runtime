@@ -98,7 +98,6 @@ export function buildCommonMocks(): MockApiRouter {
         description: "通过实践项目学习 Rust",
         work_type: "goal",
         parent_work_id: null,
-        parent_goal_id: null,
         status: "active",
         priority: 0,
         dependencies_json: null,
@@ -150,7 +149,6 @@ export function buildCommonMocks(): MockApiRouter {
     })
     .json("/api/approvals", [])
     .json("/api/notifications", [])
-    .json("/api/inbox/emails", [])
     .json("/api/inbox/digest", {})
     .json("/api/settings/capability-policy", {
       auto_allow: ["read_file", "web_search", "check_inbox"],

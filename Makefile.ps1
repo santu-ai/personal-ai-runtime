@@ -46,6 +46,7 @@ $StaticModules = @(
     "scripts.check_execution_ownership",
     "scripts.check_concept_growth",
     "scripts.check_event_schema",
+    "scripts.check_unused_config",
     "scripts.check_non_sovereign_attachments"
 )
 

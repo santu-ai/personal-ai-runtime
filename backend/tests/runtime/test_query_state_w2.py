@@ -39,13 +39,13 @@ class TestQueryStateW2:
             "WorkItemCreated",
             "work_item",
             "a1",
-            payload={"parent_goal_id": "g1", "title": "Pending", "status": "pending", "work_type": "action"},
+            payload={"parent_work_id": "g1", "title": "Pending", "status": "pending", "work_type": "action"},
         )
         k.emit_event(
             "WorkItemCreated",
             "work_item",
             "a2",
-            payload={"parent_goal_id": "g1", "title": "Done", "status": "done", "work_type": "action"},
+            payload={"parent_work_id": "g1", "title": "Done", "status": "done", "work_type": "action"},
         )
 
         pending = k.query_state("work_items", status="pending", work_type="action", limit=10)
