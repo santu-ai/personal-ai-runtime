@@ -182,3 +182,31 @@ def test_philosophy_exceptions_registry_present():
     assert "single_process_control_plane" in PHILOSOPHY_EXCEPTIONS
     assert "transport_chat_delta" in PHILOSOPHY_EXCEPTIONS
     assert "handler_executions_soft_prune" in PHILOSOPHY_EXCEPTIONS
+
+
+def test_kernel_has_no_user_space_imports():
+    """Fitness: Kernel must not import api / product / fragments / agents."""
+    import ast
+    from pathlib import Path
+
+    kernel_dir = (
+        Path(__file__).resolve().parents[2] / "app" / "core" / "runtime" / "kernel"
+    )
+    forbidden_prefixes = (
+        "app.api",
+        "app.product",
+        "app.fragments",
+        "app.core.agents",
+    )
+    offenders: list[str] = []
+    for path in kernel_dir.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if any(alias.name == p or alias.name.startswith(p + ".") for p in forbidden_prefixes):
+                        offenders.append(f"{path.name}:{node.lineno}:import {alias.name}")
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                if any(node.module == p or node.module.startswith(p + ".") for p in forbidden_prefixes):
+                    offenders.append(f"{path.name}:{node.lineno}:from {node.module}")
+    assert not offenders, f"Kernel → User Space imports: {offenders}"

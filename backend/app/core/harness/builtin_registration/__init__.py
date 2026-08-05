@@ -1,7 +1,7 @@
 """Builtin tool registration package.
 
-Public surface mirrors the former ``mcp_builtin_registration`` module so
-``mcp_hub`` and tests can keep importing the same names.
+Public surface for ``mcp_hub`` and tests: ``BuiltinToolSpec``, category
+builders, and ``register_mesh_tools``.
 """
 
 from app.core.harness.builtin_registration.common import (

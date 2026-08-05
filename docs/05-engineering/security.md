@@ -67,7 +67,7 @@ URL 抓取类工具经 `url_safety.validate_http_url` 校验。相关测试：`t
 
 [`backend/app/product/encrypted_sync.py`](../../backend/app/product/encrypted_sync.py)：
 
-- 算法：AES-GCM + Argon2id（V2 当前版本；V1 用 PBKDF2-HMAC-SHA256 600k 迭代，仅作兼容导入路径）。
+- 算法：AES-GCM + Argon2id（仅 V2；无历史格式兼容路径）。
 - blob 布局（V2）：`[4B magic 'PAES'][1B version=2][16B salt][12B nonce][ciphertext + 16B tag]`（zlib 压缩后 AES-GCM 加密），base64 编码。
 - `BLOB_FORMAT = "encrypted_snapshot_v2"`。
 - 最小密码 8 字符。

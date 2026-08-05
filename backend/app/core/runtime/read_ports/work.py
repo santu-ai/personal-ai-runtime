@@ -369,27 +369,12 @@ _BLOCKED_EXECUTE_STATUSES = frozenset({"running", "waiting_approval"})
 _TERMINAL_BACKGROUND_STATUSES = frozenset({"completed", "failed", "cancelled"})
 
 
-def work_item_as_background_task(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Map a ``work_items`` row to the legacy background-task response shape."""
-    if row is None:
-        return None
-    return {
-        "id": row["id"],
-        "user_request": row.get("title") or "",
-        "plan_json": row.get("executable_plan"),
-        "status": row.get("status") or "pending",
-        "progress": float(row.get("progress") or 0),
-        "created_at": row.get("created_at"),
-        "completed_at": row.get("completed_at"),
-    }
-
-
 def query_background_work_item(item_id: str) -> dict[str, Any] | None:
-    """Fetch a background work item as a legacy background-task dict."""
+    """Fetch a background work item (``work_type=background``) or None."""
     row = query_work_item(item_id)
     if row is None or row.get("work_type") != "background":
         return None
-    return work_item_as_background_task(row)
+    return row
 
 
 def query_background_work_items(
@@ -398,7 +383,7 @@ def query_background_work_items(
     limit: int = 50,
     order: str | None = None,
 ) -> list[dict[str, Any]]:
-    """List background work items in the legacy background-task response shape."""
+    """List background work items as native ``work_items`` rows."""
     filters: dict[str, Any] = {
         "work_type": "background",
         "limit": limit,
@@ -407,11 +392,7 @@ def query_background_work_items(
         filters["status"] = status
     if order:
         filters["order"] = order
-    return [
-        mapped
-        for row in query_work_items(**filters)
-        if (mapped := work_item_as_background_task(row)) is not None
-    ]
+    return query_work_items(**filters)
 
 
 def cancel_background_work_item(item_id: str) -> dict[str, Any]:

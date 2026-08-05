@@ -310,9 +310,8 @@ def _reconcile_memory_index_after_restore(kernel) -> bool:
 def table_counts(kernel, tables: tuple[str, ...]) -> dict[str, int]:
     """Kernel-space row counts for sovereignty verification.
 
-    Tolerates dropped tables (e.g. goals was dropped in v06) by returning 0
-    instead of raising — callers that still reference legacy table names
-    get a sensible default during the migration window.
+    Tolerates dropped tables by returning 0 instead of raising — callers that
+    still reference removed table names get a sensible default.
     """
     out: dict[str, int] = {}
     with kernel._db.get_db() as conn:

@@ -519,7 +519,7 @@ class TestTelemetryAPI:
         resp = client.get("/api/telemetry/health")
         assert resp.status_code == 200
         data = resp.json()
-        assert "active_work_items" in data or "task_queue_length" in data
+        assert "active_work_items" in data
         assert "llm_failure_rate_24h" in data
 
 

@@ -68,7 +68,7 @@ def test_windows_prefix_bypass():
     base = Path("C:/Users/testuser")
     attacker = Path("C:/Users/testuser_attacker/secret.txt")
     server = FilesystemServer(allowed_dirs=[str(base)])
-    assert server._is_safe(str(attacker)) is False
+    assert server.is_path_allowed(str(attacker)) is False
 
 
 def test_write_protected_path_rejected(fs_server: FilesystemServer, tmp_path: Path):

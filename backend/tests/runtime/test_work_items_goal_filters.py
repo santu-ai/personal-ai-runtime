@@ -47,11 +47,11 @@ def test_status_in_filter(kernel_with_goal_work_items):
     k = kernel_with_goal_work_items
     rows = k.query_state(
         "work_items", work_type="goal",
-        status_in=("active", "in_progress"), limit=50,
+        status_in=("active", "completed"), limit=50,
     )
     statuses = {r["status"] for r in rows}
-    assert statuses == {"active"}, f"got {statuses}"
-    assert all(r["id"].startswith("g_active") for r in rows)
+    assert statuses == {"active", "completed"}, f"got {statuses}"
+    assert {r["id"] for r in rows} == {"g_active_1", "g_active_2", "g_done_1"}
 
 
 def test_last_activity_older_than_days(kernel_with_goal_work_items):

@@ -33,4 +33,4 @@ def test_dashboard_widget_shapes(client: TestClient):
 
     gov = data["governance_status"]
     assert isinstance(gov["active_policies"], int)
-    assert isinstance(gov["active_grants"], int)
+    assert isinstance(gov["active_policies"], int)

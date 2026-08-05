@@ -1,10 +1,9 @@
 """Tests for encrypted snapshot sync (AES-GCM export/import).
 
-Covers validation, V2 (PAES) roundtrip, and V1 backward compatibility.
+Covers validation and V2 (PAES) roundtrip.
 """
 
 import base64
-import json
 import os
 
 import pytest
@@ -13,10 +12,8 @@ import pytest
 # the environment cannot provide it — the feature is opt-in.
 pytest.importorskip("cryptography")
 
-from cryptography.hazmat.primitives import hashes  # noqa: E402
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # noqa: E402
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id  # noqa: E402
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC  # noqa: E402
 
 from app.product import encrypted_sync as enc  # noqa: E402
 from app.product.encrypted_sync import (  # noqa: E402
@@ -64,9 +61,9 @@ def test_malformed_blob_rejected():
         decrypt_snapshot_sync("!!!not-base64!!!", "somepassword")
 
 
-def test_truncated_blob_rejected():
+def test_non_paes_blob_rejected():
     short = base64.b64encode(b"abc").decode()
-    with pytest.raises(EncryptedSyncFormatError, match="too short"):
+    with pytest.raises(EncryptedSyncFormatError, match="Unsupported encrypted blob"):
         decrypt_snapshot_sync(short, "somepassword")
 
 
@@ -74,15 +71,6 @@ def test_each_encryption_uses_fresh_salt_and_nonce():
     blob1 = encrypt_snapshot_sync({"a": 1}, "password123")
     blob2 = encrypt_snapshot_sync({"a": 1}, "password123")
     assert blob1 != blob2
-
-
-def _v1_key(password: str, salt: bytes) -> bytes:
-    return PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=enc._KEY_LEN,
-        salt=salt,
-        iterations=enc._PBKDF2_ITERATIONS,
-    ).derive(password.encode("utf-8"))
 
 
 def _v2_key(password: str, salt: bytes) -> bytes:
@@ -93,19 +81,6 @@ def _v2_key(password: str, salt: bytes) -> bytes:
         memory_cost=enc._ARGON2_MEMORY_COST,
         lanes=enc._ARGON2_PARALLELISM,
     ).derive(password.encode("utf-8"))
-
-
-def test_v1_backward_compatibility():
-    snapshot = {"v1": "legacy data"}
-    password = "legacy-password"
-    salt = os.urandom(enc._SALT_LEN)
-    nonce = os.urandom(enc._NONCE_LEN)
-    ciphertext = AESGCM(_v1_key(password, salt)).encrypt(
-        nonce, json.dumps(snapshot).encode("utf-8"), None
-    )
-    v1_blob = base64.b64encode(salt + nonce + ciphertext).decode("ascii")
-
-    assert decrypt_snapshot_sync(v1_blob, password) == snapshot
 
 
 def test_unsupported_version_rejected():
@@ -119,16 +94,6 @@ def test_truncated_v2_magic_blob_rejected():
     blob = base64.b64encode(b"PAES" + bytes([2]) + b"short").decode("ascii")
     with pytest.raises(EncryptedSyncFormatError, match="too short"):
         decrypt_snapshot_sync(blob, "password12")
-
-
-def test_v1_invalid_json_payload_rejected():
-    password = "legacy-password"
-    salt = os.urandom(enc._SALT_LEN)
-    nonce = os.urandom(enc._NONCE_LEN)
-    ciphertext = AESGCM(_v1_key(password, salt)).encrypt(nonce, b"not-json", None)
-    blob = base64.b64encode(salt + nonce + ciphertext).decode("ascii")
-    with pytest.raises(EncryptedSyncPayloadError, match="not valid JSON"):
-        decrypt_snapshot_sync(blob, password)
 
 
 def test_v2_decompress_failure_rejected():

@@ -19,7 +19,7 @@ interface HealthPanelProps {
     categories?: Record<string, number>;
   } | null;
   health: {
-    task_queue_length?: number;
+    active_work_items?: number;
     tool_failure_rate_24h?: number;
   } | null;
   dashboard: {
@@ -169,9 +169,9 @@ export default function HealthPanel({ cost, tools, memory, health, dashboard }: 
               </div>
             </div>
             <div className="bg-surface-raised border border-border-subtle rounded-lg p-3">
-              <div className="text-xs text-fg-tertiary mb-1">任务队列</div>
+              <div className="text-xs text-fg-tertiary mb-1">进行中工作项</div>
               <div className="text-lg font-bold text-fg-secondary">
-                {health?.task_queue_length ?? 0}
+                {health?.active_work_items ?? 0}
               </div>
             </div>
             <div className="bg-surface-raised border border-border-subtle rounded-lg p-3">

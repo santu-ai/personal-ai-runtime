@@ -108,8 +108,3 @@ def request(method: str, path: str, body: dict | None = None) -> HttpResult:
     except json.JSONDecodeError as e:
         logger.warning("backend %s %s failed: invalid JSON: %s", method, path, e)
         return HttpResult(ok=False, error="invalid JSON response")
-
-
-# Back-compat aliases.
-_http = request
-_validate_base_url = validate_base_url

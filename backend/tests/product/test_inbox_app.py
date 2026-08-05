@@ -63,7 +63,7 @@ async def test_poll_inbox_syncs_read_status(product_kernel):
     sample_unread = {
         "count": 1,
         "unread_only": True,
-        "all_unread_message_ids": ["msg-unread"],
+        "all_unread_emails": [{"message_id": "msg-unread"}],
         "emails": [
             {
                 "message_id": "msg-unread",
@@ -99,7 +99,10 @@ async def test_poll_does_not_mark_read_when_unread_beyond_email_limit(product_ke
     payload = {
         "count": 1,
         "unread_only": True,
-        "all_unread_message_ids": ["msg-new", "msg-old-unread"],
+        "all_unread_emails": [
+            {"message_id": "msg-new"},
+            {"message_id": "msg-old-unread"},
+        ],
         "emails": [
             {
                 "message_id": "msg-new",
@@ -128,7 +131,7 @@ async def test_poll_marks_read_when_absent_from_full_unread_set(product_kernel):
     payload = {
         "count": 0,
         "unread_only": True,
-        "all_unread_message_ids": [],
+        "all_unread_emails": [],
         "emails": [],
     }
 

@@ -63,7 +63,7 @@ def test_generate_dashboard_with_seeded_data(product_kernel):
     assert dashboard["recent_events"]["count"] >= 1
     assert dashboard["timer_status"]["active_timers"] >= 1
     assert dashboard["governance_status"]["active_policies"] >= 1
-    assert isinstance(dashboard["governance_status"]["active_grants"], int)
+    assert isinstance(dashboard["governance_status"]["active_policies"], int)
     assert "generated_at" in dashboard
     assert "recent_memories" in dashboard
 

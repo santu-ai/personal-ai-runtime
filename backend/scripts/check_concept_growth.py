@@ -123,7 +123,6 @@ SUBSYSTEM_LOC_FILES: dict[str, tuple[Path, ...]] = {
         ROOT / "backend/app/core/runtime/kernel/sovereignty_ops.py",
     ),
     "mcp_registry": (
-        ROOT / "backend/app/core/harness/mcp_builtin_registration.py",
         ROOT / "backend/app/core/harness/builtin_registration/__init__.py",
         ROOT / "backend/app/core/harness/builtin_registration/common.py",
         ROOT / "backend/app/core/harness/builtin_registration/register.py",
@@ -180,6 +179,7 @@ BASELINE = {
     # Aligned to measured tree after domain split (handlers/governance/egress/read_ports).
     # Ratcheted 2026-08: INV-W5 leftovers closed (runtime_files 63→62, fragments 10→9,
     # god_object_max_loc 633→612). Use --ratchet after intentional reductions.
+    # (same read_model_sql concept; +2 files).
     "runtime_files": 62,
     "event_types": 46,  # INV-W5: dropped 4 BackgroundTask* events
     "query_state_selectors": 17,  # INV-W5: dropped background_tasks selector
@@ -187,7 +187,7 @@ BASELINE = {
     # 15: INV-W5 merged background_tasks into work_items
     "governed_tables": 15,
     "projector_files": 6,              # telemetry in projectors_governance
-    "god_object_max_loc": 612,
+    "god_object_max_loc": 604,
     "dead_code_files": 0,
 }
 

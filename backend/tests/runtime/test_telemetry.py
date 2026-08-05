@@ -178,7 +178,7 @@ def test_health_uses_counts_and_active_work_items(tmp_path, monkeypatch):
     assert health["sample_size_llm_24h"] == 2
     assert health["capped"] is False
     assert "active_work_items" in health
-    assert health["task_queue_length"] == health["active_work_items"]
+    assert "active_work_items" in health
 
 
 def test_iso_created_at_window_excludes_same_day_morning(tmp_path, monkeypatch):

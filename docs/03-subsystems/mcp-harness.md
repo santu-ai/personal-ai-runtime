@@ -13,7 +13,7 @@
 | `CORE_CATEGORIES` | [`mcp_hub.py`](../../backend/app/core/harness/mcp_hub.py) | time、filesystem、web、calendar、email、shell、git、goals |
 | `ADVANCED_CATEGORIES` | [`mcp_hub.py`](../../backend/app/core/harness/mcp_hub.py) | telegram、computer_use、voice、clipboard_ocr（经 `settings.builtin_tool_categories` **叠加** opt-in，不替换 CORE） |
 
-表驱动注册见 [`mcp_builtin_registration.py`](../../backend/app/core/harness/mcp_builtin_registration.py)（`BuiltinToolSpec` + `_CATEGORY_BUILDERS`）。许多工具带 `requires_confirmation=True`：`write_file`、`apply_patch`、`add_calendar_event`、`send_email`、`shell_exec`、`telegram_send`、`computer_click`/`type`/`key`。
+表驱动注册见 [`builtin_registration/`](../../backend/app/core/harness/builtin_registration/)（`BuiltinToolSpec` + `_CATEGORY_BUILDERS`）。许多工具带 `requires_confirmation=True`：`write_file`、`apply_patch`、`add_calendar_event`、`send_email`、`shell_exec`、`telegram_send`、`computer_click`/`type`/`key`。
 
 按 [architecture-principles.md](../02-concepts/architecture-principles.md)：`mcp_hub` / `mcp_mesh` / 安全与注册基础设施属于 Runtime（Capability 载体）；邮件、日历、Telegram 等**领域工具实现**属于 Product 职责——即使当前源码位于 `core/harness/builtin_tools/`，扩展时也不应把产品策略继续堆进 Runtime 原语层。
 

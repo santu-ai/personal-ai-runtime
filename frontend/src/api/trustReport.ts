@@ -51,7 +51,7 @@ const EMPTY_MEMORY: MemoryStats = {
 };
 
 const EMPTY_HEALTH: HealthSnapshot = {
-  task_queue_length: 0,
+  active_work_items: 0,
   llm_failure_rate_24h: 0,
   tool_failure_rate_24h: 0,
 };

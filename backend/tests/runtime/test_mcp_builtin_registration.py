@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.core.harness import mcp_builtin_registration as reg
+from app.core.harness import builtin_registration as reg
 from app.core.harness.mcp_hub import MCPHub, ToolDef
 
 

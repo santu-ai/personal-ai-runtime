@@ -140,10 +140,6 @@ class CapabilityGovernance:
                 actor="kernel",
             )
 
-    def _ensure_policy(self, kernel: Kernel, capability: str, risk: str) -> None:
-        """Backward-compatible alias of :meth:`_upsert_policy`."""
-        self._upsert_policy(kernel, capability, risk)
-
     # ── Risk lookup ────────────────────────────────────────────────
 
     def risk_for(self, name: str, kernel: Kernel | None = None, mcp_default_high: bool = False) -> str:

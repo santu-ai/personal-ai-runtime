@@ -28,7 +28,7 @@ const BASE: TrustReportData = {
   costByModel: [],
   tools: [],
   memory: { total_memories: 0, categories: {}, recent_7d: 0 },
-  health: { task_queue_length: 0, llm_failure_rate_24h: 0, tool_failure_rate_24h: 0 },
+  health: { active_work_items: 0, llm_failure_rate_24h: 0, tool_failure_rate_24h: 0 },
   governance: {
     window_days: 7,
     tools_invoked: 0,

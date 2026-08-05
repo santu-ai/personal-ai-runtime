@@ -128,7 +128,6 @@ from app.core.runtime.read_ports.work import (
     request_work_item_execute,
     update_work_item_fields,
     update_work_item_status,
-    work_item_as_background_task,
 )
 
 __all__ = [
@@ -206,7 +205,6 @@ __all__ = [
     "query_background_work_item",
     "query_background_work_items",
     "cancel_background_work_item",
-    "work_item_as_background_task",
     "query_active_timers",
     "count_active_timers",
     "query_timer",

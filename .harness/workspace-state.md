@@ -6,18 +6,21 @@
 ## 当前状态
 
 - 当前分支：`main`（开发阶段）
-- 进行中任务 / WIP：无
-- 已知坏点 / 待办：`delete_work_item(cascade=True)` 不递归删孙级（已锁定，本轮不改）
+- 进行中任务 / WIP：打磨轮次未提交（兼容层清理之后的死代码/命名/shim 清扫）
+- 已知坏点 / 待办：`delete_work_item(cascade=True)` 不递归删孙级（已锁定）；`runtime/` 内拆 God Object 会涨 `runtime_files` 概念计数，需零和删除配对
 
 ## 产品观察（后续规划候选）
 
 - `delete_work_item(cascade=True)` 不递归删除孙级，会留下 `parent_work_id` 指向已删 action 的孤儿子步骤——已由 `test_delete_work_item_cascade_removes_direct_children` 锁定现状。
+- `parent_goal_id` 与 `parent_work_id` 双轨仍并存（目标子树）；统一为单一父指针是下一档架构债。
+- God Object（`query_builder`/`main`/`mcp_mesh`/`agent_scheduler`）受概念压缩约束，不能无配对拆文件。
 
 ## 近期改动日志
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
-| 2026-08-05 | 移除历史兼容层：旧事件桥 / task 别名 / `task_engine`→`work_item_engine` / 域 FSM 去 RETRYING / 前端 Goal shim / 旧快照导入桥 / `/portrait` `/trust` 重定向 | 开发阶段，不做历史兼容 |
+| 2026-08-05 | 打磨：删 shim / background 旧形 / 加密仅 V2 / `task_queue_length`→`active_work_items`；**拒绝** `query_builder` 拆文件（会涨 `runtime_files`）；文档同步 Argon2id；Kernel↛UserSpace fitness 测试 | **未提交** |
+| 2026-08-05 | 移除历史兼容层：旧事件桥 / task 别名 / `task_engine`→`work_item_engine` / 域 FSM 去 RETRYING / 前端 Goal shim / 旧快照导入桥 / `/portrait` `/trust` 重定向 | commit `da13e30` |
 | 2026-08-04 | 修复 `notify_goal_action_completed` 孤儿 action 的 0/0 噪音通知；新增 `reaction_registry` 行为测试（26 例） | 见 `test_reaction_registry_behavior.py` |
 | 2026-08-04 | 新增 `.harness/powershell-tips.md`（`ls -la`/`&&`/heredoc/cwd 等实战坑），`commands.md`/`README.md` 加指针 | 会话实测记录 |
 | 2026-08-04 | 创建 `.harness/` agent 工作台；`docs/05-engineering/dogfood-week-1.md` 迁至 `.harness/dogfood/week-1.md`；gitleaks 白名单加 `.harness/.*\.md$` | 结构讨论见会话记录 |

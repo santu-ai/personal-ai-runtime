@@ -112,7 +112,7 @@ export interface MemoryStats {
 }
 
 export interface HealthSnapshot {
-  task_queue_length: number;
+  active_work_items: number;
   llm_failure_rate_24h: number;
   tool_failure_rate_24h: number;
   memory_index_repairs_pending?: number;

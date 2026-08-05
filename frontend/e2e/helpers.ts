@@ -189,7 +189,7 @@ export function buildCommonMocks(): MockApiRouter {
       recent_events: { count: 0, total_in_window: 0, items: [] },
       recent_memories: { count: 0, items: [] },
       timer_status: { active_timers: 0, items: [] },
-      governance_status: { active_policies: 10, active_grants: 5 },
+      governance_status: { active_policies: 10 },
     })
     .json("/api/timeline/events", {
       items: [],
@@ -229,7 +229,7 @@ export function buildCommonMocks(): MockApiRouter {
       categories: { habit: 30, work: 25 },
     })
     .json("/api/telemetry/health", {
-      task_queue_length: 3,
+      active_work_items: 3,
       llm_failure_rate_24h: 0.01,
       tool_failure_rate_24h: 0.02,
     });

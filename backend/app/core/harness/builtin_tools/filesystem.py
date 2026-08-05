@@ -80,10 +80,6 @@ class FilesystemServer:
         except Exception:
             return False
 
-    def _is_safe(self, path: str) -> bool:
-        """Backward-compatible alias for :meth:`is_path_allowed`."""
-        return self.is_path_allowed(path)
-
     def _is_env_secret_file(self, p: Path) -> bool:
         """Block .env secrets in any directory; allow .env.example templates."""
         if p.name == ".env.example":
@@ -202,13 +198,10 @@ class FilesystemServer:
     def _read_denied(self, path: str) -> str | None:
         """Return an error JSON string if ``path`` must not be read, else None.
 
-        Read paths are gated by BOTH the allowed-dirs boundary (``_is_safe``)
-        and the protected set (``_is_protected``). Previously reads only
-        checked ``_is_safe``, which — combined with ``Path.home()`` being in
-        the default allowed list — meant a single user confirmation could let
-        the model read ``~/.ssh/id_rsa`` or ``.env`` files.
+        Read paths are gated by BOTH the allowed-dirs boundary
+        (``is_path_allowed``) and the protected set (``_is_protected``).
         """
-        if not self._is_safe(path):
+        if not self.is_path_allowed(path):
             return json.dumps({"error": "Access denied: path outside allowed directories"})
         if self._is_protected(path):
             return json.dumps({"error": "Access denied: protected path"})

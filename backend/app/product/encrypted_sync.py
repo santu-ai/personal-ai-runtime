@@ -1,14 +1,12 @@
-"""Encrypted snapshot sync — AES-GCM with PBKDF2 (V1) or Argon2id (V2) keys.
+"""Encrypted snapshot sync — AES-GCM with Argon2id (V2) keys.
 
 Used by the encrypted export/import endpoints. The crypto itself is
 intentionally simple and standard, but the CPU-bound derive/encrypt/decrypt
 steps are run in a thread executor so the asyncio event loop is not blocked.
 
-V1 Blob layout (Legacy):
-    [16 bytes salt][12 bytes nonce][N bytes AES-GCM ciphertext + 16-byte tag]
-
-V2 Blob layout (Current):
-    [4 bytes magic 'PAES'][1 byte version=2][16 bytes salt][12 bytes nonce][N bytes AES-GCM encrypted zlib payload]
+Blob layout:
+    [4 bytes magic 'PAES'][1 byte version=2][16 bytes salt][12 bytes nonce]
+    [N bytes AES-GCM encrypted zlib payload]
 
 Import decrypts in-memory, then delegates to Kernel.restore() which
 replays events into event_log.
@@ -31,15 +29,12 @@ try:
 except ImportError:  # pragma: no cover
     _json = _stdlib_json
 
-from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 _SALT_LEN = 16
 _NONCE_LEN = 12
 _KEY_LEN = 32
-_PBKDF2_ITERATIONS = 600_000
 
 _MAGIC = b"PAES"
 _VERSION_V2 = 2
@@ -68,17 +63,7 @@ class EncryptedSyncPayloadError(EncryptedSyncError):
     """Raised when decrypted payload is invalid (corrupted or not JSON)."""
 
 
-def _derive_key_v1(password: str, salt: bytes) -> bytes:
-    kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=_KEY_LEN,
-        salt=salt,
-        iterations=_PBKDF2_ITERATIONS,
-    )
-    return kdf.derive(password.encode("utf-8"))
-
-
-def _derive_key_v2(password: str, salt: bytes) -> bytes:
+def _derive_key(password: str, salt: bytes) -> bytes:
     kdf = Argon2id(
         length=_KEY_LEN,
         salt=salt,
@@ -109,7 +94,7 @@ def encrypt_snapshot_sync(snapshot: dict[str, Any], password: str) -> str:
     # 2. Encrypt
     salt = os.urandom(_SALT_LEN)
     nonce = os.urandom(_NONCE_LEN)
-    key = _derive_key_v2(password, salt)
+    key = _derive_key(password, salt)
     aesgcm = AESGCM(key)
     ciphertext = aesgcm.encrypt(nonce, compressed, None)
 
@@ -119,10 +104,7 @@ def encrypt_snapshot_sync(snapshot: dict[str, Any], password: str) -> str:
 
 
 def decrypt_snapshot_sync(blob: str, password: str) -> dict[str, Any]:
-    """Decrypt a base64 blob produced by :func:`encrypt_snapshot_sync`.
-
-    Supports both V1 (legacy) and V2 (compressed Argon2id) formats.
-    """
+    """Decrypt a base64 blob produced by :func:`encrypt_snapshot_sync`."""
     if not blob or not password:
         raise EncryptedSyncError("data and password are required")
 
@@ -131,38 +113,13 @@ def decrypt_snapshot_sync(blob: str, password: str) -> dict[str, Any]:
     except Exception as exc:
         raise EncryptedSyncFormatError("Invalid encrypted blob format") from exc
 
-    if raw.startswith(_MAGIC):
-        return _decrypt_v2(raw, password)
-    else:
-        return _decrypt_v1(raw, password)
-
-
-def _decrypt_v1(raw: bytes, password: str) -> dict[str, Any]:
-    """Internal: Decrypt V1 legacy format."""
-    if len(raw) < _SALT_LEN + _NONCE_LEN + 16:  # 16 = AES-GCM tag
-        raise EncryptedSyncFormatError("Encrypted blob is too short")
-
-    salt = raw[:_SALT_LEN]
-    nonce = raw[_SALT_LEN:_SALT_LEN + _NONCE_LEN]
-    ciphertext = raw[_SALT_LEN + _NONCE_LEN:]
-
-    key = _derive_key_v1(password, salt)
-    aesgcm = AESGCM(key)
-    try:
-        plaintext = aesgcm.decrypt(nonce, ciphertext, None)
-    except Exception as exc:
-        raise EncryptedSyncAuthError(
-            "Decryption failed — wrong password or corrupted data"
-        ) from exc
-
-    try:
-        return _json.loads(plaintext)
-    except Exception as exc:
-        raise EncryptedSyncPayloadError("Decrypted payload is not valid JSON") from exc
+    if not raw.startswith(_MAGIC):
+        raise EncryptedSyncFormatError("Unsupported encrypted blob format")
+    return _decrypt_v2(raw, password)
 
 
 def _decrypt_v2(raw: bytes, password: str) -> dict[str, Any]:
-    """Internal: Decrypt V2 modern format."""
+    """Internal: Decrypt V2 format."""
     header_len = len(_MAGIC) + 1  # Magic + Version byte
     if len(raw) < header_len + _SALT_LEN + _NONCE_LEN + 16:
         raise EncryptedSyncFormatError("Encrypted blob is too short")
@@ -179,7 +136,7 @@ def _decrypt_v2(raw: bytes, password: str) -> dict[str, Any]:
     nonce = raw[nonce_start:cipher_start]
     ciphertext = raw[cipher_start:]
 
-    key = _derive_key_v2(password, salt)
+    key = _derive_key(password, salt)
     aesgcm = AESGCM(key)
     try:
         compressed = aesgcm.decrypt(nonce, ciphertext, None)

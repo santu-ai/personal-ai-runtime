@@ -82,7 +82,7 @@ function mockDashboardData(overrides: Partial<ReturnType<typeof useDashboard>> =
       categories: { habit: 30, work: 25 },
     },
     health: {
-      task_queue_length: 3,
+      active_work_items: 3,
       llm_failure_rate_24h: 0.01,
       tool_failure_rate_24h: 0.02,
     },

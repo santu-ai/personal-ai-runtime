@@ -206,8 +206,8 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
             />
             <Kv
               icon={AlertTriangle}
-              label="任务队列"
-              value={`${data?.health?.task_queue_length ?? 0} 个`}
+              label="进行中工作项"
+              value={`${data?.health?.active_work_items ?? 0} 个`}
               color="text-warning"
               sub={`LLM 失败率 ${((data?.health?.llm_failure_rate_24h ?? 0) * 100).toFixed(1)}%`}
             />

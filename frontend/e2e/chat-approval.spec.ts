@@ -254,7 +254,7 @@ test.describe("New pages", () => {
       recent_events: { count: 0, total_in_window: 0, items: [] },
       recent_memories: { count: 0, items: [] },
       timer_status: { active_timers: 0, items: [] },
-      governance_status: { active_policies: 10, active_grants: 5 },
+      governance_status: { active_policies: 10 },
     });
     await router.install(page);
 

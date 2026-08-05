@@ -5,7 +5,7 @@ Fails CI when a builtin tool's ``requires_confirmation`` flag disagrees with
 the risk classification in ``capability_policy.json``. This closes the
 dual-source-of-truth drift between:
 
-  * ``ToolDef.requires_confirmation`` (set in mcp_builtin_registration.py) —
+  * ``ToolDef.requires_confirmation`` (set in builtin_registration) —
     the hub-layer fallback used only when no policy row exists.
   * ``capability_policy.json`` → seeded into ``policy_events`` — the
     authoritative risk source the 3-gate governance consults.

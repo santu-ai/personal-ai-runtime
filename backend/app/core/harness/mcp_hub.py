@@ -1,7 +1,7 @@
 """MCP Client Hub——工具注册、发现与调用的统一入口。
 
 同时支持同步与异步工具 handler。内置工具接线放在
-``mcp_builtin_registration``，保持本文件不超 Architecture Contract
+``builtin_registration``，保持本文件不超 Architecture Contract
 对 God Object 的体量约束。
 """
 
@@ -83,12 +83,12 @@ class MCPHub:
         self._register_all_tools()
 
     def _register_all_tools(self) -> None:
-        from app.core.harness import mcp_builtin_registration as reg
+        from app.core.harness import builtin_registration as reg
         reg._register_all_tools(self)
 
     def register_mesh_tools(self, tool_defs: list) -> int:
         """注册 MCP Mesh 发现到的外部工具，返回新增数量。"""
-        from app.core.harness import mcp_builtin_registration as reg
+        from app.core.harness import builtin_registration as reg
         return reg.register_mesh_tools(self, tool_defs)
 
     def register_tool(self, tool: ToolDef):

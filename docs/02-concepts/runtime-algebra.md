@@ -308,11 +308,11 @@ Reaction 不是独立"概念"，而是 `subscribe + invoke + produce` 的组合�
 | Fragment 注册数 | 9 | `fragments` |
 | Governed 投影表数 | 15 | `governed_tables` |
 | Projector 文件数 | 6 | `projector_files` |
-| God Object 最大 LOC（Kernel/Brain/MCPHub） | 612 | `god_object_max_loc` |
+| God Object 最大 LOC（Kernel/Brain/MCPHub） | 604 | `god_object_max_loc` |
 
 权威源是 [`check_concept_growth.py`](../../backend/scripts/check_concept_growth.py) 的 `BASELINE`；本表必须与之逐项一致（CI 校验）。原则说明见 [architecture-principles.md](architecture-principles.md)。
 
-**子系统 LOC 预算（G2，与 façade God Object 分离）**：`read_model_sql`（`query_builder.py`）≤900；`sovereignty`（`sovereignty_ops.py`）≤850；`mcp_registry`（`builtin_registration/` + shim）≤1200。文件清单锁定在脚本 `SUBSYSTEM_LOC_FILES`。
+**子系统 LOC 预算（G2，与 façade God Object 分离）**：`read_model_sql`（`sql_fragments.py` + `snapshot_export.py` + `query_builder.py`）≤900；`sovereignty`（`sovereignty_ops.py`）≤850；`mcp_registry`（`builtin_registration/` + shim）≤1200。文件清单锁定在脚本 `SUBSYSTEM_LOC_FILES`。
 
 ---
 

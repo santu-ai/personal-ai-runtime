@@ -145,9 +145,9 @@ Handlers（[`handlers/`](../../backend/app/core/agents/handlers/)）：
 | Handler | 订阅事件 | 行为 |
 |---|---|---|
 | `chat_handler.py` | `ChatRequested` | 编译 prompt（`prompt_compiler`），跑 `Brain.chat_stream`，把 `text_delta`/`tool_call_start`/`tool_result` 推到 SSE 队列（不进 event_log——频率太高），emit `ChatCompleted` + `ChatDone` |
-| `capability_handlers.py` | `ApproveRequested` | 解决审批，可能经 `brain.continue_after_tool_result` 续接对话 |
-| `execute_handlers.py` | `ExecuteRequested` | 执行 work item 的 `executable_plan`（含 `work_type=background`） |
-| `inbox_poll_handlers.py` | `InboxPollRequested` | 经 capability 拉未读邮件 |
+| `approve_handlers.py`（`runtime/handlers/`） | `ApproveRequested` | 解决审批，可能经 `brain.continue_after_tool_result` 续接对话 |
+| `execute_handlers.py`（`runtime/handlers/`） | `ExecuteRequested` | 执行 work item 的 `executable_plan`（含 `work_type=background`） |
+| `inbox_poll_handlers.py`（`runtime/handlers/`） | `InboxPollRequested` | 经 capability 拉未读邮件 |
 | `timer_trigger_handler.py` | `TimerFired` | 按 `handler_name` 分派到 product 函数：`deadline_alert`/`trigger_evaluation`/`memory_decay`/`world_model_snapshot`/`projection_snapshots`/`inbox_poll`/`inbox_digest`/`morning_brief` |
 
 ## Scheduler — WorkItem 执行引擎

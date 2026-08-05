@@ -165,43 +165,6 @@ def test_query_pending_work_items_forwards(fake_kernel):
     ]
 
 
-# ── Legacy background-task mapping (pure) ─────────────────────────────────
-
-
-def test_work_item_as_background_task_none():
-    assert work_port.work_item_as_background_task(None) is None
-
-
-def test_work_item_as_background_task_maps_fields():
-    row = {
-        "id": "b1",
-        "title": "background job",
-        "executable_plan": '{"steps": []}',
-        "status": "running",
-        "progress": 0.42,
-        "created_at": "2026-01-01T00:00:00",
-        "completed_at": None,
-    }
-    assert work_port.work_item_as_background_task(row) == {
-        "id": "b1",
-        "user_request": "background job",
-        "plan_json": '{"steps": []}',
-        "status": "running",
-        "progress": 0.42,
-        "created_at": "2026-01-01T00:00:00",
-        "completed_at": None,
-    }
-
-
-def test_work_item_as_background_task_fills_defaults():
-    row = {"id": "b2", "title": None, "executable_plan": None, "status": None}
-    mapped = work_port.work_item_as_background_task(row)
-    assert mapped["user_request"] == ""
-    assert mapped["plan_json"] is None
-    assert mapped["status"] == "pending"
-    assert mapped["progress"] == 0.0
-
-
 # ── Background work items (isolated kernel) ───────────────────────────────
 
 
@@ -216,12 +179,13 @@ def _emit_background(k, item_id: str, *, status: str, plan: str = '{"steps": []}
     )
 
 
-def test_query_background_work_item_returns_mapping(isolated_kernel):
+def test_query_background_work_item_returns_row(isolated_kernel):
     k, _db = isolated_kernel
     _emit_background(k, "b1", status="pending")
-    mapped = work_port.query_background_work_item("b1")
-    assert mapped["user_request"] == "job b1"
-    assert mapped["status"] == "pending"
+    row = work_port.query_background_work_item("b1")
+    assert row["title"] == "job b1"
+    assert row["work_type"] == "background"
+    assert row["status"] == "pending"
 
 
 def test_query_background_work_item_none_for_other_work_types(isolated_kernel):

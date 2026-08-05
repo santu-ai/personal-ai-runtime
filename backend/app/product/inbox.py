@@ -160,11 +160,6 @@ def _unread_ids_from_poll_payload(payload: dict) -> set[str]:
     if explicit is not None:
         return {e["message_id"] for e in explicit if isinstance(e, dict) and e.get("message_id")}
 
-    # Compatibility with old all_unread_message_ids
-    legacy = payload.get("all_unread_message_ids")
-    if legacy is not None:
-        return {mid for mid in legacy if mid}
-
     emails = payload.get("emails") or []
     return {e["message_id"] for e in emails if e.get("message_id")}
 

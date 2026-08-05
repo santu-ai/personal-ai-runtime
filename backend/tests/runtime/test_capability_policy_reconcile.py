@@ -3,7 +3,7 @@
 P1 fix: builtin tools that were tightened in capability_policy.json (e.g.
 computer_screenshot / computer_move / computer_scroll moved from auto_allow to
 needs_user) must take effect on already-initialised databases, not only on a
-fresh DB. ``_ensure_policy`` therefore emits PolicyUpdated when the seed JSON
+fresh DB. ``_upsert_policy`` therefore emits PolicyUpdated when the seed JSON
 risk tier disagrees with the existing policy_events row.
 """
 
@@ -47,7 +47,7 @@ def test_seed_marks_computer_screenshot_high(kernel):
 def test_seed_reconciles_stale_low_risk(kernel):
     """Already-initialised DB with stale low-risk row → seed emits PolicyUpdated."""
     # Simulate a pre-P1 database: computer_screenshot was auto_allow (low).
-    capability_governance._ensure_policy(kernel, "computer_screenshot", "low")
+    capability_governance._upsert_policy(kernel, "computer_screenshot", "low")
     rows = kernel.query_state("policy_events", capability="computer_screenshot", limit=1)
     assert rows[0]["risk_level"] == "low"
 

@@ -61,8 +61,6 @@ class Telemetry:
 
         rates = read_ports.summarize_call_failure_rates(days=1)
         return {
-            # Legacy key kept for API compatibility.
-            "task_queue_length": active_work_items,
             "active_work_items": active_work_items,
             "llm_failure_rate_24h": rates.get("llm_failure_rate", 0),
             "tool_failure_rate_24h": rates.get("tool_failure_rate", 0),

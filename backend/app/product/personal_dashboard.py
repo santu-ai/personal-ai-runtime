@@ -197,11 +197,7 @@ def _widget_timer_status() -> dict:
 
 
 def _widget_governance_status() -> dict:
-    """Policy status — Governance Runtime health.
-
-    ``active_grants`` is kept in the response shape (hardcoded 0) for
-    frontend compatibility.
-    """
+    """Policy status — Governance Runtime health."""
     try:
         active_policies = read_ports.count_active_policies()
     except Exception:
@@ -209,5 +205,4 @@ def _widget_governance_status() -> dict:
         active_policies = 0
     return {
         "active_policies": active_policies,
-        "active_grants": 0,
     }
