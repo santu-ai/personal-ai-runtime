@@ -15,7 +15,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from typing import Any, Iterable, Literal, overload
 
 # 防御性上限——当前没有任何调用点需要超过几百行。防止失控的 ``limit``
 # 拖垮数据库。
@@ -308,6 +308,89 @@ def fetch_event_log_rows(
 # ── 投影读取（从 QueryStateMixin 抽出）────────────────────────────────────
 # 这些函数会打开 Database 连接；上面的片段助手保持无连接。
 
+# 表白名单：``_query_by_id`` 只接受这些名字，避免把任意字符串插进 SQL。
+_QUERY_TABLES = frozenset({
+    "work_items",
+    "approvals",
+    "memories",
+    "notifications",
+    "conversations",
+    "messages",
+    "inbox_emails",
+    "timer_events",
+    "policy_events",
+    "user_profile",
+})
+
+
+@overload
+def _query_by_id(
+    conn: Any,
+    table: str,
+    row_id: Any,
+    *,
+    count_only: Literal[True],
+    id_column: str = "id",
+) -> int: ...
+
+
+@overload
+def _query_by_id(
+    conn: Any,
+    table: str,
+    row_id: Any,
+    *,
+    count_only: Literal[False] = False,
+    id_column: str = "id",
+) -> list[dict]: ...
+
+
+@overload
+def _query_by_id(
+    conn: Any,
+    table: str,
+    row_id: Any,
+    *,
+    count_only: bool = False,
+    id_column: str = "id",
+) -> list[dict] | int: ...
+
+
+def _query_by_id(
+    conn: Any,
+    table: str,
+    row_id: Any,
+    *,
+    count_only: bool = False,
+    id_column: str = "id",
+) -> list[dict] | int:
+    """按主键查一行或 COUNT；``table`` 必须在 :data:`_QUERY_TABLES`。"""
+    if table not in _QUERY_TABLES:
+        raise ValueError(f"unsupported query table: {table}")
+    if id_column not in ("id", "category"):
+        raise ValueError(f"unsupported id column: {id_column}")
+    if count_only:
+        row = conn.execute(
+            f"SELECT COUNT(*) AS c FROM {table} WHERE {id_column} = ?",
+            (row_id,),
+        ).fetchone()
+        return int(row["c"]) if row else 0
+    row = conn.execute(
+        f"SELECT * FROM {table} WHERE {id_column} = ?",
+        (row_id,),
+    ).fetchone()
+    return [dict(row)] if row else []
+
+
+def _count_where(conn: Any, table: str, where: str, params: list[Any]) -> int:
+    if table not in _QUERY_TABLES:
+        raise ValueError(f"unsupported query table: {table}")
+    row = conn.execute(
+        f"SELECT COUNT(*) AS c FROM {table}{where}",
+        params,
+    ).fetchone()
+    return int(row["c"]) if row else 0
+
 
 def query_work_items(db, filters: dict[str, Any]) -> list[dict] | int:
     """work_items 表的统一查询。
@@ -333,24 +416,24 @@ def query_work_items(db, filters: dict[str, Any]) -> list[dict] | int:
     order = filters.get("order", "created_at_asc")
     count_only = filters.get("count_only", False)
 
-    order_clauses = {
-        "created_at_asc": "created_at ASC",
-        "created_at_desc": "created_at DESC",
-        "priority_desc": "priority DESC, created_at ASC",
-        "importance_desc": "importance DESC, created_at DESC",
-        "importance_urgency_desc": "importance DESC, urgency DESC",
-        "last_activity_asc": "last_activity_at ASC",
-        "importance_desc_only": "importance DESC",
-    }
-    order_sql = order_clauses.get(order, order_clauses["created_at_asc"])
+    order_sql = safe_order(
+        order,
+        {
+            "created_at_asc": "created_at ASC",
+            "created_at_desc": "created_at DESC",
+            "priority_desc": "priority DESC, created_at ASC",
+            "importance_desc": "importance DESC, created_at DESC",
+            "importance_urgency_desc": "importance DESC, urgency DESC",
+            "last_activity_asc": "last_activity_at ASC",
+            "importance_desc_only": "importance DESC",
+        },
+        default_key="created_at_asc",
+    )
+    limit_sql = safe_limit(limit, default=50)
 
     with db.get_db() as conn:
         if item_id:
-            if count_only:
-                row = conn.execute("SELECT COUNT(*) as c FROM work_items WHERE id = ?", (item_id,)).fetchone()
-                return int(row["c"]) if row else 0
-            row = conn.execute("SELECT * FROM work_items WHERE id = ?", (item_id,)).fetchone()
-            return [dict(row)] if row else []
+            return _query_by_id(conn, "work_items", item_id, count_only=bool(count_only))
 
         if item_ids_provided:
             # 按 id 列表批量查找（为富化路径避免 N+1）。
@@ -358,16 +441,14 @@ def query_work_items(db, filters: dict[str, Any]) -> list[dict] | int:
             unique_ids = list(dict.fromkeys(str(i) for i in (item_ids or []) if i))
             if not unique_ids:
                 return [] if not count_only else 0
-            placeholders = ",".join("?" * len(unique_ids))
+            in_sql, in_params = in_clause(unique_ids)
             if count_only:
-                row = conn.execute(
-                    f"SELECT COUNT(*) as c FROM work_items WHERE id IN ({placeholders})",
-                    unique_ids,
-                ).fetchone()
-                return int(row["c"]) if row else 0
+                return _count_where(
+                    conn, "work_items", f" WHERE id {in_sql}", in_params,
+                )
             rows = conn.execute(
-                f"SELECT * FROM work_items WHERE id IN ({placeholders})",
-                unique_ids,
+                f"SELECT * FROM work_items WHERE id {in_sql}",
+                in_params,
             ).fetchall()
             return [dict(r) for r in rows]
 
@@ -375,9 +456,12 @@ def query_work_items(db, filters: dict[str, Any]) -> list[dict] | int:
         params: list[Any] = []
         # status_in 与 status 同时出现时，status_in 优先（镜像 _query_goals 语义）。
         if status_in is not None:
-            placeholders = ",".join("?" * len(status_in))
-            clauses.append(f"status IN ({placeholders})")
-            params.extend(status_in)
+            in_sql, in_params = in_clause(status_in)
+            if in_sql:
+                clauses.append(f"status {in_sql}")
+                params.extend(in_params)
+            else:
+                clauses.append("1 = 0")
         elif status is not None:
             clauses.append("status = ?")
             params.append(status)
@@ -406,57 +490,45 @@ def query_work_items(db, filters: dict[str, Any]) -> list[dict] | int:
         if has_deadline:
             clauses.append("deadline IS NOT NULL")
 
-        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        where = build_where(clauses)
 
         if count_only:
-            row = conn.execute(f"SELECT COUNT(*) as c FROM work_items{where}", params).fetchone()
-            return int(row["c"])
+            return _count_where(conn, "work_items", where, params)
 
-        params.append(int(limit))
         rows = conn.execute(
-            f"SELECT * FROM work_items{where} ORDER BY {order_sql} LIMIT ?",
+            f"SELECT * FROM work_items{where}{order_sql}{limit_sql}",
             params,
         ).fetchall()
     return [dict(r) for r in rows]
+
 
 def query_approvals(db, filters: dict[str, Any]) -> list[dict] | int:
     approval_id = filters.get("id")
     status = filters.get("status")
     limit = filters.get("limit", 50)
     count_only = bool(filters.get("count_only", False))
+    limit_sql = safe_limit(limit, default=50)
 
     with db.get_db() as conn:
         if approval_id:
-            if count_only:
-                row = conn.execute(
-                    "SELECT COUNT(*) AS c FROM approvals WHERE id = ?",
-                    (approval_id,),
-                ).fetchone()
-                return int(row["c"]) if row else 0
-            row = conn.execute(
-                "SELECT * FROM approvals WHERE id = ?", (approval_id,)
-            ).fetchone()
-            return [dict(row)] if row else []
+            return _query_by_id(conn, "approvals", approval_id, count_only=count_only)
 
         clauses: list[str] = []
         params: list[Any] = []
         if status is not None:
             clauses.append("status = ?")
             params.append(status)
-        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        where = build_where(clauses)
 
         if count_only:
-            row = conn.execute(
-                f"SELECT COUNT(*) AS c FROM approvals{where}",
-                params,
-            ).fetchone()
-            return int(row["c"]) if row else 0
+            return _count_where(conn, "approvals", where, params)
 
         rows = conn.execute(
-            f"SELECT * FROM approvals{where} ORDER BY created_at DESC LIMIT ?",
-            [*params, limit],
+            f"SELECT * FROM approvals{where} ORDER BY created_at DESC{limit_sql}",
+            params,
         ).fetchall()
     return [dict(r) for r in rows]
+
 
 def query_memories(db, filters: dict[str, Any]) -> list[dict] | int:
     memory_id = filters.get("id")
@@ -483,16 +555,11 @@ def query_memories(db, filters: dict[str, Any]) -> list[dict] | int:
         },
         default_key="confidence_desc",
     )
+    limit_sql = safe_limit(limit, default=50)
 
     with db.get_db() as conn:
         if memory_id:
-            if count_only:
-                row = conn.execute("SELECT COUNT(*) as c FROM memories WHERE id = ?", (memory_id,)).fetchone()
-                return int(row["c"]) if row else 0
-            row = conn.execute(
-                "SELECT * FROM memories WHERE id = ?", (memory_id,)
-            ).fetchone()
-            return [dict(row)] if row else []
+            return _query_by_id(conn, "memories", memory_id, count_only=bool(count_only))
 
         clauses: list[str] = []
         params: list[Any] = []
@@ -516,18 +583,17 @@ def query_memories(db, filters: dict[str, Any]) -> list[dict] | int:
                 "(decayed_at IS NULL OR decayed_at < datetime('now', '-7 days'))"
             )
 
-        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        where = build_where(clauses)
 
         if count_only:
-            row = conn.execute(f"SELECT COUNT(*) as c FROM memories{where}", params).fetchone()
-            return int(row["c"])
+            return _count_where(conn, "memories", where, params)
 
-        params.append(limit)
         rows = conn.execute(
-            f"SELECT * FROM memories{where}{order_sql} LIMIT ?",
+            f"SELECT * FROM memories{where}{order_sql}{limit_sql}",
             params,
         ).fetchall()
     return [dict(r) for r in rows]
+
 
 def query_notifications(db, filters: dict[str, Any]) -> list[dict] | int:
     notification_id = filters.get("id")
@@ -542,24 +608,21 @@ def query_notifications(db, filters: dict[str, Any]) -> list[dict] | int:
     order = filters.get("order", "created_at_desc")
     count_only = bool(filters.get("count_only", False))
 
-    order_clauses = {
-        "created_at_desc": "created_at DESC",
-        "created_at_asc": "created_at ASC",
-    }
-    order_sql = order_clauses.get(order, order_clauses["created_at_desc"])
+    order_sql = safe_order(
+        order,
+        {
+            "created_at_desc": "created_at DESC",
+            "created_at_asc": "created_at ASC",
+        },
+        default_key="created_at_desc",
+    )
+    limit_sql = safe_limit(limit, default=50)
 
     with db.get_db() as conn:
         if notification_id:
-            if count_only:
-                row = conn.execute(
-                    "SELECT COUNT(*) AS c FROM notifications WHERE id = ?",
-                    (notification_id,),
-                ).fetchone()
-                return int(row["c"]) if row else 0
-            row = conn.execute(
-                "SELECT * FROM notifications WHERE id = ?", (notification_id,)
-            ).fetchone()
-            return [dict(row)] if row else []
+            return _query_by_id(
+                conn, "notifications", notification_id, count_only=count_only,
+            )
 
         clauses: list[str] = []
         params: list[Any] = []
@@ -584,39 +647,45 @@ def query_notifications(db, filters: dict[str, Any]) -> list[dict] | int:
             clauses.append("dedup_key = ?")
             params.append(dedup_key)
 
-        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        where = build_where(clauses)
 
         if count_only:
-            row = conn.execute(
-                f"SELECT COUNT(*) AS c FROM notifications{where}",
-                params,
-            ).fetchone()
-            return int(row["c"]) if row else 0
+            return _count_where(conn, "notifications", where, params)
 
-        params.append(limit)
         rows = conn.execute(
-            f"SELECT * FROM notifications{where} ORDER BY {order_sql} LIMIT ?",
+            f"SELECT * FROM notifications{where}{order_sql}{limit_sql}",
             params,
         ).fetchall()
     return [dict(r) for r in rows]
+
 
 def query_conversations(db, filters: dict[str, Any]) -> list[dict]:
     conv_id = filters.get("id")
     limit = filters.get("limit", 50)
     order = filters.get("order", "created_at_desc")
 
-    order_sql = "updated_at DESC" if order == "created_at_desc" else "created_at ASC"
+    # Historical quirk: public key ``created_at_desc`` sorts by updated_at.
+    # Unknown keys fall back to ``created_at_asc`` (pre-refactor behaviour:
+    # only ``created_at_desc`` mapped to updated_at; everything else → created_at ASC).
+    order_sql = safe_order(
+        order,
+        {
+            "created_at_desc": "updated_at DESC",
+            "created_at_asc": "created_at ASC",
+            "updated_at_desc": "updated_at DESC",
+        },
+        default_key="created_at_asc",
+    )
+    limit_sql = safe_limit(limit, default=50)
+
     with db.get_db() as conn:
         if conv_id:
-            row = conn.execute(
-                "SELECT * FROM conversations WHERE id = ?", (conv_id,)
-            ).fetchone()
-            return [dict(row)] if row else []
+            return _query_by_id(conn, "conversations", conv_id)
         rows = conn.execute(
-            f"SELECT * FROM conversations ORDER BY {order_sql} LIMIT ?",
-            (limit,),
+            f"SELECT * FROM conversations{order_sql}{limit_sql}",
         ).fetchall()
     return [dict(r) for r in rows]
+
 
 def query_messages(db, filters: dict[str, Any]) -> list[dict]:
     message_id = filters.get("id")
@@ -624,31 +693,29 @@ def query_messages(db, filters: dict[str, Any]) -> list[dict]:
     limit = filters.get("limit", 20)
     order = filters.get("order", "created_at_desc")
 
-    order_clauses = {
-        "created_at_desc": "created_at DESC",
-        "created_at_asc": "created_at ASC",
-    }
-    order_sql = order_clauses.get(order, order_clauses["created_at_desc"])
+    order_sql = safe_order(
+        order,
+        {
+            "created_at_desc": "created_at DESC",
+            "created_at_asc": "created_at ASC",
+        },
+        default_key="created_at_desc",
+    )
+    limit_sql = safe_limit(limit, default=20)
 
     with db.get_db() as conn:
         if message_id:
-            row = conn.execute(
-                "SELECT * FROM messages WHERE id = ?",
-                (message_id,),
-            ).fetchone()
-            return [dict(row)] if row else []
+            return _query_by_id(conn, "messages", message_id)
 
         if not conversation_id:
             return []
 
         rows = conn.execute(
-            f"""SELECT * FROM messages
-                WHERE conversation_id = ?
-                ORDER BY {order_sql}
-                LIMIT ?""",
-            (conversation_id, limit),
+            f"SELECT * FROM messages WHERE conversation_id = ?{order_sql}{limit_sql}",
+            (conversation_id,),
         ).fetchall()
     return [dict(r) for r in rows]
+
 
 def query_inbox_emails(db, filters: dict[str, Any]) -> list[dict] | int:
     email_id = filters.get("id")
@@ -662,26 +729,21 @@ def query_inbox_emails(db, filters: dict[str, Any]) -> list[dict] | int:
     order = filters.get("order", "date_desc")
     count_only = bool(filters.get("count_only", False))
 
-    order_clauses = {
-        "date_desc": "COALESCE(received_at, created_at) DESC",
-        "date_asc": "COALESCE(received_at, created_at) ASC",
-        "created_at_desc": "created_at DESC",
-        "importance_desc": "importance DESC, COALESCE(received_at, created_at) DESC",
-    }
-    order_sql = order_clauses.get(order, order_clauses["date_desc"])
+    order_sql = safe_order(
+        order,
+        {
+            "date_desc": "COALESCE(received_at, created_at) DESC",
+            "date_asc": "COALESCE(received_at, created_at) ASC",
+            "created_at_desc": "created_at DESC",
+            "importance_desc": "importance DESC, COALESCE(received_at, created_at) DESC",
+        },
+        default_key="date_desc",
+    )
+    limit_sql = safe_limit(limit, default=20)
 
     with db.get_db() as conn:
         if email_id:
-            if count_only:
-                row = conn.execute(
-                    "SELECT COUNT(*) AS c FROM inbox_emails WHERE id = ?",
-                    (email_id,),
-                ).fetchone()
-                return int(row["c"]) if row else 0
-            row = conn.execute(
-                "SELECT * FROM inbox_emails WHERE id = ?", (email_id,)
-            ).fetchone()
-            return [dict(row)] if row else []
+            return _query_by_id(conn, "inbox_emails", email_id, count_only=count_only)
 
         clauses: list[str] = []
         params: list[Any] = []
@@ -707,21 +769,17 @@ def query_inbox_emails(db, filters: dict[str, Any]) -> list[dict] | int:
             pattern = f"%{search}%"
             params.extend([pattern, pattern, pattern])
 
-        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        where = build_where(clauses)
 
         if count_only:
-            row = conn.execute(
-                f"SELECT COUNT(*) AS c FROM inbox_emails{where}",
-                params,
-            ).fetchone()
-            return int(row["c"]) if row else 0
+            return _count_where(conn, "inbox_emails", where, params)
 
-        params.append(limit)
         rows = conn.execute(
-            f'SELECT * FROM inbox_emails{where} ORDER BY {order_sql} LIMIT ?',
+            f"SELECT * FROM inbox_emails{where}{order_sql}{limit_sql}",
             params,
         ).fetchall()
     return [dict(r) for r in rows]
+
 
 def query_timer_events(db, filters: dict[str, Any]) -> list[dict] | int:
     timer_id = filters.get("id")
@@ -729,20 +787,11 @@ def query_timer_events(db, filters: dict[str, Any]) -> list[dict] | int:
     fire_at_lt = filters.get("fire_at_lt")
     limit = filters.get("limit", 50)
     count_only = bool(filters.get("count_only", False))
+    limit_sql = safe_limit(limit, default=50)
 
     with db.get_db() as conn:
         if timer_id:
-            if count_only:
-                row = conn.execute(
-                    "SELECT COUNT(*) AS c FROM timer_events WHERE id = ?",
-                    (timer_id,),
-                ).fetchone()
-                return int(row["c"]) if row else 0
-            row = conn.execute(
-                "SELECT * FROM timer_events WHERE id = ?",
-                (timer_id,),
-            ).fetchone()
-            return [dict(row)] if row else []
+            return _query_by_id(conn, "timer_events", timer_id, count_only=count_only)
 
         clauses: list[str] = []
         params: list[Any] = []
@@ -753,27 +802,24 @@ def query_timer_events(db, filters: dict[str, Any]) -> list[dict] | int:
             clauses.append("fire_at <= ? AND fire_at != ''")
             params.append(fire_at_lt)
 
-        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        where = build_where(clauses)
 
         if count_only:
-            row = conn.execute(
-                f"SELECT COUNT(*) AS c FROM timer_events{where}",
-                params,
-            ).fetchone()
-            return int(row["c"]) if row else 0
+            return _count_where(conn, "timer_events", where, params)
 
-        params.append(limit)
         rows = conn.execute(
-            f"SELECT * FROM timer_events{where} ORDER BY fire_at ASC LIMIT ?",
+            f"SELECT * FROM timer_events{where} ORDER BY fire_at ASC{limit_sql}",
             params,
         ).fetchall()
     return [dict(r) for r in rows]
+
 
 def query_policy_events(db, filters: dict[str, Any]) -> list[dict] | int:
     capability = filters.get("capability")
     status = filters.get("status")
     limit = filters.get("limit", 200)
     count_only = bool(filters.get("count_only", False))
+    limit_sql = safe_limit(limit, default=200)
 
     with db.get_db() as conn:
         clauses: list[str] = []
@@ -785,21 +831,17 @@ def query_policy_events(db, filters: dict[str, Any]) -> list[dict] | int:
             clauses.append("status = ?")
             params.append(status)
 
-        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        where = build_where(clauses)
 
         if count_only:
-            row = conn.execute(
-                f"SELECT COUNT(*) AS c FROM policy_events{where}",
-                params,
-            ).fetchone()
-            return int(row["c"]) if row else 0
+            return _count_where(conn, "policy_events", where, params)
 
-        params.append(limit)
         rows = conn.execute(
-            f"SELECT * FROM policy_events{where} ORDER BY capability ASC LIMIT ?",
+            f"SELECT * FROM policy_events{where} ORDER BY capability ASC{limit_sql}",
             params,
         ).fetchall()
     return [dict(r) for r in rows]
+
 
 def query_user_profile(db, filters: dict[str, Any]) -> list[dict]:
     category = filters.get("id")
@@ -807,19 +849,13 @@ def query_user_profile(db, filters: dict[str, Any]) -> list[dict]:
     limit = filters.get("limit")
     with db.get_db() as conn:
         if category:
-            row = conn.execute(
-                "SELECT * FROM user_profile WHERE category = ?", (category,)
-            ).fetchone()
-            return [dict(row)] if row else []
-        if limit is None:
-            rows = conn.execute(
-                "SELECT * FROM user_profile ORDER BY category"
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM user_profile ORDER BY category LIMIT ?",
-                (limit,),
-            ).fetchall()
+            return _query_by_id(
+                conn, "user_profile", category, id_column="category",
+            )
+        limit_sql = safe_limit(limit) if limit is not None else ""
+        rows = conn.execute(
+            f"SELECT * FROM user_profile ORDER BY category{limit_sql}",
+        ).fetchall()
     return [dict(r) for r in rows]
 
 def query_tool_calls(db, filters: dict[str, Any]) -> list[dict]:

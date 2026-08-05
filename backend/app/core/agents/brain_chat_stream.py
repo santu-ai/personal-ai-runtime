@@ -27,6 +27,10 @@ from app.core.runtime.taint import taint_registry
 
 logger = logging.getLogger(__name__)
 
+_TOKEN_CAP_NOTE = "\n\n（已达本轮工具调用的 token 上限，以上为根据已收集信息生成的回复。）"
+_ITER_CAP_NOTE = "\n\n（已达工具调用次数上限，以上为根据已收集信息生成的回复。）"
+_DISPATCHER_INTERNAL = frozenset({"_dispatcher_done", "done"})
+
 
 async def chat_stream(
     brain,
@@ -67,9 +71,8 @@ async def chat_stream(
             yield {"type": "error", "content": "Tool call loop timed out."}
             return
         if cumulative_prompt_tokens >= settings.max_tool_loop_prompt_tokens:
-            note = "\n\n（已达本轮工具调用的 token 上限，以上为根据已收集信息生成的回复。）"
-            yield {"type": "text_delta", "content": note}
-            full_content += note
+            yield {"type": "text_delta", "content": _TOKEN_CAP_NOTE}
+            full_content += _TOKEN_CAP_NOTE
             break
 
         llm_start = time.time()
@@ -134,15 +137,14 @@ async def chat_stream(
             correlation_id=correlation_id,
             execution_id=execution_id or "",
         ):
-            if evt.get("type") == "_dispatcher_done":
+            evt_type = evt.get("type")
+            if evt_type == "_dispatcher_done":
                 iteration_tool_results = evt.get("results", [])
                 _tool_messages = evt.get("tool_messages", [])
-            elif evt.get("type") == "confirmation_required":
+            elif evt_type == "confirmation_required":
                 pending_approval = True
                 yield evt
-            elif evt.get("type") == "done":
-                pass
-            else:
+            elif evt_type not in _DISPATCHER_INTERNAL:
                 yield evt
 
         if pending_approval:
@@ -175,9 +177,8 @@ async def chat_stream(
                     full_content = synthesized
                     yield {"type": "text_delta", "content": synthesized}
             if full_content:
-                note = "\n\n（已达工具调用次数上限，以上为根据已收集信息生成的回复。）"
-                full_content += note
-                yield {"type": "text_delta", "content": note}
+                full_content += _ITER_CAP_NOTE
+                yield {"type": "text_delta", "content": _ITER_CAP_NOTE}
             else:
                 yield {
                     "type": "error",

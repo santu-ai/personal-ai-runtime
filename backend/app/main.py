@@ -347,6 +347,35 @@ class RequestIDMiddleware:
 # ── Lifespan ─────────────────────────────────────────────────────────────────
 
 
+AUTH_WARNING_INTERVAL_SECONDS = 600
+
+
+def _record_startup_ok(app: FastAPI, check_name: str, **extra: Any) -> None:
+    if isinstance(app.state.startup_health, dict):
+        app.state.startup_health.setdefault("checks", {})[check_name] = {
+            "status": "ok",
+            **extra,
+        }
+
+
+async def _run_startup_step(
+    app: FastAPI,
+    check_name: str,
+    *,
+    log_message: str,
+    run,
+) -> Any:
+    """Run a startup step; on failure record into startup_health and continue."""
+    try:
+        return await run() if asyncio.iscoroutinefunction(run) else run()
+    except Exception as exc:
+        logger.exception(log_message)
+        app.state.startup_health = record_startup_failure(
+            app.state.startup_health, check_name, exc,
+        )
+        return None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
@@ -359,7 +388,7 @@ async def lifespan(app: FastAPI):
 
     app.state.startup_health = run_startup_checks()
 
-    app.state._auth_warning_interval = 600  # seconds between repeated warnings
+    app.state._auth_warning_interval = AUTH_WARNING_INTERVAL_SECONDS
 
     if not settings.auth_token:
         if not _is_localhost_bind(settings.host):
@@ -389,25 +418,23 @@ async def lifespan(app: FastAPI):
     init_scheduler()
 
     # Seed governance events from capability_policy.json
-    try:
+    def _seed_governance() -> None:
         from app.core.runtime.capability_governance import capability_governance
         from app.core.runtime.kernel_instance import kernel
         capability_governance.seed_from_json(kernel)
-        if isinstance(app.state.startup_health, dict):
-            app.state.startup_health.setdefault("checks", {})["governance_seed"] = {
-                "status": "ok",
-            }
-    except Exception as exc:
-        logger.exception("Governance seed failed")
-        app.state.startup_health = record_startup_failure(
-            app.state.startup_health, "governance_seed", exc
-        )
+        _record_startup_ok(app, "governance_seed")
+
+    await _run_startup_step(
+        app, "governance_seed",
+        log_message="Governance seed failed",
+        run=_seed_governance,
+    )
 
     # Surface fragment registration health on startup. Registration runs in
     # the ContextPipeline constructor (lazy via RuntimeContainer); we trigger
     # a build here so failures show up in /api/system/health instead of
     # silently degrading chat quality on the first request.
-    try:
+    def _check_context_pipeline() -> None:
         from app.core.runtime.runtime_container import runtime
         ctx_health = runtime.context_pipeline.health_check()
         if ctx_health.get("fragment_registration") != "ok":
@@ -423,41 +450,40 @@ async def lifespan(app: FastAPI):
                     app.state.startup_health["status"] = "degraded"
         if isinstance(app.state.startup_health, dict):
             app.state.startup_health.setdefault("checks", {})["context_pipeline"] = ctx_health
-    except Exception as exc:
-        logger.exception("ContextPipeline health check failed")
-        app.state.startup_health = record_startup_failure(
-            app.state.startup_health, "context_pipeline", exc
-        )
+
+    await _run_startup_step(
+        app, "context_pipeline",
+        log_message="ContextPipeline health check failed",
+        run=_check_context_pipeline,
+    )
 
     # Start unified runtime loop (replaces background_worker + scheduler + timer_engine)
-    try:
+    async def _start_runtime_loop() -> None:
         await runtime_loop.start()
-        if isinstance(app.state.startup_health, dict):
-            app.state.startup_health.setdefault("checks", {})["runtime_loop"] = {
-                "status": "ok",
-            }
-    except Exception as exc:
-        logger.exception("RuntimeLoop failed to start — timers/reactions/background jobs inactive")
-        app.state.startup_health = record_startup_failure(
-            app.state.startup_health, "runtime_loop", exc
-        )
+        _record_startup_ok(app, "runtime_loop")
 
-    try:
+    await _run_startup_step(
+        app, "runtime_loop",
+        log_message="RuntimeLoop failed to start — timers/reactions/background jobs inactive",
+        run=_start_runtime_loop,
+    )
+
+    async def _start_mcp() -> None:
         from app.core.harness.mcp_lifecycle import start_mcp_mesh
 
         startup_tools = await start_mcp_mesh()
         if startup_tools:
-            logger.info("MCP mesh: %d tools ready at startup (lazy servers connect in background)", startup_tools)
-        if isinstance(app.state.startup_health, dict):
-            app.state.startup_health.setdefault("checks", {})["mcp_mesh"] = {
-                "status": "ok",
-                "tools": startup_tools or 0,
-            }
-    except Exception as exc:
-        logger.exception("MCP mesh startup failed — continuing with builtin tools only")
-        app.state.startup_health = record_startup_failure(
-            app.state.startup_health, "mcp_mesh", exc
-        )
+            logger.info(
+                "MCP mesh: %d tools ready at startup (lazy servers connect in background)",
+                startup_tools,
+            )
+        _record_startup_ok(app, "mcp_mesh", tools=startup_tools or 0)
+
+    await _run_startup_step(
+        app, "mcp_mesh",
+        log_message="MCP mesh startup failed — continuing with builtin tools only",
+        run=_start_mcp,
+    )
 
     app.state.startup_health = enrich_with_mcp_status(app.state.startup_health)
 

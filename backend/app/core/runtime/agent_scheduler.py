@@ -203,6 +203,41 @@ class Scheduler:
         emit_fn()
         _shadow_compare(self._kernel, item)
 
+    def _mark_cancelled(
+        self,
+        item: "ScheduledExecution",
+        *,
+        clear_flag: bool = False,
+        emit_only_if_running: bool = False,
+    ) -> None:
+        """Stamp cancelled + emit ExecutionFailed(non-DLQ).
+
+        When ``emit_only_if_running`` is True (CancelledError path), only
+        transition+emit if status is still ``running`` — durable cancel may
+        already have projected ExecutionFailed via request_cancel (D1).
+        """
+        if clear_flag:
+            from app.core.runtime.execution import clear_execution_cancel
+
+            clear_execution_cancel(item.id)
+        if emit_only_if_running:
+            if item.status == "failed":
+                return
+            item.error = "cancelled"
+            if item.status != "running":
+                return
+            item.transition_to("failed")
+        else:
+            item.error = "cancelled"
+            if item.status != "failed":
+                item.transition_to("failed")
+        self._emit_verify(
+            item,
+            lambda it=item: emit_execution_failed(
+                self._kernel, it, terminal=True, dead_letter=False,
+            ),
+        )
+
     def _forget_active(self, execution_id: str) -> Callable[[asyncio.Task], None]:
         """Return a done-callback that drops an in-flight task from ``_active``."""
 
@@ -367,20 +402,11 @@ class Scheduler:
     async def _process_work_item(self, item: "ScheduledExecution") -> None:
         """Process one ScheduledExecution through its state machine."""
         from app.core.runtime.execution import (
-            clear_execution_cancel,
             is_execution_cancelled,
         )
 
         if is_execution_cancelled(item.id):
-            clear_execution_cancel(item.id)
-            item.error = "cancelled"
-            item.transition_to("failed")
-            self._emit_verify(
-                item,
-                lambda: emit_execution_failed(
-                    self._kernel, item, terminal=True, dead_letter=False,
-                ),
-            )
+            self._mark_cancelled(item, clear_flag=True)
             return
 
         item.transition_to("running")
@@ -414,15 +440,7 @@ class Scheduler:
             if item.status == "failed":
                 return
             if is_execution_cancelled(item.id):
-                clear_execution_cancel(item.id)
-                item.error = "cancelled"
-                item.transition_to("failed")
-                self._emit_verify(
-                    item,
-                    lambda: emit_execution_failed(
-                        self._kernel, item, terminal=True, dead_letter=False,
-                    ),
-                )
+                self._mark_cancelled(item, clear_flag=True)
                 return
             item.error = None
             item.transition_to("completed")
@@ -431,19 +449,9 @@ class Scheduler:
                 lambda: emit_execution_completed(self._kernel, item),
             )
         except asyncio.CancelledError:
-            clear_execution_cancel(item.id)
             # Durable cancel may already have projected ExecutionFailed in
             # request_cancel (D1); do not double-emit or rewind status.
-            if item.status != "failed":
-                item.error = "cancelled"
-                if item.status == "running":
-                    item.transition_to("failed")
-                    self._emit_verify(
-                        item,
-                        lambda: emit_execution_failed(
-                        self._kernel, item, terminal=True, dead_letter=False,
-                    ),
-                    )
+            self._mark_cancelled(item, clear_flag=True, emit_only_if_running=True)
             raise
         except asyncio.TimeoutError:
             item.error = f"Timeout after {item.policy.timeout_seconds}s"
@@ -494,13 +502,7 @@ class Scheduler:
     async def _maybe_retry(self, item: "ScheduledExecution") -> None:
         """Retry if within limits, else mark failed."""
         if item.error == "cancelled":
-            item.transition_to("failed")
-            self._emit_verify(
-                item,
-                lambda: emit_execution_failed(
-                    self._kernel, item, terminal=True, dead_letter=False,
-                ),
-            )
+            self._mark_cancelled(item)
             return
         if item.can_retry():
             item.retry_count += 1
@@ -581,14 +583,7 @@ class Scheduler:
         for item in self._pending:
             if item.id == execution_id:
                 found = True
-                item.error = "cancelled"
-                item.transition_to("failed")
-                self._emit_verify(
-                    item,
-                    lambda it=item: emit_execution_failed(
-                        self._kernel, it, terminal=True, dead_letter=False,
-                    ),
-                )
+                self._mark_cancelled(item)
             else:
                 kept.append(item)
         self._pending = kept
@@ -597,15 +592,7 @@ class Scheduler:
             item, task = active
             # Durable cancel first (D1): projection must leave recoverable set.
             if item.status in ("running", "pending", "retrying"):
-                item.error = "cancelled"
-                if item.status != "failed":
-                    item.transition_to("failed")
-                self._emit_verify(
-                    item,
-                    lambda it=item: emit_execution_failed(
-                        self._kernel, it, terminal=True, dead_letter=False,
-                    ),
-                )
+                self._mark_cancelled(item)
             if not task.done():
                 found = True
                 task.cancel()

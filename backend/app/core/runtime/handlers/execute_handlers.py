@@ -16,11 +16,31 @@ from app.core.runtime.handlers.plan_runner import (
     parse_plan_steps,
     run_plan_steps,
 )
+from app.core.runtime.kernel.constants import (
+    AGGREGATE_WORK_ITEM,
+    EVENT_EXECUTE_COMPLETED,
+    EVENT_WORK_ITEM_STATUS_CHANGED,
+    EVENT_WORK_ITEM_UPDATED,
+)
 from app.core.runtime.plan_resume import PlanResume, load_plan_progress
 
 if TYPE_CHECKING:
     from app.core.runtime.execution import ExecutionContext
     from app.core.runtime.kernel.event import Event
+
+# stopped_reason → ExecuteCompleted.status → work_item status
+_OUTCOME_TO_EXEC_STATUS = {
+    "completed": "success",
+    "pending": "waiting_approval",
+    "failed": "error",
+    "cancelled": "cancelled",
+}
+_EXEC_STATUS_TO_WI = {
+    "success": "completed",
+    "waiting_approval": "waiting_approval",
+    "error": "failed",
+    "cancelled": "cancelled",
+}
 
 
 def _emit_execute_completed(
@@ -31,8 +51,6 @@ def _emit_execute_completed(
     status: str,
     **extra: object,
 ) -> None:
-    from app.core.runtime.kernel.constants import EVENT_EXECUTE_COMPLETED
-
     ctx.emit(
         EVENT_EXECUTE_COMPLETED,
         "action",
@@ -48,11 +66,6 @@ def _sync_work_item_status(
     action_id: str,
     status: str,
 ) -> None:
-    from app.core.runtime.kernel.constants import (
-        AGGREGATE_WORK_ITEM,
-        EVENT_WORK_ITEM_STATUS_CHANGED,
-    )
-
     ctx.emit(
         EVENT_WORK_ITEM_STATUS_CHANGED,
         AGGREGATE_WORK_ITEM,
@@ -69,11 +82,6 @@ def _emit_work_item_progress(
     progress: float,
 ) -> None:
     """Progress must go through WorkItemUpdated (StatusChanged only sets 1.0)."""
-    from app.core.runtime.kernel.constants import (
-        AGGREGATE_WORK_ITEM,
-        EVENT_WORK_ITEM_UPDATED,
-    )
-
     ctx.emit(
         EVENT_WORK_ITEM_UPDATED,
         AGGREGATE_WORK_ITEM,
@@ -94,6 +102,36 @@ def _progress_ratio(completed_steps: int, total_steps: int) -> float:
     return _PROGRESS_BASE + (
         _PROGRESS_RANGE * max(completed_steps, 0) / max(total_steps, 1)
     )
+
+
+def _finalize_cancelled(
+    ctx: "ExecutionContext",
+    event: "Event",
+    action_id: str,
+    *,
+    exec_key: str,
+    clear_cancel: Callable[[str], None],
+    total_steps: int,
+    completed_steps: int = 0,
+    results: list[Any] | None = None,
+    resume_from: int | None = None,
+    emit_progress: bool = False,
+) -> None:
+    """Stamp cancelled + clear cancel flag + emit ExecuteCompleted."""
+    _sync_work_item_status(ctx, event, action_id, "cancelled")
+    clear_cancel(exec_key)
+    if emit_progress:
+        _emit_work_item_progress(
+            ctx, event, action_id, _progress_ratio(completed_steps, total_steps),
+        )
+    payload: dict[str, Any] = {
+        "total_steps": total_steps,
+        "completed_steps": completed_steps,
+        "results": results if results is not None else [],
+    }
+    if resume_from is not None:
+        payload["resume_from"] = resume_from
+    _emit_execute_completed(ctx, event, action_id, status="cancelled", **payload)
 
 
 async def _run_work_plan(
@@ -239,11 +277,11 @@ async def on_execute_requested(ctx: "ExecutionContext", event: "Event") -> None:
         )
     except Exception:
         if is_background and cancel_check():
-            _sync_work_item_status(ctx, event, action_id, "cancelled")
-            clear_execution_cancel(exec_key)
-            _emit_execute_completed(
-                ctx, event, action_id, status="cancelled",
-                total_steps=len(steps), completed_steps=0, results=[],
+            _finalize_cancelled(
+                ctx, event, action_id,
+                exec_key=exec_key,
+                clear_cancel=clear_execution_cancel,
+                total_steps=len(steps),
             )
             return
         _sync_work_item_status(ctx, event, action_id, "failed")
@@ -265,38 +303,22 @@ async def on_execute_requested(ctx: "ExecutionContext", event: "Event") -> None:
     if outcome.stopped_reason == "cancelled" or (
         is_background and cancel_check()
     ):
-        _sync_work_item_status(ctx, event, action_id, "cancelled")
-        clear_execution_cancel(exec_key)
-        if is_background:
-            _emit_work_item_progress(
-                ctx, event, action_id,
-                _progress_ratio(outcome.completed_steps, len(steps)),
-            )
-        _emit_execute_completed(
-            ctx,
-            event,
-            action_id,
-            status="cancelled",
+        _finalize_cancelled(
+            ctx, event, action_id,
+            exec_key=exec_key,
+            clear_cancel=clear_execution_cancel,
             total_steps=len(steps),
             completed_steps=outcome.completed_steps,
-            resume_from=resume_from,
             results=[r.preview() for r in outcome.results],
+            resume_from=resume_from,
+            emit_progress=is_background,
         )
         return
 
-    status = {
-        "completed": "success",
-        "pending": "waiting_approval",
-        "failed": "error",
-        "cancelled": "cancelled",
-    }.get(outcome.stopped_reason, outcome.stopped_reason)
-
-    wi_status = {
-        "success": "completed",
-        "waiting_approval": "waiting_approval",
-        "error": "failed",
-        "cancelled": "cancelled",
-    }.get(status)
+    status = _OUTCOME_TO_EXEC_STATUS.get(
+        outcome.stopped_reason, outcome.stopped_reason,
+    )
+    wi_status = _EXEC_STATUS_TO_WI.get(status)
 
     if is_background and wi_status in (
         "waiting_approval", "failed", "completed",

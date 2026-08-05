@@ -17,12 +17,12 @@ import {
 import { retryMemoryIndexRepair } from "../api/telemetry";
 import { useTrustReportQuery, useInvalidateTrustReport } from "../hooks/useTrustReportQuery";
 
-const FLOW_LABELS: Record<string, { label: string; color: string }> = {
-  对话: { label: "对话", color: "text-insight" },
-  任务: { label: "任务", color: "text-insight" },
-  定时任务: { label: "定时任务", color: "text-warning" },
-  测试: { label: "测试", color: "text-fg-tertiary" },
-  系统: { label: "系统", color: "text-success" },
+const FLOW_COLORS: Record<string, string> = {
+  对话: "text-insight",
+  任务: "text-insight",
+  定时任务: "text-warning",
+  测试: "text-fg-tertiary",
+  系统: "text-success",
 };
 
 /** Trust report content — embedded as a Dashboard tab; also used by tests. */
@@ -299,10 +299,8 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
           ) : (
             <div className="space-y-2">
               {data!.approvals.map((a) => {
-                const fm = FLOW_LABELS[a.flow_type] ?? {
-                  label: a.flow_type,
-                  color: "text-fg-secondary",
-                };
+                const flowColor = FLOW_COLORS[a.flow_type] ?? "text-fg-secondary";
+                const flowLabel = a.flow_type;
                 return (
                   <div
                     key={a.id}
@@ -312,7 +310,7 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-fg-primary truncate">{a.action ?? "未知操作"}</p>
                       <div className="flex items-center gap-2 mt-1">
-                        <span className={`text-xs ${fm.color}`}>{fm.label}</span>
+                        <span className={`text-xs ${flowColor}`}>{flowLabel}</span>
                         {a.flow_label && (
                           <span className="text-xs text-fg-tertiary truncate">{a.flow_label}</span>
                         )}

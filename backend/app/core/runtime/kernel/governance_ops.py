@@ -172,6 +172,40 @@ def _handler_execution_exists(kernel, execution_id: str) -> bool:
         ).fetchone()
     return row is not None
 
+
+_SUMMARY_CAP = 200
+
+
+def _cap_summary(value: Any, limit: int = _SUMMARY_CAP) -> str:
+    return str(value)[:limit]
+
+
+def _emit_capability_denied(
+    kernel,
+    *,
+    name: str,
+    reason: str,
+    actor: str,
+    correlation_id: str | None = None,
+    caused_by: str | None = None,
+    extra_payload: dict[str, Any] | None = None,
+) -> None:
+    payload: dict[str, Any] = {"name": name, "reason": reason}
+    if extra_payload:
+        payload.update(extra_payload)
+    kwargs: dict[str, Any] = {
+        "type": "CapabilityDenied",
+        "aggregate_type": "capability",
+        "aggregate_id": f"cap_{name}",
+        "payload": payload,
+        "actor": actor,
+        "correlation_id": correlation_id,
+    }
+    if caused_by is not None:
+        kwargs["caused_by"] = caused_by
+    kernel.emit_event(**kwargs)
+
+
 async def invoke_capability(
     kernel,
     name: str,
@@ -212,11 +246,10 @@ async def invoke_capability(
         resolved_execution_id = None
 
     if actor_requires_execution_ownership(actor) and not resolved_execution_id:
-        kernel.emit_event(
-            type="CapabilityDenied",
-            aggregate_type="capability",
-            aggregate_id=f"cap_{name}",
-            payload={"name": name, "reason": "missing_execution_id"},
+        _emit_capability_denied(
+            kernel,
+            name=name,
+            reason="missing_execution_id",
             actor=principal.actor,
             correlation_id=correlation_id,
         )
@@ -224,11 +257,10 @@ async def invoke_capability(
 
     if resolved_execution_id:
         if not _handler_execution_exists(kernel, resolved_execution_id):
-            kernel.emit_event(
-                type="CapabilityDenied",
-                aggregate_type="capability",
-                aggregate_id=f"cap_{name}",
-                payload={"name": name, "reason": "invalid_execution_id"},
+            _emit_capability_denied(
+                kernel,
+                name=name,
+                reason="invalid_execution_id",
                 actor=principal.actor,
                 correlation_id=correlation_id,
             )
@@ -249,31 +281,28 @@ async def invoke_capability(
     )
 
     if decision.decision == "deny":
-        kernel.emit_event(
-            type="CapabilityDenied",
-            aggregate_type="capability",
-            aggregate_id=f"cap_{name}",
-            payload={"name": name, "reason": decision.reason},
+        _emit_capability_denied(
+            kernel,
+            name=name,
+            reason=decision.reason,
             actor=principal.actor,
             correlation_id=correlation_id,
         )
         return {"status": "error", "error": decision.reason}
 
     if decision.decision == "defer":
-        kernel.emit_event(
-            type="CapabilityDenied",
-            aggregate_type="capability",
-            aggregate_id=f"cap_{name}",
-            payload={
-                "name": name,
-                "args_summary": str(args)[:200],
-                "reason": "deferred",
+        _emit_capability_denied(
+            kernel,
+            name=name,
+            reason="deferred",
+            actor=principal.actor,
+            correlation_id=correlation_id,
+            caused_by=capability_caused_by,
+            extra_payload={
+                "args_summary": _cap_summary(args),
                 "deny_reason": decision.reason,
                 "approval_id": decision.approval_id,
             },
-            actor=principal.actor,
-            caused_by=capability_caused_by,
-            correlation_id=correlation_id,
         )
         return {"status": "pending", "approval_id": decision.approval_id}
 
@@ -289,8 +318,8 @@ async def invoke_capability(
             aggregate_id=f"cap_{name}",
             payload={
                 "name": name,
-                "args_summary": str(args)[:200],
-                "result_summary": str(result_str)[:200],
+                "args_summary": _cap_summary(args),
+                "result_summary": _cap_summary(result_str),
                 "latency_ms": round(_latency_ms, 2),
             },
             actor=principal.actor,

@@ -48,6 +48,17 @@ function parseToolCalls(raw: string): DisplayMessage["toolCalls"] {
   );
 }
 
+function countFromCheckInbox(results: ToolResult[]): number {
+  const r = results.find((x) => x.tool_name === "check_inbox");
+  if (!r) return 0;
+  try {
+    const data = JSON.parse(r.content);
+    return data.count ?? data.emails?.length ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 function inboxSummaryFromResults(results: ToolResult[]): string | null {
   for (const r of results) {
     if (r.tool_name !== "check_inbox") continue;
@@ -113,16 +124,7 @@ function parseLoadedMessages(msgs: Message[]): DisplayMessage[] {
         const hasInbox = matched.some((r) => r.tool_name === "check_inbox");
         const hasText = Boolean(display.content?.trim());
         if (hasInbox && matched.length > 0) {
-          const count = (() => {
-            try {
-              const r = matched.find((x) => x.tool_name === "check_inbox");
-              if (!r) return 0;
-              const data = JSON.parse(r.content);
-              return data.count ?? data.emails?.length ?? 0;
-            } catch {
-              return 0;
-            }
-          })();
+          const count = countFromCheckInbox(matched);
           display.content =
             count > 0
               ? `已加载最近 ${count} 封邮件，详见上方列表。需要我帮您查看某封详情或处理待办吗？`

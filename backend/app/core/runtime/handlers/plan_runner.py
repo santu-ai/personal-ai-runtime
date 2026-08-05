@@ -15,6 +15,9 @@ from app.core.runtime.plan_resume import (
     save_plan_progress,
 )
 
+STEP_OUTPUT_CAP = 1000
+STEP_PREVIEW_LIMIT = 500
+
 
 @dataclass
 class StepResult:
@@ -24,7 +27,7 @@ class StepResult:
     result: str
     approval_id: str | None = None
 
-    def preview(self, limit: int = 500) -> dict[str, Any]:
+    def preview(self, limit: int = STEP_PREVIEW_LIMIT) -> dict[str, Any]:
         return {
             "step": self.step,
             "tool": self.tool,
@@ -61,6 +64,27 @@ def parse_plan_steps(plan: Any) -> list[dict[str, Any]]:
     if not isinstance(steps, list):
         raise ValueError("plan.steps must be a list")
     return [s for s in steps if isinstance(s, dict)]
+
+
+def _step_output(step_index: int, raw: str) -> dict[str, str]:
+    return {f"step_{step_index}_output": raw[:STEP_OUTPUT_CAP]}
+
+
+def _persist_progress(
+    *,
+    action_id: str,
+    step_index: int,
+    output: dict[str, Any] | None,
+    kernel: Any,
+) -> None:
+    if not action_id:
+        return
+    save_plan_progress(
+        action_id,
+        resume_from=step_index + 1,
+        previous_output=output,
+        kernel=kernel,
+    )
 
 
 async def run_plan_steps(
@@ -131,14 +155,10 @@ async def run_plan_steps(
             results.append(StepResult(
                 step=i, tool=tool_name, status="success", result=cached,
             ))
-            output = {f"step_{i}_output": cached[:1000]}
-            if action_id:
-                save_plan_progress(
-                    action_id,
-                    resume_from=i + 1,
-                    previous_output=output,
-                    kernel=kernel,
-                )
+            output = _step_output(i, cached)
+            _persist_progress(
+                action_id=action_id, step_index=i, output=output, kernel=kernel,
+            )
             continue
 
         params = dict(step.get("params") or {})
@@ -162,19 +182,17 @@ async def run_plan_steps(
 
         if cap.get("status") == "success":
             step_result = str(cap.get("result", ""))
-            results.append(StepResult(step=i, tool=tool_name, status="success", result=step_result))
-            output = {f"step_{i}_output": step_result[:1000]}
+            results.append(StepResult(
+                step=i, tool=tool_name, status="success", result=step_result,
+            ))
+            output = _step_output(i, step_result)
             if corr:
                 record_step_success(
                     corr, i, step_result, action_id=action_id, kernel=kernel,
                 )
-            if action_id:
-                save_plan_progress(
-                    action_id,
-                    resume_from=i + 1,
-                    previous_output=output,
-                    kernel=kernel,
-                )
+            _persist_progress(
+                action_id=action_id, step_index=i, output=output, kernel=kernel,
+            )
             continue
 
         if cap.get("status") == "pending":
@@ -202,20 +220,16 @@ async def run_plan_steps(
                     resume_factory(outcome),
                     kernel=kernel,
                 )
-            if action_id:
-                save_plan_progress(
-                    action_id,
-                    resume_from=i + 1,
-                    previous_output=output,
-                    kernel=kernel,
-                )
+            _persist_progress(
+                action_id=action_id, step_index=i, output=output, kernel=kernel,
+            )
             return outcome
 
         # failed / denied / error
         err = json.dumps({"error": cap.get("error", "unknown")})
         results.append(StepResult(step=i, tool=tool_name, status="failed", result=err))
         if step.get("continue_on_error"):
-            output = {f"step_{i}_output": err[:1000]}
+            output = _step_output(i, err)
             continue
         return PlanRunOutcome(
             results=results,

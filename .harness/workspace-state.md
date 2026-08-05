@@ -6,17 +6,22 @@
 ## 当前状态
 
 - 当前分支：`main`（开发阶段）
-- 进行中任务 / WIP：无（P0 遗留 4 项已收口）
+- 进行中任务 / WIP：无
 - 已知坏点 / 待办：无阻塞项；God 拆分仍受 runtime_files 零和约束
+- 最近审阅：2026-08-05 未提交改动 review 后修复 conversations 未知 order 兜底 + `_query_by_id` overload；准备提交推送
 
 ## 产品观察（后续规划候选）
 
 - God Object（`query_builder`/`main`/`mcp_mesh`/`agent_scheduler`）受概念压缩约束，不能无配对拆文件。
+- 单文件优化优先：`query_builder` 助手未用尽（LIMIT 钳制）、`execute_handlers`/`plan_runner`/`agent_scheduler` 取消路径去重。
 
 ## 近期改动日志
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
+| 2026-08-05 | 落地单文件优化：query_builder 统一 safe_*；plan/execute/scheduler/governance/timer/chat_stream/main/前端去重 | 1332 passed；**未提交** |
+| 2026-08-05 | 未提交改动 review：行为保真核对（顺序/载荷/兜底）+ boundary/layer-deps 守卫 | 无阻塞缺陷；P2 记录 2 项 |
+| 2026-08-05 | 单文件内容优化审阅（不跨文件）：Top10 + 按文件明细 | canvas；未提交代码 |
 | 2026-08-05 | 收口审查遗留：payload upcast 读路径+CI 链守卫；alembic 线性链/orphan pyc 校验；删 stale `desktop/index.html`；belief/fact 注释+dashboard 查询对齐；memories `order` 经 safe_order 生效；修正「Alembic 失败回退 DDL」文档 | commit `ac9abb5` |
 | 2026-08-05 | P0：删 builtin_reactions + core/connectors；死代码清理；原子 take_plan_resume；审批 helper；Scheduler.requeue；connectors/sovereignty 白名单；prompt SSOT；ADR-R017；Makefile.ps1 `$Args`→`-PyArgs` + CI 对齐 | commit `fddafb3` |
 | 2026-08-05 | 提炼到 harness：`decision-log` R017（执行可信化 E-1~E-9）、`conventions` 工具索引滞后陷阱、`task-recipes` §8 全量修复闭环复核 SOP、`powershell-tips` §6-7（-Args 卡死 / Get-ChildItem 空输出兜底） | 未提交 |
