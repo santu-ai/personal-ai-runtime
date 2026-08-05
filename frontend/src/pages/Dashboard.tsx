@@ -40,9 +40,9 @@ export default function DashboardPage() {
 
   const pendingInboxCount = inboxData?.emails?.length ?? 0;
 
-  // 活跃目标：status 为 active 或 in_progress 的目标
+  // 活跃目标：status 为 active 的目标
   const activeGoals = useMemo(
-    () => goals.filter((g) => g.status === "active" || g.status === "in_progress"),
+    () => goals.filter((g) => g.status === "active"),
     [goals],
   );
 

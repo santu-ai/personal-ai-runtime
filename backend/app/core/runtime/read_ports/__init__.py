@@ -2,7 +2,7 @@
 
 包路径保持 ``app.core.runtime.read_ports`` 不变以维持稳定；其角色比投影
 读取更广。调用方经这些端口而不是直接开 DB 会话、导入 ORM 模型或触达深层
-Runtime 模块（``task_engine``、``reaction_registry``、桥、调度器内部）。
+Runtime 模块（``work_item_engine``、``reaction_registry``、桥、调度器内部）。
 
     调用方 → Port → Kernel / Runtime 内部
 
@@ -40,9 +40,9 @@ from app.core.runtime.read_ports.conversation import (
 )
 from app.core.runtime.read_ports.events import (
     goal_events,
-    query_recent_legacy_events,
+    query_recent_events,
     recent_events,
-    to_legacy_dict,
+    to_event_dict,
 )
 from app.core.runtime.read_ports.inbox import (
     count_pending_inbox_emails,
@@ -219,9 +219,9 @@ __all__ = [
     "count_state_selectors",
     "query_user_profile_category",
     "query_user_profile",
-    "to_legacy_dict",
+    "to_event_dict",
     "goal_events",
     "recent_events",
-    "query_recent_legacy_events",
+    "query_recent_events",
     "build_memory_graph_edges",
 ]

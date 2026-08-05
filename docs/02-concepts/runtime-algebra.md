@@ -277,7 +277,7 @@ Reaction 不是独立"概念"，而是 `subscribe + invoke + produce` 的组合�
 | `runtime_loop.py` | Work + clock | Lane C 维护循环 |
 | `agent_scheduler.py` | Work | Lane A 调度 |
 | `runtime_container.py` | （容器） | 依赖装配 |
-| `task_engine.py` | Work | 领域 Work CRUD（偏 Product 编排） |
+| `work_item_engine.py` | Work | 领域 Work CRUD（偏 Product 编排） |
 | `cron_registry.py` | clock + Work | 定时触发 |
 | `execution_events.py` / `execution.py` | Work | 调度 subtype 辅助 |
 | `scheduled_execution.py` | Work（调度） | Lane A 执行单元 ScheduledExecution |

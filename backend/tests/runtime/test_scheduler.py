@@ -21,13 +21,13 @@ def test_schedules_has_all_timers():
 
 
 @pytest.mark.asyncio
-async def test_on_task_completed_starts_dependents(tmp_path, monkeypatch):
+async def test_on_work_item_status_changed_starts_dependents(tmp_path, monkeypatch):
     from app.core.runtime.kernel import Kernel
     from app.store.database import Database
 
     k = Kernel(db=Database(db_path=str(tmp_path / "sched_task.db")))
     monkeypatch.setattr("app.core.runtime.cron_registry.kernel", k)
-    monkeypatch.setattr("app.core.runtime.task_engine.kernel", k)
+    monkeypatch.setattr("app.core.runtime.work_item_engine.kernel", k)
     monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", k)
 
     k.emit_event("WorkItemCreated", "work_item", "t1", payload={"title": "Dep"})
@@ -39,16 +39,16 @@ async def test_on_task_completed_starts_dependents(tmp_path, monkeypatch):
     )
     k.emit_event("WorkItemStatusChanged", "work_item", "t1", payload={"status": "completed"}, actor="user")
 
-    from app.core.runtime.cron_registry import _on_task_completed
+    from app.core.runtime.cron_registry import _on_work_item_status_changed
     from app.core.runtime.kernel.event import Event
 
     evt = Event(
-        type="WorkItemCompleted",
+        type="WorkItemStatusChanged",
         aggregate_type="work_item",
         aggregate_id="t1",
         payload={"status": "completed"},
     )
-    _on_task_completed(evt)
+    _on_work_item_status_changed(evt)
 
     task2 = k.query_state("work_items", id="t2")[0]
     assert task2["status"] == "running"
@@ -69,7 +69,7 @@ def test_shutdown_scheduler_unsubscribes_triggers(tmp_path, monkeypatch):
     cr.shutdown_scheduler()
     before = len(k._subscribers)
     cr.init_scheduler()
-    assert len(k._subscribers) == before + 2
+    assert len(k._subscribers) == before + 1
     cr.shutdown_scheduler()
     assert len(k._subscribers) == before
 

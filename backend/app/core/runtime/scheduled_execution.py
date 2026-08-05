@@ -21,7 +21,7 @@ ScheduledExecutionStatus = Literal[
     "retrying",
 ]
 
-# Lane A only — deliberately narrower than domain ``task_engine.TaskStatus``.
+# Lane A only — deliberately narrower than domain ``work_item_engine.WorkItemStatus``.
 _LANE_A_TRANSITIONS: dict[str, frozenset[str]] = {
     "pending": frozenset({"running", "failed"}),
     "running": frozenset({"completed", "failed", "retrying"}),

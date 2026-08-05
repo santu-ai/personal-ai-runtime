@@ -33,11 +33,9 @@ export type {
   McpServerStatus,
   McpStatusResponse,
   InboxEmail,
-  GoalAction,
-  GoalEvent,
-  Goal,
   WorkItemType,
   WorkItem,
+  WorkItemEvent,
   Approval,
   EnrichedApproval,
   DataSovereignty,
@@ -69,7 +67,7 @@ export {
   getDashboard,
 } from "./system";
 
-// Goals
+// Goals (work_type=goal helpers over work-items)
 export {
   listGoals,
   getGoal,
@@ -79,7 +77,13 @@ export {
   createGoalAction,
   updateGoalAction,
   decomposeGoal,
-} from "./goals";
+  listWorkItems,
+  getWorkItem,
+  createWorkItem,
+  updateWorkItem,
+  deleteWorkItem,
+  decomposeWorkItem,
+} from "./workItems";
 
 // Inbox
 export {

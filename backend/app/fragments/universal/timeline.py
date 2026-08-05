@@ -12,7 +12,7 @@ from app.core.runtime import read_ports
 
 _EVENT_DAYS = 7
 _RICH_TAGS = frozenset({"planning", "review", "goals"})
-_NOISY_EVENT_TYPES = frozenset({"conversation", "tool_call", "memory_derived"})
+_NOISY_EVENT_TYPES = frozenset({"ConversationRecorded", "CapabilityInvoked", "MemoryDerived"})
 
 _PENDING_LIMIT_DEFAULT = 3
 _PENDING_LIMIT_RICH = 5
@@ -105,7 +105,7 @@ class TimelineContextFragment(ContextFragment):
             pending_part = "\n".join(lines)
 
         try:
-            recent = read_ports.query_recent_legacy_events(
+            recent = read_ports.query_recent_events(
                 days=_EVENT_DAYS,
                 limit=event_limit,
             )

@@ -522,7 +522,7 @@ class TestPromptCompilerArtifactAssembly:
             lambda **kwargs: [],
         )
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.query_recent_legacy_events",
+            "app.core.runtime.read_ports.query_recent_events",
             lambda **kwargs: [],
         )
         monkeypatch.setattr(

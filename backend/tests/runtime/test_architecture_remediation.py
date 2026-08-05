@@ -15,7 +15,7 @@ from app.core.runtime.execution_events import (
 )
 from app.core.runtime.kernel.execution_repository import read_scheduled_execution
 from app.core.runtime.scheduled_execution import ExecutionPolicy, ScheduledExecution
-from app.core.runtime.task_engine import TaskStatus
+from app.core.runtime.work_item_engine import WorkItemStatus
 
 
 @pytest.fixture(autouse=True)
@@ -37,33 +37,32 @@ def kernel(tmp_path):
     return Kernel(db=Database(db_path=str(tmp_path / "arch_remediation.db")))
 
 
-def test_domain_retrying_not_assigned_in_runtime_production_code():
-    """Pin: domain TaskStatus.RETRYING is FSM-only; Lane A owns operational retry."""
+def test_domain_fsm_has_no_retrying_status():
+    """Pin: domain WorkItemStatus has no RETRYING; Lane A owns operational retry."""
+    assert not hasattr(WorkItemStatus, "RETRYING")
+    assert "retrying" not in {s.value for s in WorkItemStatus}
+
     import ast
     from pathlib import Path
 
     runtime = Path(__file__).resolve().parents[2] / "app" / "core" / "runtime"
     offenders: list[str] = []
+    lane_a = {
+        "agent_scheduler.py",
+        "scheduled_execution.py",
+        "execution_repository.py",
+        "projectors_execution.py",
+        "execution_events.py",
+        "work_item_engine.py",
+    }
     for path in runtime.rglob("*.py"):
-        if path.name == "task_engine.py":
+        if path.name in lane_a:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
-            if isinstance(node, ast.Attribute) and node.attr == "RETRYING":
-                if isinstance(node.value, ast.Name) and node.value.id == "TaskStatus":
-                    offenders.append(f"{path.name}:{node.lineno}")
             if isinstance(node, ast.Constant) and node.value == "retrying":
-                if path.name in {
-                    "agent_scheduler.py",
-                    "scheduled_execution.py",
-                    "execution_repository.py",
-                    "projectors_execution.py",
-                    "execution_events.py",
-                }:
-                    continue
                 offenders.append(f"{path.name}:{node.lineno}:literal")
-    assert not offenders, f"domain/ops RETRYING leakage: {offenders}"
-    assert TaskStatus.RETRYING.value == "retrying"
+    assert not offenders, f"domain RETRYING leakage: {offenders}"
 
 
 @pytest.mark.asyncio

@@ -32,7 +32,7 @@ def test_table_counts(kernel):
     assert counts["work_items"] >= 1
     assert counts["event_log"] >= 1
 
-def test_export_chat_rows_and_bootstrap(kernel):
+def test_export_chat_rows(kernel):
     k = kernel
     k.emit_event(
         "ConversationCreated",
@@ -67,17 +67,6 @@ def test_save_projection_snapshot_and_rebuild(kernel):
     replayed = k.rebuild("work_item")
     assert replayed >= 0
     assert k.query_state("work_items", id="g_snap")
-
-def test_bootstrap_chat_skips_when_events_present(kernel):
-    k = kernel
-    k.emit_event("ConversationCreated", "conversation", "c2", payload={'work_type': 'goal', "title": "X"})
-    events = k.export_event_log_rows()
-    result = k.bootstrap_chat_from_snapshot(
-        [{"id": "legacy", "title": "Legacy"}],
-        [],
-        events,
-    )
-    assert result == {"conversations": 0, "messages": 0}
 
 def test_export_event_log_batched_matches_full_order(kernel):
     """Batched seq-cursor export must equal a single ordered scan."""

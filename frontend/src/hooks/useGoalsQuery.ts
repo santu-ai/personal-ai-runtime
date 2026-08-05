@@ -3,11 +3,11 @@
  * WS bridge (and local invalidate after writes) keep the UI fresh.
  */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { listGoals, getGoal, type Goal } from "../api/client";
+import { listGoals, getGoal, type WorkItem } from "../api/client";
 import { queryKeys } from "./useWsInvalidationBridge";
 
 export function useGoalsQuery() {
-  return useQuery<Goal[]>({
+  return useQuery<WorkItem[]>({
     queryKey: queryKeys.goals,
     queryFn: () => listGoals(),
     staleTime: 15_000,
@@ -15,7 +15,7 @@ export function useGoalsQuery() {
 }
 
 export function useGoalQuery(goalId: string | undefined) {
-  return useQuery<Goal>({
+  return useQuery<WorkItem>({
     queryKey: [...queryKeys.goals, goalId] as const,
     queryFn: () => getGoal(goalId!),
     enabled: Boolean(goalId),

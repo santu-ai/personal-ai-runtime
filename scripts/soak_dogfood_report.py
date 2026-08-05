@@ -137,10 +137,10 @@ def report(db_path: Path) -> int:
 
         _section("Work items（dogfood: Work pass 证据）")
         wi_completed = _count_where(conn, "work_items", "status='completed'")
-        wi_progress = _count_where(conn, "work_items", "status='in_progress'")
+        wi_running = _count_where(conn, "work_items", "status='running'")
         print(f"  work_items total         {_count(conn, 'work_items')}")
         print(f"  completed                {wi_completed}")
-        print(f"  in_progress              {wi_progress}")
+        print(f"  running                  {wi_running}")
 
         _section("Inbox（dogfood: Inbox 状态）")
         print(f"  inbox_emails total       {_count(conn, 'inbox_emails')}")

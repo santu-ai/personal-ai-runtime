@@ -1,8 +1,5 @@
 /**
  * Work Items API — unified endpoint for tasks, actions, goals.
- *
- * Sole HTTP client for Work. goals.ts is a thin Goal view-model
- * adapter over these helpers.
  */
 import { API_BASE, request } from "./core";
 import type { WorkItem, WorkItemType } from "./types";
@@ -76,4 +73,61 @@ export async function decomposeWorkItem(itemId: string): Promise<{ steps: string
   return request<{ steps: string[] }>(`${API_BASE}/work-items/${itemId}/decompose`, {
     method: "POST",
   });
+}
+
+/** List work items with work_type=goal. */
+export async function listGoals(status?: string): Promise<WorkItem[]> {
+  return listWorkItems("goal", status);
+}
+
+/** Fetch a goal with embedded actions + events. */
+export async function getGoal(goalId: string): Promise<WorkItem> {
+  return getWorkItem(goalId, "actions,events");
+}
+
+export async function createGoal(body: {
+  title: string;
+  description?: string;
+}): Promise<WorkItem> {
+  return createWorkItem({
+    title: body.title,
+    description: body.description,
+    work_type: "goal",
+    status: "active",
+  });
+}
+
+export async function updateGoal(
+  goalId: string,
+  body: Partial<Pick<WorkItem, "title" | "description" | "status" | "progress">>,
+): Promise<WorkItem> {
+  return updateWorkItem(goalId, {
+    ...body,
+    description: body.description ?? undefined,
+  });
+}
+
+export async function deleteGoal(goalId: string): Promise<void> {
+  await deleteWorkItem(goalId);
+}
+
+export async function createGoalAction(goalId: string, title: string): Promise<WorkItem> {
+  return createWorkItem({
+    title,
+    work_type: "action",
+    parent_goal_id: goalId,
+    status: "pending",
+  });
+}
+
+export async function updateGoalAction(
+  _goalId: string,
+  actionId: string,
+  body: { status: string },
+): Promise<WorkItem> {
+  return updateWorkItem(actionId, body);
+}
+
+export async function decomposeGoal(goalId: string): Promise<{ steps: string[] }> {
+  return decomposeWorkItem(goalId);
 }

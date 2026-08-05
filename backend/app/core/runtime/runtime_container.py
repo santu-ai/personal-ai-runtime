@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from app.core.runtime.runtime_config import RuntimeConfig
     from app.core.runtime.runtime_loop import RuntimeLoop
     from app.core.runtime.taint import TaintRegistry
-    from app.core.runtime.task_engine import StateManager
+    from app.core.runtime.work_item_engine import StateManager
     from app.core.telemetry.telemetry import Telemetry
     from app.store.database import Database
     from app.store.vector import VectorStore
@@ -201,10 +201,10 @@ class RuntimeContainer:
     @property
     def state_manager(self) -> "StateManager":
         if self._state_manager is None:
-            from app.core.runtime.task_engine import StateManager
+            from app.core.runtime.work_item_engine import StateManager
             self._state_manager = StateManager()
             self._register(
-                "state_manager", "app.core.runtime.task_engine", "StateManager",
+                "state_manager", "app.core.runtime.work_item_engine", "StateManager",
             )
         return self._state_manager
 

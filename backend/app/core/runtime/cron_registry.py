@@ -34,10 +34,7 @@ def init_scheduler():
     """注册定时任务与依赖触发器。"""
     shutdown_scheduler()  # 幂等重初始化
     _unsubscribe_hooks.append(
-        kernel.subscribe_events(_on_task_completed, type="WorkItemCompleted")
-    )
-    _unsubscribe_hooks.append(
-        kernel.subscribe_events(_on_task_completed, type="WorkItemStatusChanged")
+        kernel.subscribe_events(_on_work_item_status_changed, type="WorkItemStatusChanged")
     )
     _init_timers()
 
@@ -63,14 +60,14 @@ def _init_timers():
         )
 
 
-def _on_task_completed(event):
+def _on_work_item_status_changed(event):
     """工作项完成时，启动依赖已满足的后继任务。"""
     if event.type == "WorkItemStatusChanged":
         status = (event.payload or {}).get("status")
         if status not in ("completed", "failed"):
             return
 
-    from app.core.runtime.task_engine import are_dependencies_met
+    from app.core.runtime.work_item_engine import are_dependencies_met
 
     rows = read_ports.query_pending_work_items(limit=100)
     for item in rows:
@@ -96,8 +93,8 @@ def _deadline_target_dates() -> set:
 def shutdown_scheduler() -> None:
     """注销 ``init_scheduler`` 注册的 cron 依赖触发器。
 
-    定时扫描本身仍归 RuntimeLoop；这里只清除 WorkItemCompleted /
-    WorkItemStatusChanged 订阅，避免测试与进程关闭在 Kernel 重置后泄漏 handler。
+    定时扫描本身仍归 RuntimeLoop；这里只清除 WorkItemStatusChanged
+    订阅，避免测试与进程关闭在 Kernel 重置后泄漏 handler。
     """
     while _unsubscribe_hooks:
         unsub = _unsubscribe_hooks.pop()

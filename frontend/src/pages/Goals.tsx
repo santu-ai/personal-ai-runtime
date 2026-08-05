@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { createGoal, updateGoal, deleteGoal, ApiError, type Goal } from "../api/client";
+import { createGoal, updateGoal, deleteGoal, ApiError, type WorkItem } from "../api/client";
 import { useErrorStore } from "../stores/errorStore";
 import { useQuickChat } from "../hooks/useQuickChat";
 import { useGoalsQuery, useGoalQuery, useInvalidateGoals } from "../hooks/useGoalsQuery";
@@ -24,7 +24,7 @@ export default function GoalsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [loading, setLoading] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<Goal | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<WorkItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const addError = useErrorStore((s) => s.addError);
   const quickChat = useQuickChat();
@@ -53,7 +53,7 @@ export default function GoalsPage() {
     navigate(`/goals/${goalId}`);
   };
 
-  const handleStartChatAboutGoal = (goal: Goal) => {
+  const handleStartChatAboutGoal = (goal: WorkItem) => {
     quickChat({
       title: `目标：${goal.title}`,
       prompt: `我想讨论目标「${goal.title}」${goal.description ? `：${goal.description}` : ""}。当前进度 ${goal.progress}%，请帮我分析下一步行动。`,
@@ -213,7 +213,7 @@ function GoalGroupedList({
   selectedId,
   onSelect,
 }: {
-  goals: Goal[];
+  goals: WorkItem[];
   selectedId?: string;
   onSelect: (goalId: string) => void;
 }) {
@@ -254,7 +254,7 @@ function GoalListItem({
   selected,
   onSelect,
 }: {
-  goal: Goal;
+  goal: WorkItem;
   selected: boolean;
   onSelect: (goalId: string) => void;
 }) {

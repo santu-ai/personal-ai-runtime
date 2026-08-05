@@ -74,7 +74,7 @@ class TestCoreTierCompile:
             lambda **kwargs: [{"status": "pending", "title": "Finish report"}],
         )
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.query_recent_legacy_events",
+            "app.core.runtime.read_ports.query_recent_events",
             lambda **kwargs: [
                 {"summary": "Action created: Finish report", "timestamp": "2026-06-18T10:00:00"},
             ],
@@ -119,7 +119,7 @@ class TestCoreTierCompile:
             lambda **kwargs: [],
         )
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.query_recent_legacy_events",
+            "app.core.runtime.read_ports.query_recent_events",
             lambda **kwargs: [],
         )
 
@@ -154,7 +154,7 @@ class TestCoreTierCompile:
             lambda **kwargs: [],
         )
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.query_recent_legacy_events",
+            "app.core.runtime.read_ports.query_recent_events",
             lambda **kwargs: [],
         )
 
@@ -189,7 +189,7 @@ class TestEmptyFragmentBehavior:
             lambda **kwargs: [],
         )
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.query_recent_legacy_events",
+            "app.core.runtime.read_ports.query_recent_events",
             lambda **kwargs: [],
         )
         monkeypatch.setattr(

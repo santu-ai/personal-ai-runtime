@@ -20,11 +20,11 @@ from app.core.runtime.runtime_container import _LazyProxy, runtime
 _GOAL_STATUSES = frozenset({"active", "completed", "paused"})
 _WORK_ITEM_STATUSES = frozenset({
     "pending", "running", "blocked", "waiting_approval",
-    "completed", "failed", "cancelled", "retrying",
+    "completed", "failed", "cancelled",
 })
 
 
-class TaskStatus(str, Enum):
+class WorkItemStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
     BLOCKED = "blocked"
@@ -32,29 +32,29 @@ class TaskStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
-    RETRYING = "retrying"
 
 
-# Valid state transitions
-_TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
-    TaskStatus.PENDING: {TaskStatus.RUNNING, TaskStatus.CANCELLED},
-    TaskStatus.RUNNING: {
-        TaskStatus.BLOCKED, TaskStatus.WAITING_APPROVAL,
-        TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.RETRYING,
+# Valid state transitions (domain FSM — Lane A owns operational retry)
+_TRANSITIONS: dict[WorkItemStatus, set[WorkItemStatus]] = {
+    WorkItemStatus.PENDING: {WorkItemStatus.RUNNING, WorkItemStatus.CANCELLED},
+    WorkItemStatus.RUNNING: {
+        WorkItemStatus.BLOCKED, WorkItemStatus.WAITING_APPROVAL,
+        WorkItemStatus.COMPLETED, WorkItemStatus.FAILED,
     },
-    TaskStatus.BLOCKED: {TaskStatus.PENDING, TaskStatus.RUNNING, TaskStatus.CANCELLED},
-    TaskStatus.WAITING_APPROVAL: {TaskStatus.RUNNING, TaskStatus.CANCELLED},
-    TaskStatus.RETRYING: {TaskStatus.PENDING, TaskStatus.FAILED},
-    TaskStatus.COMPLETED: set(),  # terminal
-    TaskStatus.FAILED: {TaskStatus.PENDING, TaskStatus.RETRYING},  # can retry
-    TaskStatus.CANCELLED: set(),  # terminal
+    WorkItemStatus.BLOCKED: {
+        WorkItemStatus.PENDING, WorkItemStatus.RUNNING, WorkItemStatus.CANCELLED,
+    },
+    WorkItemStatus.WAITING_APPROVAL: {WorkItemStatus.RUNNING, WorkItemStatus.CANCELLED},
+    WorkItemStatus.COMPLETED: set(),  # terminal
+    WorkItemStatus.FAILED: {WorkItemStatus.PENDING},  # can re-open
+    WorkItemStatus.CANCELLED: set(),  # terminal
 }
 
 
 class StateManager:
     """Validates and performs state transitions."""
 
-    def validate_transition(self, from_status: TaskStatus, to_status: TaskStatus) -> bool:
+    def validate_transition(self, from_status: WorkItemStatus, to_status: WorkItemStatus) -> bool:
         """Check if a transition is allowed."""
         if to_status not in _TRANSITIONS.get(from_status, set()):
             raise ValueError(
@@ -63,18 +63,18 @@ class StateManager:
             )
         return True
 
-    def transition(self, entity_id: str, entity_type: str, from_status: TaskStatus, to_status: TaskStatus) -> TaskStatus:
+    def transition(self, entity_id: str, entity_type: str, from_status: WorkItemStatus, to_status: WorkItemStatus) -> WorkItemStatus:
         """Perform a validated state transition."""
         self.validate_transition(from_status, to_status)
         return to_status
 
     @staticmethod
-    def is_terminal(status: TaskStatus) -> bool:
-        return status in (TaskStatus.COMPLETED, TaskStatus.CANCELLED)
+    def is_terminal(status: WorkItemStatus) -> bool:
+        return status in (WorkItemStatus.COMPLETED, WorkItemStatus.CANCELLED)
 
     @staticmethod
-    def is_active(status: TaskStatus) -> bool:
-        return status in (TaskStatus.PENDING, TaskStatus.RUNNING, TaskStatus.BLOCKED, TaskStatus.WAITING_APPROVAL)
+    def is_active(status: WorkItemStatus) -> bool:
+        return status in (WorkItemStatus.PENDING, WorkItemStatus.RUNNING, WorkItemStatus.BLOCKED, WorkItemStatus.WAITING_APPROVAL)
 
 
 if TYPE_CHECKING:
@@ -256,8 +256,8 @@ def update_work_item_status(item_id: str, new_status: str) -> dict | None:
     if not item:
         return None
 
-    from_status = TaskStatus(item.get("status", "pending"))
-    to_status = TaskStatus(new_status)
+    from_status = WorkItemStatus(item.get("status", "pending"))
+    to_status = WorkItemStatus(new_status)
     state_manager.transition(item_id, "work_item", from_status, to_status)
 
     kernel.emit_event(
@@ -299,7 +299,7 @@ def are_dependencies_met(item_id: str) -> bool:
     dependencies = json.loads(item["dependencies_json"])
     for dep_id in dependencies:
         dep = get_work_item(dep_id)
-        if not dep or dep["status"] != TaskStatus.COMPLETED.value:
+        if not dep or dep["status"] != WorkItemStatus.COMPLETED.value:
             return False
     return True
 
@@ -327,19 +327,3 @@ def bump_parent_activity(parent_id: str) -> None:
         payload={"last_activity_at": datetime.now(UTC).isoformat()},
         actor="user",
     )
-
-
-# ── Backward-compat aliases ───────────────────────────────────────────────
-# 旧的 Task 词表别名。新代码请直接使用 work_item_* 名字。
-# 仅保留有调用方的两个；其余 5 个（get_task / get_subtasks /
-# get_tasks_for_goal / get_task_tree / list_tasks）经全仓库 grep 验证零引用，已删除。
-
-def create_task(name, description="", parent_goal_id=None, parent_task_id=None,
-                priority=0, dependencies=None):
-    return create_work_item(
-        title=name, description=description, work_type="task",
-        parent_goal_id=parent_goal_id, parent_work_id=parent_task_id,
-        priority=priority, dependencies=dependencies)
-
-def update_task_status(item_id: str, new_status: str) -> dict | None:
-    return update_work_item_status(item_id, new_status)

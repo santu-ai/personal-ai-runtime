@@ -1,5 +1,5 @@
 import { lazy } from "react";
-import { createBrowserRouter, Navigate } from "react-router-dom";
+import { createBrowserRouter } from "react-router-dom";
 import Layout from "./Layout";
 
 const ChatPage = lazy(() => import("./pages/ChatPage"));
@@ -22,9 +22,6 @@ export const router = createBrowserRouter([
       { path: "goals/:goalId", element: <GoalsPage /> },
       { path: "inbox", element: <InboxPage /> },
       { path: "memories", element: <MemoriesPage /> },
-      // Legacy bookmarks → folded tabs (panels live in Memories / Dashboard)
-      { path: "portrait", element: <Navigate to="/memories?tab=portrait" replace /> },
-      { path: "trust", element: <Navigate to="/dashboard?tab=trust" replace /> },
       { path: "dashboard", element: <DashboardPage /> },
       { path: "settings", element: <SettingsPage /> },
       { path: "approvals", element: <ApprovalsPage /> },

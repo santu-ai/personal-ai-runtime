@@ -40,10 +40,6 @@ class SovereigntyMixin:  # type: ignore[attr-defined]
         """按 aggregate_type 统计 event_log 事件数（kernel-space）。"""
         return ops.count_events(self, aggregate_type)
 
-    def bootstrap_chat_from_snapshot(self, conversations: list[dict[str, Any]], messages: list[dict[str, Any]], event_rows: list[dict[str, Any]]) -> dict[str, int]:
-        """为遗留快照发出 chat 事件。"""
-        return ops.bootstrap_chat_from_snapshot(self, conversations, messages, event_rows)
-
     def export_chat_rows(self, *, conn=None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """导出 conversation/message 投影（反规范化备份）。"""
         return ops.export_chat_rows(self, conn=conn)
@@ -86,10 +82,6 @@ class SovereigntyMixin:  # type: ignore[attr-defined]
     def _restore_from_snapshot(self, snapshot: dict) -> dict:
         """从基于 event_log 的快照恢复。"""
         return ops._restore_from_snapshot(self, snapshot)
-
-    def _import_legacy_goals_memories(self, snapshot: dict) -> dict[str, Any]:
-        """尽力导入旧的有损快照（仅 goals/memories）。"""
-        return ops._import_legacy_goals_memories(self, snapshot)
 
     def erase(self) -> dict:
         """删除数据库与向量存储文件（不可逆）。"""

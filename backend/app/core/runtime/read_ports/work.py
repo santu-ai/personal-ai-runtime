@@ -1,7 +1,7 @@
 """Work-item / goal 端口——投影读取与 Work 变更（API ABI）。
 
-读助手查询受治理的 ``work_items``。变更助手是对 ``task_engine`` 的薄
-惰性包装，使 API 不直接导入该模块（避免 task_engine ↔ read_ports 的
+读助手查询受治理的 ``work_items``。变更助手是对 ``work_item_engine`` 的薄
+惰性包装，使 API 不直接导入该模块（避免 work_item_engine ↔ read_ports 的
 导入环）。
 """
 
@@ -32,7 +32,7 @@ def query_top_active_goals(*, limit: int = 5) -> list[dict[str, Any]]:
     """
     return kernel().query_state(
         "work_items", work_type="goal",
-        status_in=("active", "in_progress"),
+        status="active",
         limit=limit,
         order="importance_urgency_desc",
     )
@@ -175,7 +175,7 @@ def query_pending_work_items(*, limit: int = 100) -> list[dict[str, Any]]:
     return kernel().query_state("work_items", status="pending", limit=limit)
 
 
-# ── Work mutations (API-facing ABI; lazy to avoid task_engine ↔ read_ports cycles)
+# ── Work mutations (API-facing ABI; lazy to avoid work_item_engine ↔ read_ports cycles)
 
 
 def create_work_item(
@@ -195,7 +195,7 @@ def create_work_item(
     last_activity_at: str | None = None,
     status: str = "pending",
 ) -> dict[str, Any]:
-    from app.core.runtime.task_engine import create_work_item as _create
+    from app.core.runtime.work_item_engine import create_work_item as _create
 
     return _create(
         title,
@@ -229,7 +229,7 @@ def update_work_item_fields(
     last_activity_at: str | None = None,
     parent_work_id: str | None = None,
 ) -> dict[str, Any] | None:
-    from app.core.runtime.task_engine import update_work_item_fields as _update
+    from app.core.runtime.work_item_engine import update_work_item_fields as _update
 
     return _update(
         item_id,
@@ -247,13 +247,13 @@ def update_work_item_fields(
 
 
 def update_work_item_status(item_id: str, new_status: str) -> dict[str, Any] | None:
-    from app.core.runtime.task_engine import update_work_item_status as _update
+    from app.core.runtime.work_item_engine import update_work_item_status as _update
 
     return _update(item_id, new_status)
 
 
 def delete_work_item(item_id: str, *, cascade: bool = False) -> None:
-    from app.core.runtime.task_engine import delete_work_item as _delete
+    from app.core.runtime.work_item_engine import delete_work_item as _delete
 
     _delete(item_id, cascade=cascade)
 
@@ -264,13 +264,13 @@ def get_work_item(item_id: str) -> dict[str, Any] | None:
 
 
 def get_sub_work_items(parent_work_id: str) -> list[dict[str, Any]]:
-    from app.core.runtime.task_engine import get_sub_work_items as _get
+    from app.core.runtime.work_item_engine import get_sub_work_items as _get
 
     return _get(parent_work_id)
 
 
 def get_work_item_tree(goal_id: str) -> list[dict[str, Any]]:
-    from app.core.runtime.task_engine import get_work_item_tree as _get
+    from app.core.runtime.work_item_engine import get_work_item_tree as _get
 
     return _get(goal_id)
 
@@ -282,7 +282,7 @@ def list_work_items(
     parent_work_id: str | None = None,
     parent_goal_id: str | None = None,
 ) -> list[dict[str, Any]]:
-    from app.core.runtime.task_engine import list_work_items as _list
+    from app.core.runtime.work_item_engine import list_work_items as _list
 
     return _list(
         status=status,
@@ -294,7 +294,7 @@ def list_work_items(
 
 
 def bump_parent_activity(parent_id: str) -> None:
-    from app.core.runtime.task_engine import bump_parent_activity as _bump
+    from app.core.runtime.work_item_engine import bump_parent_activity as _bump
 
     _bump(parent_id)
 

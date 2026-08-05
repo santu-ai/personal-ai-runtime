@@ -85,8 +85,8 @@ DEBT_ALLOWLIST: frozenset[DebtKey] = frozenset()
 def _import_targets(node: ast.AST) -> list[tuple[str, bool]]:
     """Return (module_target, is_private) for dependency matching.
 
-    ``from app.core.runtime.task_engine import create_work_item`` →
-        ``app.core.runtime.task_engine`` (one hit for the module).
+    ``from app.core.runtime.work_item_engine import create_work_item`` →
+        ``app.core.runtime.work_item_engine`` (one hit for the module).
     ``from app.core.runtime import read_ports`` →
         ``app.core.runtime.read_ports`` (ABI leaf).
     ``from app.core.runtime.runtime_config import _is_masked`` →

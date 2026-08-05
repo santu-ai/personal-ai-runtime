@@ -57,8 +57,8 @@ Personal AI Runtime 的所有执行路径用**一套三车道语义**解释。�
 | Concept | Create | Start | End | Retry | Recover | Destroy/GC |
 |---------|--------|-------|-----|-------|---------|------------|
 | **ScheduledExecution** | ExecutionRequested | ExecutionStarted | Completed/Failed | ExecutionRetried (Lane A) | running→retrying→pending | Soft-prune terminal rows (`handler_executions_retention_days`) |
-| **WorkItem** | WorkItemCreated | StatusChanged(running) | completed/cancelled | Domain `retrying` **API-allowed but not operationally emitted** (Lane A owns retry) | BG running→pending | Domain delete events |
+| **WorkItem** | WorkItemCreated | StatusChanged(running) | completed/cancelled | Domain re-open: failed→pending | BG running→pending | Domain delete events |
 | **PlanResume** | register on pending approval | — | take on approve/deny | — | SQLite durable | clear on cancel/deny/expire |
 | **Chat tool loop** | ChatRequested | Brain.chat_stream | ChatCompleted / confirmation_required | — | **Not durable** (ADR-R011) | — |
 
-Domain `TaskStatus.RETRYING` remains in the FSM for API compatibility；钉死测试：生产路径不赋值该状态。
+Domain FSM 不含 `retrying`；操作层重试由 Lane A（`ScheduledExecution`）独占。

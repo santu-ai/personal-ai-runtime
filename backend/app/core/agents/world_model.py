@@ -13,7 +13,6 @@ from datetime import UTC, datetime, timedelta
 
 from app.core.runtime import read_ports
 from app.core.runtime.kernel_instance import kernel
-from app.core.runtime.read_ports import to_legacy_dict
 
 
 class WorldModel:
@@ -48,8 +47,7 @@ class WorldModel:
         )
         events_by_type: dict[str, int] = {}
         for e in recent_kernel_events:
-            t = to_legacy_dict(e)["type"]
-            events_by_type[t] = events_by_type.get(t, 0) + 1
+            events_by_type[e.type] = events_by_type.get(e.type, 0) + 1
 
         return {
             "timestamp": now.isoformat(),

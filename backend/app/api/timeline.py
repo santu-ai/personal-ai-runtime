@@ -12,14 +12,12 @@ EVENT_LABELS: dict[str, str] = {
     "WorkItemCreated": "创建了目标",
     "WorkItemUpdated": "更新了目标",
     "WorkItemStatusChanged": "完成了目标",
-    "GoalActionCreated": "为目标添加了任务",
-    "GoalActionCompleted": "完成了任务",
-    "GoalActionUpdated": "更新了任务",
-    "GoalDecomposed": "AI 拆解了目标",
+    "WorkItemDeleted": "删除了目标",
     "MemoryDerived": "AI 记住了新信息",
     "MemoryUpdated": "AI 更新了记忆",
     "MemoryDeleted": "移除了记忆",
     "ConversationCreated": "发起了新对话",
+    "ConversationRecorded": "记录了对话回合",
     "MessageAppended": "发送了消息",
     "ChatRequested": "发起了 AI 对话",
     "ChatTextDelta": "AI 正在回复",
@@ -28,15 +26,9 @@ EVENT_LABELS: dict[str, str] = {
     "ApprovalRequested": "请求了操作确认",
     "ApprovalGranted": "操作已批准",
     "ApprovalDenied": "操作已拒绝",
-    "InboxEmailReceived": "收到了新邮件",
-    "InboxDigestGenerated": "AI 生成了邮件摘要",
+    "InboxEmailRecorded": "收到了新邮件",
     "TimerFired": "定时任务触发",
-    "PatternAggregated": "AI 分析了活动模式",
     "NotificationCreated": "AI 给出了提醒",
-    "WorldModelSnapshotted": "AI 记录了世界认知",
-    # Legacy aliases (pre-rename); keep labels if old rows still exist
-    "MessageAdded": "发送了消息",
-    "ApprovalResolved": "操作已完成确认",
 }
 
 
@@ -47,32 +39,26 @@ def _translate_event(event) -> dict:
     payload = event.payload or {}
     actor = event.actor
 
-    # Build a descriptive sentence
     description = label
     if event_type == "WorkItemCreated":
         description = f'{label}「{payload.get("title", "")}」'
     elif event_type == "WorkItemStatusChanged":
         description = f'{label}「{payload.get("title", "")}」'
-    elif event_type == "GoalActionCompleted":
-        description = f'{label}「{payload.get("title", "")}」'
     elif event_type == "MemoryDerived":
         content = payload.get("content", "")
         snippet = content[:60] + "…" if len(content) > 60 else content
-        description = f'{label}: {snippet}'
-    elif event_type == "BeliefFormed":
-        content = payload.get("content", "")
-        snippet = content[:60] + "…" if len(content) > 60 else content
-        description = f'{label}: {snippet}'
-    elif event_type == "ChatRequested":
-        description = label
+        description = f"{label}: {snippet}"
     elif event_type == "CapabilityInvoked":
         description = f'{label}「{payload.get("capability_name", event_type)}」'
     elif event_type == "ApprovalRequested":
         description = f'{label}: {payload.get("capability_name", "")}'
-    elif event_type == "InboxEmailReceived":
+    elif event_type == "InboxEmailRecorded":
         description = f'{label}: {payload.get("subject", "")}'
     elif event_type == "NotificationCreated":
         description = f'{label}: {payload.get("title", "")}'
+    elif event_type == "ConversationRecorded":
+        msg = str(payload.get("user_message", ""))[:60]
+        description = f"{label}: {msg}"
 
     return {
         "id": event.id,
@@ -92,21 +78,19 @@ EVENT_ICONS: dict[str, str] = {
     "WorkItemCreated": "target",
     "WorkItemUpdated": "target",
     "WorkItemStatusChanged": "check-circle",
-    "GoalActionCreated": "check",
-    "GoalActionCompleted": "check-circle",
+    "WorkItemDeleted": "target",
     "MemoryDerived": "brain",
     "MemoryUpdated": "brain",
     "ConversationCreated": "message-square",
+    "ConversationRecorded": "message-square",
     "MessageAppended": "message-square",
-    "MessageAdded": "message-square",
     "ChatRequested": "message-square",
     "ChatDone": "message-square",
     "CapabilityInvoked": "zap",
     "ApprovalRequested": "shield",
     "ApprovalGranted": "shield-check",
     "ApprovalDenied": "shield",
-    "ApprovalResolved": "shield-check",
-    "InboxEmailReceived": "mail",
+    "InboxEmailRecorded": "mail",
     "TimerFired": "clock",
     "NotificationCreated": "bell",
 }

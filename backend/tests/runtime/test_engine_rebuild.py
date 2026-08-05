@@ -2,9 +2,9 @@
 
 from app.core.agents.memory_engine import MemoryEngine
 from app.core.runtime.kernel import Kernel
-from app.core.runtime.task_engine import (
-    create_task,
-    update_task_status,
+from app.core.runtime.work_item_engine import (
+    create_work_item,
+    update_work_item_status,
 )
 from app.store.database import Database
 
@@ -40,17 +40,19 @@ class TestEngineRebuildConsistency:
         after = snapshot_table(db, "memories")
         assert before == after
 
-    def test_task_engine_rebuild(self, tmp_path, monkeypatch):
+    def test_work_item_engine_rebuild(self, tmp_path, monkeypatch):
         k, db = make_kernel(tmp_path)
-        monkeypatch.setattr("app.core.runtime.task_engine.kernel", k)
+        monkeypatch.setattr("app.core.runtime.work_item_engine.kernel", k)
         monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", k)
 
-        parent = create_task(name="Parent", description="root")
-        child = create_task(name="Child", parent_task_id=parent["id"])
-        update_task_status(parent["id"], "running")
-        update_task_status(child["id"], "running")
-        update_task_status(child["id"], "blocked")
-        update_task_status(parent["id"], "completed")
+        parent = create_work_item(title="Parent", description="root", work_type="task")
+        child = create_work_item(
+            title="Child", work_type="task", parent_work_id=parent["id"],
+        )
+        update_work_item_status(parent["id"], "running")
+        update_work_item_status(child["id"], "running")
+        update_work_item_status(child["id"], "blocked")
+        update_work_item_status(parent["id"], "completed")
 
         before = snapshot_table(db, "work_items")
         assert before, "work_items table should have entries"

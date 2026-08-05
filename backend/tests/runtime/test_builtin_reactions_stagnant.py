@@ -27,10 +27,14 @@ def _stagnant_notifications(k) -> list[dict]:
 
 def test_stagnant_goal_creates_notification(isolated_kernel):
     k, _db = isolated_kernel
+    from datetime import UTC, datetime, timedelta
+    now = datetime.now(UTC)
+    created = (now - timedelta(days=15)).isoformat()
+    last = (now - timedelta(days=5)).isoformat()
     _emit_goal(
         k, "g1",
-        created_at="2026-07-20T00:00:00+00:00",  # 15 天前
-        last_activity_at="2026-07-30T00:00:00+00:00",  # 5 天前
+        created_at=created,
+        last_activity_at=last,
     )
 
     _check_stagnant_goals()

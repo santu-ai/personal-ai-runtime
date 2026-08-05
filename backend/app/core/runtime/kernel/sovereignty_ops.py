@@ -19,7 +19,6 @@ from typing import Any
 
 from . import projectors_registry as projectors
 from .constants import (
-    CHAT_EVENT_TYPES,
     PROJECTION_SNAPSHOT_AGGREGATES,
 )
 from .query_builder import (
@@ -308,75 +307,6 @@ def _reconcile_memory_index_after_restore(kernel) -> bool:
     return True
 
 
-def _legacy_chat_bootstrap_event_rows(
-    conversations: list[dict[str, Any]],
-    messages: list[dict[str, Any]],
-    event_rows: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Convert legacy chat projections into synthetic event_log rows.
-
-    Returns [] when the snapshot already has chat events. Synthetic rows use
-    seq values continuing after the imported max so they can be imported in
-    the same atomic transaction as the rest of the snapshot.
-    """
-    if any(r.get("type") in CHAT_EVENT_TYPES for r in event_rows):
-        return []
-    if not conversations and not messages:
-        return []
-
-    max_seq = max((int(r["seq"]) for r in event_rows), default=0)
-    now = datetime.now(UTC).isoformat()
-    out: list[dict[str, Any]] = []
-
-    for conv in conversations:
-        max_seq += 1
-        out.append({
-            "seq": max_seq,
-            "id": f"evt_bootstrap_conv_{conv['id']}",
-            "type": "ConversationCreated",
-            "aggregate_type": "conversation",
-            "aggregate_id": conv["id"],
-            "actor": "import",
-            "payload": {
-                "title": conv.get("title", "New Conversation"),
-                "summary": conv.get("summary"),
-                "created_at": conv.get("created_at"),
-            },
-            "caused_by": None,
-            "correlation_id": None,
-            "ts": conv.get("created_at") or now,
-        })
-
-    for msg in messages:
-        max_seq += 1
-        tool_calls = msg.get("tool_calls")
-        if tool_calls is not None and isinstance(tool_calls, str):
-            try:
-                tool_calls = json.loads(tool_calls)
-            except json.JSONDecodeError:
-                pass
-        out.append({
-            "seq": max_seq,
-            "id": f"evt_bootstrap_msg_{msg['id']}",
-            "type": "MessageAppended",
-            "aggregate_type": "conversation",
-            "aggregate_id": msg["conversation_id"],
-            "actor": "import",
-            "payload": {
-                "message_id": msg["id"],
-                "role": msg["role"],
-                "content": msg.get("content", ""),
-                "tool_calls": tool_calls,
-                "tool_call_id": msg.get("tool_call_id"),
-                "created_at": msg.get("created_at"),
-            },
-            "caused_by": None,
-            "correlation_id": None,
-            "ts": msg.get("created_at") or now,
-        })
-    return out
-
-
 def table_counts(kernel, tables: tuple[str, ...]) -> dict[str, int]:
     """Kernel-space row counts for sovereignty verification.
 
@@ -402,60 +332,6 @@ def count_events(kernel, aggregate_type: str) -> int:
             (aggregate_type,),
         ).fetchone()
         return int(row["c"])
-
-def bootstrap_chat_from_snapshot(
-    kernel,
-    conversations: list[dict[str, Any]],
-    messages: list[dict[str, Any]],
-    event_rows: list[dict[str, Any]],
-) -> dict[str, int]:
-    """Emit chat events for legacy snapshots."""
-    has_chat_events = any(
-        r.get("type") in CHAT_EVENT_TYPES for r in event_rows
-    )
-    if has_chat_events:
-        return {"conversations": 0, "messages": 0}
-
-    conv_count = 0
-    msg_count = 0
-    for conv in conversations:
-        kernel.emit_event(
-            "ConversationCreated",
-            "conversation",
-            conv["id"],
-            payload={
-                "title": conv.get("title", "New Conversation"),
-                "summary": conv.get("summary"),
-                "created_at": conv.get("created_at"),
-            },
-            actor="import",
-        )
-        conv_count += 1
-
-    for msg in messages:
-        tool_calls = msg.get("tool_calls")
-        if tool_calls is not None and isinstance(tool_calls, str):
-            try:
-                tool_calls = json.loads(tool_calls)
-            except json.JSONDecodeError:
-                pass
-        kernel.emit_event(
-            "MessageAppended",
-            "conversation",
-            msg["conversation_id"],
-            payload={
-                "message_id": msg["id"],
-                "role": msg["role"],
-                "content": msg.get("content", ""),
-                "tool_calls": tool_calls,
-                "tool_call_id": msg.get("tool_call_id"),
-                "created_at": msg.get("created_at"),
-            },
-            actor="import",
-        )
-        msg_count += 1
-
-    return {"conversations": conv_count, "messages": msg_count}
 
 def export_chat_rows(
     kernel, *, conn=None
@@ -641,8 +517,8 @@ def restore(kernel, snapshot: dict, read_only: bool = True) -> dict[str, Any]:
     """Import snapshot. Write import requires read_only=False.
 
     This is the kernel-space equivalent of DigitalLegacy.import_all().
-    Handles snapshot format, event-log-based import, and legacy goal/memory
-    import for older lossy snapshots.
+    Only event_log-based snapshots are supported; legacy lossy snapshot
+    formats are rejected.
     """
     if read_only:
         return {
@@ -656,91 +532,29 @@ def restore(kernel, snapshot: dict, read_only: bool = True) -> dict[str, Any]:
         }
 
     export_format = snapshot.get("format")
-    if export_format == EXPORT_FORMAT or snapshot.get("event_log") is not None:
-        return _restore_from_snapshot(kernel, snapshot)
-    return _import_legacy_goals_memories(kernel, snapshot)
+    if export_format != EXPORT_FORMAT:
+        raise ValueError(
+            f"unsupported snapshot format: {export_format!r}; "
+            f"expected {EXPORT_FORMAT!r}"
+        )
+    return _restore_from_snapshot(kernel, snapshot)
 
 def _restore_from_snapshot(kernel, snapshot: dict) -> dict:
     """Restore from event_log-based snapshot.
 
-    Legacy chat projections (conversations/messages without chat events) are
-    converted into synthetic event rows and imported in the same SQLite
-    transaction as the rest of the snapshot — no post-commit bootstrap.
+    The event log is the single source of truth; chat projections are
+    rebuilt by replaying the imported events (no projection bootstrap).
     """
     event_rows = list(snapshot.get("event_log", []))
-    conversations = snapshot.get("conversations", [])
-    messages = snapshot.get("messages", [])
-
-    bootstrap_rows = _legacy_chat_bootstrap_event_rows(
-        conversations, messages, event_rows,
-    )
-    all_rows = event_rows + bootstrap_rows
 
     imported_events = import_event_log_rows(
-        kernel, all_rows, rebuild_projections=True,
+        kernel, event_rows, rebuild_projections=True,
     )
 
     return {
         "format": EXPORT_FORMAT,
         "events_imported": imported_events,
-        "conversations_imported": sum(
-            1 for r in bootstrap_rows if r["type"] == "ConversationCreated"
-        ),
-        "messages_imported": sum(
-            1 for r in bootstrap_rows if r["type"] == "MessageAppended"
-        ),
     }
-
-def _import_legacy_goals_memories(kernel, snapshot: dict) -> dict[str, Any]:
-    """Best-effort import for older lossy snapshots (goals/memories only)."""
-    from app.core.agents.memory_engine import memory_engine
-    from app.core.agents.user_profile import user_profile
-
-    result: dict[str, Any] = {
-        "format": "legacy",
-        "profile_categories": 0,
-        "goals_imported": 0,
-        "memories_imported": 0,
-    }
-
-    profile_data = snapshot.get("profile", {})
-    for category, cat_data in profile_data.items():
-        if isinstance(cat_data, dict) and "data" in cat_data:
-            user_profile.update_profile(
-                category,
-                cat_data["data"],
-                confidence=cat_data.get("confidence", 0.3),
-            )
-            result["profile_categories"] += 1
-
-    for goal in snapshot.get("goals", []):
-        gid = goal.get("id") or str(uuid.uuid4())
-        kernel.emit_event(
-            "WorkItemCreated",
-            "work_item",
-            gid,
-            payload={
-                "title": goal.get("title", ""),
-                "description": goal.get("description", ""),
-                "status": goal.get("status", "active"),
-                "importance": goal.get("importance", 0.5),
-                "urgency": goal.get("urgency", 0.5),
-            },
-            actor="import",
-        )
-        result["goals_imported"] += 1
-
-    for mem in snapshot.get("memories", []):
-        memory_engine.store_memory(
-            mem.get("content", ""),
-            category=mem.get("category", "fact"),
-            source="legacy_import",
-            confidence=float(mem.get("confidence", 0.5)),
-            actor="import",
-        )
-        result["memories_imported"] += 1
-
-    return result
 
 def erase(kernel) -> dict:
     """Remove database and vector store files (irreversible).

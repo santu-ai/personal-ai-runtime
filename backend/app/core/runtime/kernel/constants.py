@@ -111,15 +111,6 @@ MEMORY_INDEX_EVENT_TYPES = frozenset({
     EVENT_MEMORY_DELETED,
 })
 
-# ── Chat 引导事件类型 ──────────────────────────────────────────────────────
-
-CHAT_EVENT_TYPES = frozenset({
-    EVENT_CONVERSATION_CREATED,
-    EVENT_CONVERSATION_UPDATED,
-    EVENT_CONVERSATION_DELETED,
-    EVENT_MESSAGE_APPENDED,
-})
-
 # ── 事件 payload schema 版本（Architecture Contract）─────────────────────────
 # 每次持久化发出都会从这个注册表压入 ``schema_version``。
 # 当某事件类型的 payload *形状* 发生向后不兼容变化时，Bump 对应 override；

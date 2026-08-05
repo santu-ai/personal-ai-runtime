@@ -19,7 +19,7 @@ router = APIRouter(tags=["work-items"])
 VALID_WORK_TYPES = frozenset({"task", "action", "background", "goal"})
 VALID_STATUSES = frozenset({
     "pending", "running", "blocked", "waiting_approval",
-    "completed", "failed", "cancelled", "retrying",
+    "completed", "failed", "cancelled",
     "active", "paused",
 })
 VALID_GOAL_STATUSES = frozenset({"active", "completed", "paused"})
@@ -27,7 +27,6 @@ VALID_GOAL_STATUSES = frozenset({"active", "completed", "paused"})
 
 class CreateWorkItemRequest(BaseModel):
     title: str = ""
-    name: str | None = None  # legacy /api/tasks alias
     description: str = ""
     work_type: str = "task"
     parent_work_id: str | None = None
@@ -43,7 +42,7 @@ class CreateWorkItemRequest(BaseModel):
     last_activity_at: str | None = None
 
     def resolved_title(self) -> str:
-        return (self.title or self.name or "").strip()
+        return self.title.strip()
 
 
 class UpdateWorkItemRequest(BaseModel):
@@ -164,7 +163,7 @@ async def get_children(item_id: str):
     """Return direct children.
 
     Goals merge ``parent_goal_id`` rows with ``parent_work_id`` rows so both
-    legacy action links and nested work trees are visible.
+    action links and nested work trees are visible.
     """
     item = read_ports.get_work_item(item_id)
     if not item:

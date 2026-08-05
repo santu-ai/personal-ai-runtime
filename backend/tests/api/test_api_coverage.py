@@ -120,9 +120,8 @@ class TestWorkItemsSmokeAPI:
         assert data["status"] == "active"
         assert data["work_type"] == "goal"
 
-    def test_create_task_via_name_alias(self, client):
-        """Legacy ``name`` field still maps to title (not covered in deep suite)."""
-        resp = client.post("/api/work-items/", json={"name": "Deploy app", "priority": 2})
+    def test_create_task_with_title(self, client):
+        resp = client.post("/api/work-items/", json={"title": "Deploy app", "priority": 2})
         assert resp.status_code == 200
         assert resp.json()["title"] == "Deploy app"
 
@@ -152,7 +151,7 @@ class TestWorkItemsSmokeAPI:
         assert resp.status_code == 404
 
     def test_update_status_missing_field(self, client):
-        resp = client.post("/api/work-items/", json={"name": "Any"})
+        resp = client.post("/api/work-items/", json={"title": "Any"})
         tid = resp.json()["id"]
         resp = client.post(f"/api/work-items/{tid}/status", json={})
         assert resp.status_code == 400

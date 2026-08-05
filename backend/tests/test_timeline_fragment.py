@@ -39,9 +39,9 @@ class TestTimelineCollect:
             _boom,
         )
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.query_recent_legacy_events",
+            "app.core.runtime.read_ports.query_recent_events",
             lambda **kwargs: [
-                {"summary": "WorkItem created: X", "timestamp": "2026-07-01T00:00:00", "type": "task_created"}
+                {"summary": "WorkItem created: X", "timestamp": "2026-07-01T00:00:00", "type": "WorkItemCreated"}
             ],
         )
         r = await TimelineContextFragment().collect(RuntimeContext())
@@ -55,10 +55,10 @@ class TestTimelineCollect:
             lambda **kwargs: [],
         )
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.query_recent_legacy_events",
+            "app.core.runtime.read_ports.query_recent_events",
             lambda **kwargs: [
-                {"summary": "Conversation: hi", "timestamp": "2026-07-01", "type": "conversation"},
-                {"summary": "WorkItem created: Ship", "timestamp": "2026-07-02", "type": "task_created"},
+                {"summary": "Conversation: hi", "timestamp": "2026-07-01", "type": "ConversationRecorded"},
+                {"summary": "WorkItem created: Ship", "timestamp": "2026-07-02", "type": "WorkItemCreated"},
             ],
         )
         r = await TimelineContextFragment().collect(RuntimeContext())
@@ -82,7 +82,7 @@ class TestTimelineCollect:
             _pending,
         )
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.query_recent_legacy_events",
+            "app.core.runtime.read_ports.query_recent_events",
             _events,
         )
         await TimelineContextFragment().collect(
@@ -101,7 +101,7 @@ class TestTimelineCollect:
             ],
         )
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.query_recent_legacy_events",
+            "app.core.runtime.read_ports.query_recent_events",
             lambda **kwargs: [
                 {"summary": "Goal created: Learn Rust", "timestamp": "2026-06-18T12:00:00"},
             ],
@@ -121,7 +121,7 @@ class TestTimelineCollect:
             lambda **kwargs: [],
         )
         monkeypatch.setattr(
-            "app.core.runtime.read_ports.query_recent_legacy_events",
+            "app.core.runtime.read_ports.query_recent_events",
             lambda **kwargs: [],
         )
         r = await TimelineContextFragment().collect(RuntimeContext())

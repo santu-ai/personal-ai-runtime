@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { type Goal } from "../../api/client";
+import { type WorkItem } from "../../api/client";
 import { useErrorStore } from "../../stores/errorStore";
 import { useInvalidateGoals } from "../../hooks/useGoalsQuery";
 import { createGoalAction, updateGoalAction, decomposeGoal, ApiError } from "../../api/client";
@@ -15,10 +15,10 @@ const statusLabels: Record<string, string> = {
 };
 
 interface GoalDetailPanelProps {
-  goal: Goal;
-  onStartChat: (goal: Goal) => void;
+  goal: WorkItem;
+  onStartChat: (goal: WorkItem) => void;
   onUpdateStatus: (goalId: string, status: string) => void;
-  onRequestDelete: (goal: Goal) => void;
+  onRequestDelete: (goal: WorkItem) => void;
   onCreatedAction: () => void;
 }
 

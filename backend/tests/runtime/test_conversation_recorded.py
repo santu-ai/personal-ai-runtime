@@ -4,7 +4,7 @@ import pytest
 
 from app.core.agents.handlers.chat_completed_handlers import record_conversation_turn
 from app.core.runtime.kernel import Kernel
-from app.core.runtime.read_ports import to_legacy_dict
+from app.core.runtime.read_ports import to_event_dict
 from app.store.database import Database
 
 
@@ -47,9 +47,9 @@ def test_event_formatting_maps_conversation_type(tmp_path):
     db_mod.db = k._db
 
     ev = record_conversation_turn("conv-2", "hello", "hi")
-    legacy = to_legacy_dict(ev)
-    assert legacy["type"] == "conversation"
-    assert "hello" in legacy["summary"]
+    row = to_event_dict(ev)
+    assert row["type"] == "ConversationRecorded"
+    assert "hello" in row["summary"]
 
 def test_conversation_updated_with_summary(isolated_kernel):
     k, db = isolated_kernel

@@ -137,7 +137,7 @@ def _writer_delete_goal(goal_id: str) -> str:
     # Cascade: delete children first
     for child in read_ports.query_work_items_by_parent_goal(goal_id):
         kernel.emit_event("WorkItemDeleted", "work_item", child["id"], actor="user")
-    from app.core.runtime.task_engine import get_sub_work_items
+    from app.core.runtime.work_item_engine import get_sub_work_items
     for child in get_sub_work_items(goal_id):
         kernel.emit_event("WorkItemDeleted", "work_item", child["id"], actor="user")
     kernel.emit_event("WorkItemDeleted", "work_item", goal_id, actor="user")

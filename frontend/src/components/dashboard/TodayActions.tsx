@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { ShieldCheck, Target, Mail, Activity } from "lucide-react";
-import { type Goal } from "../../api/client";
+import { type WorkItem } from "../../api/client";
 import { formatTime } from "../../utils/time";
 
 interface TodayActionsProps {
@@ -12,7 +12,7 @@ interface TodayActionsProps {
     created_at?: string;
     expires_at?: string;
   }>;
-  activeGoals: Goal[];
+  activeGoals: WorkItem[];
   pendingInboxCount: number;
   inboxEmails: Array<{ id: string; subject?: string }>;
 }

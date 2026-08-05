@@ -128,7 +128,7 @@ cron 表达式解析 `_next_cron_fire(cron_expr, from_ts)`（[`runtime_loop.py`]
 | inbox_poll | 每 15 分钟 | inbox_poll |
 | inbox_digest | 每天 08:30 | inbox_digest |
 
-`init_scheduler()` 还订阅 `TaskCompleted` / `TaskStatusChanged`，自动启动依赖任务（`_on_task_completed`，[`cron_registry.py`](../../backend/app/core/runtime/cron_registry.py)）。
+`init_scheduler()` 还订阅 `WorkItemCompleted` / `WorkItemStatusChanged`，自动启动依赖任务（`_on_work_item_status_changed`，[`cron_registry.py`](../../backend/app/core/runtime/cron_registry.py)）。
 
 ## Agent / 执行模型
 
@@ -181,7 +181,7 @@ Scheduler 通过 `kernel.set_async_dispatcher()`（[`kernel.py`](../../backend/a
 
 | 文件 | 职责 |
 |---|---|
-| [`task_engine.py`](../../backend/app/core/runtime/task_engine.py) | WorkItem CRUD 模块函数（`work_type=task`，底层 emit `WorkItem*` 事件）；统一状态机（`TaskStatus` 枚举 + `_TRANSITIONS` 校验） |
+| [`work_item_engine.py`](../../backend/app/core/runtime/work_item_engine.py) | WorkItem CRUD 模块函数（`work_type=task`，底层 emit `WorkItem*` 事件）；统一状态机（`WorkItemStatus` 枚举 + `_TRANSITIONS` 校验） |
 | [`runtime_config.py`](../../backend/app/core/runtime/runtime_config.py) | LLM/Email 设置持久化于 SQLite `app_settings`；env 播种默认；UI 编辑持久化 DB；若存在 `runtime_config.json` 则自动导入 `app_settings`。`PROVIDER_TYPES`、`PROVIDER_PRESETS`、`effective_api_key`、`get_llm_config(masked)`、`update_llm_config`、`get_email_config`、`get_generation_params`、`get_prompt`/`save_prompt` |
 | [`cron_registry.py`](../../backend/app/core/runtime/cron_registry.py) | Cron 调度注册（扫描在 RuntimeLoop）：`ensure_schedules`/`create_schedule`/`list_schedules`/`delete_schedule` |
 | [`reaction_registry.py`](../../backend/app/core/runtime/reaction_registry.py) | 声明式触发器注册 |

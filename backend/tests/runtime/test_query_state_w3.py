@@ -240,15 +240,6 @@ class TestSovereigntyGaps:
         assert k.count_events("work_item") == 2
         assert k.count_events("nonexistent") == 0
 
-    def test_bootstrap_chat_from_snapshot(self, isolated_kernel):
-        k, _db = isolated_kernel
-        convs = [{"id": "c1", "title": "Chat"}]
-        msgs = [{"id": "m1", "role": "user", "content": "hi",
-                 "conversation_id": "c1", "created_at": "2024-01-01"}]
-        result = k.bootstrap_chat_from_snapshot(convs, msgs, [])
-        assert result["conversations"] == 1
-        assert result["messages"] == 1
-
 class TestKernelReadEvents:
 
     def test_read_events_by_id(self, isolated_kernel):

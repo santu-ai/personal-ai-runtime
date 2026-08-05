@@ -360,7 +360,7 @@ class Kernel(QueryStateMixin, SovereigntyMixin):
 
     # 见 kernel_sovereignty.py：
     #   export_event_log_rows() / import_event_log_rows() / table_counts()
-    #   bootstrap_chat_from_snapshot() / export_chat_rows()
+    #   export_chat_rows()
     #   rebuild() / rebuild_all()
     #   save_projection_snapshot() / save_projection_snapshots()
     #   _drop_event_log_guards() / _ensure_event_log_guards()

@@ -46,7 +46,7 @@ def test_query_top_active_goals_forwards(fake_kernel):
             "work_items",
             {
                 "work_type": "goal",
-                "status_in": ("active", "in_progress"),
+                "status": "active",
                 "limit": 2,
                 "order": "importance_urgency_desc",
             },

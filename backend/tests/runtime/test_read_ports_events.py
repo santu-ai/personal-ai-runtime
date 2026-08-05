@@ -1,4 +1,4 @@
-"""read_ports.events — legacy UI mapping, recent/goal event queries."""
+"""read_ports.events — UI mapping, recent/goal event queries."""
 
 from __future__ import annotations
 
@@ -35,38 +35,34 @@ def _evt(
 # ── Pure helpers ──────────────────────────────────────────────────────────
 
 
-def test_to_legacy_dict_maps_type_and_summary():
+def test_to_event_dict_keeps_real_type_and_summary():
     event = _evt(
         "CapabilityInvoked",
         aggregate_type="capability",
         aggregate_id="cap1",
         payload={"name": "read_file"},
     )
-    row = events_port.to_legacy_dict(event)
-    assert row["type"] == "tool_call"
+    row = events_port.to_event_dict(event)
+    assert row["type"] == "CapabilityInvoked"
     assert row["summary"] == "Tool called: read_file"
     assert row["id"] == event.id
     assert row["timestamp"] == event.ts
     assert json.loads(row["payload"])["name"] == "read_file"
 
 
-def test_to_legacy_dict_unknown_type_lowercases():
+def test_to_event_dict_unknown_type_passthrough():
     event = _evt("CustomThing", payload={})
-    row = events_port.to_legacy_dict(event)
-    assert row["type"] == "customthing"
+    row = events_port.to_event_dict(event)
+    assert row["type"] == "CustomThing"
     assert row["summary"].startswith("CustomThing:")
 
 
 @pytest.mark.parametrize(
     "type_,payload,needle",
     [
-        ("ActionCreated", {"title": "Ship"}, "Action created: Ship"),
-        ("ActionUpdated", {"status": "done"}, "Action status -> done"),
         ("ApprovalRequested", {"action": "shell_exec"}, "Approval requested: shell_exec"),
         ("ApprovalGranted", {"action": "shell_exec"}, "Approval granted: shell_exec"),
         ("ApprovalDenied", {"action": "shell_exec"}, "Approval denied: shell_exec"),
-        ("TaskCreated", {"name": "Build"}, "Task created: Build"),
-        ("TaskCompleted", {"status": "completed"}, "Task completed:"),
         ("WorkItemCreated", {"title": "Goal"}, "WorkItem created: Goal"),
         ("WorkItemUpdated", {"status": "active"}, "WorkItem active:"),
         ("MemoryDerived", {"content": "likes tea"}, "Memory derived: likes tea"),
@@ -94,16 +90,6 @@ def test_goal_id_from_work_item_parent_or_self():
         payload={"title": "Root", "work_type": "goal"},
     )
     assert events_port._goal_id_for(root) == "g1"
-
-
-def test_goal_id_from_action_payload():
-    action = _evt(
-        "ActionCreated",
-        aggregate_type="action",
-        aggregate_id="act1",
-        payload={"goal_id": "g9", "title": "Do"},
-    )
-    assert events_port._goal_id_for(action) == "g9"
 
 
 def test_goal_id_from_other_aggregate_payload():
@@ -143,7 +129,6 @@ def test_recent_events_filters_and_limit():
     assert captured[0]["type"] == "WorkItemCreated"
     assert captured[0]["order"] == "desc"
     assert captured[0]["limit"] == 2
-    # since_ts is roughly now - 3 days
     since = datetime.fromisoformat(captured[0]["since_ts"].replace("Z", "+00:00"))
     assert datetime.now(UTC) - since < timedelta(days=3, minutes=1)
     assert datetime.now(UTC) - since > timedelta(days=2, hours=23)
@@ -206,7 +191,9 @@ def test_goal_events_combines_work_item_own_and_children(kernel):
 
     rows = events_port.goal_events("g1", limit=10)
     # g1 Created (seq 1), child a1 (seq 2), g1 Updated (seq 3) → desc by seq.
-    assert [r["type"] for r in rows] == ["task_status_changed", "task_created", "task_created"]
+    assert [r["type"] for r in rows] == [
+        "WorkItemUpdated", "WorkItemCreated", "WorkItemCreated",
+    ]
     assert rows[0]["summary"] == "WorkItem active: g1"
     assert rows[1]["summary"] == "WorkItem created: Step"
     assert rows[2]["summary"] == "WorkItem created: Ship"

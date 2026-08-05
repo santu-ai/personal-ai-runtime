@@ -179,45 +179,18 @@ export interface InboxEmail {
   created_at: string;
 }
 
-export interface GoalAction {
-  id: string;
-  goal_id: string;
-  title: string;
-  status: string;
-  created_at: string;
-  completed_at: string | null;
-}
-
-export interface GoalEvent {
+export interface WorkItemEvent {
   id: string;
   type: string;
   summary: string;
   timestamp: string;
+  goal_id?: string | null;
+  payload?: string | null;
 }
 
 /**
- * Goal — view-model over WorkItem (work_type=goal) plus optional embedded
- * actions/events. UI consumers use this shape; API clients convert at the edge.
- */
-export interface Goal {
-  id: string;
-  title: string;
-  description: string | null;
-  status: string;
-  progress: number;
-  importance: number;
-  urgency: number;
-  deadline: string | null;
-  parent_id: string | null;
-  created_at: string;
-  last_activity_at: string | null;
-  actions?: GoalAction[];
-  events?: GoalEvent[];
-}
-
-/**
- * WorkItem — unified type for tasks, actions, goals.
- * Goal/GoalAction remain thin view-model adapters used by the Goals page.
+ * WorkItem — unified type for tasks, actions, goals, background work.
+ * Detail fetches may embed ``actions`` / ``events`` via ``include=``.
  */
 export type WorkItemType = "task" | "action" | "background" | "goal";
 
@@ -235,12 +208,14 @@ export interface WorkItem {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
-  // v1.0 goal-unification fields (populated when work_type="goal")
   progress: number;
   importance: number;
   urgency: number;
   deadline: string | null;
   last_activity_at: string | null;
+  actions?: WorkItem[];
+  events?: WorkItemEvent[];
+  children?: WorkItem[];
 }
 
 export interface Approval {

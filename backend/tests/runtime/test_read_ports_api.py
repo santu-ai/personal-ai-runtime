@@ -247,4 +247,4 @@ def test_query_top_active_goals_delegates_status_in(monkeypatch):
     rows = read_ports.query_top_active_goals(limit=3)
     assert rows[0]["title"] == "Test Goal"
     assert calls[0][0] == "work_items"
-    assert calls[0][1]["status_in"] == ("active", "in_progress")
+    assert calls[0][1]["status"] == "active"
