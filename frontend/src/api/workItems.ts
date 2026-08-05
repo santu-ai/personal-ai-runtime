@@ -84,10 +84,7 @@ export async function getGoal(goalId: string): Promise<WorkItem> {
   return getWorkItem(goalId, "actions,events");
 }
 
-export async function createGoal(body: {
-  title: string;
-  description?: string;
-}): Promise<WorkItem> {
+export async function createGoal(body: { title: string; description?: string }): Promise<WorkItem> {
   return createWorkItem({
     title: body.title,
     description: body.description,

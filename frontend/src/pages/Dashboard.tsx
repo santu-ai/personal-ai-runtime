@@ -41,10 +41,7 @@ export default function DashboardPage() {
   const pendingInboxCount = inboxData?.emails?.length ?? 0;
 
   // 活跃目标：status 为 active 的目标
-  const activeGoals = useMemo(
-    () => goals.filter((g) => g.status === "active"),
-    [goals],
-  );
+  const activeGoals = useMemo(() => goals.filter((g) => g.status === "active"), [goals]);
 
   // Prefer HTTP-pulled notifications; keep live WS items only when no server
   // item shares the same type:title key (optimistic until refetch arrives).
