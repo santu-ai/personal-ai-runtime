@@ -29,6 +29,17 @@
 - **修复"已锁定的现状"要同步更新锁定测试**：若产品决策改变了一个被测试锁定的行为（如 `notify_goal_action_completed` 从"0/0 噪音通知"改为"无子项跳过通知"），必须同步改写对应锁定测试为新行为，而不是留旧测试继续锁旧行为；修复先判定等价性（逐分支比对），再改测试。
 - **测防御分支用 fake kernel 直接构造输入**：真实 `query_state` 会在 SQL 层过滤掉非法输入（如非法日期字符串），测不到防御逻辑；用 fake kernel 注入这类行来锁定回退行为。
 
+## 投影查询（`query_builder`）
+
+- 投影读路径一律走 `safe_limit` / `safe_order` / `build_where` / `in_clause`，禁止手插 `LIMIT ?` 或把未白名单的 `order` 插进 SQL。
+- 空 `IN (...)` 列表用 `1 = 0`（或短路返回空），不要拼出非法 SQL。
+- 未知 `order` key 必须回退到显式 `default_key`；改兜底语义前先核对历史调用约定。
+
+## God 文件与概念压缩
+
+- `query_builder` / `main` / `mcp_mesh` / `agent_scheduler` 等受 `runtime_files` / 概念压缩零和约束（见 [decision-log.md](decision-log.md) R012）。
+- 优化时优先**单文件内**抽 helper；拆文件必须同变更删除等价概念，并按 [task-recipes.md](task-recipes.md) §7 `--ratchet --yes`。
+
 ## 工具索引滞后陷阱（本次实测两次）
 
 - IDE 的 Grep/Glob/Read 索引**可能滞后于磁盘**：文件已删除/重命名但 grep 仍显示存在（或反之）。本次 `task_engine.py`、`frontend/src/api/goals.ts` 均被 grep 报存在含 `parent_goal_id`，**磁盘上实际不存在**。

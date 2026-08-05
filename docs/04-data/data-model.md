@@ -185,9 +185,11 @@ frozenset({
 
 | Revision | down_revision | 内容 |
 |---|---|---|
-| `0001_consolidated` | — | 单一初始 schema：全部应用表 + kernel 表 + 投影表 + append-only 触发器 |
+| `0001_consolidated` | — | 单一初始 schema：全部应用表 + kernel 表 + 投影表 + `plan_resumes` + append-only 触发器 |
 
-`alembic upgrade head` 一次应用完整 schema。
+开发阶段保持**唯一 head**（增量变更折叠回 `0001_consolidated`，不保留兼容 revision）。`alembic upgrade head` 一次应用完整 schema。
+
+列真相以 [`schema_ddl.py`](../../backend/app/store/schema_ddl.py) 为准；Alembic `0001` 与 raw DDL 双路径必须列契约一致（见下节）。
 
 `run_migrations()`（[`backend/app/store/alembic_runner.py`](../../backend/app/store/alembic_runner.py)）用 `backend/alembic.ini`，`command.upgrade(cfg, "head")`，幂等。
 

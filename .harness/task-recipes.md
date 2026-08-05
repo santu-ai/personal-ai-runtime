@@ -19,7 +19,7 @@
 
 ## 4. 新增 governed 表
 
-`schema_ddl.py` + 分类 → alembic 迁移 → 投影经事件写入 →  
+`schema_ddl.py` + 分类 → 开发期折叠进 `0001_consolidated`（见 §9；发版后才追加增量 migration）→ 投影经事件写入 →  
 `make boundary && make projection-provenance && make alembic-verify` → 同步 `docs/04-data/data-model.md`。
 
 ## 5. 修改依赖
@@ -51,3 +51,15 @@ python -m scripts.check_concept_growth --ratchet --yes       # 确认后应用�
 3. **跑完整验证矩阵**：静态守卫（boundary / layer-deps / concept-growth / event-schema / unused-config / projection-provenance）+ 后端 pytest + rebuild-verify + 前端 test + docs-gen。
 4. **概念指标变化零和登记**：指标因修复净增（如新增执行可信化功能）时，同步 `BASELINE` + `docs/02-concepts/runtime-algebra.md` §4.4 + `SUBSYSTEM_LOC_BUDGETS`，并说明替代的旧概念/为什么净增合理。
 5. **复核报告**：按严重度列出"已闭环 / 部分闭环 / 漏项"，漏项给明确处置（删或注明 ABI 保留），不要让"部分闭环"悬空。
+
+## 9. 开发期合并 Alembic（squash）
+
+开发阶段不需要兼容旧库时，把增量 revision **折叠回唯一** `0001_consolidated`，避免长链与双真相：
+
+1. 以 [`schema_ddl.py`](../backend/app/store/schema_ddl.py) 为列真相，改写 [`0001_consolidated.py`](../backend/alembic/versions/0001_consolidated.py) 的 `upgrade`/`downgrade`。
+2. **删除**全部增量 revision；不要留空 `upgrade` 或仅兼容分支。revision id 保持 `0001_consolidated`（`down_revision=None`）。
+3. 本地删 `data/personal_ai.db`（及 `-wal`/`-shm`）后重启，让 Alembic 重建；旧 `alembic_version` 无法线性回退。
+4. 自证：`python -m scripts.verify_alembic` + schema contract 双路径测试（`test_projection_schema_contract` / `test_schema_init`）。
+5. 同步 [`docs/04-data/data-model.md`](../docs/04-data/data-model.md)（权威叙述）。
+
+正式发版后若需兼容用户库，再改为只追加增量 migration，禁止再 squash 已发布 head。

@@ -72,6 +72,7 @@ def upgrade() -> None:
         sa.Column("related_id", sa.Text()),
         sa.Column("related_type", sa.Text()),
         sa.Column("notification_type", sa.Text()),
+        sa.Column("dedup_key", sa.Text()),
         sa.Column("created_at", sa.DateTime(), server_default=sa.text("CURRENT_TIMESTAMP")),
     )
     op.create_index(
@@ -80,6 +81,7 @@ def upgrade() -> None:
         ["related_id", "notification_type"],
         unique=False,
     )
+    op.create_index("ix_notifications_dedup_key", "notifications", ["dedup_key"])
 
     op.create_table(
         "activity_log",
@@ -131,17 +133,6 @@ def upgrade() -> None:
         sa.Column("expires_at", sa.DateTime()),
         sa.Column("resolved_at", sa.DateTime()),
         sa.Column("resolved_by", sa.Text()),
-    )
-
-    op.create_table(
-        "background_tasks",
-        sa.Column("id", sa.Text(), primary_key=True),
-        sa.Column("user_request", sa.Text(), nullable=False),
-        sa.Column("plan_json", sa.Text()),
-        sa.Column("status", sa.Text(), server_default="pending"),
-        sa.Column("progress", sa.Float(), server_default="0"),
-        sa.Column("created_at", sa.DateTime(), server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("completed_at", sa.DateTime()),
     )
 
     op.create_table(
@@ -238,9 +229,11 @@ def upgrade() -> None:
         sa.Column("started_at", sa.Text(), nullable=False, server_default=""),
         sa.Column("completed_at", sa.Text(), nullable=False, server_default=""),
         sa.Column("error", sa.Text(), nullable=False, server_default=""),
+        sa.Column("dead_letter", sa.Integer(), nullable=False, server_default="0"),
     )
     op.create_index("idx_handler_executions_status", "handler_executions", ["status"])
     op.create_index("idx_handler_executions_instance", "handler_executions", ["instance_id"])
+    op.create_index("idx_handler_executions_dead_letter", "handler_executions", ["dead_letter"])
 
     op.create_table(
         "work_items",
@@ -249,7 +242,6 @@ def upgrade() -> None:
         sa.Column("description", sa.Text()),
         sa.Column("work_type", sa.Text(), server_default="task"),
         sa.Column("parent_work_id", sa.Text()),
-        sa.Column("parent_goal_id", sa.Text()),
         sa.Column("status", sa.Text(), server_default="pending"),
         sa.Column("priority", sa.Integer(), server_default="0"),
         sa.Column("dependencies_json", sa.Text()),
@@ -310,8 +302,21 @@ def upgrade() -> None:
         unique=False,
     )
 
+    op.create_table(
+        "plan_resumes",
+        sa.Column("approval_id", sa.Text(), primary_key=True),
+        sa.Column("kind", sa.Text(), nullable=False),
+        sa.Column("resume_from", sa.Integer(), nullable=False),
+        sa.Column("previous_output_json", sa.Text()),
+        sa.Column("action_id", sa.Text(), server_default=""),
+        sa.Column("task_id", sa.Text(), server_default=""),
+        sa.Column("plan_json", sa.Text(), server_default=""),
+        sa.Column("created_at", sa.Text(), nullable=False),
+    )
+
 
 def downgrade() -> None:
+    op.drop_table("plan_resumes")
     op.drop_index("idx_memory_repairs_status", table_name="memory_index_repairs")
     op.drop_table("memory_index_repairs")
     op.drop_index("idx_policy_events_status", table_name="policy_events")
@@ -320,6 +325,7 @@ def downgrade() -> None:
     op.drop_index("idx_timer_events_status", table_name="timer_events")
     op.drop_table("timer_events")
     op.drop_table("work_items")
+    op.drop_index("idx_handler_executions_dead_letter", table_name="handler_executions")
     op.drop_index("idx_handler_executions_instance", table_name="handler_executions")
     op.drop_index("idx_handler_executions_status", table_name="handler_executions")
     op.drop_table("handler_executions")
@@ -332,7 +338,6 @@ def downgrade() -> None:
     op.drop_table("app_settings")
     op.drop_table("inbox_emails")
     op.drop_table("user_profile")
-    op.drop_table("background_tasks")
     op.drop_table("approvals")
     op.drop_index("idx_tool_calls_name", table_name="tool_calls")
     op.drop_index("idx_tool_calls_created_at", table_name="tool_calls")
@@ -342,6 +347,7 @@ def downgrade() -> None:
     op.drop_index("idx_llm_calls_created_at", table_name="llm_calls")
     op.drop_table("llm_calls")
     op.drop_table("activity_log")
+    op.drop_index("ix_notifications_dedup_key", table_name="notifications")
     op.drop_index("ix_notifications_related_type", table_name="notifications")
     op.drop_table("notifications")
     op.drop_table("memories")
