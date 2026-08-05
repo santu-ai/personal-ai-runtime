@@ -194,4 +194,3 @@ Scheduler 通过 `kernel.set_async_dispatcher()`（[`kernel.py`](../../backend/a
 | [`startup_health.py`](../../backend/app/core/startup_health.py) | `run_startup_checks()` 校验存储路径、LLM 配置、认证、邮件。`enrich_with_mcp_status`、`sanitize_startup_for_public` |
 | [`rate_limit.py`](../../backend/app/core/rate_limit.py) | 内存令牌桶（按端点前缀）：`/api/chat` 30/60s、`/api/settings/llm/test` 5/60s、`/api/settings/email/test` 5/60s、`/api/inbox/poll` 10/60s、`/api/system/export` 3/60s |
 | [`logging_config.py`](../../backend/app/core/logging_config.py) | structlog + stdlib；`_request_id_processor` 把 `request_id_var` 附到每行日志 |
-| [`connectors/calendar_capture.py`](../../backend/app/core/connectors/calendar_capture.py) | 只读连接器，把日历事件摄入为 `ObservationRecorded` |

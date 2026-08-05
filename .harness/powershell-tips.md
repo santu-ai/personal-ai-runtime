@@ -76,7 +76,7 @@ PowerShell 控制台对 UTF-8 支持不稳定，命令输出中文（含错误�
 powershell -File Makefile.ps1 -Task test-backend
 ```
 
-可用任务：`help / install / install-hooks / test-backend / test-frontend / lint / typecheck / boundary / layer-deps / backend-ci-* / docker-up / docker-down`。注意 PowerShell 版 `backend-ci-*` 是**顺序执行**（非 Unix 的 `-j` 并行）。
+⚠️ **`Makefile.ps1` 参数名不要用 `$Args`**：它与 PowerShell 自动变量 `$args` 冲突，会导致 `python` 空参数进入交互 REPL。本仓库已改为 `-PyArgs`。
 
 ⚠️ `-Task test-backend` 后面的 pytest 参数**不要用 `-Args "..."`** 直接拼——本次实测 `powershell -File Makefile.ps1 -Task test-backend -Args "..."` 会卡死并触发 python REPL 的 WinError 循环。要跑子集测试，绕过 Makefile 直接用 venv python：
 

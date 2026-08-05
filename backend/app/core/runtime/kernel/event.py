@@ -25,9 +25,9 @@ class Event:
     字段语义：
         seq            全局单调序号（由日志分配，不是时间）
         id             事件唯一 id
-        type           如 GoalCreated / GoalUpdated / GoalCompleted
-        aggregate_type 所属聚合类型（如 "goal"）
-        aggregate_id   具体聚合实例（如 "goal-123"）
+        type           如 WorkItemCreated / MessageAppended
+        aggregate_type 所属聚合类型（如 "work_item"）
+        aggregate_id   具体聚合实例（如 "wi-123"）
         actor          触发者（user / agent:xxx / kernel / scheduler）
         payload        事件数据（发出时压入 schema_version）
         caused_by      直接因果前驱事件 id（一跳）

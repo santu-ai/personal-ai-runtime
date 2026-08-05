@@ -42,8 +42,3 @@ export function stripToolMarkup(text: string, options?: { trim?: boolean }): str
 
   return options?.trim === false ? text : text.trim();
 }
-
-export function hasToolMarkup(text: string): boolean {
-  if (!text) return false;
-  return /<[｜|]/.test(text);
-}

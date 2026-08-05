@@ -83,14 +83,20 @@ async def governance_summary(days: int = Query(default=7, ge=1, le=90)):
     how many risky operations the LLM attempted and how many were caught.
     """
     since = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+    _CAP = 1000
 
-    invoked = kernel.read_events(type="CapabilityInvoked", since_ts=since, limit=1000)
-    denied_all = kernel.read_events(type="CapabilityDenied", since_ts=since, limit=1000)
+    invoked = kernel.read_events(type="CapabilityInvoked", since_ts=since, limit=_CAP)
+    denied_all = kernel.read_events(type="CapabilityDenied", since_ts=since, limit=_CAP)
     # Split denied events by reason: "deferred" vs explicit deny.
     denied = [e for e in denied_all if e.payload.get("reason") != "deferred"]
     deferred = [e for e in denied_all if e.payload.get("reason") == "deferred"]
-    approve_req = kernel.read_events(type="ApproveRequested", since_ts=since, limit=1000)
-    approve_done = kernel.read_events(type="ApproveCompleted", since_ts=since, limit=1000)
+    approve_req = kernel.read_events(type="ApproveRequested", since_ts=since, limit=_CAP)
+    approve_done = kernel.read_events(type="ApproveCompleted", since_ts=since, limit=_CAP)
+
+    capped = any(
+        len(xs) >= _CAP
+        for xs in (invoked, denied_all, approve_req, approve_done)
+    )
 
     # Tool-name breakdown of invoked capabilities
     by_tool: dict[str, int] = {}
@@ -121,6 +127,8 @@ async def governance_summary(days: int = Query(default=7, ge=1, le=90)):
 
     return {
         "window_days": days,
+        "capped": capped,
+        "cap_limit": _CAP,
         "tools_invoked": len(invoked),
         "tools_denied": len(denied),
         "tools_deferred": len(deferred),

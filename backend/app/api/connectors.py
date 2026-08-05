@@ -19,6 +19,10 @@ from app.core.runtime import read_ports
 router = APIRouter(tags=["connectors"])
 logger = logging.getLogger(__name__)
 
+# Allowlisted stdio launchers for marketplace install_command (no shell).
+_ALLOWED_INSTALL_COMMANDS = frozenset({"npx", "uvx", "node", "python", "python3"})
+_SHELL_META_CHARS = frozenset(";&|`$<>\n\r")
+
 # Static paths must be declared before /{connector_name} or FastAPI will treat
 # "registry" / "install" as connector names.
 _REGISTRY_PATH = _Path(__file__).resolve().parent.parent.parent / "mcp_registry.json"
@@ -90,6 +94,40 @@ def _get_connector_description(name: str) -> str:
     return _BUILTIN_DESCRIPTIONS.get(name, f"外部连接器: {name}")
 
 
+def _validate_install_launcher(command: object, args: object) -> tuple[str, list[str]]:
+    """Reject non-allowlisted commands and shell-metacharacter args.
+
+    Only bare allowlisted basenames are accepted (no absolute/relative paths).
+    """
+    if not isinstance(command, str) or not command.strip():
+        raise HTTPException(status_code=400, detail="install_command must be a non-empty string")
+    cmd = command.strip()
+    if cmd not in _ALLOWED_INSTALL_COMMANDS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"install_command {cmd!r} is not allowlisted; "
+                f"use one of: {sorted(_ALLOWED_INSTALL_COMMANDS)}"
+            ),
+        )
+    if args is None:
+        arg_list: list[str] = []
+    elif isinstance(args, list):
+        arg_list = []
+        for a in args:
+            if not isinstance(a, str):
+                raise HTTPException(status_code=400, detail="install_args must be strings")
+            if any(ch in _SHELL_META_CHARS for ch in a):
+                raise HTTPException(
+                    status_code=400,
+                    detail="install_args must not contain shell metacharacters",
+                )
+            arg_list.append(a)
+    else:
+        raise HTTPException(status_code=400, detail="install_args must be a list of strings")
+    return cmd, arg_list
+
+
 def _runtime_entry_from_registry(entry: dict) -> dict:
     """Build an mcp_config external_servers item from registry metadata.
 
@@ -106,12 +144,17 @@ def _runtime_entry_from_registry(entry: dict) -> dict:
         optional_set = set(optional_env)
         required_env = [key for key in keys if key not in optional_set]
 
+    command, args = _validate_install_launcher(
+        entry.get("install_command"),
+        entry.get("install_args") or [],
+    )
+
     new_entry: dict = {
         "name": entry["name"],
         "type": "stdio",
         "enabled": True,
-        "command": entry["install_command"],
-        "args": list(entry.get("install_args") or []),
+        "command": command,
+        "args": args,
         "policy_default": entry.get("policy_default") or "auto_allow",
         "startup_connect": bool(entry.get("startup_connect", True)),
         "required_env": required_env,

@@ -25,25 +25,26 @@ def test_timeout_values_overridable_via_env(monkeypatch):
 
 
 def test_chat_endpoint_uses_configured_timeout():
-    """Smoke check: chat.py module references the config field, not a literal."""
+    """Approval submit helper sources timeout from settings (shared by chat)."""
     import inspect
 
-    from app.api import chat
+    from app.api import approve_submit
 
-    src = inspect.getsource(chat)
+    src = inspect.getsource(approve_submit)
     assert "submit_command_timeout_approval" in src, \
-        "chat.py must source approval timeout from settings, not hardcode"
+        "approve_submit.py must source approval timeout from settings, not hardcode"
 
 
 def test_approvals_endpoint_uses_configured_timeout():
-    """approvals.py both resolve paths must use the config field."""
+    """Shared approve helper is the single timeout binding for approvals/chat."""
     import inspect
 
-    from app.api import approvals
+    from app.api import approve_submit, approvals, chat
 
-    src = inspect.getsource(approvals)
-    # Must appear at least twice (one per resolve endpoint).
-    assert src.count("submit_command_timeout_approval") >= 2
+    helper_src = inspect.getsource(approve_submit)
+    assert "submit_command_timeout_approval" in helper_src
+    assert "submit_approve_requested" in inspect.getsource(approvals)
+    assert "submit_approve_requested" in inspect.getsource(chat)
 
 
 def test_runtime_loop_uses_configured_timeout():

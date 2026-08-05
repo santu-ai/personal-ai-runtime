@@ -29,14 +29,6 @@ export async function getDashboard(): Promise<DashboardData> {
   return request<DashboardData>(`${API_BASE}/dashboard`);
 }
 
-/** Parse plaintext export JSON (tests / programmatic use). Prefer downloadExport for UI. */
-export async function exportData(): Promise<Record<string, unknown>> {
-  return request(`${API_BASE}/system/export`, {
-    method: "POST",
-    body: JSON.stringify({ confirm: "EXPORT_ALL_DATA" }),
-  });
-}
-
 /**
  * Stream plaintext snapshot to a file download without JSON.parse + re-stringify.
  * Response body is already valid snapshot JSON from the server.

@@ -83,7 +83,7 @@ make ci-local
 
 ## Windows 支持
 
-[`Makefile.ps1`](../../Makefile.ps1) 是 PowerShell 等价，`switch` on `$Task`。提供子集：`help`、`install`、`install-hooks`、`dev`（手动两终端）、`test-backend`、`test-frontend`、`lint`、`typecheck`、`boundary`、`docker-up`、`docker-down`。
+[`Makefile.ps1`](../../Makefile.ps1) 是 PowerShell 等价，`switch` on `$Task`。提供：`help`、`install`、`install-hooks`、`test-backend`、`test-frontend`、`lint`、`typecheck`、`boundary`、`layer-deps`、`architecture-check`、`event-schema`、`backend-ci-static`、`backend-ci-runtime`、`backend-ci-core`、`projection-provenance`、`rebuild-verify`、`alembic-verify`、`docs-gen` / `docs-gen-check`、以及与 Unix `Makefile` 对齐的单进程/动态导入/except 卫生守卫。**不提供** Unix 的 `dev` 聚合任务（需手动开两个终端跑前后端）。
 
 注意：typecheck 的 agents 文件列表与 Unix Makefile 略有差异（`planner.py`/`critic.py`/`llm_router.py` vs `llm_failover.py`/`conversation.py`/`memory_engine.py`/`memory_extractor.py`），且包含 `app/product/`、`app/api/`、`app/main.py`。未知任务报错。
 

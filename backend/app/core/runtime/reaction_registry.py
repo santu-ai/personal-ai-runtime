@@ -229,6 +229,6 @@ def reset_reactions() -> None:
 
     Called by RuntimeContainer.reset() so tests do not leak reactions into
     each other. Module-level registry is rebuilt lazily on the next @reaction
-    decoration or import of builtin_reactions.
+    decoration or Triggers API registration.
     """
     _reaction_registry._reactions.clear()

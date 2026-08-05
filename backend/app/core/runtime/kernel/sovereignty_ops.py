@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shutil
 import sqlite3
 import uuid
@@ -17,12 +18,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from app.store.table_registry import GOVERNED_TABLES
+
 from . import projectors_registry as projectors
 from .constants import (
     PROJECTION_SNAPSHOT_AGGREGATES,
 )
 from .query_builder import (
-    fetch_chat_projection_dicts,
     fetch_event_log_dicts,
     iter_snapshot_document_bytes,
 )
@@ -30,6 +32,29 @@ from .query_builder import (
 logger = logging.getLogger(__name__)
 
 EXPORT_FORMAT = "snapshot"
+
+_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _assert_safe_table_name(table: str, *, allowed: frozenset[str] | set[str] | None = None) -> str:
+    allow = allowed if allowed is not None else GOVERNED_TABLES
+    if table not in allow or not _IDENT_RE.match(table):
+        raise ValueError(f"refusing dynamic SQL for table {table!r}")
+    return table
+
+
+def _assert_safe_columns(conn, table: str, columns: list[str]) -> list[str]:
+    # ``table`` must already have passed ``_assert_safe_table_name``.
+    info = {
+        str(r["name"])
+        for r in conn.execute(f"PRAGMA table_info({table})").fetchall()
+    }
+    safe: list[str] = []
+    for col in columns:
+        if col not in info or not _IDENT_RE.match(col):
+            raise ValueError(f"refusing dynamic SQL column {col!r} for table {table!r}")
+        safe.append(col)
+    return safe
 
 
 def _ordered_projection_tables() -> list[str]:
@@ -117,6 +142,7 @@ def _import_event_log_rows_locked(
         conn.execute("BEGIN IMMEDIATE")
         _drop_event_log_guards(kernel, conn)
         for table in _ordered_projection_tables():
+            _assert_safe_table_name(table)
             conn.execute(f"DELETE FROM {table}")
         # Checkpoints and snapshot blobs belong to the old event-log generation
         # even when projection replay is intentionally deferred.
@@ -316,6 +342,7 @@ def table_counts(kernel, tables: tuple[str, ...]) -> dict[str, int]:
     out: dict[str, int] = {}
     with kernel._db.get_db() as conn:
         for table in tables:
+            _assert_safe_table_name(table)
             try:
                 row = conn.execute(f"SELECT COUNT(*) AS c FROM {table}").fetchone()
                 out[table] = int(row["c"])
@@ -325,38 +352,11 @@ def table_counts(kernel, tables: tuple[str, ...]) -> dict[str, int]:
                 ) from exc
     return out
 
-def count_events(kernel, aggregate_type: str) -> int:
-    """Count events in event_log filtered by aggregate_type (kernel-space)."""
-    with kernel._db.get_db() as conn:
-        row = conn.execute(
-            "SELECT COUNT(*) AS c FROM event_log WHERE aggregate_type = ?",
-            (aggregate_type,),
-        ).fetchone()
-        return int(row["c"])
-
-def export_chat_rows(
-    kernel, *, conn=None
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Export conversation/message projections (denormalized backup)."""
-    if conn is not None:
-        return fetch_chat_projection_dicts(conn)
-    with kernel._db.get_db() as owned:
-        return fetch_chat_projection_dicts(owned)
-
-def _checkpoint_seq(kernel, agent_id: str, aggregate_type: str) -> int:
-    """Return the last_applied_seq for a per-agent checkpoint (0 if none)."""
-    with kernel._db.get_db() as conn:
-        row = conn.execute(
-            "SELECT last_applied_seq FROM projection_checkpoints "
-            "WHERE agent_id = ? AND aggregate_type = ?",
-            (agent_id, aggregate_type),
-        ).fetchone()
-    return int(row["last_applied_seq"]) if row else 0
-
 def _restore_table_snapshot(kernel, conn, table: str, rows: list[dict[str, Any]]) -> None:
     if not rows:
         return
-    columns = list(rows[0].keys())
+    _assert_safe_table_name(table)
+    columns = _assert_safe_columns(conn, table, list(rows[0].keys()))
     placeholders = ",".join("?" * len(columns))
     col_sql = ",".join(columns)
     for row in rows:
@@ -384,6 +384,7 @@ def save_projection_snapshot(
     snapshot: dict[str, list[dict[str, Any]]] = {}
     with kernel._db.get_db() as conn:
         for table in tables:
+            _assert_safe_table_name(table)
             snapshot[table] = [
                 dict(r) for r in conn.execute(f"SELECT * FROM {table}").fetchall()
             ]
@@ -435,6 +436,7 @@ def rebuild(
 
         delete_order = list(reversed(tables))
         for table in delete_order:
+            _assert_safe_table_name(table)
             conn.execute(f"DELETE FROM {table}")
 
         last_seq = 0

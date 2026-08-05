@@ -36,18 +36,6 @@ class SovereigntyMixin:  # type: ignore[attr-defined]
         """Kernel 空间的表行数统计，用于数据主权验证。"""
         return ops.table_counts(self, tables)
 
-    def count_events(self, aggregate_type: str) -> int:
-        """按 aggregate_type 统计 event_log 事件数（kernel-space）。"""
-        return ops.count_events(self, aggregate_type)
-
-    def export_chat_rows(self, *, conn=None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        """导出 conversation/message 投影（反规范化备份）。"""
-        return ops.export_chat_rows(self, conn=conn)
-
-    def _checkpoint_seq(self, agent_id: str, aggregate_type: str) -> int:
-        """返回某 per-agent 检查点的 last_applied_seq（无则 0）。"""
-        return ops._checkpoint_seq(self, agent_id, aggregate_type)
-
     def _restore_table_snapshot(self, conn, table: str, rows: list[dict[str, Any]]) -> None:
         return ops._restore_table_snapshot(self, conn, table, rows)
 

@@ -1,5 +1,6 @@
 """Settings API — runtime LLM and email configuration."""
 
+import asyncio
 import logging
 import time
 
@@ -258,19 +259,25 @@ async def test_email_connection(body: TestEmailRequest | None = None):
     smtp_ok = False
     errors: list[str] = []
 
-    try:
+    def _test_imap() -> None:
         mail = imaplib.IMAP4_SSL(imap_host, timeout=15)
         mail.login(user, password)
         mail.logout()
+
+    def _test_smtp() -> None:
+        server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15)
+        server.login(user, password)
+        server.quit()
+
+    try:
+        await asyncio.to_thread(_test_imap)
         imap_ok = True
     except Exception as exc:
         logging.getLogger("app.api.settings_api").warning("IMAP test failed: %s", exc)
         errors.append("IMAP connection failed — check host and credentials")
 
     try:
-        server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15)
-        server.login(user, password)
-        server.quit()
+        await asyncio.to_thread(_test_smtp)
         smtp_ok = True
     except Exception as exc:
         logging.getLogger("app.api.settings_api").warning("SMTP test failed: %s", exc)
@@ -309,7 +316,12 @@ async def get_prompt_config():
 
 @router.put("/prompt")
 async def update_prompt_config(body: PromptConfig):
-    """Update prompt configuration. Saves to app_settings and invalidates cache."""
+    """Update prompt configuration.
+
+    SSOT is ``app_settings`` via ``runtime_config.save_prompt`` (which also
+    invalidates the prompt artifact cache). Disk files under ``backend/prompts/``
+    remain seed/defaults only and are not overwritten here.
+    """
     if body.identity is not None:
         content = body.identity.strip()
         if content:
@@ -323,18 +335,6 @@ async def update_prompt_config(body: PromptConfig):
             runtime_config.save_prompt("coding_rules", content)
         else:
             runtime_config.save_prompt("coding_rules", "")
-
-    # Also write to prompt files for persistence (same dir the compiler loads).
-    from app.chat.prompt_artifact import PROMPTS_DIR
-
-    prompts_dir = PROMPTS_DIR
-    prompts_dir.mkdir(parents=True, exist_ok=True)
-
-    if body.identity is not None:
-        (prompts_dir / "identity.md").write_text(body.identity, encoding="utf-8")
-
-    if body.coding_rules is not None:
-        (prompts_dir / "coding_rules.md").write_text(body.coding_rules, encoding="utf-8")
 
     return {"ok": True}
 
@@ -396,6 +396,8 @@ async def update_notification_settings(body: NotificationSettings):
     """Update notification channel configuration. **@internal** — no SPA consumer yet."""
     from app.core.runtime.runtime_config import runtime_config
 
+    # Debt (P1): notifications reuse the prompt_* app_settings namespace;
+    # migrate to a dedicated category when touching notification config again.
     runtime_config.save_prompt("notifications", body.model_dump_json())
     runtime_config.configure_notification_channels(
         webhook_url=body.webhook_url,

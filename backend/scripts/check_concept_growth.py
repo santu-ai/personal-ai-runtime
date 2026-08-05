@@ -202,7 +202,7 @@ BASELINE = {
     # Ratcheted 2026-08: INV-W5 leftovers closed (runtime_files 63→62, fragments 10→9,
     # god_object_max_loc 633→612). Use --ratchet after intentional reductions.
     # (same read_model_sql concept; +2 files).
-    "runtime_files": 62,
+    "runtime_files": 61,
     "event_types": 50,  # +4: MemoryDecayed/ClaimRatified/Rejected/Contested were live but undeclared
     "query_state_selectors": 17,  # INV-W5: dropped background_tasks selector
     "fragments": 9,
@@ -211,7 +211,7 @@ BASELINE = {
     "projector_files": 6,              # telemetry in projectors_governance
     # god_object_max_loc: E-3/E-4 execution reliability ABI thin wrappers on Kernel;
     # bodies live in execution_repository (not counted in façade). Was 604.
-    "god_object_max_loc": 621,
+    "god_object_max_loc": 594,
     "dead_code_files": 0,
 }
 

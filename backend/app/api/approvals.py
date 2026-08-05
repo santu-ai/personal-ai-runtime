@@ -5,7 +5,6 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
-from app.config import settings
 from app.core.runtime import read_ports
 from app.core.runtime.kernel_instance import kernel
 
@@ -213,7 +212,7 @@ async def approve(approval_id: str):
     context, the conversation is automatically resumed; otherwise the
     capability is still executed but no conversation reply is sent.
     """
-    from app.core.runtime.kernel_instance import ensure_runtime_scheduler, get_runtime_scheduler
+    from app.api.approve_submit import submit_approve_requested
 
     approval = read_ports.query_approval(approval_id)
     if not approval:
@@ -239,7 +238,6 @@ async def approve(approval_id: str):
     if events and events[0].correlation_id:
         corr_id = events[0].correlation_id
         if corr_id.startswith("chat"):
-            # Look up the conversation from recent messages
             chat_events = kernel.read_events(
                 aggregate_type="conversation",
                 correlation_id=corr_id,
@@ -249,28 +247,14 @@ async def approve(approval_id: str):
             if chat_events:
                 conv_id = chat_events[0].aggregate_id
 
-    await ensure_runtime_scheduler()
-    scheduler = get_runtime_scheduler()
-    await scheduler.start()
-
-    result = await kernel.submit_command(
-        "ApproveRequested",
-        "approval",
-        f"approve_{approval_id}",
-        payload={
-            "approval_id": approval_id,
-            "decision": "approve",
-            "tool_name": tool_name,
-            "tool_args": tool_args,
-            "conv_id": conv_id,
-            "tool_call_id": "",
-        },
-        actor="user",
-        timeout=settings.submit_command_timeout_approval,
+    result = await submit_approve_requested(
+        approval_id,
+        decision="approve",
+        tool_name=tool_name,
+        tool_args=tool_args,
+        conv_id=conv_id,
+        tool_call_id="",
     )
-
-    if result.get("error") == "timeout":
-        raise HTTPException(status_code=504, detail="Approval resolution timed out")
 
     return {"status": result.get("status", "error"), "result": result.get("result", "")}
 
@@ -278,7 +262,7 @@ async def approve(approval_id: str):
 @router.post("/{approval_id}/reject")
 async def reject(approval_id: str, reason: str = ""):
     """Reject a pending approval through the standard handler pipeline."""
-    from app.core.runtime.kernel_instance import ensure_runtime_scheduler, get_runtime_scheduler
+    from app.api.approve_submit import submit_approve_requested
 
     approval = read_ports.query_approval(approval_id)
     if not approval:
@@ -286,27 +270,13 @@ async def reject(approval_id: str, reason: str = ""):
     if approval.get("status") != "pending":
         raise HTTPException(status_code=400, detail=f"Approval is already {approval.get('status')}")
 
-    await ensure_runtime_scheduler()
-    scheduler = get_runtime_scheduler()
-    await scheduler.start()
-
-    result = await kernel.submit_command(
-        "ApproveRequested",
-        "approval",
-        f"approve_{approval_id}",
-        payload={
-            "approval_id": approval_id,
-            "decision": "deny",
-            "tool_name": approval.get("action", ""),
-            "tool_args": {},
-            "conv_id": "",
-            "tool_call_id": "",
-        },
-        actor="user",
-        timeout=settings.submit_command_timeout_approval,
+    result = await submit_approve_requested(
+        approval_id,
+        decision="deny",
+        tool_name=approval.get("action", ""),
+        tool_args={},
+        conv_id="",
+        tool_call_id="",
     )
-
-    if result.get("error") == "timeout":
-        raise HTTPException(status_code=504, detail="Approval resolution timed out")
 
     return {"status": result.get("status", "denied")}

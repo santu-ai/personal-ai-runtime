@@ -230,15 +230,6 @@ class TestUncoveredSelectors:
         results = k.recall_memory("hello", k=2)
         assert isinstance(results, list)
 
-class TestSovereigntyGaps:
-
-    def test_count_events(self, isolated_kernel):
-        k, _db = isolated_kernel
-        k.emit_event("WorkItemCreated", "work_item", "g-ce", payload={'work_type': 'goal', "title": "C"})
-        k.emit_event("WorkItemCreated", "work_item", "g-ce2", payload={'work_type': 'goal', "title": "D"})
-        assert k.count_events("work_item") == 2
-        assert k.count_events("nonexistent") == 0
-
 class TestKernelReadEvents:
 
     def test_read_events_by_id(self, isolated_kernel):
@@ -261,17 +252,6 @@ class TestKernelReadEvents:
         k.emit_event("WorkItemStatusChanged", "work_item", "g-ty", payload={})
         results = k.read_events(types=["WorkItemCreated"])
         assert all(e.type == "WorkItemCreated" for e in results)
-
-    def test_read_events_by_seqs(self, isolated_kernel):
-        k, _db = isolated_kernel
-        k.emit_event("WorkItemCreated", "work_item", "g-s1", payload={'work_type': 'goal', "title": "S1"})
-        k.emit_event("WorkItemCreated", "work_item", "g-s2", payload={'work_type': 'goal', "title": "S2"})
-        seqs = [e.seq for e in k.read_events()[:2]]
-        if len(seqs) >= 2:
-            results = k.read_events_by_seqs(seqs)
-            assert len(results) == 2
-        # Empty should return []
-        assert k.read_events_by_seqs([]) == []
 
     def test_submit_command_timeout(self, isolated_kernel):
         k, _db = isolated_kernel

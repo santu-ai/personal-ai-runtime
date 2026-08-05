@@ -57,7 +57,6 @@ export {
   fetchSystemInfo,
   getLlmProviders,
   getMcpStatus,
-  exportData,
   downloadExport,
   exportEncryptedData,
   importData,
@@ -103,7 +102,6 @@ export {
   updateMemory,
   ratifyMemory,
   rejectMemory,
-  contestMemory,
   getMemoryGraph,
   getMemoryProvenance,
 } from "./memory";

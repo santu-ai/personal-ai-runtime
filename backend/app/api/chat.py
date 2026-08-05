@@ -272,34 +272,19 @@ def _reject_client_approval_mismatch(body: ResolveApprovalRequest, tool_name: st
 @router.post("/approvals/{approval_id}/resolve")
 async def resolve_approval(approval_id: str, body: ResolveApprovalRequest):
     """Resolve a pending approval — submit_command for synchronous request-response."""
+    from app.api.approve_submit import submit_approve_requested
 
     tool_name, tool_args = _load_pending_approval(approval_id)
     _reject_client_approval_mismatch(body, tool_name, tool_args)
 
-    from app.core.runtime.kernel_instance import ensure_runtime_scheduler, get_runtime_scheduler
-
-    await ensure_runtime_scheduler()
-    scheduler = get_runtime_scheduler()
-    await scheduler.start()
-
-    result = await kernel.submit_command(
-        "ApproveRequested",
-        "approval",
-        f"approve_{approval_id}",
-        payload={
-            "approval_id": approval_id,
-            "decision": body.decision,
-            "tool_name": tool_name,
-            "tool_args": tool_args,
-            "conv_id": body.conv_id or "",
-            "tool_call_id": body.tool_call_id or "",
-        },
-        actor="user",
-        timeout=settings.submit_command_timeout_approval,
+    result = await submit_approve_requested(
+        approval_id,
+        decision=body.decision,
+        tool_name=tool_name,
+        tool_args=tool_args,
+        conv_id=body.conv_id or "",
+        tool_call_id=body.tool_call_id or "",
     )
-
-    if result.get("error") == "timeout":
-        raise HTTPException(status_code=504, detail="Approval resolution timed out")
 
     payload: dict = {"status": result.get("status", "error"), "result": result.get("result", "")}
     if result.get("assistant_message"):

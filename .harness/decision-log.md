@@ -11,7 +11,7 @@
 | [R014](../docs/07-adr/ADR-R014-handler-executions-soft-prune.md) | `handler_executions` 终端态过期行可被 Kernel-space soft-prune（维护特权），不删 `event_log` | 与「投影只由 projector 写入」字面冲突→已登记为唯一维护特权例外 | Yes until event compaction |
 | [R015](../docs/07-adr/ADR-R015-policy-register-idempotent.md) | Policy 注册幂等：MCP 重启默认 in-memory 清理（`persist=True` 才持久 revoke），避免 event_log 被 Created/revoked 刷屏 | 显式移除工具必须调 revoke；历史污染用 `compact_policy_events --apply`（需备份） | Accepted |
 | [R016](../docs/07-adr/ADR-R016-defer-mcp-v2.md) | 已迁移至 `mcp==2.0.0`：snake_case 字段、`MCPServer`、`MCPError` 回传 | v1 外部 stdio server 靠 v2 client `mode='auto'` 回退握手；字段命名用 snake_case | 已执行 |
-| R017（未写全文） | 执行可信化：**零新增事件类型**，复用 `Execution*` payload；步骤幂等/进度用 `plan_resumes` 合成键（`idem:{corr}:{step}` / `progress:{action_id}`）；`ExecutionFailed.dead_letter` + `handler_executions.dead_letter` + `replay_dead_letters`；lease TTL `running_lease_ttl_seconds` → `Scheduler.reclaim_stale_leases` | DLQ 人工重放 `python -m scripts.replay_dead_letters`；lease 实现放 Scheduler（可 cancel inflight），Kernel 侧留轻量事件路径 | Accepted |
+| [R017](../docs/07-adr/ADR-R017-execution-trustworthiness.md) | 执行可信化：**零新增事件类型**，复用 `Execution*` payload；步骤幂等/进度用 `plan_resumes` 合成键（`idem:{corr}:{step}` / `progress:{action_id}`）；`ExecutionFailed.dead_letter` + `handler_executions.dead_letter` + `replay_dead_letters`；lease TTL `running_lease_ttl_seconds` → `Scheduler.reclaim_stale_leases` | DLQ 人工重放 `python -m scripts.replay_dead_letters`；lease 实现放 Scheduler（可 cancel inflight），Kernel 侧留轻量事件路径 | Accepted |
 
 ## 判断提示
 
@@ -20,5 +20,5 @@
 - **审批流** → R011
 - **投影表维护/DML** → R014（维护特权例外，别扩大）
 - **MCP 生命周期** → R015、R016
-- **执行重试/幂等/DLQ/lease** → R017（E-1~E-9；触 Event/投影面时按零新增事件类型约束）
+- **执行重试/幂等/DLQ/lease** → [R017](../docs/07-adr/ADR-R017-execution-trustworthiness.md)（E-1~E-9；触 Event/投影面时按零新增事件类型约束）
 - 概念预算抬升 → R012（改脚本 + docs §4.4 同步）

@@ -366,9 +366,5 @@ class ShellServer:
         except Exception as e:
             return json.dumps({"error": str(e)})
 
-    def get_allowed_commands(self) -> str:
-        """List all allowed shell commands (safe default + opted-in extended)."""
-        return json.dumps({"allowed_commands": sorted(self._effective_whitelist)})
-
 
 shell_server = ShellServer()

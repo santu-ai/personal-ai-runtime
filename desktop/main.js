@@ -666,17 +666,6 @@ app.on("before-quit", () => {
   stopBackend();
 });
 
-// Check if auto-launch was previously consented; if not, ask on first run.
-const launchKey = "autoLaunchAccepted";
-try {
-  const launchAccepted = app.getLoginItemSettings().openAtLogin;
-  if (!launchAccepted) {
-    // Will be prompted below (after app ready)
-  }
-} catch {
-  // ignore — platform may not support login items
-}
-
 // ── WebSocket ────────────────────────────────────────────────────────
 
 function connectWebSocket() {

@@ -59,7 +59,7 @@ def _shadow_compare(kernel, item) -> list[str]:
     # Boundary: use Kernel ABI (O(1) by id), never SELECT handler_executions here.
     projected = kernel.read_scheduled_execution(item.id)
     if projected is None:
-        diffs = ["handler_executions row missing after dual-write"]
+        diffs = ["handler_executions row missing after emit_execution_* projection"]
     else:
         exp = _normalize(persist)
         act = _normalize(projected.to_row())
@@ -722,6 +722,31 @@ class Scheduler:
             ):
                 targets.append(item.id)
         return sum(1 for eid in targets if self.request_cancel(eid))
+
+    def requeue_pending(self, item: "ScheduledExecution", *, force: bool = False) -> bool:
+        """Append a pending execution to the live queue if not already tracked.
+
+        Used by dead-letter replay. Returns True when the item was enqueued
+        or was already pending/active.
+
+        ``force=True`` bypasses ``scheduler_max_pending`` — for operator-driven
+        DLQ replay so durable pending rows cannot vanish from the live queue
+        until process restart.
+        """
+        if item is None or not item.id:
+            return False
+        if item.id in self._active:
+            return True
+        if any(p.id == item.id for p in self._pending):
+            return True
+        if not force and len(self._pending) >= _max_pending():
+            logger.warning(
+                "Scheduler.requeue_pending rejected %s — pending queue full",
+                item.id,
+            )
+            return False
+        self._pending.append(item)
+        return True
 
     async def flush(self) -> None:
         """Process ALL pending ScheduledExecutions immediately. For test use only."""

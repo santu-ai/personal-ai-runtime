@@ -11,10 +11,12 @@ $Frontend = Join-Path $Root "frontend"
 $Desktop = Join-Path $Root "desktop"
 
 function Invoke-Backend {
-    param([string[]]$Args)
+    param([string[]]$PyArgs)
+    $python = Join-Path $Root ".venv\Scripts\python.exe"
+    if (-not (Test-Path $python)) { $python = "python" }
     Push-Location $Backend
     try {
-        & python @Args
+        & $python @PyArgs
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     } finally {
         Pop-Location
@@ -23,7 +25,7 @@ function Invoke-Backend {
 
 function Invoke-BackendModule {
     param([string]$Module, [string[]]$ExtraArgs = @())
-    Invoke-Backend (@("-m", $Module) + $ExtraArgs)
+    Invoke-Backend -PyArgs (@("-m", $Module) + $ExtraArgs)
 }
 
 function Invoke-ModuleList {
@@ -41,13 +43,17 @@ $StaticModules = @(
     "scripts.check_doc_links",
     "scripts.check_doc_table_sync",
     "scripts.check_doc_line_refs",
+    "scripts.check_doc_numbers",
     "scripts.check_boundary",
     "scripts.check_layer_deps",
     "scripts.check_execution_ownership",
     "scripts.check_concept_growth",
     "scripts.check_event_schema",
     "scripts.check_unused_config",
-    "scripts.check_non_sovereign_attachments"
+    "scripts.check_non_sovereign_attachments",
+    "scripts.check_single_process_control_plane",
+    "scripts.check_dynamic_imports",
+    "scripts.check_except_hygiene"
 )
 
 $RuntimeModules = @(
@@ -63,7 +69,6 @@ $RuntimeModules = @(
     "scripts.verify_memory_lifecycle",
     "scripts.verify_inbox_audit",
     "scripts.verify_egress",
-    "scripts.verify_connector",
     "scripts.verify_vector_consistency",
     "scripts.verify_memory_index_repairs",
     "scripts.verify_tool_calls_audit"
@@ -83,6 +88,15 @@ Available tasks:
   typecheck            Run mypy on backend
   boundary             Kernel boundary guard
   layer-deps           Runtime/Product/Store/API import edge guard
+  architecture-check   Concept growth / God budgets
+  event-schema         Event schema version contract
+  single-process-control-plane  Single control-plane guard
+  dynamic-imports      Dynamic import allowlist guard
+  except-hygiene       Broad except hygiene
+  docs-gen / docs-gen-check  Regenerate or check generated docs
+  projection-provenance  Projection ↔ event_log provenance
+  rebuild-verify       Full rebuild verify
+  alembic-verify       Alembic head verify
   backend-ci-static    Static guards (aligned with Makefile)
   backend-ci-runtime   Runtime verifies + pytest (aligned with Makefile)
   backend-ci-core      Static then runtime
@@ -112,11 +126,11 @@ PowerShell runs modules sequentially for reliable exit codes; use make/WSL for p
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
     "test-backend" {
-        Invoke-Backend @("-m", "pytest", "tests/", "-q", "-m", "not live_llm")
+        Invoke-Backend -PyArgs @("-m", "pytest", "tests/", "-q", "-m", "not live_llm")
     }
     "test-live" {
         $env:RUN_LIVE_LLM = "1"
-        Invoke-Backend @("-m", "pytest", "tests/e2e_live/", "-v", "-m", "live_llm")
+        Invoke-Backend -PyArgs @("-m", "pytest", "tests/e2e_live/", "-v", "-m", "live_llm")
     }
     "test-frontend" {
         Push-Location $Frontend
@@ -143,6 +157,40 @@ PowerShell runs modules sequentially for reliable exit codes; use make/WSL for p
     "layer-deps-inventory" {
         Invoke-BackendModule "scripts.check_layer_deps" @("--inventory")
     }
+    "architecture-check" {
+        Invoke-BackendModule "scripts.check_concept_growth"
+    }
+    "event-schema" {
+        Invoke-BackendModule "scripts.check_event_schema"
+    }
+    "single-process-control-plane" {
+        Invoke-BackendModule "scripts.check_single_process_control_plane"
+    }
+    "dynamic-imports" {
+        Invoke-BackendModule "scripts.check_dynamic_imports"
+    }
+    "except-hygiene" {
+        Invoke-BackendModule "scripts.check_except_hygiene"
+    }
+    "docs-gen" {
+        Invoke-BackendModule "scripts.gen_api_docs"
+        Invoke-BackendModule "scripts.gen_tool_catalog"
+        Invoke-BackendModule "scripts.gen_makefile_targets"
+    }
+    "docs-gen-check" {
+        Invoke-BackendModule "scripts.gen_api_docs" @("--check")
+        Invoke-BackendModule "scripts.gen_tool_catalog" @("--check")
+        Invoke-BackendModule "scripts.gen_makefile_targets" @("--check")
+    }
+    "projection-provenance" {
+        Invoke-BackendModule "scripts.check_projection_provenance"
+    }
+    "rebuild-verify" {
+        Invoke-BackendModule "scripts.verify_rebuild"
+    }
+    "alembic-verify" {
+        Invoke-BackendModule "scripts.verify_alembic"
+    }
     "backend-ci-static" {
         Write-Host "Running static checks..."
         Push-Location $Backend
@@ -154,6 +202,8 @@ PowerShell runs modules sequentially for reliable exit codes; use make/WSL for p
         if ($LASTEXITCODE -ne 0) { Pop-Location; exit $LASTEXITCODE }
         Pop-Location
         Invoke-ModuleList $StaticModules
+        & $PSCommandPath "docs-gen-check"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         Write-Host "backend-ci-static checks passed"
     }
     "backend-ci-runtime" {

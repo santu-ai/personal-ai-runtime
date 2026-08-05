@@ -9,7 +9,7 @@ Kernel 是 Runtime 的**稳定边界入口**，不是持续增长的业务门面
 | 方法 | 原语 | 说明 |
 |------|------|------|
 | `emit_event` | EVENT | 唯一 GOVERNED 写入口（经同事务投影） |
-| `read_events` / `read_events_by_seqs` | EVENT | 真相层读取 |
+| `read_events` | EVENT | 真相层读取 |
 | `subscribe_events` / `set_async_dispatcher` | WORK 接线 | 同步订阅 + Lane A 异步调度 |
 | `submit_command` | EVENT 包装 | emit + await 完成事件 |
 | `query_state` | STATE | 投影选择器；新代码优先 `read_ports` |

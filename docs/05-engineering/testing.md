@@ -12,7 +12,7 @@ flowchart TB
     end
 
     subgraph L2[层 2 · 架构不变量]
-        Scripts[backend/scripts/<br/>15 个 verify 脚本]
+        Scripts[backend/scripts/<br/>14 个 verify 脚本]
     end
 
     subgraph L3[层 3 · 端到端]
@@ -54,9 +54,9 @@ flowchart TB
 - **事件溯源与重建**：`test_event_sourcing.py`、`test_engine_rebuild.py`、`test_memory_belief.py`、`test_conversation_recorded.py`、`test_actions_event_sourced.py`、`test_goals_event_sourced.py`
 - **边界与归属守卫**：`test_boundary_guard.py`、`test_layer_deps_guard.py`、`test_execution_ownership_guard.py`、`test_projection_provenance_guard.py`、`test_projection_schema_contract.py`
 - **执行模型**：`test_execution_model.py`、`test_execution_repository.py`、`test_execution_ownership.py`、`test_principal.py`（含 ExecutionContext）；崩溃恢复与 shadow-compare 主要由层 2 verify / soak（`soak_recovery.py`）覆盖，不设同名独立 pytest 文件
-- **Scheduler / timer / reaction / 隔离**：`test_scheduler.py`、`test_scheduler_deadline.py`、`test_scheduler_extended.py`、`test_d1_concurrent_isolation.py`、`test_runtime_loop_nonblocking.py`、`test_runtime_loop_cron.py`、`test_handler_fanout.py`、`test_inbox_poll_handler.py`、`test_builtin_reactions_stagnant.py`（停滞目标宽限期/去重/通知 payload）、`test_reaction_email_backlog.py`、`test_reaction_registry_behavior.py`（ReactionWhen 门控/is_periodic、state gate 决策、evaluate_cycle 异常隔离、list_reactions 分类）
+- **Scheduler / timer / reaction / 隔离**：`test_scheduler.py`、`test_scheduler_deadline.py`、`test_scheduler_extended.py`、`test_d1_concurrent_isolation.py`、`test_runtime_loop_nonblocking.py`、`test_runtime_loop_cron.py`、`test_handler_fanout.py`、`test_inbox_poll_handler.py`、`test_reaction_registry_behavior.py`（ReactionWhen 门控/is_periodic、state gate 决策、evaluate_cycle 异常隔离、list_reactions 分类）
 - **能力治理与策略（T2/A3/C3）**：`test_capability_approval.py`、`test_capability_decision.py`、`test_capability_forbidden.py`、`test_capability_governance_matrix.py`、`test_c3_mcp_policy_eventsourcing.py`、`test_runtime_config.py`、`test_taint.py`、`test_sensitive_router.py`
-- **出口与连接器**：`test_egress.py`、`test_connector.py`、`test_fetch_ssrf.py`、`test_url_safety.py`、`test_web_search_html.py`
+- **出口与安全**：`test_egress.py`、`test_fetch_ssrf.py`、`test_url_safety.py`、`test_web_search_html.py`
 - **MCP / filesystem / shell / email server**：`test_filesystem_server.py`、`test_shell_server.py`、`test_email_server.py`、`test_mcp_config.py`、`test_mcp_mesh.py`
 - **记忆 / 通知 / 后台**：`test_memory_extractor.py`、`test_memory_ws_notify.py`、`test_notification_bridge.py`、`test_notification_channel.py`、`test_sse_queue_registry.py`、`test_background_task_event_chain.py`、`test_work_item_engine_behavior.py`（状态词表校验、依赖门控、递归树、级联删除、父活动刷新）
 - **Read ports**：`test_read_ports_api.py`、`test_read_ports_events.py`、`test_read_ports_telemetry.py`、`test_read_ports_memory_behavior.py`（记忆检索/查询/计数参数转发）、`test_read_ports_work_behavior.py`（work 查询转发、background 映射、cancel/execute 守卫、目标完成通知）
@@ -121,7 +121,6 @@ CI 报告用 `--cov-report=term-missing` 让缺失部分可见，开发者按需
 |---|---|
 | [`verify_egress.py`](../../backend/scripts/verify_egress.py) | 装 Kernel 单例，调 `audit_llm_egress` 含 identity 关键词 payload，验证分类为 `identity_surface`、`identity_surface_detected`、消息原样返回、`EgressAudited` 事件已发；benign payload 分类为 `general` |
 | [`verify_inbox_audit.py`](../../backend/scripts/verify_inbox_audit.py) | 发 `InboxEmailRecorded`（`caused_by="evt_trigger_001"`），验证 `caused_by` 链保留；再验证 inbox_emails ↔ 事件 1:1 及漂移可检测 |
-| [`verify_connector.py`](../../backend/scripts/verify_connector.py) | 写最小 `.ics`，swap CalendarServer 单例，调 `capture_calendar_observations`，验证 `ObservationRecorded` 事件存在且 actor 以 `connector:` 开头 |
 | [`verify_tool_calls_audit.py`](../../backend/scripts/verify_tool_calls_audit.py) | 自测：发 CapabilityInvoked/Failed/Denied，验证 `tool_calls` ↔ Capability* 事件 1:1；可选 `--db` 对账真实库 |
 
 ### 一致性

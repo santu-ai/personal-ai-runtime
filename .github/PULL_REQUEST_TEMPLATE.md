@@ -53,7 +53,7 @@
 
 - [ ] 已有测试全部通过
 - [ ] 新增了必要的测试
-- [ ] 运行了 `make verify` 全部通过
+- [ ] 运行了 `make backend-ci-core`（或 `powershell -File Makefile.ps1 -Task backend-ci-core`）全部通过
 
 ---
 

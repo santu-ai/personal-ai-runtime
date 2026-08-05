@@ -49,12 +49,6 @@ export async function rejectMemory(
   return request(`${API_BASE}/memory/memories/${memoryId}/reject`, { method: "POST" });
 }
 
-export async function contestMemory(
-  memoryId: string,
-): Promise<{ status: string; claim_status: string }> {
-  return request(`${API_BASE}/memory/memories/${memoryId}/contest`, { method: "POST" });
-}
-
 export interface MemoryProvenanceEvent {
   seq: number;
   type: string;

@@ -171,20 +171,21 @@ def take_plan_resume(
     db: Any | None = None,
     kernel: Any | None = None,
 ) -> PlanResume | None:
+    """Atomically claim a plan resume (DELETE … RETURNING).
+
+    Concurrent callers cannot both observe the same row: only one DELETE
+    wins and returns the row.
+    """
     if not approval_id:
         return None
     database = _resolve_db(db if db is not None else _db_from_kernel(kernel))
     with database.get_db() as conn:
         row = conn.execute(
-            "SELECT * FROM plan_resumes WHERE approval_id = ?",
+            "DELETE FROM plan_resumes WHERE approval_id = ? RETURNING *",
             (approval_id,),
         ).fetchone()
-        if row is None:
-            return None
-        conn.execute(
-            "DELETE FROM plan_resumes WHERE approval_id = ?",
-            (approval_id,),
-        )
+    if row is None:
+        return None
     return PlanResume.from_row(row)
 
 

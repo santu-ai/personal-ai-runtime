@@ -6,12 +6,15 @@ Scheduler 用这些扫描器在重启后恢复中断的 ScheduledExecutions。
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from .query_builder import build_where, safe_order
 
 if TYPE_CHECKING:
     from app.core.runtime.scheduled_execution import ScheduledExecution
+
+logger = logging.getLogger(__name__)
 
 STATUS_RUNNING = "running"
 STATUS_PENDING = "pending"
@@ -192,11 +195,12 @@ def replay_dead_letters(kernel: Any, *, limit: int = 50) -> list[str]:
     """Re-queue dead-lettered executions as pending retries (E-3).
 
     Clears ``dead_letter`` via ExecutionRetried → pending and enqueues
-    into the live Scheduler when available. Returns replayed execution ids.
+    into the live Scheduler when available. Returns ids that are durable
+    pending **and** (when a Scheduler exists) successfully live-queued.
     """
     from app.core.runtime.execution_events import emit_execution_retried
 
-    replayed: list[str] = []
+    durable_ids: list[str] = []
     items = list_dead_letter_executions(kernel._db)[: max(0, int(limit))]
     for item in items:
         item.dead_letter = False
@@ -210,23 +214,34 @@ def replay_dead_letters(kernel: Any, *, limit: int = 50) -> list[str]:
         emit_execution_retried(
             kernel, item, reason="dead_letter_replay", status="pending",
         )
-        replayed.append(item.id)
+        durable_ids.append(item.id)
 
-    if replayed:
-        try:
-            from app.core.runtime.agent_scheduler import get_scheduler
+    if not durable_ids:
+        return []
 
-            sch = get_scheduler(kernel)
-            by_id = {i.id: i for i in items}
-            pending_ids = {p.id for p in sch._pending}
-            for eid in replayed:
-                live = by_id.get(eid)
-                if live is not None and eid not in pending_ids and eid not in sch._active:
-                    if live._event is None and live.event_id:
-                        evs = kernel.read_events(id=live.event_id, limit=1)
-                        if evs:
-                            live._event = evs[0]
-                    sch._pending.append(live)
-        except Exception:
-            pass
-    return replayed
+    try:
+        from app.core.runtime.agent_scheduler import get_scheduler
+
+        sch = get_scheduler(kernel)
+    except Exception:
+        logger.exception("replay_dead_letters: scheduler unavailable; durable pending only")
+        return durable_ids
+
+    by_id = {i.id: i for i in items}
+    live_queued: list[str] = []
+    for eid in durable_ids:
+        live = by_id.get(eid)
+        if live is None:
+            continue
+        if live._event is None and live.event_id:
+            evs = kernel.read_events(id=live.event_id, limit=1)
+            if evs:
+                live._event = evs[0]
+        if sch.requeue_pending(live, force=True):
+            live_queued.append(eid)
+        else:
+            logger.warning(
+                "replay_dead_letters: failed to live-queue %s after durable pending",
+                eid,
+            )
+    return live_queued

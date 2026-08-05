@@ -133,16 +133,6 @@ class Database:
         except Exception:
             logger.debug("WAL checkpoint failed", exc_info=True)
 
-    # --- 活动日志（APP_STORAGE，非受治理） ---
-
-    def log_activity(self, activity_type: str, payload: str | None = None):
-        with self.get_db() as conn:
-            conn.execute(
-                "INSERT INTO activity_log (type, payload) VALUES (?, ?)",
-                (activity_type, payload),
-            )
-
-
 if TYPE_CHECKING:
     db: Database
 else:

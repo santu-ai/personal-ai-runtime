@@ -1,4 +1,4 @@
-.PHONY: install setup init-db dev demo screenshots test test-backend test-backend-coverage test-live test-frontend test-e2e test-e2e-real ci-local backend-ci-core backend-ci-static backend-ci-runtime backend-compileall backend-smoke lint typecheck dependency-sync desktop desktop-test desktop-build boundary layer-deps layer-deps-inventory layer-deps-strict docs-links docs-table-sync docs-line-refs docs-numbers docs-gen docs-gen-check policy-consistency rebuild-verify export-roundtrip-verify snapshot-verify egress-verify connector-verify alembic-verify vector-consistency-verify memory-repair-verify tool-calls-audit-verify architecture-check architecture-check-strict architecture-snapshot architecture-record event-schema event-schema-snapshot event-schema-record non-sovereign-attachments single-process-control-plane dynamic-imports except-hygiene dashboard dashboard-write docker-up docker-down projection-provenance conversation-rebuild goal-rebuild work-items-goal-rebuild memory-lifecycle-verify inbox-audit-verify lockfile secrets-scan
+.PHONY: install setup init-db dev demo screenshots test test-backend test-backend-coverage test-live test-frontend test-e2e test-e2e-real ci-local backend-ci-core backend-ci-static backend-ci-runtime backend-compileall backend-smoke lint typecheck dependency-sync desktop desktop-test desktop-build boundary layer-deps layer-deps-inventory layer-deps-strict docs-links docs-table-sync docs-line-refs docs-numbers docs-gen docs-gen-check policy-consistency rebuild-verify export-roundtrip-verify snapshot-verify egress-verify alembic-verify vector-consistency-verify memory-repair-verify tool-calls-audit-verify architecture-check architecture-check-strict architecture-snapshot architecture-record event-schema event-schema-snapshot event-schema-record non-sovereign-attachments single-process-control-plane dynamic-imports except-hygiene dashboard dashboard-write docker-up docker-down projection-provenance conversation-rebuild goal-rebuild work-items-goal-rebuild memory-lifecycle-verify inbox-audit-verify lockfile secrets-scan
 
 # Backend
 BACKEND_DIR := backend
@@ -78,7 +78,7 @@ BACKEND_CI_STATIC := dependency-sync backend-compileall lint typecheck version-s
 BACKEND_CI_RUNTIME := alembic-verify backend-smoke test-backend-coverage \
 	projection-provenance rebuild-verify snapshot-verify conversation-rebuild \
 	goal-rebuild work-items-goal-rebuild export-roundtrip-verify \
-	memory-lifecycle-verify inbox-audit-verify egress-verify connector-verify \
+	memory-lifecycle-verify inbox-audit-verify egress-verify \
 	vector-consistency-verify memory-repair-verify tool-calls-audit-verify
 
 BACKEND_CI_TARGETS := $(BACKEND_CI_STATIC) $(BACKEND_CI_RUNTIME)
@@ -242,9 +242,6 @@ egress-verify:
 
 vector-consistency-verify:
 	cd $(BACKEND_DIR) && python3 -m scripts.verify_vector_consistency
-
-connector-verify:
-	cd $(BACKEND_DIR) && python3 -m scripts.verify_connector
 
 memory-lifecycle-verify:
 	cd $(BACKEND_DIR) && python3 -m scripts.verify_memory_lifecycle

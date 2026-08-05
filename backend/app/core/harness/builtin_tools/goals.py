@@ -4,19 +4,13 @@ Bridges the gap between conversation and goal management: AI can create goals,
 update progress, and mark goals complete without the user switching to the
 Goals page.
 
-Architectural split (closes ARCHITECTURE_SURVIVAL_REVIEW Critical #2):
+Architectural split:
 
-- ``GoalsServer`` is the LLM-facing surface. Its methods are async and go
-  through ``kernel.invoke_capability``, so every goal write traverses the
-  3-gate authorization (forbidden → principal grant → pre-approved/risk).
 - ``_writer_*`` module-level functions are the real tool handlers registered
   with ``mcp_hub``. They perform the actual ``emit_event`` and run only after
   the gate has allowed the call, so ``CapabilityInvoked`` is always emitted
   alongside the ``WorkItem*`` event.
-
-Splitting these two roles avoids the previous architecture where
-``GoalsServer`` itself emitted ``WorkItem*`` events, bypassing the gate
-entirely and rendering ``requires_confirmation=True`` a no-op.
+- ``GoalsServer.list_active_goals`` is the read-only LLM-facing surface.
 """
 import json
 import uuid
@@ -150,94 +144,8 @@ def _writer_delete_goal(goal_id: str) -> str:
     }, ensure_ascii=False)
 
 
-# ─── LLM-facing surface (goes through invoke_capability) ───────────────────
-
-
-def _current_execution_id() -> str | None:
-    """Read the execution_id ContextVar set by the Scheduler.
-
-    Returns None when invoked outside a scheduler-dispatched handler (e.g. in
-    tests), in which case ``invoke_capability`` skips execution ownership
-    enforcement because actor='user' is not in RUNTIME_OWNERSHIP_ACTORS.
-    """
-    from app.core.runtime.execution import get_current_execution_id
-    return get_current_execution_id()
-
-
 class GoalsServer:
-    """Goal management tools for AI-driven goal operations.
-
-    These methods are async because they route through
-    ``kernel.invoke_capability``. The actual emit_event side effects live in
-    the ``_writer_*`` functions above, which ``mcp_hub`` registers as the tool
-    handlers. This split is what makes the 3-gate authorization enforceable
-    on goal writes (see ARCHITECTURE_SURVIVAL_REVIEW Critical #2).
-    """
-
-    async def create_goal(self, title: str, description: str = "",
-                          importance: float = 0.5, deadline: str = "") -> str:
-        """Create a new goal via the capability gate."""
-        from app.core.runtime.kernel_instance import kernel
-
-        result = await kernel.invoke_capability(
-            "create_goal",
-            args={
-                "title": title,
-                "description": description,
-                "importance": importance,
-                "deadline": deadline,
-            },
-            actor="user",
-            execution_id=_current_execution_id(),
-        )
-        # invoke_capability returns a dict; passthrough on success, surface
-        # the error string on denial/failure so the LLM sees a useful reason.
-        return result.get("result") or json.dumps(
-            {"error": result.get("error", "unknown")}, ensure_ascii=False,
-        )
-
-    async def update_progress(self, goal_id: str, progress: float,
-                              note: str = "") -> str:
-        """Update a goal's progress (0.0 to 1.0)."""
-        from app.core.runtime.kernel_instance import kernel
-
-        result = await kernel.invoke_capability(
-            "update_goal_progress",
-            args={"goal_id": goal_id, "progress": progress, "note": note},
-            actor="user",
-            execution_id=_current_execution_id(),
-        )
-        return result.get("result") or json.dumps(
-            {"error": result.get("error", "unknown")}, ensure_ascii=False,
-        )
-
-    async def complete_goal(self, goal_id: str, reflection: str = "") -> str:
-        """Mark a goal as completed, optionally with a reflection."""
-        from app.core.runtime.kernel_instance import kernel
-
-        result = await kernel.invoke_capability(
-            "complete_goal",
-            args={"goal_id": goal_id, "reflection": reflection},
-            actor="user",
-            execution_id=_current_execution_id(),
-        )
-        return result.get("result") or json.dumps(
-            {"error": result.get("error", "unknown")}, ensure_ascii=False,
-        )
-
-    async def delete_goal(self, goal_id: str) -> str:
-        """Delete a goal and all its child actions via the capability gate."""
-        from app.core.runtime.kernel_instance import kernel
-
-        result = await kernel.invoke_capability(
-            "delete_goal",
-            args={"goal_id": goal_id},
-            actor="user",
-            execution_id=_current_execution_id(),
-        )
-        return result.get("result") or json.dumps(
-            {"error": result.get("error", "unknown")}, ensure_ascii=False,
-        )
+    """Read-only goal surface for LLM tools (writes go through mcp_hub writers)."""
 
     def list_active_goals(self) -> str:
         """List the user's active goals.

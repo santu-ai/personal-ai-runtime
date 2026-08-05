@@ -41,10 +41,19 @@ async def create_trigger(body: CreateTriggerRequest):
             )
 
     template = action_config.get("template", "")
+    event_type = condition.get("event_type")
+    if event_type is not None and (
+        not isinstance(event_type, str) or not event_type.strip()
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="condition.event_type must be a non-empty string when provided",
+        )
+    event_types = [event_type.strip()] if isinstance(event_type, str) and event_type.strip() else []
     return read_ports.register_trigger_reaction(
         name=name,
         every_cycle=True,
-        event_types=[condition["event_type"]] if condition.get("event_type") else [],
+        event_types=event_types,
         aggregate_type=condition.get("aggregate_type", ""),
         count_gte=count,
         window_days=condition.get("window_days", 1),

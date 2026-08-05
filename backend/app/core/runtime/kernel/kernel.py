@@ -240,20 +240,6 @@ class Kernel(QueryStateMixin, SovereigntyMixin):
         )
         return [Event.from_row(r) for r in rows]
 
-
-    def read_events_by_seqs(self, seqs: list[int]) -> list[Event]:
-        """按全局日志序列号批量读取（kernel-space 批量读）。"""
-        if not seqs:
-            return []
-        unique = sorted({int(s) for s in seqs})
-        placeholders = ",".join("?" * len(unique))
-        with self._db.get_db() as conn:
-            rows = conn.execute(
-                f"SELECT * FROM event_log WHERE seq IN ({placeholders}) ORDER BY seq ASC",
-                unique,
-            ).fetchall()
-        return [Event.from_row(r) for r in rows]
-
     def subscribe_events(
         self,
         handler: Subscriber,
@@ -377,7 +363,6 @@ class Kernel(QueryStateMixin, SovereigntyMixin):
 
     # 见 kernel_sovereignty.py：
     #   export_event_log_rows() / import_event_log_rows() / table_counts()
-    #   export_chat_rows()
     #   rebuild() / rebuild_all()
     #   save_projection_snapshot() / save_projection_snapshots()
     #   _drop_event_log_guards() / _ensure_event_log_guards()

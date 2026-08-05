@@ -41,28 +41,6 @@ def test_table_counts_rejects_unknown_table(kernel):
     except ValueError as exc:
         assert "definitely_not_a_table" in str(exc)
 
-def test_export_chat_rows(kernel):
-    k = kernel
-    k.emit_event(
-        "ConversationCreated",
-        "conversation",
-        "c1",
-        payload={'work_type': 'goal', "title": "Chat"},
-    )
-    k.emit_event(
-        "MessageAppended",
-        "conversation",
-        "c1",
-        payload={'work_type': 'goal',
-            "message_id": "m1",
-            "role": "user",
-            "content": "hi",
-        },
-    )
-    convs, msgs = k.export_chat_rows()
-    assert any(c["id"] == "c1" for c in convs)
-    assert any(m["id"] == "m1" for m in msgs)
-
 def test_save_projection_snapshot_and_rebuild(kernel):
     k = kernel
     k.emit_event("WorkItemCreated", "work_item", "g_snap", payload={'work_type': 'goal', "title": "Snap"})
@@ -177,7 +155,7 @@ def test_atomic_import_rollback_on_failure(kernel, monkeypatch):
     # Insert some state BEFORE the import attempt.
     k.emit_event("WorkItemCreated", "work_item", "pre", payload={"work_type": "goal", "title": "PreExisting"})
     assert k.query_state("work_items", id="pre")
-    event_count_before = k.count_events("work_item")
+    event_count_before = len(k.read_events(aggregate_type="work_item"))
 
     rows = k.export_event_log_rows()
     # Export captures the current state so restore will try to replay it.
@@ -195,7 +173,7 @@ def test_atomic_import_rollback_on_failure(kernel, monkeypatch):
     # Pre-existing state must still be intact.
     existing = k.query_state("work_items", id="pre")
     assert existing and existing[0]["title"] == "PreExisting"
-    assert k.count_events("work_item") == event_count_before
+    assert len(k.read_events(aggregate_type="work_item")) == event_count_before
 
 def test_atomic_import_preserves_state_on_partial_failure(kernel, monkeypatch):
     """Count-based invariants hold after a failed import rollback."""
@@ -241,7 +219,7 @@ def test_atomic_import_no_rebuild_still_succeeds(kernel):
     # Event log has the rows but projections were not rebuilt — deleted first,
     # so empty.  This is expected when rebuild_projections=False (the caller
     # must call rebuild_all afterwards).  Verify event_log is correct.
-    assert k.count_events("work_item") >= len(rows)
+    assert len(k.read_events(aggregate_type="work_item")) >= len(rows)
 
 def test_import_without_rebuild_clears_old_projection_checkpoints(kernel):
     """Deferred replay must not reuse a checkpoint from the pre-import log."""

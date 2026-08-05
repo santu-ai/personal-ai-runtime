@@ -11,3 +11,4 @@
 | [ADR-R014](ADR-R014-handler-executions-soft-prune.md) | handler_executions 终端态 soft-prune（维护特权） |
 | [ADR-R015](ADR-R015-policy-register-idempotent.md) | Policy 注册幂等：MCP stop/start 不 revoke+recreate |
 | [ADR-R016](ADR-R016-defer-mcp-v2.md) | 迁移至 mcp 2.0.0 |
+| [ADR-R017](ADR-R017-execution-trustworthiness.md) | 执行可信化（幂等/进度/DLQ/lease，零新事件类型） |

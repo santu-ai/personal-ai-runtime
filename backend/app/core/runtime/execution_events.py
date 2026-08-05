@@ -1,7 +1,7 @@
 """Emit helpers for Execution aggregate events (Execution 契约 §1).
 
 Plain functions only — not a runtime domain object. Schedulers call these
-alongside existing persist_work_item dual-write paths.
+so Execution* facts land in event_log and project into handler_executions.
 """
 
 from __future__ import annotations

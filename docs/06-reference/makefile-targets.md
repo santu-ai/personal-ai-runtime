@@ -58,6 +58,7 @@ Windows 子集见 [`Makefile.ps1`](../../Makefile.ps1)。
 | `event-schema` | `python3 -m scripts.check_event_schema` |
 | `event-schema-snapshot` | `python3 -m scripts.check_event_schema --snapshot` |
 | `event-schema-record` | `python3 -m scripts.check_event_schema --record` |
+| `unused-config` | `python3 -m scripts.check_unused_config` |
 | `non-sovereign-attachments` | `python3 -m scripts.check_non_sovereign_attachments` |
 | `single-process-control-plane` | `python3 -m scripts.check_single_process_control_plane` |
 | `dynamic-imports` | `python3 -m scripts.check_dynamic_imports` |
@@ -72,7 +73,6 @@ Windows 子集见 [`Makefile.ps1`](../../Makefile.ps1)。
 | `snapshot-verify` | `python3 -m scripts.verify_snapshot_rebuild` |
 | `egress-verify` | `python3 -m scripts.verify_egress` |
 | `vector-consistency-verify` | `python3 -m scripts.verify_vector_consistency` |
-| `connector-verify` | `python3 -m scripts.verify_connector` |
 | `memory-lifecycle-verify` | `python3 -m scripts.verify_memory_lifecycle` |
 | `inbox-audit-verify` | `python3 -m scripts.verify_inbox_audit` |
 | `memory-repair-verify` | `python3 -m scripts.verify_memory_index_repairs` |
