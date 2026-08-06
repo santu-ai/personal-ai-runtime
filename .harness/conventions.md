@@ -28,6 +28,20 @@
 - **行为测试先锁定真实行为，再判断对错**：断言失败先读实现确认是"测试假设错误"还是"产品 bug"。已被测试锁定的真实语义（如 cascade 不递归孙级）不要按直觉改断言，应作为产品决策单独立项。
 - **修复"已锁定的现状"要同步更新锁定测试**：若产品决策改变了一个被测试锁定的行为（如 `notify_goal_action_completed` 从"0/0 噪音通知"改为"无子项跳过通知"），必须同步改写对应锁定测试为新行为，而不是留旧测试继续锁旧行为；修复先判定等价性（逐分支比对），再改测试。
 - **测防御分支用 fake kernel 直接构造输入**：真实 `query_state` 会在 SQL 层过滤掉非法输入（如非法日期字符串），测不到防御逻辑；用 fake kernel 注入这类行来锁定回退行为。
+- **`monkeypatch.undo()` 会撤掉 fixture 隔离**：pytest 的 `monkeypatch.undo()` 撤销**该 fixture 上全部** patch（含 `product_kernel` 等隔离）。局部失败场景用 `with monkeypatch.context() as m:`，不要在测完后 `undo()` 再读隔离库。
+
+## TimerFired / Lane A 长 I/O
+
+- `TimerFired` 默认 `ExecutionPolicy` **timeout=30s**（`policy_for_event` 仅对 `ChatRequested` 加长）。
+- 凡在 timer handler 里做网络抓取、IMAP、批量外呼等可能 >数秒的工作：**禁止在 `_TIMER_HANDLERS` 里直接 await 完整 I/O**。
+- 既有样板：`inbox_poll`（emit 事件交给独立 WorkItem）、`url_monitor`（`asyncio.create_task` fire-and-forget + 强引用集合）。cron 路径再加**每 tick 上限**，避免 backlog 一次打满。
+- 手动 HTTP「立即执行」端点同样要 cap（或异步化），否则会挂死请求。
+
+## APP_STORAGE 共享 JSON 配置
+
+- 多个产品能力可共享同一 `app_settings` category（例：`monitors` 下 `inbox_filters` + `url_monitors`），**零新 governed 表/事件**。
+- 部分更新必须 merge；**merge 用的 load 失败要抛错中止写入**，禁止「读失败 → 空 dict → 把兄弟列表写成 `[]`」。
+- UI/列表只读路径可以 soft-load（失败返回空）；写路径必须 strict。通知去重优先复用 `dedup_key`（见 `notification_bridge`），不要另造幂等表。
 
 ## 投影查询（`query_builder`）
 

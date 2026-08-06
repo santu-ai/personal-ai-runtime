@@ -8,7 +8,7 @@
 - 当前分支：`main`（开发阶段）
 - 进行中任务 / WIP：无（URL Diff Monitor 已落地）
 - 已知坏点 / 待办：无阻塞项；God 拆分仍受 runtime_files 零和约束
-- 最近审阅：2026-08-06 URL Diff Monitor（app_settings.url_monitors + 30min cron）
+- 最近审阅：2026-08-06 URL Diff Monitor；已提炼 TimerFired/APP_STORAGE merge 纪律进 conventions + task-recipes §10
 
 ## 产品观察（后续规划候选）
 

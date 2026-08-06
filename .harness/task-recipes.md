@@ -63,3 +63,17 @@ python -m scripts.check_concept_growth --ratchet --yes       # 确认后应用�
 5. 同步 [`docs/04-data/data-model.md`](../docs/04-data/data-model.md)（权威叙述）。
 
 正式发版后若需兼容用户库，再改为只追加增量 migration，禁止再 squash 已发布 head。
+
+## 10. 新增 Monitor / 定时主动能力（零新事件优先）
+
+偏好路径（概念压缩友好）：
+
+1. 配置落 `app_settings`（APP_STORAGE），**不要**为过滤器/URL 列表新开 governed 表或事件类型。
+2. 求值挂在已有触发点：`inbox_poll` 落库后、或 `cron_registry.SCHEDULES` + `timer_trigger_handler`。
+3. 通知经 `read_ports.push_notification(..., dedup_key=...)`；变化类监控用「基线首次不通知 + hash/id 进 dedup_key」。
+4. **Timer 路径**：handler 必须 fire-and-forget（见 [conventions.md](conventions.md) §TimerFired）；cron 每 tick 设 `max_checks`。
+5. 出站 URL 必须走 SSRF-safe 客户端（`url_safety` / `FetchServer`），创建时只做 scheme/host 校验不够。
+6. 前端：Dashboard `?tab=monitors`；通知路由写 `notificationRoutes.ts`。
+7. 自证：`tests/product/test_*_monitors.py` + `tests/api/test_monitors_api.py`；改路由后 `make docs-gen`。
+
+参考实现：`product/inbox_monitors.py`、`product/url_monitors.py`、`api/monitors.py`。

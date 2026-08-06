@@ -23,6 +23,7 @@
 | 领域 API | `backend/app/api/` |
 | LLM 出口审计 | `backend/app/core/runtime/egress/egress_gate.py` |
 | MCP 网格 | `backend/app/core/harness/mcp_mesh.py`、`mcp_lifecycle.py` |
+| 监控（收件箱/URL） | `backend/app/product/inbox_monitors.py`、`url_monitors.py`；API `api/monitors.py`；UI `MonitorsPanel`；SOP：[task-recipes.md](task-recipes.md) §10 |
 
 ## docs 指针
 
