@@ -82,7 +82,7 @@ describe("TasksPage", () => {
   it("shows previous_output and asks for plan confirmation before execute", async () => {
     renderTasks("/tasks/task_1");
 
-    expect(await screen.findByText("执行日志")).toBeInTheDocument();
+    expect(await screen.findByText("最近一步输出")).toBeInTheDocument();
     expect(screen.getByText("wrote draft")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "执行" }));

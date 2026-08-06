@@ -8,6 +8,8 @@ interface Props {
   confirmLabel?: string;
   cancelLabel?: string;
   variant?: "danger" | "primary";
+  /** Disable confirm while an async action is in flight (prevents double-submit). */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -19,6 +21,7 @@ export default function Dialog({
   confirmLabel = "确认",
   cancelLabel = "取消",
   variant = "primary",
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: Props) {
@@ -84,6 +87,7 @@ export default function Dialog({
             type="button"
             variant={variant === "danger" ? "danger" : "primary"}
             size="sm"
+            disabled={confirmDisabled}
             onClick={onConfirm}
           >
             {confirmLabel}

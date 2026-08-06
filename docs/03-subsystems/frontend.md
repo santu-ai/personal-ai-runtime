@@ -22,7 +22,7 @@
 | `/goals` | `pages/Goals.tsx` | 目标列表 + 详情 |
 | `/goals/:goalId` | `pages/Goals.tsx` | 目标详情 |
 | `/tasks` | `pages/Tasks.tsx` | 后台/可执行任务列表 |
-| `/tasks/:taskId` | `pages/Tasks.tsx` | 任务详情（plan / 进度 / 执行日志 / 执行前确认） |
+| `/tasks/:taskId` | `pages/Tasks.tsx` | 任务详情（plan / 进度 / 最近一步输出 / 执行前确认） |
 | `/inbox` | `pages/Inbox.tsx` | 邮件分拣 |
 | `/memories` | `pages/Memories.tsx` | 记忆列表 + 图谱（含 `?tab=portrait` 画像、`?tab=review` 待确认） |
 | `/dashboard` | `pages/Dashboard.tsx` | 总览仪表盘（含 `?tab=trust` 信任报告、`?tab=monitors` 收件箱/网页监控） |

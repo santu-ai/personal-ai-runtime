@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
@@ -91,6 +91,7 @@ export default function TasksPage() {
   const addError = useErrorStore((s) => s.addError);
   const [busy, setBusy] = useState(false);
   const [confirmExecute, setConfirmExecute] = useState(false);
+  const executeInFlight = useRef(false);
 
   const notFound =
     Boolean(urlTaskId) &&
@@ -128,7 +129,8 @@ export default function TasksPage() {
   }, [items]);
 
   const handleExecute = async () => {
-    if (!selected) return;
+    if (!selected || executeInFlight.current) return;
+    executeInFlight.current = true;
     setBusy(true);
     setConfirmExecute(false);
     try {
@@ -137,6 +139,7 @@ export default function TasksPage() {
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "启动任务失败", "任务");
     } finally {
+      executeInFlight.current = false;
       setBusy(false);
     }
   };
@@ -346,7 +349,7 @@ export default function TasksPage() {
 
             {outputEntries.length > 0 && (
               <section className="space-y-2">
-                <h3 className="text-sm font-medium text-fg-primary">执行日志</h3>
+                <h3 className="text-sm font-medium text-fg-primary">最近一步输出</h3>
                 <ul className="space-y-2">
                   {outputEntries.map(([key, value]) => (
                     <li
@@ -399,6 +402,7 @@ export default function TasksPage() {
         description={formatPlanConfirmDescription(steps, resumeFrom)}
         confirmLabel="确认执行"
         cancelLabel="取消"
+        confirmDisabled={busy}
         onConfirm={() => {
           void handleExecute();
         }}

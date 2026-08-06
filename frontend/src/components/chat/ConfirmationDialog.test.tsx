@@ -7,7 +7,7 @@ vi.mock("../../hooks/useSettingsQuery", () => ({
   useCapabilityPolicyQuery: () => ({
     data: {
       auto_allow: ["read_file"],
-      needs_user: ["write_file", "apply_patch", "send_email"],
+      needs_user: ["write_file", "apply_patch", "send_email", "computer_click"],
       forbidden: ["shell_exec"],
       external_ingestion: [],
     },

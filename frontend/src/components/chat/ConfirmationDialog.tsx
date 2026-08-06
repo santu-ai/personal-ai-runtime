@@ -1,6 +1,7 @@
 import Button from "../ui/Button";
 import RiskCard from "../approval/RiskCard";
 import { useCapabilityPolicyQuery } from "../../hooks/useSettingsQuery";
+import type { CapabilityPolicy } from "../../api/settings";
 import { getRiskLevelFromPolicy } from "../../utils/riskMeta";
 import { toolLabel } from "../../utils/toolLabels";
 import type { ToolCall } from "./types";
@@ -17,26 +18,8 @@ interface SuggestionCopy {
   confirm: string;
 }
 
-/** capability_policy.json ``needs_user`` + proactive ``set_timer`` (auto_allow). */
-const SUGGESTION_TOOLS = new Set([
-  "set_timer",
-  "apply_patch",
-  "write_file",
-  "add_calendar_event",
-  "send_email",
-  "shell_exec",
-  "telegram_send",
-  "computer_screenshot",
-  "computer_click",
-  "computer_type",
-  "computer_move",
-  "computer_scroll",
-  "computer_key",
-  "create_goal",
-  "update_goal_progress",
-  "complete_goal",
-  "delete_goal",
-]);
+/** Proactive tools that are auto_allow but still framed as suggestions when confirmed. */
+const EXTRA_SUGGESTION_TOOLS = new Set(["set_timer"]);
 
 /** Prefer specific copy; fall back to toolLabel-based framing. */
 const SUGGESTION_OVERRIDES: Record<string, SuggestionCopy> = {
@@ -97,8 +80,16 @@ const SUGGESTION_OVERRIDES: Record<string, SuggestionCopy> = {
   },
 };
 
-function suggestionFor(name: string): SuggestionCopy | undefined {
-  if (!SUGGESTION_TOOLS.has(name)) return undefined;
+function isSuggestionTool(name: string, policy: CapabilityPolicy | null | undefined): boolean {
+  if (EXTRA_SUGGESTION_TOOLS.has(name)) return true;
+  return Boolean(policy?.needs_user?.includes(name));
+}
+
+function suggestionFor(
+  name: string,
+  policy: CapabilityPolicy | null | undefined,
+): SuggestionCopy | undefined {
+  if (!isSuggestionTool(name, policy)) return undefined;
   const override = SUGGESTION_OVERRIDES[name];
   if (override) return override;
   const label = toolLabel(name);
@@ -112,7 +103,7 @@ function suggestionFor(name: string): SuggestionCopy | undefined {
 export default function ConfirmationDialog({ toolCall, onConfirm, onDeny }: Props) {
   const { data: policy } = useCapabilityPolicyQuery();
   const riskLevel = getRiskLevelFromPolicy(toolCall.function_name, policy);
-  const suggestion = suggestionFor(toolCall.function_name);
+  const suggestion = suggestionFor(toolCall.function_name, policy);
 
   return (
     <RiskCard
