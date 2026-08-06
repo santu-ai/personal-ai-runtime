@@ -22,6 +22,7 @@ from app.api import (
     dashboard,
     inbox,
     memory,
+    monitors,
     notifications,
     settings_api,
     system,
@@ -650,6 +651,7 @@ app.include_router(telemetry_api.router, prefix="/api/telemetry")
 app.include_router(approvals.router, prefix="/api/approvals")
 app.include_router(triggers.router, prefix="/api/triggers")
 app.include_router(inbox.router, prefix="/api/inbox")
+app.include_router(monitors.router, prefix="/api/monitors")
 app.include_router(connectors.router, prefix="/api/connectors")
 app.include_router(timeline.router, prefix="/api/timeline")
 app.include_router(work_items.router, prefix="/api/work-items")

@@ -181,6 +181,10 @@ def push_notification(
     title: str,
     content: str,
     *,
+    related_id: str | None = None,
+    related_type: str | None = None,
+    dedup_key: str | None = None,
+    actor: str = "system",
     kernel: "Kernel | None" = None,
 ) -> dict:
     """Persist a notification row and broadcast it to WebSocket clients.
@@ -194,7 +198,16 @@ def push_notification(
     which may point at a stale reference in tests that monkeypatch
     ``kernel_instance.kernel`` after this module was imported.
     """
-    notif = create_notification(notif_type, title, content, kernel=kernel)
+    notif = create_notification(
+        notif_type,
+        title,
+        content,
+        related_id=related_id,
+        related_type=related_type,
+        dedup_key=dedup_key,
+        actor=actor,
+        kernel=kernel,
+    )
     payload = dict(notif)
     broadcast_event({
         **payload,

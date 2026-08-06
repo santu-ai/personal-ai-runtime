@@ -77,6 +77,15 @@
 | POST | `/api/memory/memories/{memory_id}/reject` | auth | — | Reject Memory |
 | GET | `/api/memory/portrait` | auth | — | Get Portrait |
 
+## monitors — `/api/monitors`（[`api/monitors.py`](../../backend/app/api/monitors.py)）
+
+| 方法 | 路径 | 认证 | 契约 | 摘要 |
+|---|---|---|---|---|
+| GET | `/api/monitors/inbox-filters` | auth | — | List Inbox Filters |
+| POST | `/api/monitors/inbox-filters` | auth | — | Create Inbox Filter |
+| DELETE | `/api/monitors/inbox-filters/{filter_id}` | auth | — | Delete Inbox Filter |
+| PATCH | `/api/monitors/inbox-filters/{filter_id}` | auth | — | Update Inbox Filter |
+
 ## notifications — `/api/notifications`（[`api/notifications.py`](../../backend/app/api/notifications.py)）
 
 | 方法 | 路径 | 认证 | 契约 | 摘要 |

@@ -11,7 +11,8 @@ import { TrustReportPanel } from "./TrustReport";
 import TodayActions from "../components/dashboard/TodayActions";
 import RemindersPanel from "../components/dashboard/RemindersPanel";
 import HealthPanel from "../components/dashboard/HealthPanel";
-import { Shield, AlertCircle } from "lucide-react";
+import MonitorsPanel from "../components/dashboard/MonitorsPanel";
+import { Shield, AlertCircle, Radar } from "lucide-react";
 
 function getDateString(): string {
   const d = new Date();
@@ -19,15 +20,19 @@ function getDateString(): string {
   return `${d.getMonth() + 1}月${d.getDate()}日 ${weekdays[d.getDay()]}`;
 }
 
+type DashboardTab = "today" | "trust" | "monitors";
+
 export default function DashboardPage() {
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = searchParams.get("tab") === "trust" ? "trust" : "today";
-  const setTab = (next: "today" | "trust") => {
+  const tabParam = searchParams.get("tab");
+  const tab: DashboardTab =
+    tabParam === "trust" ? "trust" : tabParam === "monitors" ? "monitors" : "today";
+  const setTab = (next: DashboardTab) => {
     if (next === "today") {
       setSearchParams({}, { replace: true });
     } else {
-      setSearchParams({ tab: "trust" }, { replace: true });
+      setSearchParams({ tab: next }, { replace: true });
     }
   };
 
@@ -89,6 +94,26 @@ export default function DashboardPage() {
     );
   }
 
+  // ── Monitors tab ──
+  if (tab === "monitors") {
+    return (
+      <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        <div className="max-w-3xl mx-auto">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-fg-primary">监控</h2>
+            <button
+              onClick={() => setTab("today")}
+              className="px-3 py-1.5 text-xs bg-surface-overlay hover:bg-border-strong text-fg-secondary rounded-lg transition-colors"
+            >
+              ← 返回 Today
+            </button>
+          </div>
+          <MonitorsPanel />
+        </div>
+      </div>
+    );
+  }
+
   // ── Loading ──
   if (loading) {
     return (
@@ -133,6 +158,13 @@ export default function DashboardPage() {
               className="px-3 py-1.5 text-xs bg-surface-overlay hover:bg-border-strong text-fg-secondary rounded-lg transition-colors"
             >
               刷新
+            </button>
+            <button
+              onClick={() => setTab("monitors")}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-surface-overlay hover:bg-border-strong text-fg-secondary rounded-lg transition-colors"
+            >
+              <Radar size={13} />
+              监控
             </button>
             <button
               onClick={() => setTab("trust")}

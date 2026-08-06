@@ -324,6 +324,15 @@ async def apply_inbox_poll_payload(payload: dict, *, execution_id: str | None = 
             actor="inbox",
         )
 
+    try:
+        from app.product.inbox_monitors import evaluate_inbox_filters
+
+        monitor_hits = evaluate_inbox_filters(stored)
+        if monitor_hits:
+            logger.info("inbox_monitors notified %d match(es)", monitor_hits)
+    except Exception:
+        logger.warning("inbox_monitors evaluation failed", exc_info=True)
+
     return {"status": "ok", "new_count": len(stored), "notified": notified, "synced_read": synced_read}
 
 
