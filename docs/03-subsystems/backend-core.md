@@ -127,6 +127,7 @@ cron 表达式解析 `_next_cron_fire(cron_expr, from_ts)`（[`runtime_loop.py`]
 | projection_snapshots | 每天 04:00 | projection_snapshots |
 | inbox_poll | 每 15 分钟 | inbox_poll |
 | inbox_digest | 每天 08:30 | inbox_digest |
+| url_monitor | 每 30 分钟 | url_monitor |
 
 `init_scheduler()` 还订阅 `WorkItemCompleted` / `WorkItemStatusChanged`，自动启动依赖任务（`_on_work_item_status_changed`，[`cron_registry.py`](../../backend/app/core/runtime/cron_registry.py)）。
 
@@ -148,7 +149,7 @@ Handlers（[`handlers/`](../../backend/app/core/agents/handlers/)）：
 | `approve_handlers.py`（`runtime/handlers/`） | `ApproveRequested` | 解决审批，可能经 `brain.continue_after_tool_result` 续接对话 |
 | `execute_handlers.py`（`runtime/handlers/`） | `ExecuteRequested` | 执行 work item 的 `executable_plan`（含 `work_type=background`） |
 | `inbox_poll_handlers.py`（`runtime/handlers/`） | `InboxPollRequested` | 经 capability 拉未读邮件 |
-| `timer_trigger_handler.py` | `TimerFired` | 按 `handler_name` 分派到 product 函数：`deadline_alert`/`trigger_evaluation`/`memory_decay`/`world_model_snapshot`/`projection_snapshots`/`inbox_poll`/`inbox_digest`/`morning_brief` |
+| `timer_trigger_handler.py` | `TimerFired` | 按 `handler_name` 分派到 product 函数：`deadline_alert`/`memory_decay`/`world_model_snapshot`/`projection_snapshots`/`inbox_poll`/`inbox_digest`/`morning_brief`/`url_monitor`（`url_monitor` 与 `inbox_poll` 一样 fire-and-forget，避免 30s ExecutionPolicy 超时） |
 
 ## Scheduler — WorkItem 执行引擎
 

@@ -1,8 +1,9 @@
 """Inbox filter monitors — user rules evaluated after inbox_poll stores new mail.
 
-Config lives in APP_STORAGE ``app_settings`` category ``monitors`` (not event-sourced).
-Matching new emails emit ``inbox_monitor`` notifications with durable ``dedup_key``
-so the same filter×email pair notifies at most once.
+Config lives in APP_STORAGE ``app_settings`` category ``monitors`` (not event-sourced),
+shared with ``url_monitors`` (see ``url_monitors.py``). Matching new emails emit
+``inbox_monitor`` notifications with durable ``dedup_key`` so the same
+filter×email pair notifies at most once.
 """
 
 from __future__ import annotations
@@ -27,36 +28,68 @@ def _now_iso() -> str:
 
 
 def _empty_config() -> dict[str, Any]:
-    return {"inbox_filters": []}
+    return {"inbox_filters": [], "url_monitors": []}
+
+
+def _normalize_config(data: dict[str, Any]) -> dict[str, Any]:
+    """Ensure known monitor list keys exist and are lists."""
+    out = dict(data)
+    if not isinstance(out.get("inbox_filters"), list):
+        out["inbox_filters"] = []
+    if not isinstance(out.get("url_monitors"), list):
+        out["url_monitors"] = []
+    return out
+
+
+def _load_monitors_config_strict() -> dict[str, Any]:
+    """Load monitors config; raises on DB/JSON errors (never invent empty).
+
+    Write/merge paths must use this so a transient read failure cannot wipe
+    sibling lists (inbox_filters ↔ url_monitors).
+    """
+    with db.get_db() as conn:
+        row = conn.execute(
+            "SELECT data_json FROM app_settings WHERE category = ?",
+            (SETTINGS_CATEGORY,),
+        ).fetchone()
+    if not row:
+        return _empty_config()
+    data = json.loads(row["data_json"])
+    if not isinstance(data, dict):
+        raise ValueError("monitors config is not a JSON object")
+    return _normalize_config(data)
 
 
 def load_monitors_config() -> dict[str, Any]:
-    """Load monitors config from app_settings; never raises."""
+    """Load monitors config from app_settings; never raises (read/UI paths)."""
     try:
-        with db.get_db() as conn:
-            row = conn.execute(
-                "SELECT data_json FROM app_settings WHERE category = ?",
-                (SETTINGS_CATEGORY,),
-            ).fetchone()
-        if not row:
-            return _empty_config()
-        data = json.loads(row["data_json"])
-        if not isinstance(data, dict):
-            return _empty_config()
-        filters = data.get("inbox_filters")
-        if not isinstance(filters, list):
-            data["inbox_filters"] = []
-        return data
+        return _load_monitors_config_strict()
     except Exception:
         logger.warning("Failed to load monitors config", exc_info=True)
         return _empty_config()
 
 
 def save_monitors_config(data: dict[str, Any]) -> dict[str, Any]:
-    """Persist monitors config. Returns the saved payload."""
+    """Persist monitors config. Partial updates merge with existing lists.
+
+    Passing only ``inbox_filters`` preserves ``url_monitors`` (and vice versa).
+    Merge reads use the strict loader so DB/JSON errors abort the write instead
+    of replacing the sibling list with ``[]``.
+    """
+    existing = _load_monitors_config_strict()
     payload = {
-        "inbox_filters": list(data.get("inbox_filters") or []),
+        "inbox_filters": (
+            list(data["inbox_filters"])
+            if "inbox_filters" in data
+            else list(existing.get("inbox_filters") or [])
+        ),
+        "url_monitors": (
+            list(data["url_monitors"])
+            if "url_monitors" in data
+            else list(existing.get("url_monitors") or [])
+        ),
     }
+    payload = _normalize_config(payload)
     now = _now_iso()
     with db.get_db() as conn:
         conn.execute(

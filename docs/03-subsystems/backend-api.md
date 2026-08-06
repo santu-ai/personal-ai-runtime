@@ -12,7 +12,7 @@
 
 ```
 chat, dashboard, system, settings_api, memory, notifications,
-telemetry_api, approvals, triggers, inbox,
+telemetry_api, approvals, triggers, inbox, monitors,
 connectors, timeline, work_items
 ```
 
@@ -55,6 +55,7 @@ connectors, timeline, work_items
 | work_items | `/api/work-items` | 统一 goal/task/action CRUD、`include=`、`decompose` | Kernel 事件 + LLM |
 | approvals | `/api/approvals` | 列表、`/{id}/approve`、`/{id}/reject` | `submit_command("ApproveRequested")` + 工具执行 |
 | inbox | `/api/inbox` | 列表、`/poll`（IMAP）、`/digest`、状态更新 | 网络出口 + Kernel 事件 |
+| monitors | `/api/monitors` | 收件箱过滤器 CRUD、URL 变化监控 CRUD、`POST /url-monitors/check` | APP_STORAGE + 出站抓取 |
 | triggers | `/api/triggers` | CRUD | Kernel 事件 |
 | notifications | `/api/notifications` | 列表、`/{id}/read`、`/read-all` | Kernel 事件 |
 | dashboard | `/api/dashboard` | `GET /` | **只用 Kernel ABI**（一致性测试床） |
@@ -108,7 +109,8 @@ connectors, timeline, work_items
 
 | 文件 | 模块 | 职责 |
 |---|---|---|
-| [`inbox.py`](../../backend/app/product/inbox.py) | `poll_inbox`/`generate_inbox_digest`/`list_inbox_emails`/`mark_inbox_email_status`/`latest_digest`/`apply_inbox_poll_payload` | 邮件应用层：经 `kernel.invoke_capability("check_inbox")` 或 `submit_command("InboxPollRequested")` 拉邮件；LLM 分类；同步已读；emit `InboxEmailRecorded`（投影由 [`projectors_inbox.py`](../../backend/app/core/runtime/kernel/projectors_inbox.py) 写入 `inbox_emails`）；为 important 邮件推通知；每日摘要幂等 |
+| [`inbox.py`](../../backend/app/product/inbox.py) | `poll_inbox`/`generate_inbox_digest`/`list_inbox_emails`/`mark_inbox_email_status`/`latest_digest`/`apply_inbox_poll_payload` | 邮件应用层：经 `kernel.invoke_capability("check_inbox")` 或 `submit_command("InboxPollRequested")` 拉邮件；LLM 分类；同步已读；emit `InboxEmailRecorded`（投影由 [`projectors_inbox.py`](../../backend/app/core/runtime/kernel/projectors_inbox.py) 写入 `inbox_emails`）；为 important 邮件推通知；每日摘要幂等；poll 后求值收件箱过滤器 |
+| [`inbox_monitors.py`](../../backend/app/product/inbox_monitors.py) / [`url_monitors.py`](../../backend/app/product/url_monitors.py) | 过滤器/URL 监控 CRUD + 求值 | 配置在 `app_settings.monitors`；匹配或正文 hash 变化时经 `dedup_key` 推通知；URL 抓取走 SSRF-safe `FetchServer` |
 | 数据主权（`Kernel.snapshot`/`restore`/`erase`） | Kernel 内置方法（[`kernel_sovereignty.py`](../../backend/app/core/runtime/kernel/kernel_sovereignty.py)） | 数据主权：`snapshot()`/`restore()`/`erase()`；删 SQLite + vector 目录并重建；export_all/import_all 由 `/api/system/*` 路由直接调用 Kernel |
 | [`encrypted_sync.py`](../../backend/app/product/encrypted_sync.py) | `encrypt_snapshot`/`decrypt_snapshot` + `EncryptedSyncError` | AES-GCM + Argon2id（V2）；blob 布局 `[4B magic 'PAES'][1B version=2][16B salt][12B nonce][zlib+AES-GCM ciphertext]` base64；`BLOB_FORMAT = "encrypted_snapshot_v2"`；最小密码 8 字符 |
 | [`personal_dashboard.py`](../../backend/app/product/personal_dashboard.py) | `generate_dashboard` + 5 个 `_widget_*` | 一致性测试床：每个 widget 仅用 Kernel ABI（`query_state`/`read_events`/`recall_memory`），零 SQL、零文件、零 ChromaDB 直访 |

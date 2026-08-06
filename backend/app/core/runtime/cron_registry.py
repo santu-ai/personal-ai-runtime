@@ -25,6 +25,7 @@ SCHEDULES: list[dict] = [
     {"name": "projection_snapshots", "cron_expr": "hour=4,minute=0", "schedule_type": "cron", "handler_name": "projection_snapshots"},
     {"name": "inbox_poll", "cron_expr": "minute=*/15", "schedule_type": "cron", "handler_name": "inbox_poll"},
     {"name": "inbox_digest", "cron_expr": "hour=8,minute=30", "schedule_type": "cron", "handler_name": "inbox_digest"},
+    {"name": "url_monitor", "cron_expr": "minute=*/30", "schedule_type": "cron", "handler_name": "url_monitor"},
 ]
 
 _unsubscribe_hooks: list[Callable[[], None]] = []

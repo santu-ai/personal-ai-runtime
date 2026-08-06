@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -146,6 +147,33 @@ async def _handle_reminder(payload: dict, timer_id: str | None) -> None:
     )
 
 
+# Strong refs so fire-and-forget url_monitor tasks are not GC'd mid-flight.
+_url_monitor_tasks: set[asyncio.Task] = set()
+
+
+async def _run_url_monitors_bg() -> None:
+    from app.product.url_monitors import evaluate_url_monitors
+
+    try:
+        notified = await evaluate_url_monitors(force=False)
+        if notified:
+            logger.info("url_monitor notified %d change(s)", notified)
+    except Exception:
+        logger.warning("url_monitor background run failed", exc_info=True)
+
+
+async def _handle_url_monitor(payload: dict, timer_id: str | None) -> None:
+    """Schedule URL checks off the TimerFired WorkItem (30s ExecutionPolicy).
+
+    Same rationale as inbox_poll: fetch I/O must not nest under the timer
+    handler timeout. Cap per tick lives inside ``evaluate_url_monitors``.
+    """
+    del payload, timer_id
+    task = asyncio.create_task(_run_url_monitors_bg(), name="url_monitor_eval")
+    _url_monitor_tasks.add(task)
+    task.add_done_callback(_url_monitor_tasks.discard)
+
+
 _TIMER_HANDLERS: dict[str, TimerHandler] = {
     "deadline_alert": _handle_deadline_alert,
     "memory_decay": _handle_memory_decay,
@@ -155,6 +183,7 @@ _TIMER_HANDLERS: dict[str, TimerHandler] = {
     "inbox_digest": _handle_inbox_digest,
     "morning_brief": _handle_morning_brief,
     "reminder": _handle_reminder,
+    "url_monitor": _handle_url_monitor,
 }
 
 

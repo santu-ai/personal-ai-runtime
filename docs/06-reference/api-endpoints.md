@@ -85,6 +85,11 @@
 | POST | `/api/monitors/inbox-filters` | auth | — | Create Inbox Filter |
 | DELETE | `/api/monitors/inbox-filters/{filter_id}` | auth | — | Delete Inbox Filter |
 | PATCH | `/api/monitors/inbox-filters/{filter_id}` | auth | — | Update Inbox Filter |
+| GET | `/api/monitors/url-monitors` | auth | — | List Url Monitors |
+| POST | `/api/monitors/url-monitors` | auth | — | Create Url Monitor |
+| POST | `/api/monitors/url-monitors/check` | auth | — | Check Url Monitors |
+| DELETE | `/api/monitors/url-monitors/{monitor_id}` | auth | — | Delete Url Monitor |
+| PATCH | `/api/monitors/url-monitors/{monitor_id}` | auth | — | Update Url Monitor |
 
 ## notifications — `/api/notifications`（[`api/notifications.py`](../../backend/app/api/notifications.py)）
 
