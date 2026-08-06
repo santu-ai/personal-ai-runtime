@@ -26,6 +26,7 @@ class MorningBriefResult:
     goals_count: int = 0
     inbox_count: int = 0
     calendar_count: int = 0
+    proposed_count: int = 0
     steps_ms: dict[str, float] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
     date_local: str = ""
@@ -147,19 +148,59 @@ def generate_morning_brief() -> MorningBriefResult:
         )
     result.steps_ms["inbox"] = round((time.perf_counter() - t0) * 1000, 1)
 
+    # Proposed memories awaiting user claim authority
+    t0 = time.perf_counter()
+    proposed_lines = "  无"
+    try:
+        result.proposed_count = int(
+            read_ports.count_memories(claim_status="proposed") or 0
+        )
+        proposed = (
+            read_ports.query_memories(claim_status="proposed", limit=3)
+            if result.proposed_count
+            else []
+        )
+        if proposed:
+            snippets = []
+            for m in proposed:
+                content = (m.get("content") or "").strip().replace("\n", " ")
+                if len(content) > 60:
+                    content = content[:57] + "…"
+                snippets.append(f"  · {content}")
+            proposed_lines = "\n".join(snippets)
+            if result.proposed_count > len(proposed):
+                proposed_lines += f"\n  …另有 {result.proposed_count - len(proposed)} 条"
+        logger.info(
+            "morning_brief: proposed_memories ok count=%d",
+            result.proposed_count,
+            extra={"step": "proposed_memories", "count": result.proposed_count},
+        )
+    except Exception as exc:
+        proposed_lines = "  获取失败"
+        result.errors.append(f"proposed_memories: {type(exc).__name__}: {exc}")
+        logger.warning(
+            "morning_brief: proposed_memories failed: %s",
+            exc,
+            extra={"step": "proposed_memories", "error": str(exc)},
+        )
+    result.steps_ms["proposed_memories"] = round((time.perf_counter() - t0) * 1000, 1)
+
     result.brief = (
         f"早安！{now_local.strftime('%Y年%m月%d日')} 简报\n\n"
         f"📋 进行中的目标:\n{goal_lines}\n\n"
         f"📧 未读邮件: {result.inbox_count} 封\n\n"
         f"📅 今日日程: {result.calendar_count} 个\n\n"
+        f"🧠 待确认记忆: {result.proposed_count} 条\n{proposed_lines}\n"
+        f"（打开 /memories?tab=review 批量确认）\n\n"
         f"祝你今天一切顺利！"
     )
 
     logger.info(
-        "morning_brief: assembled goals=%d inbox=%d calendar=%d errors=%d",
+        "morning_brief: assembled goals=%d inbox=%d calendar=%d proposed=%d errors=%d",
         result.goals_count,
         result.inbox_count,
         result.calendar_count,
+        result.proposed_count,
         len(result.errors),
         extra={"step": "assembled", "errors": result.errors},
     )

@@ -28,7 +28,12 @@ describe("applyWsInvalidation", () => {
     applyWsInvalidation(qc as never, { type: "approval_changed", approval_id: "a1" });
     const keys = qc.invalidateQueries.mock.calls.map((c) => c[0].queryKey);
     expect(keys).toEqual(
-      expect.arrayContaining([queryKeys.approvals, queryKeys.trustReport, queryKeys.dashboard]),
+      expect.arrayContaining([
+        queryKeys.approvals,
+        queryKeys.tasks,
+        queryKeys.trustReport,
+        queryKeys.dashboard,
+      ]),
     );
   });
 
@@ -39,6 +44,7 @@ describe("applyWsInvalidation", () => {
     expect(keys).toEqual(
       expect.arrayContaining([
         queryKeys.goals,
+        queryKeys.tasks,
         queryKeys.dashboard,
         queryKeys.timeline,
         queryKeys.trustReport,

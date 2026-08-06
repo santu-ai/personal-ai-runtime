@@ -118,6 +118,11 @@ export interface RiskCardProps {
   variant?: "inline" | "panel";
   /** 是否为即将过期（外部计算，驱动 Badge 显示） */
   expiringSoon?: boolean;
+  /**
+   * Optional title override (e.g. suggestion cards for set_timer / create_goal).
+   * Defaults to ``确认{toolLabel}``.
+   */
+  title?: string;
   /** 操作按钮由父组件注入 */
   children?: ReactNode;
 }
@@ -133,6 +138,7 @@ export default function RiskCard({
   impactSummary,
   variant = "inline",
   expiringSoon,
+  title,
   children,
 }: RiskCardProps) {
   const label = toolLabel(action);
@@ -144,6 +150,7 @@ export default function RiskCard({
   const isPatch = action === "apply_patch";
   const isWrite = action === "write_file";
   const showBackendFields = reversible !== undefined || impactSummary !== undefined;
+  const heading = title ?? `确认${label}`;
 
   return (
     <div className={`${tone.container} rounded-lg ${variant === "panel" ? "p-5" : "p-4"}`}>
@@ -152,7 +159,7 @@ export default function RiskCard({
 
         <div className="flex-1 min-w-0 space-y-2">
           <div className="flex items-center gap-2 flex-wrap">
-            <h4 className={`${tone.title} font-medium`}>确认{label}</h4>
+            <h4 className={`${tone.title} font-medium`}>{heading}</h4>
             {riskLevel === "high" && <Badge tone="danger">高风险</Badge>}
             {expiringSoon && <Badge tone="danger">⏱ 即将过期</Badge>}
             {source?.flowLabel && <Badge tone="insight">{source.flowLabel}</Badge>}

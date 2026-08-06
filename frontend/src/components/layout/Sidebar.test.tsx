@@ -12,6 +12,10 @@ vi.mock("../../hooks/useInboxQuery", () => ({
   useInboxQuery: () => ({ data: { emails: [], digest: {} } }),
 }));
 
+vi.mock("../../hooks/useMemoriesQuery", () => ({
+  useMemoriesGroupedQuery: () => ({ data: { memories: [], recent: [] } }),
+}));
+
 function renderSidebar(initialEntry = "/", overrides = {}) {
   const defaultProps = {
     conversations: [
@@ -68,6 +72,7 @@ describe("Sidebar", () => {
   it("shows data nav items on non-chat route", () => {
     renderSidebar("/goals");
     expect(screen.getAllByText("目标")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("任务")[0]).toBeInTheDocument();
     expect(screen.getAllByText("收件箱")[0]).toBeInTheDocument();
     expect(screen.getAllByText("记忆")[0]).toBeInTheDocument();
   });

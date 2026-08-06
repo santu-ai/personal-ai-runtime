@@ -194,6 +194,23 @@ export interface WorkItemEvent {
  */
 export type WorkItemType = "task" | "action" | "background" | "goal";
 
+export interface WorkItemExecutionHandler {
+  id: string;
+  status: string;
+  dead_letter: boolean;
+  retry_count: number;
+  handler_name: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface WorkItemExecution {
+  steps: Array<Record<string, unknown>>;
+  resume_from: number;
+  previous_output: Record<string, unknown>;
+  handler_execution: WorkItemExecutionHandler | null;
+}
+
 export interface WorkItem {
   id: string;
   title: string;
@@ -215,6 +232,7 @@ export interface WorkItem {
   actions?: WorkItem[];
   events?: WorkItemEvent[];
   children?: WorkItem[];
+  execution?: WorkItemExecution;
 }
 
 export interface Approval {

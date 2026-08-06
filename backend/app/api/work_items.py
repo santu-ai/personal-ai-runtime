@@ -131,9 +131,14 @@ async def list_work_items(
     )
 
 
+def _execution_snapshot(item_id: str, item: dict) -> dict:
+    """Delegate to read_ports (keeps api/ off deep runtime imports)."""
+    return read_ports.work_item_execution_snapshot(item_id, item)
+
+
 @router.get("/{item_id}")
 async def get_work_item(item_id: str, include: str | None = None):
-    """Get a work item. include=actions,events embeds goal children + recent events."""
+    """Get a work item. include=actions,events,execution embeds extras."""
     item = read_ports.query_work_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Work item not found")
@@ -149,6 +154,8 @@ async def get_work_item(item_id: str, include: str | None = None):
         item["events"] = read_ports.goal_events(item_id, limit=10)
     if "tree" in flags and item.get("work_type") == "goal":
         item["tree"] = read_ports.get_work_item_tree(item_id)
+    if "execution" in flags:
+        item["execution"] = _execution_snapshot(item_id, item)
     return item
 
 
@@ -318,6 +325,27 @@ async def execute_work_item(item_id: str):
             else 400
         )
         raise HTTPException(status_code=code, detail=msg) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/{item_id}/cancel")
+async def cancel_work_item(item_id: str):
+    """Cancel a non-terminal background work item (R010 cooperative cancel)."""
+    item = read_ports.query_work_item(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Work item not found")
+    if item.get("work_type") != "background":
+        raise HTTPException(
+            status_code=400,
+            detail="cancel is only supported for work_type=background",
+        )
+    try:
+        return read_ports.cancel_background_work_item(item_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Work item not found") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

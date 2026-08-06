@@ -14,6 +14,7 @@ export const queryKeys = {
   memories: ["memories"] as const,
   memoriesGrouped: ["memories", "grouped"] as const,
   goals: ["goals"] as const,
+  tasks: ["tasks"] as const,
   inbox: ["inbox"] as const,
   dashboard: ["dashboard"] as const,
   trustReport: ["trustReport"] as const,
@@ -61,17 +62,19 @@ export function applyWsInvalidation(qc: QueryClient, raw: unknown): void {
       invalidate(qc, queryKeys.trustReport);
       invalidate(qc, queryKeys.timeline);
       break;
-    case "approval_changed":
-      invalidate(qc, queryKeys.approvals);
-      invalidate(qc, queryKeys.trustReport);
-      invalidate(qc, queryKeys.dashboard);
-      break;
     case "goal_changed":
       invalidate(qc, queryKeys.goals);
+      invalidate(qc, queryKeys.tasks);
       invalidate(qc, queryKeys.dashboard);
       invalidate(qc, queryKeys.timeline);
       invalidate(qc, queryKeys.trustReport);
       invalidate(qc, queryKeys.portrait);
+      break;
+    case "approval_changed":
+      invalidate(qc, queryKeys.approvals);
+      invalidate(qc, queryKeys.tasks);
+      invalidate(qc, queryKeys.trustReport);
+      invalidate(qc, queryKeys.dashboard);
       break;
     case "notification": {
       invalidate(qc, queryKeys.notifications);

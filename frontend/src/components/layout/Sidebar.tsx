@@ -13,18 +13,21 @@ import {
   ChevronRight,
   FolderOpen,
   Clock,
+  ListTodo,
 } from "lucide-react";
 import { useApprovalsQuery } from "../../hooks/useApprovalsQuery";
 import { useInboxQuery } from "../../hooks/useInboxQuery";
+import { useMemoriesGroupedQuery } from "../../hooks/useMemoriesQuery";
 
 const PRIMARY_NAV = [{ path: "/", label: "对话", icon: MessageSquare }];
 
 const DATA_NAV = [
   { path: "/dashboard", label: "概览", icon: BarChart3, badgeKey: null },
   { path: "/goals", label: "目标", icon: Target, badgeKey: null },
+  { path: "/tasks", label: "任务", icon: ListTodo, badgeKey: null },
   { path: "/inbox", label: "收件箱", icon: Mail, badgeKey: "inbox" as const },
   { path: "/approvals", label: "审批", icon: ShieldCheck, badgeKey: "approvals" as const },
-  { path: "/memories", label: "记忆", icon: Brain, badgeKey: null },
+  { path: "/memories", label: "记忆", icon: Brain, badgeKey: "memories" as const },
   { path: "/timeline", label: "时间线", icon: Clock, badgeKey: null },
 ];
 
@@ -69,12 +72,15 @@ export default function Sidebar({
   const [dataExpanded, setDataExpanded] = useState(isDataRoute(location.pathname));
   const { data: approvals = [] } = useApprovalsQuery();
   const { data: inbox } = useInboxQuery();
+  const { data: proposedMemories } = useMemoriesGroupedQuery("proposed");
   const approvalCount = approvals.length;
   const inboxCount = inbox?.emails?.length ?? 0;
+  const proposedCount = proposedMemories?.memories?.length ?? 0;
 
-  const badgeFor = (key: "inbox" | "approvals" | null) => {
+  const badgeFor = (key: "inbox" | "approvals" | "memories" | null) => {
     if (key === "approvals") return approvalCount;
     if (key === "inbox") return inboxCount;
+    if (key === "memories") return proposedCount;
     return 0;
   };
 
@@ -107,7 +113,7 @@ export default function Sidebar({
         })}
 
         {/* Always-visible decision shortcuts when something needs attention */}
-        {(approvalCount > 0 || inboxCount > 0) && (
+        {(approvalCount > 0 || inboxCount > 0 || proposedCount > 0) && (
           <div className="mt-1 space-y-0.5">
             {approvalCount > 0 && (
               <NavLink
@@ -117,6 +123,16 @@ export default function Sidebar({
                 <ShieldCheck size={14} className="shrink-0" />
                 <span>待审批</span>
                 <NavBadge count={approvalCount} />
+              </NavLink>
+            )}
+            {proposedCount > 0 && (
+              <NavLink
+                to="/memories?tab=review"
+                className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-insight hover:bg-insight/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+              >
+                <Brain size={14} className="shrink-0" />
+                <span>待确认记忆</span>
+                <NavBadge count={proposedCount} />
               </NavLink>
             )}
             {inboxCount > 0 && (

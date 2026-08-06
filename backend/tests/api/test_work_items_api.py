@@ -330,6 +330,62 @@ def test_execute_not_found(client):
     assert r.status_code == 404
 
 
+def test_cancel_background_work_item(client):
+    create = client.post("/api/work-items/", json={
+        "title": "Bg job",
+        "work_type": "background",
+        "executable_plan": '{"steps":[{"tool":"echo","params":{}}]}',
+        "status": "pending",
+    })
+    assert create.status_code == 200, create.text
+    item_id = create.json()["id"]
+
+    r = client.post(f"/api/work-items/{item_id}/cancel")
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "cancelled"
+
+
+def test_cancel_rejects_non_background(client):
+    create = client.post("/api/work-items/", json={
+        "title": "Task",
+        "work_type": "task",
+        "executable_plan": '{"steps":[{"tool":"echo","params":{}}]}',
+    })
+    item_id = create.json()["id"]
+    r = client.post(f"/api/work-items/{item_id}/cancel")
+    assert r.status_code == 400
+
+
+def test_cancel_terminal_returns_409(client):
+    create = client.post("/api/work-items/", json={
+        "title": "Done bg",
+        "work_type": "background",
+        "executable_plan": '{"steps":[{"tool":"echo","params":{}}]}',
+        "status": "completed",
+    })
+    item_id = create.json()["id"]
+    # Force terminal via status endpoint / patch if create status ignored
+    client.post(f"/api/work-items/{item_id}/status", json={"status": "completed"})
+    r = client.post(f"/api/work-items/{item_id}/cancel")
+    assert r.status_code == 409
+
+
+def test_get_include_execution(client):
+    create = client.post("/api/work-items/", json={
+        "title": "With plan",
+        "work_type": "background",
+        "executable_plan": '{"steps":[{"tool":"echo","params":{"t":"1"}},{"tool":"echo","params":{"t":"2"}}]}',
+    })
+    item_id = create.json()["id"]
+    r = client.get(f"/api/work-items/{item_id}?include=execution,events")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert "execution" in body
+    assert len(body["execution"]["steps"]) == 2
+    assert body["execution"]["resume_from"] == 0
+    assert body["execution"]["handler_execution"] is None
+
+
 def test_patch_rejects_invalid_status_vocabulary(client):
     """PATCH /{id} must reject a status outside the work_type vocabulary.
 

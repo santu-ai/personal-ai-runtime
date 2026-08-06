@@ -17,8 +17,7 @@ def retrieve_memory_with_sources(query: str, *, max_memories: int = 3) -> tuple[
     """Retrieve memory context and return (context_str, sources)."""
     from app.core.agents.memory_engine import memory_engine
 
-    hits = memory_engine.search_relevant_memories(query, n_results=max_memories)
-    enriched = memory_engine._enrich_recall_hits(hits)
+    enriched = memory_engine.recall_for_context(query, max_memories=max_memories)
     context_str = memory_engine.format_memory_context(enriched)
     sources = [
         {"id": mem["id"], "type": "memory", "title": mem.get("content", "")[:80]}
@@ -41,6 +40,7 @@ def query_memories(
     confidence_gt: float | None = None,
     confidence_lt: float | None = None,
     decay_eligible: bool | None = None,
+    claim_status: str | None = None,
 ) -> list[dict[str, Any]]:
     filters: dict[str, Any] = {"limit": limit}
     if category:
@@ -53,6 +53,8 @@ def query_memories(
         filters["confidence_lt"] = confidence_lt
     if decay_eligible is not None:
         filters["decay_eligible"] = decay_eligible
+    if claim_status is not None:
+        filters["claim_status"] = claim_status
     return kernel().query_state("memories", **filters)
 
 

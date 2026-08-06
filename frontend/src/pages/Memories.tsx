@@ -21,16 +21,22 @@ import Dialog from "../components/ui/Dialog";
 import MemoryGraphView from "../components/memories/MemoryGraphView";
 import MemoryListItem, { getCategoryMeta } from "../components/memories/MemoryListItem";
 import MemoryProvenanceDialog from "../components/memories/MemoryProvenanceDialog";
-import { Network, List, User } from "lucide-react";
+import { Network, List, User, ClipboardCheck } from "lucide-react";
 
-type ViewMode = "list" | "graph" | "portrait";
+type ViewMode = "list" | "graph" | "portrait" | "review";
 
 export default function MemoriesPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
   const viewMode: ViewMode =
-    tabParam === "portrait" ? "portrait" : tabParam === "graph" ? "graph" : "list";
+    tabParam === "portrait"
+      ? "portrait"
+      : tabParam === "graph"
+        ? "graph"
+        : tabParam === "review"
+          ? "review"
+          : "list";
   const setViewMode = (mode: ViewMode) => {
     if (mode === "list") {
       setSearchParams({}, { replace: true });
@@ -40,7 +46,12 @@ export default function MemoriesPage() {
   };
 
   const { data, isLoading: loading, error: loadError } = useMemoriesGroupedQuery();
+  const {
+    data: proposedData,
+    isLoading: proposedLoading,
+  } = useMemoriesGroupedQuery("proposed");
   const memories = data?.memories ?? [];
+  const proposedMemories = proposedData?.memories ?? [];
   const addError = useErrorStore((s) => s.addError);
   const quickChat = useQuickChat();
 
@@ -55,6 +66,7 @@ export default function MemoriesPage() {
 
   const invalidateMemories = () => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.memories });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.memoriesGrouped });
   };
 
   const grouped = useMemo(() => {
@@ -162,7 +174,7 @@ export default function MemoriesPage() {
     };
   }, [viewMode, graphData, addError]);
 
-  if (loading) {
+  if (loading || (viewMode === "review" && proposedLoading)) {
     return <div className="flex-1 flex items-center justify-center text-fg-tertiary">加载中…</div>;
   }
 
@@ -174,6 +186,12 @@ export default function MemoriesPage() {
             <h2 className="text-2xl font-bold mb-2 text-fg-primary">AI 对你的理解</h2>
             <p className="text-sm text-fg-tertiary">
               这些是我从我们的对话中记住的。{memories.length > 0 && `共 ${memories.length} 条。`}
+              {proposedMemories.length > 0 && (
+                <span className="text-warning">
+                  {" "}
+                  其中 {proposedMemories.length} 条待你确认。
+                </span>
+              )}
               每一条都让我更好地帮助你。
             </p>
           </div>
@@ -188,6 +206,22 @@ export default function MemoriesPage() {
             >
               <List size={14} />
               列表
+            </button>
+            <button
+              onClick={() => setViewMode("review")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                viewMode === "review"
+                  ? "bg-border-strong text-white"
+                  : "text-fg-secondary hover:text-fg-primary"
+              }`}
+            >
+              <ClipboardCheck size={14} />
+              待确认
+              {proposedMemories.length > 0 && (
+                <span className="ml-1 text-[10px] min-w-[1.1rem] h-4 px-1 rounded-full bg-warning/20 text-warning flex items-center justify-center">
+                  {proposedMemories.length > 99 ? "99+" : proposedMemories.length}
+                </span>
+              )}
             </button>
             <button
               onClick={() => setViewMode("graph")}
@@ -216,6 +250,32 @@ export default function MemoriesPage() {
 
         {viewMode === "portrait" ? (
           <PortraitPanel compact />
+        ) : viewMode === "review" ? (
+          <>
+            <p className="text-sm text-fg-secondary">
+              以下记忆由对话推断而来，确认后才会进入聊天上下文；拒绝则不会再被召回。
+            </p>
+            {proposedMemories.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-fg-tertiary text-sm">没有待确认的记忆。</p>
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {proposedMemories.map((m) => (
+                  <MemoryListItem
+                    key={m.id}
+                    memory={m}
+                    onRatify={handleRatify}
+                    onReject={handleReject}
+                    onEdit={handleEdit}
+                    onDelete={(row) => setDeleteTarget(row)}
+                    onContinueChat={handleContinueChat}
+                    onShowProvenance={setProvenanceTarget}
+                  />
+                ))}
+              </ul>
+            )}
+          </>
         ) : viewMode === "list" ? (
           <>
             <div className="flex gap-2">

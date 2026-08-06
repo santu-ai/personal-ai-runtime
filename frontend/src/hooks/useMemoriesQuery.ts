@@ -16,11 +16,13 @@ export interface MemoriesGroupedResult {
   recent: MemoryRow[];
 }
 
-export function useMemoriesGroupedQuery() {
+export function useMemoriesGroupedQuery(claimStatus?: string) {
   return useQuery<MemoriesGroupedResult>({
-    queryKey: queryKeys.memoriesGrouped,
+    queryKey: claimStatus
+      ? ([...queryKeys.memoriesGrouped, claimStatus] as const)
+      : queryKeys.memoriesGrouped,
     queryFn: async () => {
-      const data = await listMemoriesGrouped();
+      const data = await listMemoriesGrouped(claimStatus);
       const memories = (data.memories ?? []).slice().sort((a, b) => {
         const at = new Date(a.created_at ?? 0).getTime();
         const bt = new Date(b.created_at ?? 0).getTime();

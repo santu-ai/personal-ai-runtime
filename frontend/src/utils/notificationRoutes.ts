@@ -1,6 +1,7 @@
 /** Map notification type to in-app route. */
 export function notificationTargetPath(type: string): string | null {
   if (type === "goal_stagnant" || type.includes("goal")) return "/goals";
+  if (type === "morning_brief") return "/memories?tab=review";
   if (type.includes("brief") || type.includes("review")) return "/dashboard";
   if (type.includes("inbox") || type.includes("email")) return "/inbox";
   if (type === "suggestion") return "/dashboard";

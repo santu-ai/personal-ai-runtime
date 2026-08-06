@@ -126,6 +126,7 @@ from app.core.runtime.read_ports.work import (
     request_work_item_execute,
     update_work_item_fields,
     update_work_item_status,
+    work_item_execution_snapshot,
 )
 
 __all__ = [
@@ -149,6 +150,7 @@ __all__ = [
     "query_goals_with_deadline",
     "create_work_item",
     "request_work_item_execute",
+    "work_item_execution_snapshot",
     "update_work_item_fields",
     "update_work_item_status",
     "delete_work_item",

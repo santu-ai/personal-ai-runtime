@@ -3,8 +3,13 @@
 import { API_BASE, request } from "./core";
 import type { MemoryRow, MemoriesGrouped } from "./types";
 
-export async function listMemoriesGrouped(): Promise<MemoriesGrouped> {
-  return request<MemoriesGrouped>(`${API_BASE}/memory/memories/grouped`);
+export async function listMemoriesGrouped(
+  claimStatus?: string,
+): Promise<MemoriesGrouped> {
+  const qs = claimStatus
+    ? `?claim_status=${encodeURIComponent(claimStatus)}`
+    : "";
+  return request<MemoriesGrouped>(`${API_BASE}/memory/memories/grouped${qs}`);
 }
 
 export async function searchMemories(q: string, n = 5): Promise<MemoryRow[]> {

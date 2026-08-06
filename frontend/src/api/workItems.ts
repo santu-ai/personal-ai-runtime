@@ -68,6 +68,18 @@ export async function deleteWorkItem(itemId: string): Promise<void> {
   await request(`${API_BASE}/work-items/${itemId}`, { method: "DELETE" });
 }
 
+export async function executeWorkItem(itemId: string): Promise<WorkItem> {
+  return request<WorkItem>(`${API_BASE}/work-items/${itemId}/execute`, {
+    method: "POST",
+  });
+}
+
+export async function cancelWorkItem(itemId: string): Promise<WorkItem> {
+  return request<WorkItem>(`${API_BASE}/work-items/${itemId}/cancel`, {
+    method: "POST",
+  });
+}
+
 export async function decomposeWorkItem(itemId: string): Promise<{ steps: string[] }> {
   return request<{ steps: string[] }>(`${API_BASE}/work-items/${itemId}/decompose`, {
     method: "POST",

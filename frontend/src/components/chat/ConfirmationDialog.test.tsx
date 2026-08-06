@@ -114,25 +114,21 @@ describe("ConfirmationDialog", () => {
     expect(screen.getAllByText(/print\('hello world'\)/).length).toBeGreaterThan(0);
   });
 
-  it("shows expandable full content for long patches", () => {
-    const longText = "x".repeat(500);
+  it("shows suggestion framing for set_timer", () => {
     renderWithRouter(
       <ConfirmationDialog
         toolCall={{
           index: 0,
-          id: "tc-4",
-          function_name: "apply_patch",
-          arguments: JSON.stringify({
-            path: "/tmp/app.py",
-            old_string: longText,
-            new_string: "short",
-          }),
+          id: "tc-5",
+          function_name: "set_timer",
+          arguments: JSON.stringify({ delay_seconds: 3600, message: "交报告" }),
         }}
         onConfirm={vi.fn()}
         onDeny={vi.fn()}
       />,
     );
 
-    expect(screen.getByText("查看完整内容")).toBeInTheDocument();
+    expect(screen.getByText("建议：创建定时提醒")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认创建" })).toBeInTheDocument();
   });
 });

@@ -80,6 +80,8 @@ export {
   createWorkItem,
   updateWorkItem,
   deleteWorkItem,
+  executeWorkItem,
+  cancelWorkItem,
   decomposeWorkItem,
 } from "./workItems";
 

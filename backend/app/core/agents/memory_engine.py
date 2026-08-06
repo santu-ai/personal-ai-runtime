@@ -59,7 +59,11 @@ class MemoryEngine:
         return kernel.recall_memory(query, k=n_results)
 
     def _enrich_recall_hits(self, hits: list[dict]) -> list[dict]:
-        """Join Chroma recall hits with governed projection fields (origin, confidence)."""
+        """Join Chroma recall hits with governed projection fields (origin, confidence).
+
+        Claim authority filter (Wave A): rejected / proposed / contested claims
+        are excluded from prompt injection until the user ratifies them.
+        """
         enriched: list[dict] = []
         for hit in hits:
             memory_id = hit.get("id")
@@ -68,12 +72,29 @@ class MemoryEngine:
             row = read_ports.query_memory(memory_id)
             if not row:
                 continue
+            claim = row.get("claim_status")
+            if claim in ("proposed", "rejected", "contested"):
+                continue
             enriched.append({
                 "id": memory_id,
                 "content": row.get("content") or hit.get("content", ""),
                 "confidence": float(row.get("confidence") or 0.5),
             })
         return enriched
+
+    def recall_for_context(
+        self,
+        query: str,
+        *,
+        max_memories: int = 3,
+        overfetch_factor: int = 4,
+    ) -> list[dict]:
+        """Semantic recall with claim filtering; over-fetch so approved facts survive."""
+        if max_memories <= 0:
+            return []
+        n_results = max(max_memories * max(1, overfetch_factor), max_memories)
+        hits = self.search_relevant_memories(query, n_results=n_results)
+        return self._enrich_recall_hits(hits)[:max_memories]
 
     def format_memory_context(self, memories: list[dict]) -> str:
         """Render memories for LLM context injection."""
@@ -88,8 +109,7 @@ class MemoryEngine:
 
     def retrieve_context_string(self, query: str, max_memories: int = 3) -> str:
         """Build a context string from relevant memories for injection into the LLM prompt."""
-        hits = self.search_relevant_memories(query, n_results=max_memories)
-        enriched = self._enrich_recall_hits(hits)
+        enriched = self.recall_for_context(query, max_memories=max_memories)
         return self.format_memory_context(enriched)
 
     def list_memories(self, category: str | None = None, limit: int = 50) -> list[dict]:

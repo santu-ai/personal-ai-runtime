@@ -19,17 +19,31 @@ def _get_memory(memory_id: str) -> dict | None:
 
 
 @router.get("/memories")
-async def list_memories(category: str | None = None, limit: int = 50):
-    """List all memories, optionally filtered by category."""
+async def list_memories(
+    category: str | None = None,
+    claim_status: str | None = None,
+    limit: int = 50,
+):
+    """List all memories, optionally filtered by category / claim_status."""
     return await asyncio.to_thread(
-        memory_engine.list_memories, category=category, limit=limit,
+        read_ports.query_memories,
+        category=category,
+        claim_status=claim_status,
+        limit=limit,
     )
 
 
 @router.get("/memories/grouped")
-async def list_memories_grouped(limit: int = 100):
+async def list_memories_grouped(
+    claim_status: str | None = None,
+    limit: int = 100,
+):
     """List memories for the Memory Explorer UI."""
-    rows = await asyncio.to_thread(memory_engine.list_memories, limit=limit)
+    rows = await asyncio.to_thread(
+        read_ports.query_memories,
+        claim_status=claim_status,
+        limit=limit,
+    )
     return {"memories": rows}
 
 

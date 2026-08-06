@@ -170,6 +170,7 @@
 | DELETE | `/api/work-items/{item_id}` | auth | — | Delete Work Item |
 | GET | `/api/work-items/{item_id}` | auth | — | Get Work Item |
 | PATCH | `/api/work-items/{item_id}` | auth | — | Update Work Item |
+| POST | `/api/work-items/{item_id}/cancel` | auth | — | Cancel Work Item |
 | GET | `/api/work-items/{item_id}/children` | auth | — | Get Children |
 | POST | `/api/work-items/{item_id}/decompose` | auth | — | Decompose Work Item |
 | GET | `/api/work-items/{item_id}/events` | auth | — | Get Events |

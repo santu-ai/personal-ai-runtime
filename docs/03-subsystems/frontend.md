@@ -21,8 +21,10 @@
 | `/chat/:conversationId` | `pages/ChatPage.tsx` | 活跃会话 → `ChatView` |
 | `/goals` | `pages/Goals.tsx` | 目标列表 + 详情 |
 | `/goals/:goalId` | `pages/Goals.tsx` | 目标详情 |
+| `/tasks` | `pages/Tasks.tsx` | 后台/可执行任务列表 |
+| `/tasks/:taskId` | `pages/Tasks.tsx` | 任务详情（plan / 进度 / 执行·取消） |
 | `/inbox` | `pages/Inbox.tsx` | 邮件分拣 |
-| `/memories` | `pages/Memories.tsx` | 记忆列表 + 图谱（含 `?tab=portrait` 画像面板） |
+| `/memories` | `pages/Memories.tsx` | 记忆列表 + 图谱（含 `?tab=portrait` 画像、`?tab=review` 待确认） |
 | `/dashboard` | `pages/Dashboard.tsx` | 总览仪表盘（含 `?tab=trust` 信任报告面板） |
 | `/settings` | `pages/Settings.tsx` | LLM/邮件/MCP/数据设置 |
 | `/approvals` | `pages/Approvals.tsx` | 审批队列 |

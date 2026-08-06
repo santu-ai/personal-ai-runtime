@@ -18,6 +18,20 @@ def test_generate_morning_brief_assembles_text(monkeypatch):
         "app.core.runtime.read_ports.query_inbox_emails",
         lambda **kwargs: [{"id": "1"}, {"id": "2"}, {"id": "3"}],
     )
+    monkeypatch.setattr(
+        "app.core.runtime.read_ports.count_memories",
+        lambda **kwargs: (
+            2 if kwargs.get("claim_status") == "proposed" else 0
+        ),
+    )
+    monkeypatch.setattr(
+        "app.core.runtime.read_ports.query_memories",
+        lambda **kwargs: (
+            [{"content": "User prefers dark mode"}, {"content": "Lives in Shanghai"}]
+            if kwargs.get("claim_status") == "proposed"
+            else []
+        ),
+    )
 
     result = generate_morning_brief()
 
@@ -25,13 +39,18 @@ def test_generate_morning_brief_assembles_text(monkeypatch):
     assert "(进度 40%)" in result.brief
     assert "未读邮件: 3 封" in result.brief
     assert "今日日程: 2 个" in result.brief
+    assert "待确认记忆: 2 条" in result.brief
+    assert "dark mode" in result.brief
+    assert "/memories?tab=review" in result.brief
     assert result.goals_count == 1
     assert result.inbox_count == 3
     assert result.calendar_count == 2
+    assert result.proposed_count == 2
     assert result.errors == []
     assert "goals" in result.steps_ms
     assert "inbox" in result.steps_ms
     assert "calendar" in result.steps_ms
+    assert "proposed_memories" in result.steps_ms
 
 
 def test_generate_morning_brief_degrades_on_source_failure(monkeypatch):
@@ -50,10 +69,20 @@ def test_generate_morning_brief_degrades_on_source_failure(monkeypatch):
         "app.core.runtime.read_ports.query_inbox_emails",
         lambda **kwargs: [],
     )
+    monkeypatch.setattr(
+        "app.core.runtime.read_ports.count_memories",
+        lambda **kwargs: 0,
+    )
+    monkeypatch.setattr(
+        "app.core.runtime.read_ports.query_memories",
+        lambda **kwargs: [],
+    )
 
     result = generate_morning_brief()
 
     assert result.brief.startswith("早安！")
     assert result.calendar_count == 0
+    assert result.proposed_count == 0
     assert any("calendar" in e for e in result.errors)
     assert "今日日程: 0 个" in result.brief
+    assert "待确认记忆: 0 条" in result.brief

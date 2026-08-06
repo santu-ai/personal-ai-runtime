@@ -495,3 +495,49 @@ def request_work_item_execute(item_id: str) -> dict[str, Any]:
         raise RuntimeError("Work item missing after execute request")
     return updated
 
+
+def work_item_execution_snapshot(item_id: str, item: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Aggregate plan steps + progress + Lane-A execution row for the Tasks UI."""
+    import json
+
+    from app.core.runtime.plan_resume import load_plan_progress
+
+    row = item if item is not None else query_work_item(item_id)
+    if row is None:
+        raise KeyError(item_id)
+
+    plan_raw = row.get("executable_plan")
+    steps: list = []
+    if isinstance(plan_raw, str) and plan_raw.strip():
+        try:
+            plan_obj = json.loads(plan_raw)
+        except json.JSONDecodeError:
+            plan_obj = None
+        if isinstance(plan_obj, dict) and isinstance(plan_obj.get("steps"), list):
+            steps = plan_obj["steps"]
+
+    progress = load_plan_progress(item_id, kernel=kernel())
+    resume_from = int(progress.resume_from) if progress is not None else 0
+    previous_output = dict(progress.previous_output or {}) if progress else {}
+
+    exec_id = f"exec_{item_id}"
+    scheduled = kernel().read_scheduled_execution(exec_id)
+    handler: dict[str, Any] | None = None
+    if scheduled is not None:
+        handler = {
+            "id": scheduled.id,
+            "status": scheduled.status,
+            "dead_letter": bool(getattr(scheduled, "dead_letter", False)),
+            "retry_count": int(getattr(scheduled, "retry_count", 0) or 0),
+            "handler_name": getattr(scheduled, "handler_name", "") or "",
+            "started_at": getattr(scheduled, "started_at", None),
+            "completed_at": getattr(scheduled, "completed_at", None),
+        }
+
+    return {
+        "steps": steps,
+        "resume_from": resume_from,
+        "previous_output": previous_output,
+        "handler_execution": handler,
+    }
+

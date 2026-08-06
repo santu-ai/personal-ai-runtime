@@ -6,23 +6,24 @@
 ## 当前状态
 
 - 当前分支：`main`（开发阶段）
-- 进行中任务 / WIP：无
+- 进行中任务 / WIP：无（Wave A 已落地）
 - 已知坏点 / 待办：无阻塞项；God 拆分仍受 runtime_files 零和约束
-- 最近审阅：2026-08-05 Alembic 已压回唯一 `0001_consolidated`；harness §9 + conventions 已写
+- 最近审阅：2026-08-05 Wave A（Tasks / claim review / 对话建议 UX）
 
 ## 产品观察（后续规划候选）
 
+- Wave B：Monitor×1–2、Telegram 双向网关（见产品讨论）
 - God Object（`query_builder`/`main`/`mcp_mesh`/`agent_scheduler`）受概念压缩约束，不能无配对拆文件；优先单文件内 helper（见 conventions）。
 
 ## 近期改动日志
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
+| 2026-08-06 | Wave A：Tasks/claim review/建议 UX；召回 over-fetch + proposed count 修复 | 准备推送 |
 | 2026-08-05 | Alembic 压回唯一 `0001`（对齐 schema_ddl）；删 6 增量；harness §9 + conventions | verify_alembic OK；准备提交 |
 | 2026-08-05 | 单文件优化：query_builder safe_*；cancel/denied/timer/lifespan 去重 | commit `6c3dc28` |
 | 2026-08-05 | 收口审查遗留：payload upcast；alembic 链守卫；desktop/docs | commit `ac9abb5` |
 | 2026-08-05 | P0：删休眠子系统；执行可信/白名单；ADR-R017 | commit `fddafb3` |
-| 2026-08-05 | 执行可信化 E-1~E-9 并收口架构评估 | commit `b4f2ad0` |
 
 ## 备注
 
