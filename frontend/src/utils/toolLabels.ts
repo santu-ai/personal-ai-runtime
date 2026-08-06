@@ -48,6 +48,25 @@ const TOOL_LABELS: Record<string, ToolLabel> = {
     icon: "🖥️",
     describeArgs: (a) => `$ ${a.command || "?"}`,
   },
+  set_timer: {
+    label: "创建定时提醒",
+    icon: "⏰",
+    describeArgs: (a) => `⏱ ${a.message || a.delay_seconds || "?"}`,
+  },
+  delete_goal: {
+    label: "删除目标",
+    icon: "🗑️",
+    describeArgs: (a) => {
+      const gid = typeof a.goal_id === "string" ? a.goal_id.slice(0, 8) : "?";
+      return `🗑️ ${gid}`;
+    },
+  },
+  computer_screenshot: { label: "截取屏幕", icon: "📸" },
+  computer_click: { label: "点击屏幕", icon: "👆" },
+  computer_type: { label: "键盘输入", icon: "⌨️" },
+  computer_move: { label: "移动鼠标", icon: "🖱️" },
+  computer_scroll: { label: "滚动屏幕", icon: "🖱️" },
+  computer_key: { label: "按下按键", icon: "⌨️" },
   git_status: { label: "查看 Git 状态", icon: "📊" },
   git_log: { label: "查看提交历史", icon: "📜" },
   git_diff: { label: "查看代码变更", icon: "📝" },

@@ -6,20 +6,21 @@
 ## 当前状态
 
 - 当前分支：`main`（开发阶段）
-- 进行中任务 / WIP：无（URL Diff Monitor 已落地）
+- 进行中任务 / WIP：无
 - 已知坏点 / 待办：无阻塞项；God 拆分仍受 runtime_files 零和约束
-- 最近审阅：2026-08-06 URL Diff Monitor；已提炼 TimerFired/APP_STORAGE merge 纪律进 conventions + task-recipes §10
+- 最近审阅：2026-08-06 Tasks plan 预览确认 + needs_user 建议话术；harness TimerFired 纪律已推送
 
 ## 产品观察（后续规划候选）
 
-- Wave B 续：Telegram 双向网关；任务面板 previous_output / plan 预览确认
+- Wave B 续：Telegram 双向网关
 - God Object（`query_builder`/`main`/`mcp_mesh`/`agent_scheduler`）受概念压缩约束，不能无配对拆文件；优先单文件内 helper（见 conventions）。
 
 ## 近期改动日志
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
-| 2026-08-06 | URL Diff Monitor：hash 基线 + 变化通知；TimerFired fire-and-forget + save 严格 merge | 修 P1 超时/兄弟列表清空 |
+| 2026-08-06 | Tasks：执行日志 + plan 预览确认；needs_user 建议话术全覆盖 | 前端 |
+| 2026-08-06 | harness：TimerFired / APP_STORAGE merge / Monitor SOP | commit `e555558` |
 | 2026-08-06 | Inbox Filter Monitor：poll 后求值 + Dashboard 监控 tab | 零新事件/表 |
 | 2026-08-06 | Wave A：Tasks/claim review/建议 UX；召回 over-fetch + proposed count 修复 | 准备推送 |
 | 2026-08-05 | Alembic 压回唯一 `0001`（对齐 schema_ddl）；删 6 增量；harness §9 + conventions | verify_alembic OK；准备提交 |

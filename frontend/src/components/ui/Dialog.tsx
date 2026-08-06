@@ -72,7 +72,7 @@ export default function Dialog({
           {title}
         </h3>
         {description && (
-          <p id={descId} className="text-sm text-fg-secondary mt-2">
+          <p id={descId} className="text-sm text-fg-secondary mt-2 whitespace-pre-wrap">
             {description}
           </p>
         )}

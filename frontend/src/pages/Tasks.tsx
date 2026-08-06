@@ -9,12 +9,15 @@ import {
 import { useErrorStore } from "../stores/errorStore";
 import { useInvalidateTasks, useTaskDetailQuery, useTasksQuery } from "../hooks/useTasksQuery";
 import Button from "../components/ui/Button";
+import Dialog from "../components/ui/Dialog";
 import EmptyState from "../components/ui/EmptyState";
 import { timeAgo } from "../utils/timeUtils";
+import { toolLabel } from "../utils/toolLabels";
 import { ListTodo } from "lucide-react";
 
 const ACTIVE_STATUSES = new Set(["pending", "running", "blocked", "waiting_approval"]);
 const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
+const OUTPUT_PREVIEW = 240;
 
 function statusLabel(status: string): string {
   const map: Record<string, string> = {
@@ -43,6 +46,38 @@ function stepToolName(step: Record<string, unknown>): string {
   return typeof tool === "string" ? tool : "step";
 }
 
+function formatStepLabel(step: Record<string, unknown>): string {
+  const name = stepToolName(step);
+  return name === "step" ? "step" : toolLabel(name);
+}
+
+function truncateOutput(value: unknown): string {
+  const text =
+    typeof value === "string"
+      ? value
+      : value == null
+        ? ""
+        : JSON.stringify(value, null, 0);
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  if (collapsed.length <= OUTPUT_PREVIEW) return collapsed;
+  return `${collapsed.slice(0, OUTPUT_PREVIEW - 1)}…`;
+}
+
+function formatPlanConfirmDescription(
+  steps: Array<Record<string, unknown>>,
+  resumeFrom: number,
+): string {
+  if (steps.length === 0) {
+    return "将启动该任务的可执行计划。";
+  }
+  const lines = steps.map((step, idx) => {
+    const mark = idx < resumeFrom ? "✓" : idx === resumeFrom ? "→" : "·";
+    return `${mark} ${idx + 1}. ${formatStepLabel(step)}`;
+  });
+  const start = Math.min(resumeFrom, steps.length - 1) + 1;
+  return `将从第 ${start} / ${steps.length} 步开始执行：\n${lines.join("\n")}`;
+}
+
 export default function TasksPage() {
   const { taskId: urlTaskId } = useParams();
   const navigate = useNavigate();
@@ -55,12 +90,17 @@ export default function TasksPage() {
   const invalidate = useInvalidateTasks();
   const addError = useErrorStore((s) => s.addError);
   const [busy, setBusy] = useState(false);
+  const [confirmExecute, setConfirmExecute] = useState(false);
 
   const notFound =
     Boolean(urlTaskId) &&
     detailIsError &&
     detailError instanceof ApiError &&
     detailError.status === 404;
+
+  useEffect(() => {
+    setConfirmExecute(false);
+  }, [urlTaskId]);
 
   useEffect(() => {
     if (listError) {
@@ -90,6 +130,7 @@ export default function TasksPage() {
   const handleExecute = async () => {
     if (!selected) return;
     setBusy(true);
+    setConfirmExecute(false);
     try {
       await executeWorkItem(selected.id);
       invalidate();
@@ -154,6 +195,10 @@ export default function TasksPage() {
   const execution = selected?.execution;
   const steps = execution?.steps ?? [];
   const resumeFrom = execution?.resume_from ?? 0;
+  const previousOutput = execution?.previous_output ?? {};
+  const outputEntries = Object.entries(previousOutput).filter(
+    ([, v]) => v !== undefined && v !== null && String(v).length > 0,
+  );
   const handler = execution?.handler_execution;
   const canExecute =
     selected &&
@@ -236,7 +281,11 @@ export default function TasksPage() {
                 </div>
                 <div className="flex gap-2 shrink-0">
                   {canExecute && (
-                    <Button size="sm" onClick={handleExecute} disabled={busy}>
+                    <Button
+                      size="sm"
+                      onClick={() => setConfirmExecute(true)}
+                      disabled={busy}
+                    >
                       执行
                     </Button>
                   )}
@@ -275,7 +324,7 @@ export default function TasksPage() {
                         }`}
                       >
                         <span className="text-xs text-fg-tertiary mr-2">#{idx + 1}</span>
-                        <span className="font-medium">{stepToolName(step)}</span>
+                        <span className="font-medium">{formatStepLabel(step)}</span>
                         {done && <span className="ml-2 text-xs text-success">已完成</span>}
                         {current && <span className="ml-2 text-xs text-insight">当前</span>}
                       </li>
@@ -294,6 +343,25 @@ export default function TasksPage() {
                 </p>
               )}
             </section>
+
+            {outputEntries.length > 0 && (
+              <section className="space-y-2">
+                <h3 className="text-sm font-medium text-fg-primary">执行日志</h3>
+                <ul className="space-y-2">
+                  {outputEntries.map(([key, value]) => (
+                    <li
+                      key={key}
+                      className="rounded-lg border border-border-subtle px-3 py-2 text-sm"
+                    >
+                      <div className="text-xs text-fg-tertiary mb-1 font-mono">{key}</div>
+                      <pre className="text-fg-secondary whitespace-pre-wrap break-all text-xs">
+                        {truncateOutput(value)}
+                      </pre>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
 
             {handler && (
               <section className="space-y-1 text-sm">
@@ -324,6 +392,18 @@ export default function TasksPage() {
           </div>
         )}
       </main>
+
+      <Dialog
+        open={confirmExecute && Boolean(selected && canExecute)}
+        title="确认执行计划"
+        description={formatPlanConfirmDescription(steps, resumeFrom)}
+        confirmLabel="确认执行"
+        cancelLabel="取消"
+        onConfirm={() => {
+          void handleExecute();
+        }}
+        onCancel={() => setConfirmExecute(false)}
+      />
     </div>
   );
 }

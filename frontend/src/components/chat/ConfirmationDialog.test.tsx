@@ -28,13 +28,13 @@ const toolCall = {
 };
 
 describe("ConfirmationDialog", () => {
-  it("renders human-readable label and expandable arguments", () => {
+  it("renders suggestion framing and expandable arguments for write_file", () => {
     renderWithRouter(
       <ConfirmationDialog toolCall={toolCall} onConfirm={vi.fn()} onDeny={vi.fn()} />,
     );
 
-    expect(screen.getByText(/确认写入文件/)).toBeInTheDocument();
-    expect(screen.getByText(/确认后将执行工具并自动续写一次回复/)).toBeInTheDocument();
+    expect(screen.getByText(/建议：写入文件/)).toBeInTheDocument();
+    expect(screen.getByText(/确认后将写入文件/)).toBeInTheDocument();
     const summary = screen.getByText("查看详细参数");
     fireEvent.click(summary);
     expect(screen.getByText(/"path"/)).toBeInTheDocument();
@@ -48,7 +48,7 @@ describe("ConfirmationDialog", () => {
       <ConfirmationDialog toolCall={toolCall} onConfirm={onConfirm} onDeny={onDeny} />,
     );
 
-    const confirmBtn = within(container).getByRole("button", { name: "确认执行" });
+    const confirmBtn = within(container).getByRole("button", { name: "确认写入" });
     fireEvent.click(confirmBtn);
 
     expect(onConfirm).toHaveBeenCalledOnce();
@@ -130,5 +130,41 @@ describe("ConfirmationDialog", () => {
 
     expect(screen.getByText("建议：创建定时提醒")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "确认创建" })).toBeInTheDocument();
+  });
+
+  it("shows suggestion framing for send_email", () => {
+    renderWithRouter(
+      <ConfirmationDialog
+        toolCall={{
+          index: 0,
+          id: "tc-6",
+          function_name: "send_email",
+          arguments: JSON.stringify({ to: "a@b.com", subject: "hi" }),
+        }}
+        onConfirm={vi.fn()}
+        onDeny={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("建议：发送邮件")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认发送" })).toBeInTheDocument();
+  });
+
+  it("shows default suggestion framing for computer_click", () => {
+    renderWithRouter(
+      <ConfirmationDialog
+        toolCall={{
+          index: 0,
+          id: "tc-7",
+          function_name: "computer_click",
+          arguments: JSON.stringify({ x: 10, y: 20 }),
+        }}
+        onConfirm={vi.fn()}
+        onDeny={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/^建议：/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认执行" })).toBeInTheDocument();
   });
 });

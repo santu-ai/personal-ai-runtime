@@ -22,7 +22,7 @@
 | `/goals` | `pages/Goals.tsx` | 目标列表 + 详情 |
 | `/goals/:goalId` | `pages/Goals.tsx` | 目标详情 |
 | `/tasks` | `pages/Tasks.tsx` | 后台/可执行任务列表 |
-| `/tasks/:taskId` | `pages/Tasks.tsx` | 任务详情（plan / 进度 / 执行·取消） |
+| `/tasks/:taskId` | `pages/Tasks.tsx` | 任务详情（plan / 进度 / 执行日志 / 执行前确认） |
 | `/inbox` | `pages/Inbox.tsx` | 邮件分拣 |
 | `/memories` | `pages/Memories.tsx` | 记忆列表 + 图谱（含 `?tab=portrait` 画像、`?tab=review` 待确认） |
 | `/dashboard` | `pages/Dashboard.tsx` | 总览仪表盘（含 `?tab=trust` 信任报告、`?tab=monitors` 收件箱/网页监控） |
@@ -125,7 +125,7 @@ types.ts       ← 共享 TS 接口
 
 - **`ui/`** — 原语：`Button`、`Badge`、`Card`、`Dialog`、`EmptyState`、`ErrorBoundary`、`Input`（含 `PasswordInput`）、`Spinner`。每个有 co-located `.test.tsx`。
 - **`layout/`** — `Sidebar.tsx`（聊天列表 + 导航，[`Sidebar.tsx:22-37`](../../frontend/src/components/layout/Sidebar.tsx)）、`NotificationBell.tsx`。
-- **`chat/`** — `ChatView.tsx`（活跃会话）、`ChatHome.tsx`（落地）、`MessageItem.tsx`、`ToolCallDisplay.tsx`、`ContextPanel.tsx`、`ConfirmationDialog.tsx`（审批模态）、`VoiceInput.tsx`、`CodeBlock.tsx`（懒加载 `react-syntax-highlighter`）。
+- **`chat/`** — `ChatView.tsx`（活跃会话）、`ChatHome.tsx`（落地）、`MessageItem.tsx`、`ToolCallDisplay.tsx`、`ContextPanel.tsx`、`ConfirmationDialog.tsx`（审批模态；`needs_user` 写工具用「建议」话术）、`VoiceInput.tsx`、`CodeBlock.tsx`（懒加载 `react-syntax-highlighter`）。
 - **`notifications/`** — `NotificationDetailModal.tsx`。
 - **`onboarding/`** — `OnboardingWizard.tsx`（首次运行，`localStorage.onboarding_done` 门控）。
 
