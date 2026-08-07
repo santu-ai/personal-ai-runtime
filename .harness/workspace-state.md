@@ -8,17 +8,19 @@
 - 当前分支：`main`（开发阶段）
 - 进行中任务 / WIP：无
 - 已知坏点 / 待办：无阻塞项；God 拆分仍受 runtime_files 零和约束
-- 最近审阅：2026-08-06 Tasks plan 预览确认 + needs_user 建议话术；harness TimerFired 纪律已推送
+- 最近审阅：2026-08-07 记忆 triage（bulk/筛选/count + extractor 减流入）
 
 ## 产品观察（后续规划候选）
 
 - Wave B 续：Telegram 双向网关
+- 可选：proposed 过期自动拒绝（用户未选）
 - God Object（`query_builder`/`main`/`mcp_mesh`/`agent_scheduler`）受概念压缩约束，不能无配对拆文件；优先单文件内 helper（见 conventions）。
 
 ## 近期改动日志
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
+| 2026-08-07 | 记忆 triage：bulk/筛选/count + extractor 减流入（含 distance 去重修复） | 待推送 |
 | 2026-08-06 | Tasks：执行日志 + plan 预览确认；needs_user 建议话术全覆盖 | 前端 |
 | 2026-08-06 | harness：TimerFired / APP_STORAGE merge / Monitor SOP | commit `e555558` |
 | 2026-08-06 | Inbox Filter Monitor：poll 后求值 + Dashboard 监控 tab | 零新事件/表 |

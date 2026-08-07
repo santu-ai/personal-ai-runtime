@@ -3,13 +3,36 @@
 import { API_BASE, request } from "./core";
 import type { MemoryRow, MemoriesGrouped } from "./types";
 
+export interface ListMemoriesGroupedOpts {
+  claimStatus?: string;
+  category?: string;
+  order?: string;
+  limit?: number;
+}
+
 export async function listMemoriesGrouped(
-  claimStatus?: string,
+  opts: ListMemoriesGroupedOpts | string = {},
 ): Promise<MemoriesGrouped> {
-  const qs = claimStatus
-    ? `?claim_status=${encodeURIComponent(claimStatus)}`
-    : "";
-  return request<MemoriesGrouped>(`${API_BASE}/memory/memories/grouped${qs}`);
+  const normalized: ListMemoriesGroupedOpts =
+    typeof opts === "string" ? { claimStatus: opts } : opts;
+  const qs = new URLSearchParams();
+  if (normalized.claimStatus) qs.set("claim_status", normalized.claimStatus);
+  if (normalized.category) qs.set("category", normalized.category);
+  if (normalized.order) qs.set("order", normalized.order);
+  if (normalized.limit != null) qs.set("limit", String(normalized.limit));
+  const suffix = qs.toString() ? `?${qs}` : "";
+  return request<MemoriesGrouped>(`${API_BASE}/memory/memories/grouped${suffix}`);
+}
+
+export async function countMemories(opts?: {
+  claimStatus?: string;
+  category?: string;
+}): Promise<{ count: number }> {
+  const qs = new URLSearchParams();
+  if (opts?.claimStatus) qs.set("claim_status", opts.claimStatus);
+  if (opts?.category) qs.set("category", opts.category);
+  const suffix = qs.toString() ? `?${qs}` : "";
+  return request<{ count: number }>(`${API_BASE}/memory/memories/count${suffix}`);
 }
 
 export async function searchMemories(q: string, n = 5): Promise<MemoryRow[]> {
@@ -52,6 +75,16 @@ export async function rejectMemory(
   memoryId: string,
 ): Promise<{ status: string; claim_status: string }> {
   return request(`${API_BASE}/memory/memories/${memoryId}/reject`, { method: "POST" });
+}
+
+export async function bulkClaimAction(
+  action: "ratify" | "reject",
+  ids: string[],
+): Promise<{ status: string; action: string; ok: number; skipped: Array<{ id: string; reason: string }> }> {
+  return request(`${API_BASE}/memory/memories/claims/bulk`, {
+    method: "POST",
+    body: JSON.stringify({ action, ids }),
+  });
 }
 
 export interface MemoryProvenanceEvent {

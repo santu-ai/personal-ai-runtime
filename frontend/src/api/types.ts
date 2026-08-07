@@ -134,6 +134,8 @@ export interface MemoryRow {
 
 export interface MemoriesGrouped {
   memories: MemoryRow[];
+  /** Untruncated match count (may exceed memories.length when limit truncates). */
+  total?: number;
 }
 
 export interface SystemInfo {

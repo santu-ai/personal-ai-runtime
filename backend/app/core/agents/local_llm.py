@@ -58,8 +58,9 @@ class LocalLLM:
     async def extract_memories(self, conversation_text: str) -> list[str]:
         """Extract user preferences and facts from conversation."""
         prompt = (
-            "Extract key facts and preferences about the user from this conversation. "
-            "Return each fact as a separate line. Only extract clear, explicit information.\n\n"
+            "Extract durable, specific facts and preferences about the user. "
+            "One fact per line, no bullets. Max 3 facts. "
+            "Skip ephemeral chatter, questions, greetings, and vague statements.\n\n"
             f"{conversation_text[:3000]}"
         )
         llm_start = time.time()

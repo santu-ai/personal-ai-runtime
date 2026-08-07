@@ -6,12 +6,15 @@ import MemoriesPage from "./Memories";
 vi.mock("../api/client", () => ({
   listMemoriesGrouped: vi.fn().mockResolvedValue({
     memories: [{ id: "m1", content: "喜欢早起跑步", confidence: 0.9, category: "habit" }],
+    total: 1,
   }),
+  countMemories: vi.fn().mockResolvedValue({ count: 0 }),
   createMemory: vi.fn(),
   deleteMemory: vi.fn(),
   updateMemory: vi.fn(),
   ratifyMemory: vi.fn(),
   rejectMemory: vi.fn(),
+  bulkClaimAction: vi.fn(),
   getMemoryGraph: vi.fn(),
   getMemoryProvenance: vi.fn(),
   createConversation: vi.fn(),

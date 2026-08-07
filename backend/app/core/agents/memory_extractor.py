@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import re
 import time
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
@@ -29,6 +30,35 @@ ExtractFn = Callable[[str], Awaitable[list[str]]]
 _MAX_PENDING_TASKS = 3
 # Same turn (or identical text) scheduled twice within this window is dropped.
 _DEDUP_WINDOW_SEC = 120.0
+# Stricter than the historical 0.92 — near-paraphrases still flood proposed.
+_DEDUP_SIMILARITY = 0.85
+_MIN_FACT_CHARS = 12
+_MAX_FACT_CHARS = 280
+_MAX_FACTS_PER_TURN = 3
+
+_EXTRACT_PROMPT = (
+    "Extract durable, specific facts about the user from this conversation. "
+    "One fact per line, no bullets. Max 3 facts. "
+    "Skip ephemeral chatter, questions, greetings, and vague statements.\n\n"
+)
+
+# English phrases use word boundaries; CJK markers use plain substring match
+# because ``\b`` does not split continuous Chinese text.
+_NOISE_EN_RE = re.compile(
+    r"(?i)\b("
+    r"i don't know|as an ai|as a language model|"
+    r"user said|the user mentioned|the conversation"
+    r")\b"
+)
+_NOISE_CJK_MARKERS = (
+    "不知道",
+    "作为ai",
+    "作为AI",
+    "作为人工智能",
+    "用户说",
+    "对话中",
+    "根据对话",
+)
 
 
 class MemoryExtractor:
@@ -69,10 +99,7 @@ class MemoryExtractor:
             client, provider = llm_router.get_client()
             provider_name = provider.name
             provider_model = provider.model
-            prompt = (
-                "Extract key facts about the user from this conversation. "
-                "One fact per line, no bullets.\n\n" + conversation_text[:3000]
-            )
+            prompt = _EXTRACT_PROMPT + conversation_text[:3000]
             msg = {"role": "user", "content": prompt}
             egress_messages, _egress_audit = audit_llm_egress(
                 [msg], purpose="memory_extract",
@@ -126,6 +153,9 @@ class MemoryExtractor:
         If an existing memory is highly similar, the fact is skipped to avoid
         polluting the memory store with near-duplicates.
 
+        Low-quality / ephemeral lines are dropped before store so they never
+        enter ``proposed`` triage.
+
         When source_document_id is provided, every extracted memory is linked
         back to that document. (Knowledge Base was removed; the field remains
         available for future document-sourced extraction.)
@@ -140,8 +170,16 @@ class MemoryExtractor:
         facts = await self._extract(conversation_text)
         stored: list[str] = []
         for fact in facts:
+            if len(stored) >= _MAX_FACTS_PER_TURN:
+                logger.debug(
+                    "Capping extraction at %d facts/turn", _MAX_FACTS_PER_TURN,
+                )
+                break
             fact = fact.strip()
             if not fact:
+                continue
+            if self._is_low_quality(fact):
+                logger.debug("Skipping low-quality memory: %s", fact[:80])
                 continue
             if self._is_duplicate(fact):
                 logger.debug("Skipping duplicate memory: %s", fact[:80])
@@ -158,7 +196,39 @@ class MemoryExtractor:
         return stored
 
     @staticmethod
-    def _is_duplicate(fact: str, *, threshold: float = 0.92) -> bool:
+    def _is_low_quality(fact: str) -> bool:
+        """Return True for facts that should never enter proposed triage."""
+        if len(fact) < _MIN_FACT_CHARS or len(fact) > _MAX_FACT_CHARS:
+            return True
+        if fact.endswith("?") or fact.endswith("？"):
+            return True
+        if _NOISE_EN_RE.search(fact):
+            return True
+        compact = re.sub(r"\s+", "", fact)
+        if any(marker in fact or marker in compact for marker in _NOISE_CJK_MARKERS):
+            return True
+        # Reject lines that are mostly whitespace / punctuation after strip.
+        alnum = sum(1 for c in fact if c.isalnum())
+        if alnum < 8:
+            return True
+        return False
+
+    @staticmethod
+    def _hit_similarity(hit: dict) -> float | None:
+        """Normalize recall hit scores; Chroma returns distance, not similarity."""
+        score = hit.get("score")
+        if isinstance(score, (int, float)):
+            return float(score)
+        similarity = hit.get("similarity")
+        if isinstance(similarity, (int, float)):
+            return float(similarity)
+        distance = hit.get("distance")
+        if isinstance(distance, (int, float)):
+            return 1.0 - float(distance)
+        return None
+
+    @staticmethod
+    def _is_duplicate(fact: str, *, threshold: float = _DEDUP_SIMILARITY) -> bool:
         """Return True if a near-duplicate memory already exists.
 
         Uses semantic recall via the Kernel; when the vector store is
@@ -174,8 +244,8 @@ class MemoryExtractor:
             existing = (hit.get("content") or "").strip()
             if not existing:
                 continue
-            score = hit.get("score") or hit.get("similarity")
-            if isinstance(score, (int, float)) and score >= threshold:
+            sim = MemoryExtractor._hit_similarity(hit)
+            if sim is not None and sim >= threshold:
                 return True
             if existing == fact or existing in fact or fact in existing:
                 return True

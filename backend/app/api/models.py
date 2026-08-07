@@ -1,5 +1,7 @@
 """Pydantic request models for API endpoints."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 MEMORY_CATEGORIES = frozenset({
@@ -114,6 +116,13 @@ class UpdateMemoryRequest(BaseModel):
                 f"category must be one of: {', '.join(sorted(MEMORY_CATEGORIES))}"
             )
         return value
+
+
+class BulkClaimActionRequest(BaseModel):
+    """Batch ratify / reject for claim-origin memories awaiting review."""
+
+    action: Literal["ratify", "reject"]
+    ids: list[str] = Field(..., min_length=1, max_length=100)
 
 
 # ── Trigger models ────────────────────────────────────────────────────────

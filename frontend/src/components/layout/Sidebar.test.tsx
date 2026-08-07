@@ -13,7 +13,7 @@ vi.mock("../../hooks/useInboxQuery", () => ({
 }));
 
 vi.mock("../../hooks/useMemoriesQuery", () => ({
-  useMemoriesGroupedQuery: () => ({ data: { memories: [], recent: [] } }),
+  useProposedMemoryCountQuery: () => ({ data: 0 }),
 }));
 
 function renderSidebar(initialEntry = "/", overrides = {}) {

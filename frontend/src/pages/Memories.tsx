@@ -7,6 +7,7 @@ import {
   updateMemory,
   ratifyMemory,
   rejectMemory,
+  bulkClaimAction,
   getMemoryGraph,
   ApiError,
   type MemoryRow,
@@ -14,16 +15,23 @@ import {
 } from "../api/client";
 import { useErrorStore } from "../stores/errorStore";
 import { useQuickChat } from "../hooks/useQuickChat";
-import { useMemoriesGroupedQuery } from "../hooks/useMemoriesQuery";
+import {
+  useMemoriesGroupedQuery,
+  useProposedMemoryCountQuery,
+} from "../hooks/useMemoriesQuery";
 import { queryKeys } from "../hooks/useWsInvalidationBridge";
 import { PortraitPanel } from "./Portrait";
 import Dialog from "../components/ui/Dialog";
 import MemoryGraphView from "../components/memories/MemoryGraphView";
-import MemoryListItem, { getCategoryMeta } from "../components/memories/MemoryListItem";
+import MemoryListItem, {
+  CATEGORY_LABELS,
+  getCategoryMeta,
+} from "../components/memories/MemoryListItem";
 import MemoryProvenanceDialog from "../components/memories/MemoryProvenanceDialog";
 import { Network, List, User, ClipboardCheck } from "lucide-react";
 
 type ViewMode = "list" | "graph" | "portrait" | "review";
+type ReviewOrder = "created_at_desc" | "created_at_asc";
 
 export default function MemoriesPage() {
   const queryClient = useQueryClient();
@@ -45,13 +53,28 @@ export default function MemoriesPage() {
     }
   };
 
+  const [reviewCategory, setReviewCategory] = useState<string>("");
+  const [reviewOrder, setReviewOrder] = useState<ReviewOrder>("created_at_desc");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+
   const { data, isLoading: loading, error: loadError } = useMemoriesGroupedQuery();
   const {
     data: proposedData,
     isLoading: proposedLoading,
-  } = useMemoriesGroupedQuery("proposed");
+    isFetching: proposedFetching,
+  } = useMemoriesGroupedQuery({
+    claimStatus: "proposed",
+    category: reviewCategory || undefined,
+    order: reviewOrder,
+    limit: 100,
+  });
+  const { data: proposedTotal = 0 } = useProposedMemoryCountQuery();
   const memories = data?.memories ?? [];
   const proposedMemories = proposedData?.memories ?? [];
+  const filteredTotal = proposedData?.total ?? proposedMemories.length;
+  // First visit only — filter changes keep placeholderData so the page stays up.
+  const reviewInitialLoading = viewMode === "review" && proposedLoading && !proposedData;
   const addError = useErrorStore((s) => s.addError);
   const quickChat = useQuickChat();
 
@@ -69,6 +92,18 @@ export default function MemoriesPage() {
     void queryClient.invalidateQueries({ queryKey: queryKeys.memoriesGrouped });
   };
 
+  // Drop selections that left the current page after filter/refresh.
+  useEffect(() => {
+    const visible = new Set(proposedMemories.map((m) => m.id));
+    setSelectedIds((prev) => {
+      const next = new Set([...prev].filter((id) => visible.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [proposedMemories]);
+
+  const allPageSelected =
+    proposedMemories.length > 0 && proposedMemories.every((m) => selectedIds.has(m.id));
+
   const grouped = useMemo(() => {
     const map: Record<string, MemoryRow[]> = {};
     for (const m of memories) {
@@ -85,8 +120,6 @@ export default function MemoriesPage() {
       addError(msg, "记忆");
     }
   }, [loadError, addError]);
-
-  // ── Mutations (manual invalidate; useMigration migration tracked separately) ──
 
   const handleCreate = async () => {
     if (!newContent.trim()) return;
@@ -141,6 +174,51 @@ export default function MemoriesPage() {
     }
   };
 
+  const toggleSelect = (m: MemoryRow) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(m.id)) next.delete(m.id);
+      else next.add(m.id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllPage = () => {
+    if (allPageSelected) {
+      setSelectedIds(new Set());
+      return;
+    }
+    setSelectedIds(new Set(proposedMemories.map((m) => m.id)));
+  };
+
+  const handleBulk = async (action: "ratify" | "reject") => {
+    const ids = [...selectedIds];
+    if (ids.length === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      const result = await bulkClaimAction(action, ids);
+      setSelectedIds(new Set());
+      invalidateMemories();
+      if (result.skipped.length > 0) {
+        addError(
+          `已处理 ${result.ok} 条，跳过 ${result.skipped.length} 条`,
+          "记忆",
+        );
+      }
+    } catch (err) {
+      addError(
+        err instanceof ApiError
+          ? err.message
+          : action === "ratify"
+            ? "批量确认失败"
+            : "批量拒绝失败",
+        "记忆",
+      );
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   const handleEdit = (m: MemoryRow) => {
     setEditTarget(m);
     setEditContent(m.content);
@@ -150,8 +228,6 @@ export default function MemoriesPage() {
   const handleContinueChat = (m: MemoryRow) => {
     quickChat({ title: "记忆讨论", prompt: `基于以下记忆继续讨论：\n${m.content}` });
   };
-
-  // ── Graph loading (lazy on first switch to graph view) ──
 
   useEffect(() => {
     if (viewMode !== "graph" || graphData) return;
@@ -174,7 +250,7 @@ export default function MemoriesPage() {
     };
   }, [viewMode, graphData, addError]);
 
-  if (loading || (viewMode === "review" && proposedLoading)) {
+  if (loading || reviewInitialLoading) {
     return <div className="flex-1 flex items-center justify-center text-fg-tertiary">加载中…</div>;
   }
 
@@ -186,10 +262,10 @@ export default function MemoriesPage() {
             <h2 className="text-2xl font-bold mb-2 text-fg-primary">AI 对你的理解</h2>
             <p className="text-sm text-fg-tertiary">
               这些是我从我们的对话中记住的。{memories.length > 0 && `共 ${memories.length} 条。`}
-              {proposedMemories.length > 0 && (
+              {proposedTotal > 0 && (
                 <span className="text-warning">
                   {" "}
-                  其中 {proposedMemories.length} 条待你确认。
+                  其中 {proposedTotal} 条待你确认。
                 </span>
               )}
               每一条都让我更好地帮助你。
@@ -217,9 +293,9 @@ export default function MemoriesPage() {
             >
               <ClipboardCheck size={14} />
               待确认
-              {proposedMemories.length > 0 && (
+              {proposedTotal > 0 && (
                 <span className="ml-1 text-[10px] min-w-[1.1rem] h-4 px-1 rounded-full bg-warning/20 text-warning flex items-center justify-center">
-                  {proposedMemories.length > 99 ? "99+" : proposedMemories.length}
+                  {proposedTotal > 99 ? "99+" : proposedTotal}
                 </span>
               )}
             </button>
@@ -255,9 +331,79 @@ export default function MemoriesPage() {
             <p className="text-sm text-fg-secondary">
               以下记忆由对话推断而来，确认后才会进入聊天上下文；拒绝则不会再被召回。
             </p>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="text-xs text-fg-secondary flex items-center gap-1.5">
+                分类
+                <select
+                  value={reviewCategory}
+                  onChange={(e) => setReviewCategory(e.target.value)}
+                  className="bg-surface-raised border border-border-subtle rounded px-2 py-1 text-sm text-fg-primary"
+                >
+                  <option value="">全部</option>
+                  {Object.entries(CATEGORY_LABELS).map(([key, meta]) => (
+                    <option key={key} value={key}>
+                      {meta.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-xs text-fg-secondary flex items-center gap-1.5">
+                排序
+                <select
+                  value={reviewOrder}
+                  onChange={(e) => setReviewOrder(e.target.value as ReviewOrder)}
+                  className="bg-surface-raised border border-border-subtle rounded px-2 py-1 text-sm text-fg-primary"
+                >
+                  <option value="created_at_desc">最新优先</option>
+                  <option value="created_at_asc">最早优先</option>
+                </select>
+              </label>
+              <span className="text-xs text-fg-tertiary">
+                显示 {proposedMemories.length}
+                {filteredTotal > proposedMemories.length
+                  ? ` / 筛选共 ${filteredTotal}`
+                  : ""}
+                {proposedTotal !== filteredTotal ? `（全部待确认 ${proposedTotal}）` : ""}
+                {proposedFetching && !proposedLoading ? " · 更新中…" : ""}
+              </span>
+            </div>
+
+            {proposedMemories.length > 0 && (
+              <div className="flex flex-wrap items-center gap-3 py-2 border-y border-border-subtle">
+                <label className="text-sm text-fg-secondary flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={allPageSelected}
+                    onChange={toggleSelectAllPage}
+                    className="rounded border-border-strong"
+                  />
+                  全选当前页（{proposedMemories.length}）
+                </label>
+                <button
+                  type="button"
+                  disabled={selectedIds.size === 0 || bulkBusy}
+                  onClick={() => void handleBulk("ratify")}
+                  className="px-3 py-1.5 text-sm rounded-lg bg-success/15 text-success hover:bg-success/25 disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                >
+                  批量确认（{selectedIds.size}）
+                </button>
+                <button
+                  type="button"
+                  disabled={selectedIds.size === 0 || bulkBusy}
+                  onClick={() => void handleBulk("reject")}
+                  className="px-3 py-1.5 text-sm rounded-lg bg-surface-overlay text-fg-secondary hover:text-fg-primary disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                >
+                  批量拒绝（{selectedIds.size}）
+                </button>
+              </div>
+            )}
+
             {proposedMemories.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-fg-tertiary text-sm">没有待确认的记忆。</p>
+                <p className="text-fg-tertiary text-sm">
+                  {reviewCategory ? "该分类下没有待确认的记忆。" : "没有待确认的记忆。"}
+                </p>
               </div>
             ) : (
               <ul className="space-y-2">
@@ -265,6 +411,8 @@ export default function MemoriesPage() {
                   <MemoryListItem
                     key={m.id}
                     memory={m}
+                    selected={selectedIds.has(m.id)}
+                    onToggleSelect={toggleSelect}
                     onRatify={handleRatify}
                     onReject={handleReject}
                     onEdit={handleEdit}
@@ -332,7 +480,6 @@ export default function MemoriesPage() {
             )}
           </>
         ) : (
-          /* Graph View */
           <div className="bg-surface-raised border border-border-subtle rounded-lg p-4">
             {graphLoading ? (
               <div className="flex items-center justify-center h-96 text-fg-tertiary">

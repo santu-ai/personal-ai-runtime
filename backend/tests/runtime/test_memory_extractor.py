@@ -108,6 +108,55 @@ class TestMemoryExtractor:
         stored = await extractor.extract_and_store("anything")
         assert stored == [], "high-similarity hit should suppress storage"
 
+    async def test_chroma_distance_dedup(self, tmp_path, monkeypatch):
+        """Chroma hits expose distance (not score); near-duplicates must still drop."""
+        db = Database(db_path=str(tmp_path / "extract_dist.db"))
+
+        class FakeIndex:
+            def search_memories(self, query, n_results=5):
+                return [
+                    {
+                        "id": "m1",
+                        "content": "user prefers python",
+                        "distance": 0.1,  # similarity 0.9 >= 0.85
+                    }
+                ]
+
+            def index_memory(self, content, metadata=None, memory_id=None):
+                return f"emb_{memory_id}"
+
+            def delete_memory(self, memory_id):
+                return None
+
+            def list_memory_ids(self):
+                return []
+
+        k = Kernel(db=db, memory_index=FakeIndex())
+        monkeypatch.setattr("app.core.agents.memory_engine.kernel", k)
+
+        async def extract_new(_t: str) -> list[str]:
+            return ["User prefers the Python language"]
+
+        extractor = MemoryExtractor(extract_fn=extract_new)
+        stored = await extractor.extract_and_store("anything")
+        assert stored == [], "distance-based similarity must suppress storage"
+
+    async def test_cjk_meta_noise_filtered(self, tmp_path, monkeypatch):
+        db = Database(db_path=str(tmp_path / "extract_cjk.db"))
+        k = Kernel(db=db, memory_index=None)
+        monkeypatch.setattr("app.core.agents.memory_engine.kernel", k)
+        monkeypatch.setattr(memory_engine, "search_relevant_memories", lambda *_a, **_k: [])
+
+        async def extract_noise(_t: str) -> list[str]:
+            return [
+                "用户说喜欢用 Python 写后端服务",
+                "User prefers TypeScript for frontend work",
+            ]
+
+        extractor = MemoryExtractor(extract_fn=extract_noise)
+        stored = await extractor.extract_and_store("anything")
+        assert stored == ["User prefers TypeScript for frontend work"]
+
     async def test_schedule_holds_strong_task_reference(self):
         """schedule() must retain the task so CPython does not GC it."""
         extractor = MemoryExtractor(extract_fn=stub_extract)
@@ -130,6 +179,37 @@ class TestMemoryExtractor:
         # Saturate the pending set with unfinished stubs.
         extractor._pending_tasks = {_Forever(), _Forever(), _Forever()}  # type: ignore[arg-type]
         assert extractor.schedule("overflow", dedup_key="overflow-1") is False
+
+    async def test_low_quality_fact_not_stored(self, tmp_path, monkeypatch):
+        db = Database(db_path=str(tmp_path / "extract_lq.db"))
+        k = Kernel(db=db, memory_index=None)
+        monkeypatch.setattr("app.core.agents.memory_engine.kernel", k)
+        monkeypatch.setattr(memory_engine, "search_relevant_memories", lambda *_a, **_k: [])
+
+        async def extract_noise(_t: str) -> list[str]:
+            return ["hi", "User likes?", "As an AI I cannot know", "User prefers TypeScript for frontend work"]
+
+        extractor = MemoryExtractor(extract_fn=extract_noise)
+        stored = await extractor.extract_and_store("anything")
+        assert stored == ["User prefers TypeScript for frontend work"]
+
+    async def test_caps_facts_per_turn(self, tmp_path, monkeypatch):
+        db = Database(db_path=str(tmp_path / "extract_cap.db"))
+        k = Kernel(db=db, memory_index=None)
+        monkeypatch.setattr("app.core.agents.memory_engine.kernel", k)
+        monkeypatch.setattr(memory_engine, "search_relevant_memories", lambda *_a, **_k: [])
+
+        async def extract_many(_t: str) -> list[str]:
+            return [
+                "User lives in Hangzhou near West Lake",
+                "User has two cats named Mochi and Tofu",
+                "User runs 5km every weekday morning",
+                "User prefers mechanical keyboards with tactile switches",
+            ]
+
+        extractor = MemoryExtractor(extract_fn=extract_many)
+        stored = await extractor.extract_and_store("anything")
+        assert len(stored) == 3
 
     async def test_cloud_extract_failure_is_logged(self, monkeypatch):
         """Cloud extraction failures must surface as a warning, not silent []."""
@@ -168,3 +248,4 @@ class TestMemoryExtractor:
             "Cloud memory extraction failed" in str(call)
             for call in mock_warn.call_args_list
         )
+

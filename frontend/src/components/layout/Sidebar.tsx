@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { useApprovalsQuery } from "../../hooks/useApprovalsQuery";
 import { useInboxQuery } from "../../hooks/useInboxQuery";
-import { useMemoriesGroupedQuery } from "../../hooks/useMemoriesQuery";
+import { useProposedMemoryCountQuery } from "../../hooks/useMemoriesQuery";
 
 const PRIMARY_NAV = [{ path: "/", label: "对话", icon: MessageSquare }];
 
@@ -72,10 +72,9 @@ export default function Sidebar({
   const [dataExpanded, setDataExpanded] = useState(isDataRoute(location.pathname));
   const { data: approvals = [] } = useApprovalsQuery();
   const { data: inbox } = useInboxQuery();
-  const { data: proposedMemories } = useMemoriesGroupedQuery("proposed");
+  const { data: proposedCount = 0 } = useProposedMemoryCountQuery();
   const approvalCount = approvals.length;
   const inboxCount = inbox?.emails?.length ?? 0;
-  const proposedCount = proposedMemories?.memories?.length ?? 0;
 
   const badgeFor = (key: "inbox" | "approvals" | "memories" | null) => {
     if (key === "approvals") return approvalCount;

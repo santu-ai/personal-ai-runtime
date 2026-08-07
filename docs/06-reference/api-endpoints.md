@@ -67,6 +67,8 @@
 | GET | `/api/memory/graph` | auth | — | Get Memory Graph |
 | GET | `/api/memory/memories` | auth | — | List Memories |
 | POST | `/api/memory/memories` | auth | public | Create Memory |
+| POST | `/api/memory/memories/claims/bulk` | auth | — | Bulk Claim Action |
+| GET | `/api/memory/memories/count` | auth | — | Count Memories |
 | GET | `/api/memory/memories/grouped` | auth | — | List Memories Grouped |
 | GET | `/api/memory/memories/search` | auth | public | Search Memories |
 | DELETE | `/api/memory/memories/{memory_id}` | auth | — | Delete Memory |

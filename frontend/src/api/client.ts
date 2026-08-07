@@ -98,12 +98,14 @@ export {
 // Memory
 export {
   listMemoriesGrouped,
+  countMemories,
   searchMemories,
   createMemory,
   deleteMemory,
   updateMemory,
   ratifyMemory,
   rejectMemory,
+  bulkClaimAction,
   getMemoryGraph,
   getMemoryProvenance,
 } from "./memory";
@@ -113,6 +115,7 @@ export type {
   MemoryGraph,
   MemoryProvenance,
   MemoryProvenanceEvent,
+  ListMemoriesGroupedOpts,
 } from "./memory";
 
 // Telemetry
