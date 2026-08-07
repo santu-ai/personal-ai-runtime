@@ -165,7 +165,9 @@ export function buildCommonMocks(): MockApiRouter {
           created_at: "2026-06-10T00:00:00Z",
         },
       ],
+      total: 1,
     })
+    .json("/api/memory/memories/count", { count: 0 })
     .json("/api/memory/memories/search", [])
     .json("/api/dashboard", {
       generated_at: "2026-06-28T10:00:00Z",
