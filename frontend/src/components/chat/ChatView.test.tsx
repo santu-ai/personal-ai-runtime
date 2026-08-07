@@ -65,6 +65,19 @@ vi.mock("../../hooks/useMemoriesGroupedQuery", () => ({
   useMemoriesGroupedQuery: () => memoriesState,
 }));
 
+vi.mock("../../hooks/useSettingsQuery", () => ({
+  useCapabilityPolicyQuery: () => ({
+    data: {
+      auto_allow: ["read_file"],
+      needs_user: ["write_file", "apply_patch", "send_email"],
+      forbidden: ["shell_exec"],
+      external_ingestion: [],
+    },
+    isLoading: false,
+    error: null,
+  }),
+}));
+
 function renderChatView() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
@@ -133,7 +146,7 @@ describe("ChatView", () => {
     fireEvent.click(sendButtons[sendButtons.length - 1]);
 
     await waitFor(() => {
-      expect(screen.getByText(/确认写入文件/)).toBeInTheDocument();
+      expect(screen.getByText(/建议：写入文件/)).toBeInTheDocument();
     });
     expect(screen.queryByText(/抱歉，未能生成回复/)).not.toBeInTheDocument();
   });
@@ -168,10 +181,10 @@ describe("ChatView", () => {
     fireEvent.click(sendButtons[sendButtons.length - 1]);
 
     await waitFor(() => {
-      expect(screen.getByText(/确认写入文件/)).toBeInTheDocument();
+      expect(screen.getByText(/建议：写入文件/)).toBeInTheDocument();
     });
 
-    const confirmBtn = within(container).getByRole("button", { name: "确认执行" });
+    const confirmBtn = within(container).getByRole("button", { name: "确认写入" });
     fireEvent.click(confirmBtn);
 
     await waitFor(() => {

@@ -107,21 +107,20 @@ def test_summarize_memory_stats_forwards(fake_kernel):
 class _FakeMemoryEngine:
     def __init__(self):
         self.context_calls: list[tuple] = []
-        self.search_calls: list[tuple] = []
+        self.recall_calls: list[tuple] = []
         self._hits = []
 
     def retrieve_context_string(self, query: str, *, max_memories: int):
         self.context_calls.append((query, max_memories))
         return "## Relevant Memories\n- recalled"
 
-    def search_relevant_memories(self, query: str, *, n_results: int):
-        self.search_calls.append((query, n_results))
-        return self._hits
-
-    def _enrich_recall_hits(self, hits):
-        return hits
+    def recall_for_context(self, query: str, *, max_memories: int = 3, overfetch_factor: int = 4):
+        self.recall_calls.append((query, max_memories))
+        return list(self._hits)[:max_memories]
 
     def format_memory_context(self, enriched):
+        if not enriched:
+            return "## Relevant Memories\n- (none)"
         return "## Relevant Memories\n- " + "\n- ".join(
             m.get("content", "") for m in enriched
         )
@@ -148,7 +147,7 @@ def test_retrieve_memory_with_sources_returns_context_and_sources(fake_memory_en
     ]
     context, sources = memory_port.retrieve_memory_with_sources("tea", max_memories=3)
 
-    assert fake_memory_engine.search_calls == [("tea", 3)]
+    assert fake_memory_engine.recall_calls == [("tea", 3)]
     assert "likes tea" in context
     assert sources == [
         {"id": "m1", "type": "memory", "title": ("likes tea" * 20)[:80]},
