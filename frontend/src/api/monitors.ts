@@ -25,9 +25,7 @@ export interface UrlMonitor {
 }
 
 export async function listInboxFilters(): Promise<InboxFilter[]> {
-  const data = await request<{ filters: InboxFilter[] }>(
-    `${API_BASE}/monitors/inbox-filters`,
-  );
+  const data = await request<{ filters: InboxFilter[] }>(`${API_BASE}/monitors/inbox-filters`);
   return data.filters ?? [];
 }
 
@@ -58,9 +56,7 @@ export async function deleteInboxFilter(filterId: string): Promise<void> {
 }
 
 export async function listUrlMonitors(): Promise<UrlMonitor[]> {
-  const data = await request<{ monitors: UrlMonitor[] }>(
-    `${API_BASE}/monitors/url-monitors`,
-  );
+  const data = await request<{ monitors: UrlMonitor[] }>(`${API_BASE}/monitors/url-monitors`);
   return data.monitors ?? [];
 }
 

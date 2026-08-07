@@ -15,10 +15,7 @@ import {
 } from "../api/client";
 import { useErrorStore } from "../stores/errorStore";
 import { useQuickChat } from "../hooks/useQuickChat";
-import {
-  useMemoriesGroupedQuery,
-  useProposedMemoryCountQuery,
-} from "../hooks/useMemoriesQuery";
+import { useMemoriesGroupedQuery, useProposedMemoryCountQuery } from "../hooks/useMemoriesQuery";
 import { queryKeys } from "../hooks/useWsInvalidationBridge";
 import { PortraitPanel } from "./Portrait";
 import Dialog from "../components/ui/Dialog";
@@ -200,10 +197,7 @@ export default function MemoriesPage() {
       setSelectedIds(new Set());
       invalidateMemories();
       if (result.skipped.length > 0) {
-        addError(
-          `已处理 ${result.ok} 条，跳过 ${result.skipped.length} 条`,
-          "记忆",
-        );
+        addError(`已处理 ${result.ok} 条，跳过 ${result.skipped.length} 条`, "记忆");
       }
     } catch (err) {
       addError(
@@ -263,10 +257,7 @@ export default function MemoriesPage() {
             <p className="text-sm text-fg-tertiary">
               这些是我从我们的对话中记住的。{memories.length > 0 && `共 ${memories.length} 条。`}
               {proposedTotal > 0 && (
-                <span className="text-warning">
-                  {" "}
-                  其中 {proposedTotal} 条待你确认。
-                </span>
+                <span className="text-warning"> 其中 {proposedTotal} 条待你确认。</span>
               )}
               每一条都让我更好地帮助你。
             </p>
@@ -361,9 +352,7 @@ export default function MemoriesPage() {
               </label>
               <span className="text-xs text-fg-tertiary">
                 显示 {proposedMemories.length}
-                {filteredTotal > proposedMemories.length
-                  ? ` / 筛选共 ${filteredTotal}`
-                  : ""}
+                {filteredTotal > proposedMemories.length ? ` / 筛选共 ${filteredTotal}` : ""}
                 {proposedTotal !== filteredTotal ? `（全部待确认 ${proposedTotal}）` : ""}
                 {proposedFetching && !proposedLoading ? " · 更新中…" : ""}
               </span>

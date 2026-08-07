@@ -8,7 +8,7 @@
 
 ### 路由挂载
 
-13 个 router 在 [`main.py`](../../backend/app/main.py) 挂载：
+14 个 router 在 [`main.py`](../../backend/app/main.py) 挂载：
 
 ```
 chat, dashboard, system, settings_api, memory, notifications,

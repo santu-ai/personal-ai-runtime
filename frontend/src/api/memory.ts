@@ -80,7 +80,12 @@ export async function rejectMemory(
 export async function bulkClaimAction(
   action: "ratify" | "reject",
   ids: string[],
-): Promise<{ status: string; action: string; ok: number; skipped: Array<{ id: string; reason: string }> }> {
+): Promise<{
+  status: string;
+  action: string;
+  ok: number;
+  skipped: Array<{ id: string; reason: string }>;
+}> {
   return request(`${API_BASE}/memory/memories/claims/bulk`, {
     method: "POST",
     body: JSON.stringify({ action, ids }),

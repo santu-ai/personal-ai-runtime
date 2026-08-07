@@ -2,11 +2,7 @@
  * Background + task work-item queries for the Tasks panel.
  */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  listWorkItems,
-  getWorkItem,
-  type WorkItem,
-} from "../api/client";
+import { listWorkItems, getWorkItem, type WorkItem } from "../api/client";
 import { queryKeys } from "./useWsInvalidationBridge";
 
 async function listTasksAndBackground(): Promise<WorkItem[]> {

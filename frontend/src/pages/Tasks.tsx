@@ -1,11 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  ApiError,
-  cancelWorkItem,
-  executeWorkItem,
-  type WorkItem,
-} from "../api/client";
+import { ApiError, cancelWorkItem, executeWorkItem, type WorkItem } from "../api/client";
 import { useErrorStore } from "../stores/errorStore";
 import { useInvalidateTasks, useTaskDetailQuery, useTasksQuery } from "../hooks/useTasksQuery";
 import Button from "../components/ui/Button";
@@ -53,11 +48,7 @@ function formatStepLabel(step: Record<string, unknown>): string {
 
 function truncateOutput(value: unknown): string {
   const text =
-    typeof value === "string"
-      ? value
-      : value == null
-        ? ""
-        : JSON.stringify(value, null, 0);
+    typeof value === "string" ? value : value == null ? "" : JSON.stringify(value, null, 0);
   const collapsed = text.replace(/\s+/g, " ").trim();
   if (collapsed.length <= OUTPUT_PREVIEW) return collapsed;
   return `${collapsed.slice(0, OUTPUT_PREVIEW - 1)}…`;
@@ -111,10 +102,7 @@ export default function TasksPage() {
 
   useEffect(() => {
     if (detailError && !(detailError instanceof ApiError && detailError.status === 404)) {
-      addError(
-        detailError instanceof ApiError ? detailError.message : "加载任务详情失败",
-        "任务",
-      );
+      addError(detailError instanceof ApiError ? detailError.message : "加载任务详情失败", "任务");
     }
   }, [detailError, addError]);
 
@@ -210,9 +198,7 @@ export default function TasksPage() {
     selected.status !== "running" &&
     selected.status !== "waiting_approval";
   const canCancel =
-    selected &&
-    selected.work_type === "background" &&
-    !TERMINAL_STATUSES.has(selected.status);
+    selected && selected.work_type === "background" && !TERMINAL_STATUSES.has(selected.status);
 
   return (
     <div className="flex-1 flex min-h-0">
@@ -249,10 +235,7 @@ export default function TasksPage() {
 
       <main className="flex-1 overflow-y-auto p-6">
         {!urlTaskId && (
-          <EmptyState
-            title="选择一个任务"
-            description="查看执行计划、进度，并启动或取消。"
-          />
+          <EmptyState title="选择一个任务" description="查看执行计划、进度，并启动或取消。" />
         )}
         {notFound && (
           <EmptyState
@@ -277,18 +260,12 @@ export default function TasksPage() {
                     <span className={statusClass(selected.status)}>
                       {statusLabel(selected.status)}
                     </span>
-                    {handler?.dead_letter ? (
-                      <span className="text-danger"> · 死信</span>
-                    ) : null}
+                    {handler?.dead_letter ? <span className="text-danger"> · 死信</span> : null}
                   </p>
                 </div>
                 <div className="flex gap-2 shrink-0">
                   {canExecute && (
-                    <Button
-                      size="sm"
-                      onClick={() => setConfirmExecute(true)}
-                      disabled={busy}
-                    >
+                    <Button size="sm" onClick={() => setConfirmExecute(true)} disabled={busy}>
                       执行
                     </Button>
                   )}
@@ -340,7 +317,7 @@ export default function TasksPage() {
                   进度：{Math.min(resumeFrom, steps.length)} / {steps.length} 步
                   {typeof selected.progress === "number"
                     ? ` · work progress ${Math.round(
-                        (selected.progress <= 1 ? selected.progress * 100 : selected.progress),
+                        selected.progress <= 1 ? selected.progress * 100 : selected.progress,
                       )}%`
                     : null}
                 </p>

@@ -71,7 +71,9 @@ export default function MemoryListItem({
             <span className="text-xs text-fg-tertiary">{getCategoryMeta(m.category).title}</span>
           )}
           {m.origin === "claim" && <span className="text-xs text-insight/70">对话推断</span>}
-          {m.origin === "self_report" && <span className="text-xs text-success/70">你告诉我的</span>}
+          {m.origin === "self_report" && (
+            <span className="text-xs text-success/70">你告诉我的</span>
+          )}
           {m.claim_status === "proposed" && (
             <span className="text-xs bg-warning/15 text-warning px-1.5 py-0.5 rounded">待确认</span>
           )}

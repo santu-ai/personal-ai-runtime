@@ -50,7 +50,16 @@ def count_enabled(monitors: list[dict[str, Any]] | None = None) -> int:
 
 def _clamp_interval(raw: object) -> int:
     try:
-        value = int(raw)  # type: ignore[arg-type]
+        if isinstance(raw, bool):
+            raise TypeError("bool is not a valid interval")
+        if isinstance(raw, int):
+            value = raw
+        elif isinstance(raw, float):
+            value = int(raw)
+        elif isinstance(raw, str):
+            value = int(raw.strip())
+        else:
+            raise TypeError(f"unsupported interval type: {type(raw).__name__}")
     except (TypeError, ValueError):
         value = DEFAULT_INTERVAL_MINUTES
     return max(MIN_INTERVAL_MINUTES, min(MAX_INTERVAL_MINUTES, value))

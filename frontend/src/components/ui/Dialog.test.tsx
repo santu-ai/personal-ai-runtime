@@ -55,9 +55,7 @@ describe("Dialog", () => {
 
   it("disables confirm when confirmDisabled is set", () => {
     const onConfirm = vi.fn();
-    render(
-      <Dialog open title="删除" confirmDisabled onConfirm={onConfirm} onCancel={vi.fn()} />,
-    );
+    render(<Dialog open title="删除" confirmDisabled onConfirm={onConfirm} onCancel={vi.fn()} />);
     const btn = screen.getByRole("button", { name: "确认" });
     expect(btn).toBeDisabled();
     fireEvent.click(btn);

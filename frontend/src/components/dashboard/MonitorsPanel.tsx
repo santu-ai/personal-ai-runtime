@@ -148,9 +148,7 @@ export default function MonitorsPanel() {
     try {
       const result = await checkUrlMonitors(true);
       setCheckHint(
-        result.notified > 0
-          ? `检查完成：${result.notified} 处有更新`
-          : "检查完成：暂无变化",
+        result.notified > 0 ? `检查完成：${result.notified} 处有更新` : "检查完成：暂无变化",
       );
       await refresh();
     } catch (err) {
@@ -248,7 +246,12 @@ export default function MonitorsPanel() {
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-sm font-medium text-fg-primary">网页变化监控</h3>
-          <Button size="sm" variant="subtle" disabled={busy || urlMonitors.length === 0} onClick={handleCheckNow}>
+          <Button
+            size="sm"
+            variant="subtle"
+            disabled={busy || urlMonitors.length === 0}
+            onClick={handleCheckNow}
+          >
             立即检查
           </Button>
         </div>
@@ -276,9 +279,7 @@ export default function MonitorsPanel() {
             添加网页监控
           </Button>
         </div>
-        {checkHint ? (
-          <p className="text-xs text-fg-tertiary">{checkHint}</p>
-        ) : null}
+        {checkHint ? <p className="text-xs text-fg-tertiary">{checkHint}</p> : null}
 
         {urlMonitors.length === 0 ? (
           <EmptyState
