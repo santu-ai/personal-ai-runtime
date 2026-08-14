@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import NoReturn
 
 from app.config import BASE_DIR, settings
 from app.core.harness.mcp_hub import (
@@ -12,7 +13,7 @@ from app.core.harness.mcp_hub import (
 )
 
 
-def _fail(message: str, reason: str = OUTCOME_TOOL_EXECUTION_FAILURE) -> None:
+def _fail(message: str, reason: str = OUTCOME_TOOL_EXECUTION_FAILURE) -> NoReturn:
     """Abort a filesystem tool with a typed failure (Kernel → CapabilityFailed)."""
     raise ToolInvokeError(reason, message)
 

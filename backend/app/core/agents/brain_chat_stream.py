@@ -67,21 +67,24 @@ async def chat_stream(
 
     restored = bool(ckpt and isinstance(ckpt.get("messages"), list) and ckpt["messages"])
     taint_registry.clear(correlation_id)
-    if restored and ckpt.get("tainted"):
-        taint_registry.mark(
-            correlation_id,
-            source="external_ingestion",
-            reason="chat_ckpt",
-        )
     if restored:
+        assert ckpt is not None
+        if ckpt.get("tainted"):
+            taint_registry.mark(
+                correlation_id,
+                source="external_ingestion",
+                reason="chat_ckpt",
+            )
         messages = list(ckpt["messages"])
         tool_iterations = int(ckpt.get("iteration") or 0)
         saved_user = str(ckpt.get("user_message") or "")
         if saved_user:
             user_message = saved_user
+        all_tc_for_msg = list(ckpt.get("tool_calls") or [])
     else:
         messages = brain.build_messages(conversation, user_message, system_prompt=system_prompt)
         tool_iterations = 0
+        all_tc_for_msg = []
     # E-8: save_user_message is idempotent per correlation_id so scheduler
     # retries of ChatRequested do not duplicate the user turn.
     conversation.save_user_message(user_message)
@@ -113,9 +116,6 @@ async def chat_stream(
     full_content = ""
     cumulative_prompt_tokens = 0
     loop_start = time.time()
-    all_tc_for_msg: list[dict] = (
-        list(ckpt.get("tool_calls") or []) if restored else []
-    )
 
     while tool_iterations < settings.max_tool_iterations:
         if time.time() - loop_start > settings.total_tool_loop_timeout:
