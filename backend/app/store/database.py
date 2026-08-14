@@ -15,7 +15,7 @@ import sys
 import threading
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Generator
+from typing import TYPE_CHECKING, BinaryIO, Generator
 
 from app.store.bound_proxy import BoundProxy
 
@@ -42,7 +42,7 @@ class InstanceLock:
 
     def __init__(self, lock_path: str):
         self.lock_path = lock_path
-        self._handle = None
+        self._handle: BinaryIO | None = None
 
     @property
     def held(self) -> bool:
