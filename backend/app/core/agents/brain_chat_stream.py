@@ -57,7 +57,6 @@ async def chat_stream(
     """
     if not correlation_id:
         correlation_id = f"chat-{uuid.uuid4().hex[:16]}"
-    taint_registry.clear(correlation_id)
     conversation.correlation_id = correlation_id
 
     ckpt: dict | None = None
@@ -67,6 +66,13 @@ async def chat_stream(
         logger.debug("chat checkpoint load failed", exc_info=True)
 
     restored = bool(ckpt and isinstance(ckpt.get("messages"), list) and ckpt["messages"])
+    taint_registry.clear(correlation_id)
+    if restored and ckpt.get("tainted"):
+        taint_registry.mark(
+            correlation_id,
+            source="external_ingestion",
+            reason="chat_ckpt",
+        )
     if restored:
         messages = list(ckpt["messages"])
         tool_iterations = int(ckpt.get("iteration") or 0)
@@ -90,6 +96,8 @@ async def chat_stream(
                     "messages": messages,
                     "iteration": tool_iterations,
                     "status": "in_progress",
+                    "tainted": taint_registry.is_tainted(correlation_id),
+                    "tool_calls": all_tc_for_msg,
                 },
                 kernel=kernel,
             )
@@ -105,7 +113,9 @@ async def chat_stream(
     full_content = ""
     cumulative_prompt_tokens = 0
     loop_start = time.time()
-    all_tc_for_msg: list[dict] = []
+    all_tc_for_msg: list[dict] = (
+        list(ckpt.get("tool_calls") or []) if restored else []
+    )
 
     while tool_iterations < settings.max_tool_iterations:
         if time.time() - loop_start > settings.total_tool_loop_timeout:

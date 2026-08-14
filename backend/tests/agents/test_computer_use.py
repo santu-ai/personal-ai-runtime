@@ -6,6 +6,20 @@ import json
 import pytest
 
 from app.core.harness.builtin_tools.computer_use import ComputerUseServer
+from app.core.harness.mcp_hub import ToolInvokeError
+
+
+def _force_missing_deps(server: ComputerUseServer) -> None:
+    def _mss():
+        raise RuntimeError("Computer Use requires 'mss' library. Install: pip install mss")
+
+    def _pyautogui():
+        raise RuntimeError(
+            "Computer Use requires 'pyautogui' library. Install: pip install pyautogui"
+        )
+
+    server._ensure_mss = _mss  # type: ignore[method-assign]
+    server._ensure_pyautogui = _pyautogui  # type: ignore[method-assign]
 
 
 class TestComputerUseServer:
@@ -16,15 +30,15 @@ class TestComputerUseServer:
 
     def test_screenshot_without_mss(self):
         s = ComputerUseServer()
-        result = json.loads(s.screenshot())
-        assert result["status"] == "error"
-        assert "mss" in result["error"].lower()
+        _force_missing_deps(s)
+        with pytest.raises(ToolInvokeError, match="mss"):
+            s.screenshot()
 
     def test_click_without_pyautogui(self):
         s = ComputerUseServer()
-        result = json.loads(s.click(100, 100))
-        assert result["status"] == "error"
-        assert "pyautogui" in result["error"].lower()
+        _force_missing_deps(s)
+        with pytest.raises(ToolInvokeError, match="pyautogui"):
+            s.click(100, 100)
 
     def test_type_empty_text(self):
         s = ComputerUseServer()
@@ -42,9 +56,8 @@ class TestComputerUseServer:
 
         try:
             s._pyautogui = FakePyautogui()
-            result = json.loads(s.type_text(""))
-            assert result["status"] == "error"
-            assert "empty" in result["error"].lower()
+            with pytest.raises(ToolInvokeError, match="Empty"):
+                s.type_text("")
         finally:
             s._pyautogui = None
 
@@ -80,9 +93,11 @@ class TestComputerUseServer:
 
     def test_screenshot_full_vs_primary(self):
         s = ComputerUseServer()
-        r1 = json.loads(s.screenshot("full"))
-        r2 = json.loads(s.screenshot("primary"))
-        assert r1["status"] == r2["status"]
+        _force_missing_deps(s)
+        with pytest.raises(ToolInvokeError):
+            s.screenshot("full")
+        with pytest.raises(ToolInvokeError):
+            s.screenshot("primary")
 
 
 @pytest.mark.parametrize(
@@ -105,5 +120,6 @@ class TestComputerUseServer:
 def test_methods_error_without_deps(method, args, kwargs):
     """Missing pyautogui/mss must fail closed for all input variants."""
     s = ComputerUseServer()
-    result = json.loads(getattr(s, method)(*args, **kwargs))
-    assert result["status"] == "error"
+    _force_missing_deps(s)
+    with pytest.raises(ToolInvokeError):
+        getattr(s, method)(*args, **kwargs)

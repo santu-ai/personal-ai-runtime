@@ -63,3 +63,31 @@ async def test_reconstruct_trace_after_success_and_failure(isolated_kernel):
     assert time_row["success"] is True
     assert trace["final_result"]["content"] == "done"
     assert trace["events"]
+
+
+@pytest.mark.asyncio
+async def test_reconstruct_deferred_approval_is_not_tool_failure(isolated_kernel):
+    k, _ = isolated_kernel
+    cid = "trace_defer"
+    k.emit_event(
+        "CapabilityDenied", "capability", "cap_write_file",
+        payload={
+            "name": "write_file",
+            "reason": "deferred",
+            "approval_id": "apr_1",
+        },
+        actor="user",
+        correlation_id=cid,
+    )
+    k.emit_event(
+        "CapabilityDenied", "capability", "cap_shell_exec",
+        payload={"name": "shell_exec", "reason": "forbidden_by_policy"},
+        actor="user",
+        correlation_id=cid,
+    )
+    trace = reconstruct_execution_trace(cid)
+    deferred = next(t for t in trace["tools"] if t["name"] == "write_file")
+    denied = next(t for t in trace["tools"] if t["name"] == "shell_exec")
+    assert deferred["success"] is False
+    assert deferred["outcome"] == "approval_required"
+    assert denied["outcome"] == "authorization_failure"

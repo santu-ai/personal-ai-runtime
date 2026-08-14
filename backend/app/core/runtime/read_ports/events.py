@@ -158,17 +158,24 @@ def reconstruct_execution_trace(correlation_id: str) -> dict[str, Any]:
                 "purpose": p.get("purpose"),
             })
         elif event.type in ("CapabilityInvoked", "CapabilityFailed", "CapabilityDenied"):
-            success = event.type == "CapabilityInvoked"
+            reason = str(p.get("reason") or "")
+            if event.type == "CapabilityInvoked":
+                success = True
+                outcome = p.get("outcome") or "success"
+            elif event.type == "CapabilityDenied":
+                deferred = reason == "deferred" or bool(p.get("approval_id"))
+                success = False
+                outcome = p.get("outcome") or (
+                    "approval_required" if deferred else "authorization_failure"
+                )
+            else:
+                success = False
+                outcome = p.get("outcome") or "tool_execution_failure"
             tools.append({
                 "name": p.get("name"),
                 "event": event.type,
                 "success": success,
-                "outcome": p.get("outcome") or (
-                    "success" if success else (
-                        "authorization_failure" if event.type == "CapabilityDenied"
-                        else "tool_execution_failure"
-                    )
-                ),
+                "outcome": outcome,
                 "error": p.get("error") or p.get("reason"),
                 "latency_ms": p.get("latency_ms"),
             })

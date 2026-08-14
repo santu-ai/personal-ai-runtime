@@ -12,6 +12,12 @@ import logging
 import sys
 from typing import Any
 
+from app.core.harness.mcp_hub import (
+    OUTCOME_TOOL_EXECUTION_FAILURE,
+    OUTCOME_TOOL_INVALID_RESULT,
+    ToolInvokeError,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -87,7 +93,7 @@ class ComputerUseServer:
                     "hint": "Image is base64-encoded PNG. Use screen coordinates (x,y) for click/type operations.",
                 })
         except Exception as e:
-            return json.dumps({"status": "error", "error": str(e)})
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
 
     def click(self, x: int, y: int, button: str = "left") -> str:
         """Click at screen coordinates."""
@@ -101,7 +107,7 @@ class ComputerUseServer:
                 "button": button,
             })
         except Exception as e:
-            return json.dumps({"status": "error", "error": str(e)})
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
 
     def type_text(self, text: str, interval: float = 0.05) -> str:
         """Type text at the current cursor position.
@@ -110,7 +116,7 @@ class ComputerUseServer:
         paste because ``typewrite`` can't emit those characters.
         """
         if not text:
-            return json.dumps({"status": "error", "error": "Empty text"})
+            raise ToolInvokeError(OUTCOME_TOOL_INVALID_RESULT, "Empty text")
 
         try:
             self._ensure_pyautogui()
@@ -128,7 +134,7 @@ class ComputerUseServer:
                 "method": method,
             })
         except Exception as e:
-            return json.dumps({"status": "error", "error": str(e)})
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
 
     def move(self, x: int, y: int, duration: float = 0.3) -> str:
         """Move mouse to coordinates (no click)."""
@@ -141,7 +147,7 @@ class ComputerUseServer:
                 "x": x, "y": y,
             })
         except Exception as e:
-            return json.dumps({"status": "error", "error": str(e)})
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
 
     def scroll(self, clicks: int = 3) -> str:
         """Scroll the mouse wheel."""
@@ -154,7 +160,7 @@ class ComputerUseServer:
                 "clicks": clicks,
             })
         except Exception as e:
-            return json.dumps({"status": "error", "error": str(e)})
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
 
     def press_key(self, key: str) -> str:
         """Press a keyboard key or combination."""
@@ -167,7 +173,7 @@ class ComputerUseServer:
                 "key": key,
             })
         except Exception as e:
-            return json.dumps({"status": "error", "error": str(e)})
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
 
     def screen_size(self) -> str:
         """Get the current screen resolution."""
@@ -180,7 +186,7 @@ class ComputerUseServer:
                 "height": h,
             })
         except Exception as e:
-            return json.dumps({"status": "error", "error": str(e)})
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
 
 
 computer_use_server = ComputerUseServer()

@@ -110,3 +110,62 @@ async def test_missing_file_is_capability_failed_not_invoked(kernel, tmp_path):
     events = kernel.read_events(correlation_id="truth_missing_file")
     assert any(e.type == "CapabilityFailed" for e in events)
     assert not any(e.type == "CapabilityInvoked" for e in events)
+
+
+@pytest.mark.asyncio
+async def test_invalid_calendar_name_is_capability_failed(kernel):
+    result = await kernel.invoke_capability(
+        "list_calendar_events",
+        {"calendar": "../etc"},
+        actor="user",
+        correlation_id="truth_bad_cal",
+    )
+    assert result["status"] == "error"
+    assert result["outcome"] == "tool_invalid_result"
+    events = kernel.read_events(correlation_id="truth_bad_cal")
+    assert any(e.type == "CapabilityFailed" for e in events)
+    assert not any(e.type == "CapabilityInvoked" for e in events)
+
+
+@pytest.mark.asyncio
+async def test_nonpositive_timer_is_capability_failed(kernel):
+    result = await kernel.invoke_capability(
+        "set_timer",
+        {"minutes": 0, "hours": 0, "message": "noop"},
+        actor="user",
+        correlation_id="truth_bad_timer",
+    )
+    assert result["status"] == "error"
+    assert result["outcome"] == "tool_invalid_result"
+    events = kernel.read_events(correlation_id="truth_bad_timer")
+    assert any(e.type == "CapabilityFailed" for e in events)
+    assert not any(e.type == "CapabilityInvoked" for e in events)
+
+
+def test_delete_missing_goal_raises_not_json_success(isolated_kernel):
+    from app.core.harness.builtin_tools.goals import _writer_delete_goal
+    from app.core.harness.mcp_hub import ToolInvokeError
+
+    with pytest.raises(ToolInvokeError, match="未找到目标"):
+        _writer_delete_goal("does-not-exist")
+
+
+@pytest.mark.asyncio
+async def test_read_inbox_email_imap_failure_is_capability_failed(kernel, monkeypatch):
+    from app.core.harness.builtin_tools.email import EmailFetchError, email_server
+
+    def boom(_mid: str):
+        raise EmailFetchError("IMAP login failed")
+
+    monkeypatch.setattr(email_server, "read_email_body", boom)
+    result = await kernel.invoke_capability(
+        "read_inbox_email",
+        {"message_id": "<missing@example.com>"},
+        actor="user",
+        correlation_id="truth_mid_imap",
+    )
+    assert result["status"] == "error"
+    assert result["outcome"] == "tool_execution_failure"
+    events = kernel.read_events(correlation_id="truth_mid_imap")
+    assert any(e.type == "CapabilityFailed" for e in events)
+    assert not any(e.type == "CapabilityInvoked" for e in events)

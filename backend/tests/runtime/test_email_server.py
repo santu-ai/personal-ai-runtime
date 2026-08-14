@@ -4,6 +4,8 @@ import email
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from app.core.harness.builtin_tools.email import (
     EmailServer,
     _format_date,
@@ -86,6 +88,20 @@ def test_read_inbox_email_by_message_id_not_found(monkeypatch):
 
     data = json.loads(server.read_inbox_email(message_id="<missing@example.com>"))
     assert "error" in data
+
+
+def test_read_inbox_email_by_message_id_imap_failure_raises(monkeypatch):
+    from app.core.harness.builtin_tools.email import EmailFetchError
+    from app.core.harness.mcp_hub import ToolInvokeError
+
+    server = EmailServer()
+
+    def boom(_mid):
+        raise EmailFetchError("IMAP login failed")
+
+    monkeypatch.setattr(server, "read_email_body", boom)
+    with pytest.raises(ToolInvokeError, match="IMAP login failed"):
+        server.read_inbox_email(message_id="<msg-1@example.com>")
 
 
 def test_mark_inbox_email_read_by_message_id(monkeypatch):

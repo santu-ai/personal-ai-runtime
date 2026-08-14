@@ -6,8 +6,8 @@
 ## 当前状态
 
 - 当前分支：`main`（开发阶段）
-- 进行中任务 / WIP：Runtime validation dogfood — Chat checkpoint + live eval landed
-- 已知坏点 / 待办：calendar 等仍 JSON error；Memory/Context live A/B 仍 NOT MEASURED；Chat max_retries=1
+- 进行中任务 / WIP：Runtime validation dogfood — remaining JSON tools + live memory A/B landed
+- 已知坏点 / 待办：email 空收件箱仍 JSON miss；Context live A/B 未测；Chat max_retries=1；Chroma 质量未测
 - 最近审阅：2026-08-14 Runtime Validation — filesystem/git/fetch/shell/mesh 失败不再记 Invoked
 
 ## 产品观察（后续规划候选）

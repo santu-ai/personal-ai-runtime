@@ -23,6 +23,10 @@ from app.core.harness.mcp_hub import (
 logger = logging.getLogger(__name__)
 
 
+class EmailFetchError(Exception):
+    """IMAP/credential/connection failure while fetching a message body."""
+
+
 def _decode_mime_header(value: str | None) -> str:
     if not value:
         return ""
@@ -357,7 +361,10 @@ class EmailServer:
         """
         if message_id and message_id.strip():
             mid = message_id.strip()
-            body = self.read_email_body(mid)
+            try:
+                body = self.read_email_body(mid)
+            except EmailFetchError as exc:
+                raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(exc)) from exc
             if body is None:
                 return json.dumps(
                     {"error": f"未找到 Message-ID 为 {mid} 的邮件"},
@@ -417,7 +424,10 @@ class EmailServer:
     def read_email_body(self, message_id: str) -> str | None:
         """Fetch the full plain-text body of an inbox email by Message-ID.
 
-        Returns the decoded body or None when the message cannot be found.
+        Returns the decoded body, or None when the message cannot be found.
+        IMAP / credential failures raise ``EmailFetchError`` (Kernel path
+        maps that to ``CapabilityFailed``; inbox summary already falls back
+        to preview on ``status=error``).
         """
         if not message_id.strip():
             return None
@@ -425,7 +435,9 @@ class EmailServer:
             mail = self._connect_inbox()
             try:
                 status, res = mail.search(None, f'HEADER Message-ID "{message_id}"')
-                if status != "OK" or not res[0]:
+                if status != "OK":
+                    raise EmailFetchError(f"IMAP SEARCH failed: {status}")
+                if not res or not res[0]:
                     return None
                 ids = res[0].split()
                 if not ids:
@@ -433,7 +445,7 @@ class EmailServer:
                 seq = ids[-1].decode()
                 fetch_status, fetch_data = mail.fetch(seq, "(BODY.PEEK[])")
                 if fetch_status != "OK":
-                    return None
+                    raise EmailFetchError(f"IMAP FETCH failed: {fetch_status}")
                 for part in fetch_data:
                     if isinstance(part, tuple):
                         m = email.message_from_bytes(part[1])
@@ -444,14 +456,14 @@ class EmailServer:
                     mail.logout()
                 except Exception:
                     logger.debug("Error during IMAP logout", exc_info=True)
+        except EmailFetchError:
+            raise
         except imaplib.IMAP4.error as exc:
             logger.warning("read_email_body IMAP error for %s: %s", message_id, exc)
-            return None
+            raise EmailFetchError(f"IMAP error: {exc}") from exc
         except (OSError, ValueError) as exc:
-            # Connection / credential failures fall back to preview instead of
-            # 500ing the summary endpoint (the caller has no try/except).
             logger.debug("read_email_body unavailable for %s: %s", message_id, exc)
-            return None
+            raise EmailFetchError(str(exc)) from exc
 
     def _mark_flags(
         self,

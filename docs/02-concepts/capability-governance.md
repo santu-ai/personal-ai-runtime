@@ -74,7 +74,7 @@ flowchart TB
 - `expire_stale_approvals` — 24h TTL，TOCTOU 安全的原子 UPDATE（[`governance_ops.py`](../../backend/app/core/runtime/kernel/governance_ops.py)）。RuntimeLoop 每 100 tick（~10s）调用一次。
 - `grant_approval` / `deny_approval` — 用户在 UI 或 `/api/approvals/{id}/approve|reject` 处理。
 
-审批通过后，工具调用经 `submit_command("ApproveRequested")` 走 Kernel ABI 重新执行；可选地通过 `Brain.continue_after_tool_result`（递归深度上限 3）做 **one-shot 文本续写**（不传 tools，不重开完整工具环）。Chat 工具环中途崩溃时，`plan_resumes` 键 `chat_ckpt:{correlation_id}` 保存 messages，Scheduler interrupt 重放同一 `ChatRequested` 时续跑。产品契约见 [ADR-R011](../07-adr/ADR-R011-chat-approval-continuation.md) 与 [execution-model.md](execution-model.md) 控制面表。审批 HTTP 端点见 [03-subsystems/backend-api.md](../03-subsystems/backend-api.md)。
+审批通过后，工具调用经 `submit_command("ApproveRequested")` 走 Kernel ABI 重新执行；可选地通过 `Brain.continue_after_tool_result`（递归深度上限 3）做 **one-shot 文本续写**（不传 tools，不重开完整工具环）。Chat 工具环中途崩溃时，`plan_resumes` 键 `chat_ckpt:{correlation_id}` 保存 messages、taint 与 tool_calls，Scheduler interrupt 重放同一 `ChatRequested` 时续跑并恢复污染标记。产品契约见 [ADR-R011](../07-adr/ADR-R011-chat-approval-continuation.md) 与 [execution-model.md](execution-model.md) 控制面表。审批 HTTP 端点见 [03-subsystems/backend-api.md](../03-subsystems/backend-api.md)。
 
 ## Taint 追踪（防提示注入）
 

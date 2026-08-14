@@ -41,11 +41,11 @@ async def test_live_gmail_check_inbox_no_send(isolated_kernel, monkeypatch):
     except Exception as exc:
         rec = EvalRecord(
             task_id="live_gmail_inbox",
-            input=user,
+            input="gmail_inbox",
             expected_behavior="IMAP login and list succeed (no send)",
             actual_behavior=type(exc).__name__,
             success=False,
-            failure_reason=str(exc)[:200],
+            failure_reason=type(exc).__name__,
             duration_s=clock.elapsed(),
             notes="Did not send mail.",
         )
@@ -60,11 +60,11 @@ async def test_live_gmail_check_inbox_no_send(isolated_kernel, monkeypatch):
     )
     rec = EvalRecord(
         task_id="live_gmail_inbox",
-        input=user,
+        input="gmail_inbox",
         expected_behavior="check_inbox status success; no send_email",
         actual_behavior=str(cap.get("status")),
         success=cap.get("status") == "success" and bool(raw),
-        failure_reason=cap.get("error"),
+        failure_reason=str(cap.get("outcome") or cap.get("error") or ""),
         tool_calls=["check_inbox"],
         duration_s=clock.elapsed(),
         trace_id="live-gmail",

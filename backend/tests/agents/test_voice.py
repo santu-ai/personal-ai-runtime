@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.core.harness.builtin_tools.voice import VoiceServer
+from app.core.harness.mcp_hub import ToolInvokeError
 
 
 class TestVoiceServer:
@@ -23,23 +24,20 @@ class TestVoiceServer:
             "",
         )
         s = VoiceServer()
-        result = json.loads(await s.tts("hello world"))
-        assert result["status"] == "error"
-        assert "VOICE_BASE_URL" in result["error"]
+        with pytest.raises(ToolInvokeError, match="VOICE_BASE_URL"):
+            await s.tts("hello world")
 
     @pytest.mark.asyncio
     async def test_tts_empty_text(self):
         s = VoiceServer()
-        result = json.loads(await s.tts(""))
-        assert result["status"] == "error"
-        assert "empty" in result.get("error", "").lower() or "too long" in result.get("error", "").lower()
+        with pytest.raises(ToolInvokeError, match="empty|too long"):
+            await s.tts("")
 
     @pytest.mark.asyncio
     async def test_tts_too_long(self):
         s = VoiceServer()
-        result = json.loads(await s.tts("x" * 4097))
-        assert result["status"] == "error"
-        assert "too long" in result.get("error", "").lower()
+        with pytest.raises(ToolInvokeError, match="too long"):
+            await s.tts("x" * 4097)
 
     @pytest.mark.asyncio
     async def test_stt_not_configured(self, monkeypatch):
@@ -48,9 +46,8 @@ class TestVoiceServer:
             "",
         )
         s = VoiceServer()
-        result = json.loads(await s.stt("dGVzdA=="))
-        assert result["status"] == "error"
-        assert "VOICE_BASE_URL" in result["error"]
+        with pytest.raises(ToolInvokeError, match="VOICE_BASE_URL"):
+            await s.stt("dGVzdA==")
 
     def test_server_singleton(self):
         from app.core.harness.builtin_tools.voice import voice_server

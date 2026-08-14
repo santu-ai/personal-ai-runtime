@@ -23,7 +23,7 @@
 
 ### 调用
 
-`invoke_tool(name, args)` — 派发到 handler；输出 >8000 字符截断。handler 异常 / 超时 / 未知工具抛 `ToolInvokeError`（`tool_execution_failure` / `tool_timeout` / `tool_not_found` / `tool_invalid_result` / `authorization_failure`），由 `Kernel.invoke_capability` 记为 `CapabilityFailed`。禁止把执行失败吞成 JSON 字符串再记 `CapabilityInvoked`。filesystem / git / fetch / shell / web_search / email（IMAP/SMTP 执行失败）与 `mcp_mesh.call_tool` 的失败路径同样抛 `ToolInvokeError`，不再返回 `{"error": ...}` 伪成功。空收件箱等应用层 miss 仍可返回 JSON。
+`invoke_tool(name, args)` — 派发到 handler；输出 >8000 字符截断。handler 异常 / 超时 / 未知工具抛 `ToolInvokeError`（`tool_execution_failure` / `tool_timeout` / `tool_not_found` / `tool_invalid_result` / `authorization_failure`），由 `Kernel.invoke_capability` 记为 `CapabilityFailed`。禁止把执行失败吞成 JSON 字符串再记 `CapabilityInvoked`。全部内建 handler（filesystem / git / fetch / shell / web_search / email IMAP-SMTP / calendar / timer / goals / telegram / computer_use / voice / clipboard_ocr）与 `mcp_mesh.call_tool` 的失败路径同样抛 `ToolInvokeError`。空收件箱 / 找不到 Message-ID 等应用层 miss 仍可返回 JSON。按 Message-ID 读信时 IMAP/凭据失败抛 `ToolInvokeError`，不得当成 miss。
 
 公开接口：`get_tool_defs_for_llm()`、`get_tool`、`needs_confirmation`、`is_async`、`invoke_tool`、`register_tool`、`unregister_tool`。
 

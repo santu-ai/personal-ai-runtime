@@ -316,3 +316,34 @@ class TestPolicyObservability:
         assert plan.stage == "brief"
         assert plan.selected_fragment_ids
         assert plan.to_observation_dict()["stage"] == "brief"
+
+    @pytest.mark.asyncio
+    async def test_pipeline_plans_are_keyed_by_execution_id(self, monkeypatch):
+        from app.core.runtime.governance.context_pipeline import ContextPipeline
+
+        registry = FragmentRegistry()
+        register_all_fragments(registry)
+        pipeline = ContextPipeline(registry)
+
+        async def _fake_assemble_with_sources(fragments, ctx, budget=32000):
+            from app.assembler.context_assembler import AssemblyResult
+            return AssemblyResult(system_prompt="ok", sources=[])
+
+        monkeypatch.setattr(
+            pipeline._assembler, "assemble_with_sources", _fake_assemble_with_sources,
+        )
+        await pipeline.build(
+            user_message="plan the release",
+            execution_id="ex-a",
+            stage="chat",
+        )
+        await pipeline.build(
+            user_message="what is 2+2?",
+            execution_id="ex-b",
+            stage="chat",
+        )
+        plan_a = pipeline.last_compile_plan(execution_id="ex-a")
+        plan_b = pipeline.last_compile_plan(execution_id="ex-b")
+        assert plan_a is not None and plan_b is not None
+        assert plan_a is not plan_b
+        assert pipeline.last_compile_plan() is plan_b

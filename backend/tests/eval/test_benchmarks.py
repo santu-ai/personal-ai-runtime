@@ -146,6 +146,7 @@ async def test_benchmark_03_tool_failure_is_visible(kernel, monkeypatch, tmp_pat
         timed = await kernel.invoke_capability(
             "bm03_slow", {}, actor="user", correlation_id=cid,
         )
+        monkeypatch.setattr("app.config.settings.tool_timeout_seconds", 30)
         absent = tmp_path / "bm03-absent.txt"
         old = _allow_tmp(tmp_path)
         try:

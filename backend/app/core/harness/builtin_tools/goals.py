@@ -15,6 +15,11 @@ Architectural split:
 import json
 import uuid
 
+from app.core.harness.mcp_hub import (
+    OUTCOME_TOOL_EXECUTION_FAILURE,
+    ToolInvokeError,
+)
+
 # ─── Capability handlers (called by mcp_hub after gate allows) ──────────────
 # These own the emit_event side effects. Registered as tool handlers below.
 
@@ -124,7 +129,9 @@ def _writer_delete_goal(goal_id: str) -> str:
 
     goal = read_ports.query_goal(goal_id)
     if not goal:
-        return json.dumps({"error": f"未找到目标 {goal_id}"}, ensure_ascii=False)
+        raise ToolInvokeError(
+            OUTCOME_TOOL_EXECUTION_FAILURE, f"未找到目标 {goal_id}",
+        )
 
     title = goal.get("title", "")
 

@@ -9,6 +9,12 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from app.core.harness.mcp_hub import (
+    OUTCOME_TOOL_EXECUTION_FAILURE,
+    OUTCOME_TOOL_INVALID_RESULT,
+    ToolInvokeError,
+)
+
 _CALENDAR_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
@@ -176,11 +182,16 @@ class CalendarServer:
         """List events from one calendar file for a date range."""
         safe = _safe_calendar_name(calendar)
         if safe is None:
-            return json.dumps({"error": f"Invalid calendar name: {calendar!r}"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_INVALID_RESULT, f"Invalid calendar name: {calendar!r}",
+            )
 
         if not date:
             date = datetime.now().strftime("%Y-%m-%d")
-        start_date = datetime.strptime(date, "%Y-%m-%d").date()
+        try:
+            start_date = datetime.strptime(date, "%Y-%m-%d").date()
+        except ValueError as e:
+            raise ToolInvokeError(OUTCOME_TOOL_INVALID_RESULT, str(e)) from e
         span = max(1, int(days))
 
         events = self._filter_window(self._iter_events(calendar=safe), start_date, span)
@@ -206,12 +217,17 @@ class CalendarServer:
         """Add an event to the calendar ICS file."""
         safe = _safe_calendar_name(calendar)
         if safe is None:
-            return json.dumps({"error": f"Invalid calendar name: {calendar!r}"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_INVALID_RESULT, f"Invalid calendar name: {calendar!r}",
+            )
 
         self._ensure_dir()
         ics_path = self.ics_dir / f"{safe}.ics"
         now = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-        start_dt = datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M")
+        try:
+            start_dt = datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M")
+        except ValueError as e:
+            raise ToolInvokeError(OUTCOME_TOOL_INVALID_RESULT, str(e)) from e
         end_dt = start_dt + timedelta(minutes=max(1, int(duration_minutes)))
         dt_start = start_dt.strftime("%Y%m%dT%H%M%S")
         dt_end = end_dt.strftime("%Y%m%dT%H%M%S")
@@ -239,7 +255,10 @@ class CalendarServer:
             existing += "END:VCALENDAR\n"
 
         updated = existing.replace("END:VCALENDAR", entry + "END:VCALENDAR", 1)
-        ics_path.write_text(updated, encoding="utf-8")
+        try:
+            ics_path.write_text(updated, encoding="utf-8")
+        except OSError as e:
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
 
         return json.dumps({
             "success": True,

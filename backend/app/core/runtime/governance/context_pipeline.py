@@ -42,6 +42,7 @@ from app.core.runtime.runtime_container import _LazyProxy, runtime
 logger = logging.getLogger(__name__)
 
 _MAX_RECENT_FRAGMENT_HISTORY = 5
+_MAX_PLANS_BY_EXECUTION = 32
 
 # ── Source Registry — citation tracking for SSE emission ────────────────
 # conversation_id -> (sources, timestamp)
@@ -103,6 +104,7 @@ class ContextPipeline:
         self._policy = policy or DefaultContextPolicy(self._registry)
         self._assembler = ContextAssembler()
         self._last_plan: CompilePlan | None = None
+        self._plans_by_execution: dict[str, CompilePlan] = {}
         self._recent_fragment_ids: deque[str] = deque(maxlen=_MAX_RECENT_FRAGMENT_HISTORY)
         # Registration state surfaced through health_check(). Stays "ok" when
         # register_all_fragments succeeds (the common case) or when the
@@ -155,8 +157,14 @@ class ContextPipeline:
             self._registration_state = self._REGISTRATION_FAILED
             self._registration_error = str(exc)[:500]
 
-    def last_compile_plan(self) -> CompilePlan | None:
-        """Return the most recent CompilePlan produced by this pipeline."""
+    def last_compile_plan(self, *, execution_id: str = "") -> CompilePlan | None:
+        """Return the CompilePlan for ``execution_id``, or the most recent plan.
+
+        Concurrent chats share one pipeline singleton; look up by execution
+        so ChatCompleted does not attach another turn's fragments.
+        """
+        if execution_id:
+            return self._plans_by_execution.get(execution_id)
         return self._last_plan
 
     def _record_fragment_ids(self, fragment_ids: tuple[str, ...]) -> None:
@@ -169,6 +177,13 @@ class ContextPipeline:
         # Evaluate policy
         plan = self._policy.evaluate(request)
         self._last_plan = plan
+        if request.execution_id:
+            self._plans_by_execution[request.execution_id] = plan
+            while len(self._plans_by_execution) > _MAX_PLANS_BY_EXECUTION:
+                oldest = next(iter(self._plans_by_execution))
+                if oldest == request.execution_id:
+                    break
+                self._plans_by_execution.pop(oldest, None)
         self._record_fragment_ids(plan.selected_fragment_ids)
 
         tags = (

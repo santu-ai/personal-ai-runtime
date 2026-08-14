@@ -67,7 +67,7 @@ def record_from_invoke(
     failures = [
         f"{t.get('name')}:{t.get('outcome')}"
         for t in trace["tools"]
-        if not t.get("success")
+        if not t.get("success") and t.get("outcome") != "approval_required"
     ]
     outcome = result.get("outcome") or result.get("status")
     return EvalRecord(

@@ -15,6 +15,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from app.config import settings
+from app.core.harness.mcp_hub import (
+    OUTCOME_TOOL_EXECUTION_FAILURE,
+    OUTCOME_TOOL_INVALID_RESULT,
+    ToolInvokeError,
+)
 
 if TYPE_CHECKING:
     from openai import AsyncOpenAI
@@ -61,14 +66,16 @@ class VoiceServer:
     async def tts(self, text: str, voice: str = "alloy") -> str:
         """Generate speech audio from text. Returns base64-encoded MP3."""
         if not text or len(text) > 4096:
-            return json.dumps({
-                "status": "error",
-                "error": "Text empty or too long (max 4096 chars)",
-            })
+            raise ToolInvokeError(
+                OUTCOME_TOOL_INVALID_RESULT,
+                "Text empty or too long (max 4096 chars)",
+            )
 
         client, err = self._get_client()
         if err or client is None:
-            return json.dumps({"status": "error", "error": err or "LLM client not available"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_EXECUTION_FAILURE, err or "LLM client not available",
+            )
 
         try:
             resp = await client.audio.speech.create(
@@ -86,13 +93,15 @@ class VoiceServer:
             })
         except Exception as e:
             logger.exception("voice_tts failed")
-            return json.dumps({"status": "error", "error": str(e)})
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
 
     async def stt(self, audio_base64: str, language: str = "zh") -> str:
         """Transcribe speech audio to text."""
         client, err = self._get_client()
         if err or client is None:
-            return json.dumps({"status": "error", "error": err or "LLM client not available"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_EXECUTION_FAILURE, err or "LLM client not available",
+            )
 
         tmp_path: Path | None = None
         try:
@@ -114,7 +123,7 @@ class VoiceServer:
             })
         except Exception as e:
             logger.exception("voice_stt failed")
-            return json.dumps({"status": "error", "error": str(e)})
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
         finally:
             if tmp_path is not None:
                 tmp_path.unlink(missing_ok=True)

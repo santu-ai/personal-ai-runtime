@@ -135,9 +135,11 @@ class TestCalendarServer:
         assert titles == {"Work only", "Default only"}
 
     def test_invalid_calendar_name_rejected(self, tmp_path: Path):
+        from app.core.harness.mcp_hub import ToolInvokeError
+
         server = CalendarServer(ics_dir=str(tmp_path))
-        err = json.loads(server.add_event(title="x", date="2026-07-19", calendar="../evil"))
-        assert "error" in err
+        with pytest.raises(ToolInvokeError, match="Invalid calendar name"):
+            server.add_event(title="x", date="2026-07-19", calendar="../evil")
 
     def test_folded_ics_lines_are_unfolded(self, tmp_path: Path):
         today = datetime.now().strftime("%Y-%m-%d")

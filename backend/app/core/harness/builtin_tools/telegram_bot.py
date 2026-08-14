@@ -3,6 +3,10 @@
 import json
 
 from app.config import settings
+from app.core.harness.mcp_hub import (
+    OUTCOME_TOOL_EXECUTION_FAILURE,
+    ToolInvokeError,
+)
 from app.core.harness.url_safety import create_ssrf_safe_async_client
 
 
@@ -18,7 +22,10 @@ class TelegramBotServer:
         """Send a message via Telegram Bot."""
         token, chat_id = self._creds()
         if not token or not chat_id:
-            return json.dumps({"error": "TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not configured"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_EXECUTION_FAILURE,
+                "TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not configured",
+            )
 
         try:
             url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -31,15 +38,23 @@ class TelegramBotServer:
                 data = resp.json()
                 if data.get("ok"):
                     return json.dumps({"success": True, "message_id": data["result"]["message_id"]})
-                return json.dumps({"error": data.get("description", "Unknown error")})
+                raise ToolInvokeError(
+                    OUTCOME_TOOL_EXECUTION_FAILURE,
+                    data.get("description", "Unknown error"),
+                )
+        except ToolInvokeError:
+            raise
         except Exception as e:
-            return json.dumps({"error": str(e)})
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
 
     async def get_updates(self, limit: int = 5) -> str:
         """Get recent messages sent to the bot."""
         token, _chat_id = self._creds()
         if not token:
-            return json.dumps({"error": "TELEGRAM_BOT_TOKEN not configured"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_EXECUTION_FAILURE,
+                "TELEGRAM_BOT_TOKEN not configured",
+            )
 
         try:
             url = f"https://api.telegram.org/bot{token}/getUpdates"
@@ -57,9 +72,14 @@ class TelegramBotServer:
                             "date": msg.get("date", 0),
                         })
                     return json.dumps({"count": len(updates), "updates": updates})
-                return json.dumps({"error": data.get("description", "Unknown error")})
+                raise ToolInvokeError(
+                    OUTCOME_TOOL_EXECUTION_FAILURE,
+                    data.get("description", "Unknown error"),
+                )
+        except ToolInvokeError:
+            raise
         except Exception as e:
-            return json.dumps({"error": str(e)})
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
 
 
 telegram_bot_server = TelegramBotServer()

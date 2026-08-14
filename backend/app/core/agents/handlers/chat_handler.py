@@ -102,7 +102,7 @@ async def on_chat_requested(ctx: "ExecutionContext", event: "Event") -> None:
     try:
         from app.core.runtime.governance.context_pipeline import context_pipeline
 
-        plan = context_pipeline.last_compile_plan()
+        plan = context_pipeline.last_compile_plan(execution_id=ctx.execution_id)
         if plan is not None:
             result["fragment_ids"] = list(plan.selected_fragment_ids)
             tags = plan.analysis_result.tags if plan.analysis_result is not None else set()

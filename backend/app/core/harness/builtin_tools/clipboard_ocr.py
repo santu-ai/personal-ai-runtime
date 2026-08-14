@@ -3,6 +3,11 @@
 import json
 import subprocess
 
+from app.core.harness.mcp_hub import (
+    OUTCOME_TOOL_EXECUTION_FAILURE,
+    ToolInvokeError,
+)
+
 
 class ClipboardOCRServer:
     """Clipboard operations and image-file text recognition (opt-in advanced)."""
@@ -22,9 +27,16 @@ class ClipboardOCRServer:
                     ["powershell", "Get-Clipboard"],
                     capture_output=True, text=True, timeout=5,
                 )
-                return json.dumps({"content": result.stdout[:5000], "length": len(result.stdout)})
-            except Exception:
-                return json.dumps({"content": "", "note": "Clipboard read failed (GUI/X11 required)"})
+            except Exception as e:
+                raise ToolInvokeError(
+                    OUTCOME_TOOL_EXECUTION_FAILURE,
+                    f"Clipboard read failed (GUI/X11 required): {e}",
+                ) from e
+            if result.returncode != 0:
+                err = (result.stderr or result.stdout or "Get-Clipboard failed").strip()
+                raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, err)
+            text = result.stdout or ""
+            return json.dumps({"content": text[:5000], "length": len(text)})
 
     def ocr_file(self, path: str) -> str:
         """Perform OCR on an image file."""
@@ -36,9 +48,11 @@ class ClipboardOCRServer:
             text = pytesseract.image_to_string(img)
             return json.dumps({"file": path, "text": text[:3000], "length": len(text)})
         except ImportError as e:
-            return json.dumps({"error": f"Dependency missing: {e}"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_EXECUTION_FAILURE, f"Dependency missing: {e}",
+            ) from e
         except Exception as e:
-            return json.dumps({"error": str(e)})
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
 
 
 clipboard_ocr_server = ClipboardOCRServer()
