@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.core.harness.mcp_hub import ToolDef, mcp_hub
+from app.core.harness.mcp_hub import ToolDef, ToolInvokeError, mcp_hub
 from app.core.harness.mcp_mesh import MCPMesh
 from app.core.runtime.capability_governance import capability_governance
 from app.core.runtime.taint import register_external_write_tool, taint_registry
@@ -100,8 +100,8 @@ async def test_forbidden_tools_not_indexed_for_call():
     assert mesh.is_external_tool("ext_ok_tool")
     assert not mesh.is_external_tool("ext_forbidden_tool")
 
-    result = await mesh.call_tool("ext_forbidden_tool", {})
-    assert "Unknown external tool" in result
+    with pytest.raises(ToolInvokeError, match="Unknown external tool"):
+        await mesh.call_tool("ext_forbidden_tool", {})
 
 @pytest.mark.asyncio
 async def test_discovery_skips_forbidden_in_tool_index():

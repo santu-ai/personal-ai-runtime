@@ -7,45 +7,46 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_high_risk_capability_pending_then_approve(isolated_kernel):
+async def test_high_risk_capability_pending_then_approve(isolated_kernel, allow_tmp_fs):
     k, _db = isolated_kernel
-    cap = await k.invoke_capability(
-        "write_file", {"path": "/tmp/x", "content": "hi"}, actor="user"
-    )
+    target = allow_tmp_fs / "x.txt"
+    args = {"path": str(target), "content": "hi"}
+    cap = await k.invoke_capability("write_file", args, actor="user")
     assert cap["status"] == "pending"
     approval_id = cap["approval_id"]
 
     cap2 = await k.invoke_capability(
         "write_file",
-        {"path": "/tmp/x", "content": "hi"},
+        args,
         actor="user",
         correlation_id="retry",
         pre_approved=True,
         approval_id=approval_id,
     )
     assert cap2["status"] == "success"
+    assert target.read_text(encoding="utf-8") == "hi"
 
 
 @pytest.mark.asyncio
-async def test_apply_patch_pending_then_approve(isolated_kernel):
+async def test_apply_patch_pending_then_approve(isolated_kernel, allow_tmp_fs):
     k, _db = isolated_kernel
-    cap = await k.invoke_capability(
-        "apply_patch",
-        {"path": "/tmp/app.py", "old_string": "a", "new_string": "b"},
-        actor="user",
-    )
+    target = allow_tmp_fs / "app.py"
+    target.write_text("a", encoding="utf-8")
+    args = {"path": str(target), "old_string": "a", "new_string": "b"}
+    cap = await k.invoke_capability("apply_patch", args, actor="user")
     assert cap["status"] == "pending"
     approval_id = cap["approval_id"]
 
     cap2 = await k.invoke_capability(
         "apply_patch",
-        {"path": "/tmp/app.py", "old_string": "a", "new_string": "b"},
+        args,
         actor="user",
         correlation_id="patch-retry",
         pre_approved=True,
         approval_id=approval_id,
     )
     assert cap2["status"] == "success"
+    assert target.read_text(encoding="utf-8") == "b"
 
 
 def test_request_approval_via_kernel(isolated_kernel):

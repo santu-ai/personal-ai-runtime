@@ -7,46 +7,54 @@ from pathlib import Path
 import pytest
 
 from app.core.harness.builtin_tools.shell import ShellServer, shell_server
+from app.core.harness.mcp_hub import ToolInvokeError
 
 
-def _error(result: str) -> str:
-    return json.loads(result).get("error", "")
+def _error(command: str, *, server=None, **kwargs) -> str:
+    target = server if server is not None else shell_server
+    with pytest.raises(ToolInvokeError) as ei:
+        target.execute(command, **kwargs)
+    return str(ei.value)
 
 
 def test_empty_command_rejected():
-    assert "Empty command" in _error(shell_server.execute(""))
-    assert "Empty command" in _error(shell_server.execute("   "))
+    assert "Empty command" in _error("")
+    assert "Empty command" in _error("   ")
 
 
 def test_bare_chain_operator_rejected_with_clear_message():
     # Bare "&&" should be rejected as empty, not as a metachar violation.
-    assert "Empty command after parsing" in _error(shell_server.execute("&&"))
-    assert "Empty command after parsing" in _error(shell_server.execute("&&   "))
+    assert "Empty command after parsing" in _error("&&")
+    assert "Empty command after parsing" in _error("&&   ")
 
 
 def test_glob_asterisk_allowed_for_coding_agents():
     # With shell=False the OS does not expand globs; agents need patterns like *.py.
     # The command itself may fail if no matching file named literally "*.py" exists,
     # but it must not be rejected as a metacharacter violation.
-    err = _error(shell_server.execute("ls *.py"))
+    try:
+        shell_server.execute("ls *.py")
+        err = ""
+    except ToolInvokeError as exc:
+        err = str(exc)
     assert "metacharacters" not in err.lower()
 
 
 def test_background_ampersand_blocked():
     # Single & would background a command in a shell; blocked even with shell=False.
-    assert "metacharacters" in _error(shell_server.execute("echo hello &")).lower()
+    assert "metacharacters" in _error("echo hello &").lower()
 
 
 def test_non_whitelisted_command_rejected():
-    assert "not in whitelist" in _error(shell_server.execute("bash -c ls"))
+    assert "not in whitelist" in _error("bash -c ls")
 
 
 def test_python_c_blocked():
-    assert "not allowed" in _error(shell_server.execute('python -c "print(1)"'))
+    assert "not allowed" in _error('python -c "print(1)"')
 
 
 def test_node_eval_blocked():
-    assert "not allowed" in _error(shell_server.execute('node -e "console.log(1)"'))
+    assert "not allowed" in _error('node -e "console.log(1)"')
 
 
 @pytest.mark.parametrize(
@@ -59,7 +67,7 @@ def test_node_eval_blocked():
     ],
 )
 def test_shell_metacharacters_blocked(command: str):
-    assert "metacharacters" in _error(shell_server.execute(command))
+    assert "metacharacters" in _error(command)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="echo is not a standalone executable on Windows")
@@ -72,7 +80,7 @@ def test_chained_commands_auto_split():
 
 
 def test_blocked_patterns_still_rejected():
-    assert "Blocked pattern" in _error(shell_server.execute("sudo ls"))
+    assert "Blocked pattern" in _error("sudo ls")
 
 
 def test_privilege_escalation_commands_blocked():
@@ -81,17 +89,17 @@ def test_privilege_escalation_commands_blocked():
     Substring matching would false-positive on harmless commands like
     'pseudo', 'subl', 'summarize'. Argv-level matching avoids that.
     """
-    assert "Blocked pattern" in _error(shell_server.execute("sudo ls"))
-    assert "Blocked pattern" in _error(shell_server.execute("su root"))
+    assert "Blocked pattern" in _error("sudo ls")
+    assert "Blocked pattern" in _error("su root")
 
 
 def test_privilege_escalation_substring_not_false_positive():
     """Commands that merely contain 'su'/'sudo' as a substring must still run."""
     # 'summarize', 'subl', 'pseudo' are not whitelisted, so they fail with the
     # whitelist message — NOT with the privilege-escalation block.
-    err = _error(shell_server.execute("summarize foo"))
+    err = _error("summarize foo")
     assert "Blocked pattern" not in err
-    err = _error(shell_server.execute("pseudo bar"))
+    err = _error("pseudo bar")
     assert "Blocked pattern" not in err
 
 
@@ -103,49 +111,49 @@ def test_rm_rf_blocked_with_extra_whitespace():
     """
     server = ShellServer()
     server._effective_whitelist.add("rm")
-    assert "Blocked pattern" in _error(server.execute("rm  -rf /tmp/x"))
-    assert "Blocked pattern" in _error(server.execute("rm\t-rf /tmp/x"))
+    assert "Blocked pattern" in _error("rm  -rf /tmp/x", server=server)
+    assert "Blocked pattern" in _error("rm\t-rf /tmp/x", server=server)
 
 
 def test_rm_rf_blocked_with_reordered_flags():
     """rm -rf reordered (rm /tmp/x -rf) must still be detected at argv level."""
     server = ShellServer()
     server._effective_whitelist.add("rm")
-    assert "Blocked pattern" in _error(server.execute("rm /tmp/x -rf"))
+    assert "Blocked pattern" in _error("rm /tmp/x -rf", server=server)
 
 
 def test_rm_fr_variant_blocked():
     server = ShellServer()
     server._effective_whitelist.add("rm")
-    assert "Blocked pattern" in _error(server.execute("rm -fr /tmp/x"))
+    assert "Blocked pattern" in _error("rm -fr /tmp/x", server=server)
 
 
 def test_chmod_777_blocked():
     server = ShellServer()
     server._effective_whitelist.add("chmod")
-    assert "Blocked pattern" in _error(server.execute("chmod 777 /tmp/x"))
+    assert "Blocked pattern" in _error("chmod 777 /tmp/x", server=server)
 
 
 def test_rm_denied_by_default():
     """rm is high-risk: disabled unless explicitly enabled via SHELL_EXTRA_COMMANDS."""
-    assert "not in whitelist" in _error(shell_server.execute("rm /tmp/x"))
+    assert "not in whitelist" in _error("rm /tmp/x")
 
 
 def test_ssh_denied_by_default():
     """ssh exposes remote shells / key material: disabled by default."""
-    assert "not in whitelist" in _error(shell_server.execute("ssh host"))
+    assert "not in whitelist" in _error("ssh host")
 
 
 def test_gpg_denied_by_default():
-    assert "not in whitelist" in _error(shell_server.execute("gpg --list-keys"))
+    assert "not in whitelist" in _error("gpg --list-keys")
 
 
 def test_brew_denied_by_default():
-    assert "not in whitelist" in _error(shell_server.execute("brew list"))
+    assert "not in whitelist" in _error("brew list")
 
 
 def test_kill_denied_by_default():
-    assert "not in whitelist" in _error(shell_server.execute("kill 1234"))
+    assert "not in whitelist" in _error("kill 1234")
 
 
 def test_extended_commands_enabled_via_env(monkeypatch):
@@ -158,33 +166,33 @@ def test_extended_commands_enabled_via_env(monkeypatch):
 
     server = ShellServer()
     # rm is now enabled, but rm -rf is still blocked by the destructive defence.
-    assert "Blocked pattern" in _error(server.execute("rm -rf /tmp/x"))
+    assert "Blocked pattern" in _error("rm -rf /tmp/x", server=server)
     # Arbitrary names in the env var are ignored — only _EXTENDED_COMMANDS honoured.
     monkeypatch.setattr(
         "app.core.harness.builtin_tools.shell.settings.shell_extra_commands",
         "rm,arbitrary_malware",
     )
     server2 = ShellServer()
-    assert "not in whitelist" in _error(server2.execute("arbitrary_malware foo"))
+    assert "not in whitelist" in _error("arbitrary_malware foo", server=server2)
 
 
 def test_docker_blocked():
     """docker is no longer whitelisted — it enables container escape via
     'docker run -v /:/host alpine cat /etc/shadow'."""
-    err = _error(shell_server.execute("docker ps"))
+    err = _error("docker ps")
     assert "not in whitelist" in err, err
 
 
 def test_docker_run_escape_blocked():
     """Even a read-only-looking docker invocation must be rejected."""
-    err = _error(shell_server.execute("docker run --rm alpine echo hi"))
+    err = _error("docker run --rm alpine echo hi")
     assert "not in whitelist" in err, err
 
 
 def test_curl_internal_url_blocked():
     # curl/wget are not in ALLOWED_COMMANDS to prevent
     # SSRF bypass. All network requests must go through the DNS-pinned fetch_url tool.
-    result = _error(shell_server.execute("curl http://127.0.0.1/admin"))
+    result = _error("curl http://127.0.0.1/admin")
     assert "not in whitelist" in result, result
 
 
@@ -207,9 +215,8 @@ def test_cwd_outside_allowed_rejected(tmp_path):
     """cwd must be within the allowed directories (default: project root)."""
     outside = tmp_path / "outside"
     outside.mkdir()
-    result = json.loads(shell_server.execute("pwd", cwd=str(outside)))
-    assert "error" in result
-    assert "cwd" in result["error"].lower()
+    err = _error("pwd", cwd=str(outside))
+    assert "cwd" in err.lower()
 
 
 def test_cwd_inside_allowed_accepted(tmp_path, monkeypatch):
@@ -254,21 +261,21 @@ def test_windows_python3_alias_uses_current_interpreter(tmp_path, monkeypatch):
 
 def test_find_exec_blocked():
     """find -exec must not bypass the command whitelist (``+`` form needs no ``;``)."""
-    err = _error(shell_server.execute("find . -exec echo pwned {} +"))
+    err = _error("find . -exec echo pwned {} +")
     assert "not allowed" in err.lower() or "Blocked" in err, err
 
 
 def test_find_execdir_and_delete_blocked():
-    assert "not allowed" in _error(shell_server.execute("find . -execdir rm {} +")).lower()
-    assert "not allowed" in _error(shell_server.execute("find . -delete")).lower()
+    assert "not allowed" in _error("find . -execdir rm {} +").lower()
+    assert "not allowed" in _error("find . -delete").lower()
 
 
 def test_xargs_removed_from_whitelist():
-    assert "not in whitelist" in _error(shell_server.execute("xargs rm"))
+    assert "not in whitelist" in _error("xargs rm")
 
 
 def test_env_command_removed_from_whitelist():
-    assert "not in whitelist" in _error(shell_server.execute("env"))
+    assert "not in whitelist" in _error("env")
 
 
 def test_subprocess_env_does_not_inherit_secrets(monkeypatch, tmp_path):

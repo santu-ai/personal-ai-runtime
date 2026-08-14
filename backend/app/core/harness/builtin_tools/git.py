@@ -5,6 +5,11 @@ import subprocess
 from pathlib import Path
 
 from app.core.harness.builtin_tools.filesystem import filesystem_server
+from app.core.harness.mcp_hub import (
+    OUTCOME_AUTHORIZATION_FAILURE,
+    OUTCOME_TOOL_EXECUTION_FAILURE,
+    ToolInvokeError,
+)
 from app.core.harness.subprocess_env import minimal_subprocess_env
 
 
@@ -34,12 +39,15 @@ class GitServer:
     def _run_git(self, repo_path: str, args: list[str]) -> str:
         repo = Path(repo_path).expanduser().resolve()
         if not filesystem_server.is_path_allowed(str(repo)):
-            return json.dumps({
-                "error": "Access denied: path outside allowed directories",
-                "path": str(repo),
-            })
+            raise ToolInvokeError(
+                OUTCOME_AUTHORIZATION_FAILURE,
+                "Access denied: path outside allowed directories",
+            )
         if not (repo / ".git").exists():
-            return json.dumps({"error": f"Not a git repository: {repo_path}"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_EXECUTION_FAILURE,
+                f"Not a git repository: {repo_path}",
+            )
 
         try:
             result = subprocess.run(
@@ -47,6 +55,8 @@ class GitServer:
                 cwd=str(repo),
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=15,
                 env=minimal_subprocess_env(),
             )
@@ -56,8 +66,10 @@ class GitServer:
                 "output": result.stdout or result.stderr,
                 "exit_code": result.returncode,
             })
+        except ToolInvokeError:
+            raise
         except Exception as e:
-            return json.dumps({"error": str(e)})
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
 
 
 git_server = GitServer()

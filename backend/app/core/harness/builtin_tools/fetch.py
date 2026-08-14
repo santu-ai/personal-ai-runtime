@@ -6,6 +6,12 @@ from html import unescape
 
 import httpx
 
+from app.core.harness.mcp_hub import (
+    OUTCOME_AUTHORIZATION_FAILURE,
+    OUTCOME_TOOL_EXECUTION_FAILURE,
+    OUTCOME_TOOL_TIMEOUT,
+    ToolInvokeError,
+)
 from app.core.harness.url_safety import (
     UnsafeUrlError,
     create_ssrf_safe_async_client,
@@ -83,13 +89,25 @@ class FetchServer:
                     }, ensure_ascii=False)
 
         except UnsafeUrlError as e:
-            return json.dumps({"error": f"Blocked URL: {e}"})
+            raise ToolInvokeError(
+                OUTCOME_AUTHORIZATION_FAILURE, f"Blocked URL: {e}",
+            ) from e
         except httpx.HTTPStatusError as e:
-            return json.dumps({"error": f"HTTP {e.response.status_code}: {e.response.reason_phrase}"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_EXECUTION_FAILURE,
+                f"HTTP {e.response.status_code}: {e.response.reason_phrase}",
+            ) from e
         except httpx.TimeoutException:
-            return json.dumps({"error": "Request timed out after 20 seconds"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_TIMEOUT,
+                "Request timed out after 20 seconds",
+            ) from None
+        except ToolInvokeError:
+            raise
         except Exception as e:
-            return json.dumps({"error": f"Fetch failed: {str(e)}"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_EXECUTION_FAILURE, f"Fetch failed: {str(e)}",
+            ) from e
 
     def _extract_title(self, html: str) -> str:
         """Extract page title from HTML."""

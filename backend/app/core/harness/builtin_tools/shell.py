@@ -11,6 +11,13 @@ import sys
 from pathlib import Path
 
 from app.config import BASE_DIR, settings
+from app.core.harness.mcp_hub import (
+    OUTCOME_AUTHORIZATION_FAILURE,
+    OUTCOME_TOOL_EXECUTION_FAILURE,
+    OUTCOME_TOOL_INVALID_RESULT,
+    OUTCOME_TOOL_TIMEOUT,
+    ToolInvokeError,
+)
 from app.core.harness.subprocess_env import minimal_subprocess_env
 from app.core.harness.url_safety import UnsafeUrlError, validate_http_url
 
@@ -296,26 +303,21 @@ class ShellServer:
         parts = self._split_chained_commands(command)
         if not parts:
             # Handles bare "&&", trailing "&&", or whitespace-only input.
-            return json.dumps({"error": "Empty command after parsing chain operators"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_INVALID_RESULT,
+                "Empty command after parsing chain operators",
+            )
         if len(parts) > 1:
             results = []
             for i, part in enumerate(parts):
-                r = self._run_single(part, cwd, timeout_seconds)
-                results.append(r)
-                # Check if this command returned an error — if so, stop the chain
                 try:
-                    data = json.loads(r)
-                    if data.get("error"):
-                        return json.dumps({
-                            "chained": True,
-                            "commands": parts,
-                            "completed": i + 1,
-                            "stopped_at_command": i + 1,
-                            "results": results,
-                            "note": f"Stopped at command {i+1}/{len(parts)} due to error.",
-                        })
-                except json.JSONDecodeError:
-                    pass
+                    r = self._run_single(part, cwd, timeout_seconds)
+                except ToolInvokeError as exc:
+                    raise ToolInvokeError(
+                        exc.reason,
+                        f"Stopped at command {i + 1}/{len(parts)}: {exc}",
+                    ) from exc
+                results.append(r)
             return json.dumps({
                 "chained": True,
                 "commands": parts,
@@ -328,18 +330,18 @@ class ShellServer:
         """Execute a single command (no chaining)."""
         parsed = self._parse_argv(command)
         if isinstance(parsed, str):
-            return json.dumps({"error": parsed})
+            raise ToolInvokeError(OUTCOME_TOOL_INVALID_RESULT, parsed)
 
         err = self._validate_argv(parsed)
         if err:
-            return json.dumps({"error": err})
+            raise ToolInvokeError(OUTCOME_AUTHORIZATION_FAILURE, err)
         executable_argv = self._platform_argv(parsed)
 
         # Constrain cwd to the allowed directories; default to BASE_DIR when
         # unset so commands cannot run in an arbitrary location.
         cwd_err = self._validate_cwd(cwd)
         if cwd_err:
-            return json.dumps({"error": cwd_err})
+            raise ToolInvokeError(OUTCOME_AUTHORIZATION_FAILURE, cwd_err)
         effective_cwd = cwd or self.allowed_cwd_dirs[0]
 
         try:
@@ -360,11 +362,19 @@ class ShellServer:
                 "output_length": len(output),
             })
         except subprocess.TimeoutExpired:
-            return json.dumps({"error": f"Command timed out after {timeout_seconds}s"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_TIMEOUT,
+                f"Command timed out after {timeout_seconds}s",
+            ) from None
         except FileNotFoundError:
-            return json.dumps({"error": f"Command not found: {parsed[0]}"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_EXECUTION_FAILURE,
+                f"Command not found: {parsed[0]}",
+            ) from None
+        except ToolInvokeError:
+            raise
         except Exception as e:
-            return json.dumps({"error": str(e)})
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
 
 
 shell_server = ShellServer()

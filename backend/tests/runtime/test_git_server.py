@@ -8,10 +8,7 @@ import pytest
 
 from app.core.harness.builtin_tools.filesystem import FilesystemServer
 from app.core.harness.builtin_tools.git import GitServer
-
-
-def _error(result: str) -> str:
-    return json.loads(result).get("error", "")
+from app.core.harness.mcp_hub import ToolInvokeError
 
 
 @pytest.fixture
@@ -38,8 +35,8 @@ def test_git_status_outside_allowed_dirs_rejected(tmp_path, nested_repo, monkeyp
         fs,
     )
     server = GitServer()
-    err = _error(server.status(str(nested_repo)))
-    assert "Access denied" in err
+    with pytest.raises(ToolInvokeError, match="Access denied"):
+        server.status(str(nested_repo))
 
 
 def test_git_status_inside_allowed_dirs_ok(tmp_path, nested_repo, monkeypatch):

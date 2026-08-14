@@ -100,3 +100,123 @@ def query_recent_events(*, days: int = 7, limit: int = 20) -> list[dict[str, Any
         days=days,
         limit=limit,
     )
+
+
+def reconstruct_execution_trace(correlation_id: str) -> dict[str, Any]:
+    """Rebuild one Agent/capability execution from event_log by correlation_id.
+
+    Reuses existing events — no new event types. Missing fields stay None.
+    """
+    if not correlation_id:
+        return {
+            "correlation_id": "",
+            "user_request": None,
+            "work_items": [],
+            "context": {},
+            "models": [],
+            "tools": [],
+            "approvals": [],
+            "state_transitions": [],
+            "final_result": None,
+            "events": [],
+        }
+
+    events = kernel().read_events(correlation_id=correlation_id, order="asc")
+    user_request = None
+    work_items: list[dict[str, Any]] = []
+    context: dict[str, Any] = {}
+    models: list[dict[str, Any]] = []
+    tools: list[dict[str, Any]] = []
+    approvals: list[dict[str, Any]] = []
+    state_transitions: list[dict[str, Any]] = []
+    final_result: dict[str, Any] | None = None
+
+    for event in events:
+        p = event.payload or {}
+        if event.type == "ChatRequested":
+            user_request = p.get("user_message") or user_request
+        elif event.type == "ChatCompleted":
+            context = {
+                "fragment_ids": p.get("fragment_ids") or [],
+                "intent_tags": p.get("intent_tags") or [],
+            }
+            final_result = {
+                "status": p.get("status"),
+                "content": p.get("content"),
+                "pending": p.get("pending"),
+                "approval_id": p.get("approval_id"),
+            }
+        elif event.type == "LLMCallRecorded":
+            models.append({
+                "provider": p.get("provider"),
+                "model": p.get("model"),
+                "prompt_tokens": p.get("prompt_tokens"),
+                "completion_tokens": p.get("completion_tokens"),
+                "cost": p.get("cost"),
+                "success": p.get("success"),
+                "prompt_hash": p.get("prompt_hash"),
+                "purpose": p.get("purpose"),
+            })
+        elif event.type in ("CapabilityInvoked", "CapabilityFailed", "CapabilityDenied"):
+            success = event.type == "CapabilityInvoked"
+            tools.append({
+                "name": p.get("name"),
+                "event": event.type,
+                "success": success,
+                "outcome": p.get("outcome") or (
+                    "success" if success else (
+                        "authorization_failure" if event.type == "CapabilityDenied"
+                        else "tool_execution_failure"
+                    )
+                ),
+                "error": p.get("error") or p.get("reason"),
+                "latency_ms": p.get("latency_ms"),
+            })
+        elif event.type in ("ApprovalRequested", "ApprovalGranted", "ApprovalDenied"):
+            approvals.append({
+                "event": event.type,
+                "action": p.get("action"),
+                "status": p.get("status"),
+                "approval_id": event.aggregate_id,
+                "reason": p.get("reason"),
+            })
+        elif event.type in ("WorkItemCreated", "WorkItemUpdated", "WorkItemStatusChanged"):
+            work_items.append({
+                "event": event.type,
+                "id": event.aggregate_id,
+                "title": p.get("title"),
+                "status": p.get("status"),
+            })
+            if event.type == "WorkItemStatusChanged":
+                state_transitions.append({
+                    "aggregate_id": event.aggregate_id,
+                    "status": p.get("status"),
+                    "ts": event.ts,
+                })
+        elif event.type in (
+            "ExecutionRequested", "ExecutionStarted",
+            "ExecutionCompleted", "ExecutionFailed",
+            "ExecuteRequested", "ExecuteCompleted",
+        ):
+            state_transitions.append({
+                "event": event.type,
+                "aggregate_id": event.aggregate_id,
+                "status": p.get("status") or event.type,
+                "ts": event.ts,
+            })
+
+    return {
+        "correlation_id": correlation_id,
+        "user_request": user_request,
+        "work_items": work_items,
+        "context": context,
+        "models": models,
+        "tools": tools,
+        "approvals": approvals,
+        "state_transitions": state_transitions,
+        "final_result": final_result,
+        "events": [
+            {"type": e.type, "ts": e.ts, "aggregate_id": e.aggregate_id}
+            for e in events
+        ],
+    }

@@ -7,7 +7,8 @@ import pytest
 
 from app.core.runtime.kernel.constants import EVENT_CHAT_DONE
 
-os.environ.setdefault("LLM_API_KEY", "test-key")
+if os.environ.get("RUN_LIVE_LLM", "").strip() not in {"1", "true", "yes"}:
+    os.environ.setdefault("LLM_API_KEY", "test-key")
 os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
 os.environ.setdefault("CHROMA_TELEMETRY_IMPL", "none")
 os.environ.setdefault("CHROMA_TELEMETRY_ENABLED", "false")
@@ -199,6 +200,14 @@ def _reset_runtime():
     if not isinstance(_work_item_engine.kernel, _LazyProxy):
         _work_item_engine.kernel = _LazyProxy(lambda: runtime.kernel)
 
+    # BoundProxy stores monkeypatch/setattr on the proxy object. After reset the
+    # underlying MCPHub is new, but a restored bound method (hub.invoke_tool)
+    # would keep dispatching to the dead instance → unknown-tool lies.
+    from app.core.harness.mcp_hub import mcp_hub as _mcp_hub_proxy
+    for _key in list(_mcp_hub_proxy.__dict__.keys()):
+        if _key != "_factory":
+            del _mcp_hub_proxy.__dict__[_key]
+
     yield
 
 
@@ -317,3 +326,16 @@ def isolated_kernel(tmp_path, monkeypatch):
     monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", k)
     monkeypatch.setattr("app.store.database.db", db)
     return k, db
+
+
+@pytest.fixture
+def allow_tmp_fs(tmp_path):
+    """Permit filesystem tools to read/write ``tmp_path`` for this test."""
+    from app.core.harness.builtin_tools.filesystem import filesystem_server
+
+    old = list(filesystem_server.allowed_dirs)
+    filesystem_server.allowed_dirs = old + [str(tmp_path.resolve())]
+    try:
+        yield tmp_path
+    finally:
+        filesystem_server.allowed_dirs = old

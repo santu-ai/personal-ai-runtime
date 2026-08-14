@@ -5,8 +5,8 @@
 对 God Object 的体量约束。
 """
 
+import asyncio
 import inspect
-import json
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -15,6 +15,22 @@ from typing import TYPE_CHECKING, Any, cast
 from app.core.runtime.runtime_container import _LazyProxy, runtime
 
 logger = logging.getLogger(__name__)
+
+# Outcomes Kernel maps onto invoke_capability / CapabilityFailed.
+OUTCOME_TOOL_NOT_FOUND = "tool_not_found"
+OUTCOME_TOOL_TIMEOUT = "tool_timeout"
+OUTCOME_TOOL_EXECUTION_FAILURE = "tool_execution_failure"
+OUTCOME_TOOL_INVALID_RESULT = "tool_invalid_result"
+OUTCOME_AUTHORIZATION_FAILURE = "authorization_failure"
+
+
+class ToolInvokeError(Exception):
+    """Handler failed. Kernel must emit CapabilityFailed, not CapabilityInvoked."""
+
+    def __init__(self, reason: str, message: str, *, tool_name: str = ""):
+        self.reason = reason
+        self.tool_name = tool_name
+        super().__init__(message)
 
 
 @dataclass
@@ -131,28 +147,60 @@ class MCPHub:
         return tool.is_async if tool else False
 
     async def invoke_tool(self, name: str, arguments: dict) -> str:
-        """按名调用工具，兼容同步/异步 handler，返回结果字符串。"""
+        """按名调用工具。失败抛 ``ToolInvokeError``，不把异常吞成 JSON success。"""
         tool = self._tools.get(name)
         if not tool:
-            return json.dumps({"error": f"Unknown tool: {name}"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_NOT_FOUND,
+                f"Unknown tool: {name}",
+                tool_name=name,
+            )
 
         kwargs = _filter_tool_kwargs(tool.handler, arguments)
         try:
+            from app.config import settings
+            timeout = float(settings.tool_timeout_seconds or 30)
+        except Exception:
+            timeout = 30.0
+
+        try:
             if tool.is_async:
-                result = await cast(Awaitable[str], tool.handler(**kwargs))
+                result = await asyncio.wait_for(
+                    cast(Awaitable[str], tool.handler(**kwargs)),
+                    timeout=timeout,
+                )
             else:
                 result = cast(str, tool.handler(**kwargs))
 
+            if not isinstance(result, str):
+                result = str(result)
             # 超长输出截断到 8000 字符，避免一次工具结果把整个上下文撑爆。
-            if isinstance(result, str) and len(result) > 8000:
+            if len(result) > 8000:
                 result = result[:8000] + "\n... [output truncated]"
             return result
+        except ToolInvokeError:
+            raise
+        except TimeoutError:
+            logger.warning("Tool %s timed out after %ss", name, timeout)
+            raise ToolInvokeError(
+                OUTCOME_TOOL_TIMEOUT,
+                f"Tool {name} timed out after {timeout}s",
+                tool_name=name,
+            ) from None
         except TypeError as e:
             logger.warning("Tool %s invalid arguments: %s", name, e)
-            return json.dumps({"error": f"Invalid arguments for {name}: {e}"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_INVALID_RESULT,
+                f"Invalid arguments for {name}: {e}",
+                tool_name=name,
+            ) from e
         except Exception as e:
             logger.exception("Tool %s failed", name)
-            return json.dumps({"error": str(e)})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_EXECUTION_FAILURE,
+                str(e),
+                tool_name=name,
+            ) from e
 
 
 # 单例——经 RuntimeContainer 惰性代理，runtime.reset() 后重建。

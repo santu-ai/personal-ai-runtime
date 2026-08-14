@@ -7,6 +7,13 @@ from pathlib import Path
 import pytest
 
 from app.core.harness.builtin_tools.filesystem import FilesystemServer
+from app.core.harness.mcp_hub import ToolInvokeError
+
+
+def _fail(fn, *args, **kwargs) -> ToolInvokeError:
+    with pytest.raises(ToolInvokeError) as ei:
+        fn(*args, **kwargs)
+    return ei.value
 
 
 @pytest.fixture
@@ -30,16 +37,14 @@ def test_prefix_bypass_rejected(fs_server: FilesystemServer, tmp_path: Path):
     secret = sibling / "secret.txt"
     secret.write_text("nope", encoding="utf-8")
 
-    result = json.loads(fs_server.read_file(str(secret)))
-    assert "error" in result
-    assert "denied" in result["error"].lower()
+    err = _fail(fs_server.read_file, str(secret))
+    assert "denied" in str(err).lower()
 
 
 def test_write_outside_allowed_rejected(fs_server: FilesystemServer, tmp_path: Path):
     outside = tmp_path / "outside.txt"
-    result = json.loads(fs_server.write_file(str(outside), "secret"))
-    assert "error" in result
-    assert "denied" in result["error"].lower()
+    err = _fail(fs_server.write_file, str(outside), "secret")
+    assert "denied" in str(err).lower()
 
 
 def test_list_directory_outside_allowed_rejected(
@@ -47,9 +52,8 @@ def test_list_directory_outside_allowed_rejected(
 ):
     outside = tmp_path / "outside_dir"
     outside.mkdir()
-    result = json.loads(fs_server.list_directory(str(outside)))
-    assert "error" in result
-    assert "denied" in result["error"].lower()
+    err = _fail(fs_server.list_directory, str(outside))
+    assert "denied" in str(err).lower()
 
 
 def test_search_files_outside_allowed_rejected(
@@ -57,9 +61,8 @@ def test_search_files_outside_allowed_rejected(
 ):
     outside = tmp_path / "outside_dir"
     outside.mkdir()
-    result = json.loads(fs_server.search_files(str(outside), "foo"))
-    assert "error" in result
-    assert "denied" in result["error"].lower()
+    err = _fail(fs_server.search_files, str(outside), "foo")
+    assert "denied" in str(err).lower()
 
 
 @pytest.mark.skipif(not sys.platform.startswith("win"), reason="Windows path case")
@@ -82,9 +85,8 @@ def test_write_protected_path_rejected(fs_server: FilesystemServer, tmp_path: Pa
         allowed_dirs=[str(allowed)],
         protected_paths=[str(kernel_dir)],
     )
-    result = json.loads(server.write_file(str(target), "hacked"))
-    assert "error" in result
-    assert "protected" in result["error"].lower()
+    err = _fail(server.write_file, str(target), "hacked")
+    assert "protected" in str(err).lower()
     assert target.read_text(encoding="utf-8") == "original"
 
 
@@ -106,10 +108,8 @@ def test_apply_patch_old_string_not_found(fs_server: FilesystemServer, tmp_path:
     target = allowed / "app.py"
     target.write_text("unchanged", encoding="utf-8")
 
-    result = json.loads(
-        fs_server.apply_patch(str(target), "missing", "new")
-    )
-    assert "error" in result
+    err = _fail(fs_server.apply_patch, str(target), "missing", "new")
+    assert "not found" in str(err).lower()
     assert target.read_text(encoding="utf-8") == "unchanged"
 
 
@@ -118,11 +118,8 @@ def test_apply_patch_ambiguous_without_replace_all(fs_server: FilesystemServer, 
     target = allowed / "app.py"
     target.write_text("foo\nfoo\n", encoding="utf-8")
 
-    result = json.loads(
-        fs_server.apply_patch(str(target), "foo", "bar")
-    )
-    assert "error" in result
-    assert result.get("occurrences") == 2
+    err = _fail(fs_server.apply_patch, str(target), "foo", "bar")
+    assert "appears 2 times" in str(err)
 
 
 def test_apply_patch_protected_path_rejected(fs_server: FilesystemServer, tmp_path: Path):
@@ -134,9 +131,8 @@ def test_apply_patch_protected_path_rejected(fs_server: FilesystemServer, tmp_pa
         allowed_dirs=[str(allowed)],
         protected_paths=[str(policy)],
     )
-    result = json.loads(server.apply_patch(str(policy), "{}", '{"a":1}'))
-    assert "error" in result
-    assert "protected" in result["error"].lower()
+    err = _fail(server.apply_patch, str(policy), "{}", '{"a":1}')
+    assert "protected" in str(err).lower()
 
 
 def test_apply_patch_empty_old_string_rejected(fs_server: FilesystemServer, tmp_path: Path):
@@ -144,9 +140,8 @@ def test_apply_patch_empty_old_string_rejected(fs_server: FilesystemServer, tmp_
     target = allowed / "app.py"
     target.write_text("unchanged", encoding="utf-8")
 
-    result = json.loads(fs_server.apply_patch(str(target), "", "new"))
-    assert "error" in result
-    assert "empty" in result["error"].lower()
+    err = _fail(fs_server.apply_patch, str(target), "", "new")
+    assert "empty" in str(err).lower()
     assert target.read_text(encoding="utf-8") == "unchanged"
 
 
@@ -162,9 +157,8 @@ def test_write_env_variants_protected(fs_server: FilesystemServer, tmp_path: Pat
         protected_paths=[str(env)],
     )
     for target in (env, env_local):
-        result = json.loads(server.write_file(str(target), "hacked"))
-        assert "error" in result
-        assert "protected" in result["error"].lower()
+        err = _fail(server.write_file, str(target), "hacked")
+        assert "protected" in str(err).lower()
 
 
 def test_write_env_subdirectory_protected(fs_server: FilesystemServer, tmp_path: Path):
@@ -175,9 +169,8 @@ def test_write_env_subdirectory_protected(fs_server: FilesystemServer, tmp_path:
     env_local.write_text("KEY=2", encoding="utf-8")
 
     server = FilesystemServer(allowed_dirs=[str(allowed)])
-    result = json.loads(server.write_file(str(env_local), "hacked"))
-    assert "error" in result
-    assert "protected" in result["error"].lower()
+    err = _fail(server.write_file, str(env_local), "hacked")
+    assert "protected" in str(err).lower()
     assert env_local.read_text(encoding="utf-8") == "KEY=2"
 
 
@@ -192,8 +185,8 @@ def test_write_env_example_allowed(fs_server: FilesystemServer, tmp_path: Path):
         allowed_dirs=[str(allowed)],
         protected_paths=[str(env)],
     )
-    blocked = json.loads(server.write_file(str(env), "hacked"))
-    assert "protected" in blocked["error"].lower()
+    blocked = _fail(server.write_file, str(env), "hacked")
+    assert "protected" in str(blocked).lower()
 
     result = json.loads(server.write_file(str(env_example), "NOTION_TOKEN=\n"))
     assert result["success"] is True
@@ -230,9 +223,8 @@ def test_write_through_symlink_rejected(fs_server: FilesystemServer, tmp_path: P
     except (OSError, NotImplementedError):
         pytest.skip("symlinks not supported on this platform")
 
-    result = json.loads(fs_server.write_file(str(link), "hacked"))
-    assert "error" in result
-    assert "symlink" in result["error"].lower()
+    err = _fail(fs_server.write_file, str(link), "hacked")
+    assert "symlink" in str(err).lower()
     # Underlying target must be untouched.
     assert outside.read_text(encoding="utf-8") == "real"
 
@@ -263,9 +255,8 @@ def test_read_protected_path_rejected(fs_server: FilesystemServer, tmp_path: Pat
         allowed_dirs=[str(allowed)],
         protected_paths=[str(secret_dir)],
     )
-    result = json.loads(server.read_file(str(secret)))
-    assert "error" in result
-    assert "protected" in result["error"].lower()
+    err = _fail(server.read_file, str(secret))
+    assert "protected" in str(err).lower()
 
 
 def test_read_env_file_rejected(fs_server: FilesystemServer, tmp_path: Path):
@@ -276,9 +267,8 @@ def test_read_env_file_rejected(fs_server: FilesystemServer, tmp_path: Path):
 
     # Default protected_paths includes _is_env_secret_file for .env in any dir.
     server = FilesystemServer(allowed_dirs=[str(allowed)])
-    result = json.loads(server.read_file(str(env)))
-    assert "error" in result
-    assert "protected" in result["error"].lower()
+    err = _fail(server.read_file, str(env))
+    assert "protected" in str(err).lower()
 
 
 def test_list_directory_skips_protected_entries(

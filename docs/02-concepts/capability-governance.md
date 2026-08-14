@@ -20,7 +20,7 @@ invoke_capability(name, args, actor, correlation_id,
 2. 执行归属校验：`agent:*` / `scheduler` / `executor` / `background` 类 actor 必须绑定 `execution_id`，否则拒绝（见下文）。
 3. 调用 `capability_governance.decide(...)` 走 3-gate。
 4. decision 为 allow 且工具属 write-class 时，先把调用意图写入 APP_STORAGE `plan_resumes`（键 `cap_intent:{id}`），再执行工具；审计事件落库后清除。进程在「副作用 → 审计事件」窗口内死亡时，RuntimeLoop 启动清扫为遗留意图补发 `CapabilityFailed(error=interrupted_before_audit)`（见 [ADR-R017](../07-adr/ADR-R017-execution-trustworthiness.md) E-10）。
-5. 根据 decision 发出 `CapabilityDenied` / `CapabilityDeferred` / `CapabilityInvoked` / `CapabilityFailed` 事件。
+5. 根据 decision 发出 `CapabilityDenied`（含 deferred）/ `CapabilityInvoked` / `CapabilityFailed` 事件。`invoke_capability` 返回 `outcome`：`success` / `approval_required` / `authorization_failure` / `tool_not_found` / `tool_timeout` / `tool_execution_failure` / `tool_invalid_result` / `internal_error`。工具 handler 失败必须是 `CapabilityFailed`，不得记成 success。
 6. 若工具属外部摄入类，成功后 `taint_registry.mark(correlation_id)`。
 
 ## 3-Gate 授权
@@ -74,7 +74,7 @@ flowchart TB
 - `expire_stale_approvals` — 24h TTL，TOCTOU 安全的原子 UPDATE（[`governance_ops.py`](../../backend/app/core/runtime/kernel/governance_ops.py)）。RuntimeLoop 每 100 tick（~10s）调用一次。
 - `grant_approval` / `deny_approval` — 用户在 UI 或 `/api/approvals/{id}/approve|reject` 处理。
 
-审批通过后，工具调用经 `submit_command("ApproveRequested")` 走 Kernel ABI 重新执行；可选地通过 `Brain.continue_after_tool_result`（递归深度上限 3）做 **one-shot 文本续写**（不传 tools，不重开完整工具环）。该续写坐标**不跨进程持久化**：服务重启后需用户新开回合。产品契约见 [ADR-R011](../07-adr/ADR-R011-chat-approval-continuation.md) 与 [execution-model.md](execution-model.md) 控制面表。审批 HTTP 端点见 [03-subsystems/backend-api.md](../03-subsystems/backend-api.md)。
+审批通过后，工具调用经 `submit_command("ApproveRequested")` 走 Kernel ABI 重新执行；可选地通过 `Brain.continue_after_tool_result`（递归深度上限 3）做 **one-shot 文本续写**（不传 tools，不重开完整工具环）。Chat 工具环中途崩溃时，`plan_resumes` 键 `chat_ckpt:{correlation_id}` 保存 messages，Scheduler interrupt 重放同一 `ChatRequested` 时续跑。产品契约见 [ADR-R011](../07-adr/ADR-R011-chat-approval-continuation.md) 与 [execution-model.md](execution-model.md) 控制面表。审批 HTTP 端点见 [03-subsystems/backend-api.md](../03-subsystems/backend-api.md)。
 
 ## Taint 追踪（防提示注入）
 

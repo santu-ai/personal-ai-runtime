@@ -4,6 +4,17 @@ import json
 from pathlib import Path
 
 from app.config import BASE_DIR, settings
+from app.core.harness.mcp_hub import (
+    OUTCOME_AUTHORIZATION_FAILURE,
+    OUTCOME_TOOL_EXECUTION_FAILURE,
+    OUTCOME_TOOL_INVALID_RESULT,
+    ToolInvokeError,
+)
+
+
+def _fail(message: str, reason: str = OUTCOME_TOOL_EXECUTION_FAILURE) -> None:
+    """Abort a filesystem tool with a typed failure (Kernel → CapabilityFailed)."""
+    raise ToolInvokeError(reason, message)
 
 
 def _parse_path_list(raw: str, default: list[str]) -> list[str]:
@@ -156,31 +167,32 @@ class FilesystemServer:
         except Exception:
             return True
 
-    def _write_denied(self, path: str) -> str | None:
+    def _write_denied(self, path: str) -> None:
         # Step 1: lexical containment — does the path *name* fall inside an
         # allowed dir, WITHOUT following symlinks? This lets us reach step 3
         # for paths that resolve outside via a planted symlink.
         try:
             target = Path(path).expanduser()
         except Exception:
-            return json.dumps({"error": "Access denied: invalid path"})
+            _fail("Access denied: invalid path", OUTCOME_AUTHORIZATION_FAILURE)
 
         lexically_safe = any(
             self._is_lexically_within(target, Path(allowed))
             for allowed in self.allowed_dirs
         )
         if not lexically_safe:
-            return json.dumps({"error": "Access denied: path outside allowed directories"})
+            _fail(
+                "Access denied: path outside allowed directories",
+                OUTCOME_AUTHORIZATION_FAILURE,
+            )
 
         # Step 2: governance-protected check (kernel/policy/.env/.ssh/...).
         if self._is_protected(path):
-            return json.dumps({
-                "error": (
-                    "Access denied: path is protected "
-                    "(kernel/governance files cannot be modified by agent)"
-                ),
-                "path": path,
-            })
+            _fail(
+                "Access denied: path is protected "
+                "(kernel/governance files cannot be modified by agent)",
+                OUTCOME_AUTHORIZATION_FAILURE,
+            )
 
         # Step 3: symlink defense — reject writes that traverse a symlink
         # planted inside an allowed directory, which resolve() would have
@@ -189,35 +201,34 @@ class FilesystemServer:
             base = Path(allowed).resolve()
             # Check the target itself AND every ancestor up to the allowed root.
             if self._contains_symlink_in_chain(target, base):
-                return json.dumps({
-                    "error": "Access denied: write path traverses a symlink",
-                    "path": path,
-                })
-        return None
+                _fail(
+                    "Access denied: write path traverses a symlink",
+                    OUTCOME_AUTHORIZATION_FAILURE,
+                )
 
-    def _read_denied(self, path: str) -> str | None:
-        """Return an error JSON string if ``path`` must not be read, else None.
+    def _read_denied(self, path: str) -> None:
+        """Raise if ``path`` must not be read.
 
         Read paths are gated by BOTH the allowed-dirs boundary
         (``is_path_allowed``) and the protected set (``_is_protected``).
         """
         if not self.is_path_allowed(path):
-            return json.dumps({"error": "Access denied: path outside allowed directories"})
+            _fail(
+                "Access denied: path outside allowed directories",
+                OUTCOME_AUTHORIZATION_FAILURE,
+            )
         if self._is_protected(path):
-            return json.dumps({"error": "Access denied: protected path"})
-        return None
+            _fail("Access denied: protected path", OUTCOME_AUTHORIZATION_FAILURE)
 
     def read_file(self, path: str, max_lines: int = 500) -> str:
         """Read a text file with safety check."""
-        denied = self._read_denied(path)
-        if denied:
-            return denied
+        self._read_denied(path)
 
         p = Path(path).expanduser().resolve()
         if not p.exists():
-            return json.dumps({"error": f"File not found: {path}"})
+            _fail(f"File not found: {path}")
         if p.is_dir():
-            return json.dumps({"error": f"Path is a directory: {path}"})
+            _fail(f"Path is a directory: {path}", OUTCOME_TOOL_INVALID_RESULT)
 
         try:
             content = p.read_text(encoding="utf-8")
@@ -229,15 +240,13 @@ class FilesystemServer:
                 content = content[:10000] + "\n... [content truncated]"
             return content
         except UnicodeDecodeError:
-            return json.dumps({"error": "Cannot read binary file as text"})
+            _fail("Cannot read binary file as text", OUTCOME_TOOL_INVALID_RESULT)
         except PermissionError:
-            return json.dumps({"error": "Permission denied"})
+            _fail("Permission denied")
 
     def write_file(self, path: str, content: str) -> str:
         """Write a text file with safety check."""
-        denied = self._write_denied(path)
-        if denied:
-            return denied
+        self._write_denied(path)
 
         p = Path(path).expanduser().resolve()
         try:
@@ -245,9 +254,9 @@ class FilesystemServer:
             p.write_text(content, encoding="utf-8")
             return json.dumps({"success": True, "path": str(p), "size": p.stat().st_size})
         except PermissionError:
-            return json.dumps({"error": "Permission denied"})
+            _fail("Permission denied")
         except Exception as e:
-            return json.dumps({"error": str(e)})
+            _fail(str(e))
 
     def apply_patch(
         self,
@@ -257,36 +266,32 @@ class FilesystemServer:
         replace_all: bool = False,
     ) -> str:
         """Apply a search-replace patch to a text file."""
-        denied = self._write_denied(path)
-        if denied:
-            return denied
+        self._write_denied(path)
 
         p = Path(path).expanduser().resolve()
         if not p.exists():
-            return json.dumps({"error": f"File not found: {path}"})
+            _fail(f"File not found: {path}")
         if p.is_dir():
-            return json.dumps({"error": f"Path is a directory: {path}"})
+            _fail(f"Path is a directory: {path}", OUTCOME_TOOL_INVALID_RESULT)
         if not old_string:
-            return json.dumps({"error": "old_string must not be empty"})
+            _fail("old_string must not be empty", OUTCOME_TOOL_INVALID_RESULT)
 
         try:
             content = p.read_text(encoding="utf-8")
         except UnicodeDecodeError:
-            return json.dumps({"error": "Cannot patch binary file as text"})
+            _fail("Cannot patch binary file as text", OUTCOME_TOOL_INVALID_RESULT)
         except PermissionError:
-            return json.dumps({"error": "Permission denied"})
+            _fail("Permission denied")
 
         count = content.count(old_string)
         if count == 0:
-            return json.dumps({"error": "old_string not found in file", "path": str(p)})
+            _fail(f"old_string not found in file: {p}", OUTCOME_TOOL_INVALID_RESULT)
         if count > 1 and not replace_all:
-            return json.dumps({
-                "error": (
-                    f"old_string appears {count} times; "
-                    "set replace_all=true or use a more specific old_string"
-                ),
-                "occurrences": count,
-            })
+            _fail(
+                f"old_string appears {count} times; "
+                "set replace_all=true or use a more specific old_string",
+                OUTCOME_TOOL_INVALID_RESULT,
+            )
 
         replacements = count if replace_all else 1
         new_content = content.replace(old_string, new_string, replacements if replace_all else 1)
@@ -300,21 +305,19 @@ class FilesystemServer:
                 "size": p.stat().st_size,
             })
         except PermissionError:
-            return json.dumps({"error": "Permission denied"})
+            _fail("Permission denied")
         except Exception as e:
-            return json.dumps({"error": str(e)})
+            _fail(str(e))
 
     def list_directory(self, path: str, pattern: str | None = None) -> str:
         """List directory contents with optional glob pattern."""
-        denied = self._read_denied(path)
-        if denied:
-            return denied
+        self._read_denied(path)
 
         p = Path(path).expanduser().resolve()
         if not p.exists():
-            return json.dumps({"error": f"Directory not found: {path}"})
+            _fail(f"Directory not found: {path}")
         if not p.is_dir():
-            return json.dumps({"error": f"Not a directory: {path}"})
+            _fail(f"Not a directory: {path}", OUTCOME_TOOL_INVALID_RESULT)
 
         try:
             if pattern:
@@ -345,17 +348,15 @@ class FilesystemServer:
 
             return json.dumps({"path": str(p), "count": len(items), "items": items}, indent=2)
         except PermissionError:
-            return json.dumps({"error": "Permission denied"})
+            _fail("Permission denied")
 
     def search_files(self, path: str, query: str) -> str:
         """Search for files matching a name query."""
-        denied = self._read_denied(path)
-        if denied:
-            return denied
+        self._read_denied(path)
 
         p = Path(path).expanduser().resolve()
         if not p.is_dir():
-            return json.dumps({"error": f"Not a directory: {path}"})
+            _fail(f"Not a directory: {path}", OUTCOME_TOOL_INVALID_RESULT)
 
         results: list[dict[str, str]] = []
         try:
@@ -370,7 +371,7 @@ class FilesystemServer:
                     "type": "dir" if item.is_dir() else "file",
                 })
         except PermissionError:
-            pass
+            _fail("Permission denied")
 
         return json.dumps({"query": query, "count": len(results), "results": results}, indent=2)
 

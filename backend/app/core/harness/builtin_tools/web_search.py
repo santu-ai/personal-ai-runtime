@@ -12,6 +12,11 @@ from urllib.parse import quote, unquote
 
 import httpx
 
+from app.core.harness.mcp_hub import (
+    OUTCOME_TOOL_EXECUTION_FAILURE,
+    OUTCOME_TOOL_TIMEOUT,
+    ToolInvokeError,
+)
 from app.core.harness.url_safety import create_ssrf_safe_async_client
 
 DUCKDUCKGO_API = "https://api.duckduckgo.com/"
@@ -36,9 +41,13 @@ class WebSearchServer:
                 }]
             return json.dumps({"query": query, "provider": "duckduckgo", "results": results}, indent=2, ensure_ascii=False)
         except httpx.TimeoutException:
-            return json.dumps({"error": "Search request timed out"})
+            raise ToolInvokeError(OUTCOME_TOOL_TIMEOUT, "Search request timed out") from None
+        except ToolInvokeError:
+            raise
         except Exception as e:
-            return json.dumps({"error": f"Search failed: {str(e)}"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_EXECUTION_FAILURE, f"Search failed: {str(e)}",
+            ) from e
 
     async def _search_duckduckgo_html(self, query: str, max_results: int) -> list[dict]:
         async with create_ssrf_safe_async_client(

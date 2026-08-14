@@ -99,6 +99,16 @@ async def on_chat_requested(ctx: "ExecutionContext", event: "Event") -> None:
         "approval_id": pending_data.get("approval_id", ""),
         "tool_call_id": pending_data.get("tool_call_id", ""),
     }
+    try:
+        from app.core.runtime.governance.context_pipeline import context_pipeline
+
+        plan = context_pipeline.last_compile_plan()
+        if plan is not None:
+            result["fragment_ids"] = list(plan.selected_fragment_ids)
+            tags = plan.analysis_result.tags if plan.analysis_result is not None else set()
+            result["intent_tags"] = sorted(tags)
+    except Exception:
+        logger.debug("Could not attach compile plan to ChatCompleted", exc_info=True)
 
     # Emit ChatCompleted to event_log (immutable Truth Layer — one record per turn).
     ctx.emit(

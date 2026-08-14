@@ -241,7 +241,25 @@ async def invoke_capability(
 
     tool = mcp_hub.get_tool(name)
     if tool is None:
-        return {"status": "error", "error": f"Unknown capability: {name}"}
+        kernel.emit_event(
+            type="CapabilityFailed",
+            aggregate_type="capability",
+            aggregate_id=f"cap_{name}",
+            payload={
+                "name": name,
+                "error": f"Unknown capability: {name}",
+                "outcome": "tool_not_found",
+                "latency_ms": 0,
+            },
+            actor=principal.actor if principal is not None else actor,
+            caused_by=caused_by,
+            correlation_id=correlation_id,
+        )
+        return {
+            "status": "error",
+            "error": f"Unknown capability: {name}",
+            "outcome": "tool_not_found",
+        }
 
     if principal is None:
         principal = identity_resolver.resolve(actor, kernel)
@@ -258,7 +276,11 @@ async def invoke_capability(
             actor=principal.actor,
             correlation_id=correlation_id,
         )
-        return {"status": "error", "error": "missing_execution_id"}
+        return {
+            "status": "error",
+            "error": "missing_execution_id",
+            "outcome": "authorization_failure",
+        }
 
     if resolved_execution_id:
         if not _handler_execution_exists(kernel, resolved_execution_id):
@@ -269,7 +291,11 @@ async def invoke_capability(
                 actor=principal.actor,
                 correlation_id=correlation_id,
             )
-            return {"status": "error", "error": "invalid_execution_id"}
+            return {
+                "status": "error",
+                "error": "invalid_execution_id",
+                "outcome": "authorization_failure",
+            }
 
     capability_caused_by = resolved_execution_id or caused_by
 
@@ -293,7 +319,11 @@ async def invoke_capability(
             actor=principal.actor,
             correlation_id=correlation_id,
         )
-        return {"status": "error", "error": decision.reason}
+        return {
+            "status": "error",
+            "error": decision.reason,
+            "outcome": "authorization_failure",
+        }
 
     if decision.decision == "defer":
         _emit_capability_denied(
@@ -309,7 +339,11 @@ async def invoke_capability(
                 "approval_id": decision.approval_id,
             },
         )
-        return {"status": "pending", "approval_id": decision.approval_id}
+        return {
+            "status": "pending",
+            "approval_id": decision.approval_id,
+            "outcome": "approval_required",
+        }
 
     # 双写窗口收窄（P0）：write-class 工具在外部副作用发生前先持久化调用
     # 意图（APP_STORAGE ``plan_resumes``，键 ``cap_intent:{id}``），审计事件
@@ -361,9 +395,10 @@ async def invoke_capability(
                     source="external_ingestion",
                     reason=name,
                 )
-        return {"status": "success", "result": result_str}
+        return {"status": "success", "result": result_str, "outcome": "success"}
     except Exception as exc:
         _latency_ms = (_time.perf_counter() - _t0) * 1000
+        outcome = getattr(exc, "reason", None) or "internal_error"
         kernel.emit_event(
             type="CapabilityFailed",
             aggregate_type="capability",
@@ -371,6 +406,7 @@ async def invoke_capability(
             payload={
                 "name": name,
                 "error": str(exc),
+                "outcome": outcome,
                 "latency_ms": round(_latency_ms, 2),
             },
             actor=principal.actor,
@@ -379,4 +415,4 @@ async def invoke_capability(
         )
         if intent_id:
             clear_capability_intent(intent_id, kernel=kernel)
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": str(exc), "outcome": outcome}

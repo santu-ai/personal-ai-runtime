@@ -15,6 +15,11 @@ from email.header import decode_header
 from email.mime.text import MIMEText
 from email.utils import parsedate_to_datetime
 
+from app.core.harness.mcp_hub import (
+    OUTCOME_TOOL_EXECUTION_FAILURE,
+    ToolInvokeError,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -328,11 +333,15 @@ class EmailServer:
                 payload["all_unread_emails"] = all_unread_emails
             return json.dumps(payload, ensure_ascii=False)
         except imaplib.IMAP4.error as e:
-            return json.dumps({"error": f"IMAP login failed: {str(e)}"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_EXECUTION_FAILURE, f"IMAP login failed: {str(e)}",
+            ) from e
         except ValueError as e:
-            return json.dumps({"error": str(e)})
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
+        except ToolInvokeError:
+            raise
         except Exception as e:
-            return json.dumps({"error": str(e)})
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
 
     def read_inbox_email(
         self,
@@ -374,11 +383,15 @@ class EmailServer:
                 "body": em.get("body") or em.get("preview", ""),
             }, ensure_ascii=False)
         except imaplib.IMAP4.error as e:
-            return json.dumps({"error": f"IMAP login failed: {str(e)}"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_EXECUTION_FAILURE, f"IMAP login failed: {str(e)}",
+            ) from e
         except ValueError as e:
-            return json.dumps({"error": str(e)})
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
+        except ToolInvokeError:
+            raise
         except Exception as e:
-            return json.dumps({"error": str(e)})
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
 
     def mark_inbox_email_read(
         self,
@@ -506,11 +519,17 @@ class EmailServer:
 
                 seq = target.get("seq_num")
                 if not seq:
-                    return json.dumps({"error": "Internal error: missing IMAP sequence"})
+                    raise ToolInvokeError(
+                        OUTCOME_TOOL_EXECUTION_FAILURE,
+                        "Internal error: missing IMAP sequence",
+                    )
 
                 status, _data = mail.store(str(seq), mode, flag)
                 if status != "OK":
-                    return json.dumps({"error": f"IMAP STORE failed: {status}"})
+                    raise ToolInvokeError(
+                        OUTCOME_TOOL_EXECUTION_FAILURE,
+                        f"IMAP STORE failed: {status}",
+                    )
 
                 return json.dumps({
                     "success": True,
@@ -524,14 +543,19 @@ class EmailServer:
                     mail.logout()
                 except Exception:
                     logger.debug("Error during IMAP logout", exc_info=True)
+        except ToolInvokeError:
+            raise
         except Exception as e:
-            return json.dumps({"error": str(e)})
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
 
     def send_email(self, to: str, subject: str, body: str) -> str:
         """Send an email via SMTP (requires user approval)."""
         user, password = self._get_credentials()
         if not user or not password:
-            return json.dumps({"error": "Email credentials not configured"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_EXECUTION_FAILURE,
+                "Email credentials not configured",
+            )
 
         try:
             msg = MIMEText(body)
@@ -545,8 +569,10 @@ class EmailServer:
             server.quit()
 
             return json.dumps({"success": True, "to": to, "subject": subject})
+        except ToolInvokeError:
+            raise
         except Exception as e:
-            return json.dumps({"error": str(e)})
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
 
 
 email_server = EmailServer()

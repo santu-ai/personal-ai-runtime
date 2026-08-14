@@ -2,9 +2,9 @@
 
 | Field | Content |
 |-------|---------|
-| Decision | 审批后执行已批准工具 + `Brain.continue_after_tool_result`（无 tools 的 one-shot）；**不**跨进程重开完整 Brain 工具环 |
-| Context | 核实：`approve_handlers` → `continue_after_tool_result`；无 Chat PlanResume；SSE 队列内存态 |
-| Evidence | `approve_handlers.py`, `brain_llm_client.py` / `brain_llm_ops.py` |
-| Consequences + | 语义清晰；避免半开环 cursor 复杂度 |
-| Consequences − | 进程死亡后不能静默续跑多步 tool loop；用户需新回合 |
-| Still valid? | Yes（C1 未选） |
+| Decision | 审批后执行已批准工具 + `Brain.continue_after_tool_result`（无 tools 的 one-shot）。Chat 工具环中途崩溃：把 messages/iteration 写入 `plan_resumes` 键 `chat_ckpt:{correlation_id}`，Scheduler interrupt 重放同一 `ChatRequested` 时从 checkpoint 续跑。审批续写路径仍不重开 tools。 |
+| Context | 产品选择：最小 Chat checkpoint（C1）。核实：`brain_chat_stream` persist/load；`approve_handlers` → `continue_after_tool_result` 仍无 tools |
+| Evidence | `plan_resume.py` (`record_chat_checkpoint`)，`brain_chat_stream.py`，`test_chat_checkpoint.py` |
+| Consequences + | 工具环中断后可续跑；写类工具仍靠 `idem:{corr}:chat:*` 去重 |
+| Consequences − | checkpoint 体积随 messages 增长；`ChatRequested` max_retries=1，第二次崩溃仍 DLQ |
+| Still valid? | Partial（审批 one-shot 仍成立；工具环跨进程续跑已落地） |

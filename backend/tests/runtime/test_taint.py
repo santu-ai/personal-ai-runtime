@@ -106,14 +106,18 @@ async def test_kernel_marks_taint_after_external_ingestion(kernel, monkeypatch):
 @pytest.mark.asyncio
 async def test_untainted_low_risk_tool_auto_allowed(kernel):
     """read_file is auto_allow and should not require approval when context is clean."""
+    from app.config import BASE_DIR
+
     corr = "corr-clean"
+    target = BASE_DIR / "AGENTS.md"
     result = await kernel.invoke_capability(
         name="read_file",
-        args={"path": "/etc/hosts"},
+        args={"path": str(target), "max_lines": 5},
         actor="user",
         correlation_id=corr,
         pre_approved=False,
     )
 
     assert result["status"] == "success"
+    assert result.get("result")
     taint_registry.clear(corr)

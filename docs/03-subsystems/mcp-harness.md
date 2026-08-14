@@ -23,7 +23,7 @@
 
 ### 调用
 
-`invoke_tool(name, args)` — 派发到 handler，计时，记录 `ToolCallRecord` 遥测，输出 >8000 字符截断。
+`invoke_tool(name, args)` — 派发到 handler；输出 >8000 字符截断。handler 异常 / 超时 / 未知工具抛 `ToolInvokeError`（`tool_execution_failure` / `tool_timeout` / `tool_not_found` / `tool_invalid_result` / `authorization_failure`），由 `Kernel.invoke_capability` 记为 `CapabilityFailed`。禁止把执行失败吞成 JSON 字符串再记 `CapabilityInvoked`。filesystem / git / fetch / shell / web_search / email（IMAP/SMTP 执行失败）与 `mcp_mesh.call_tool` 的失败路径同样抛 `ToolInvokeError`，不再返回 `{"error": ...}` 伪成功。空收件箱等应用层 miss 仍可返回 JSON。
 
 公开接口：`get_tool_defs_for_llm()`、`get_tool`、`needs_confirmation`、`is_async`、`invoke_tool`、`register_tool`、`unregister_tool`。
 
@@ -58,7 +58,7 @@
 ### `MCPMesh`（[`mcp_mesh.py`](../../backend/app/core/harness/mcp_mesh.py)）
 
 - `start()` 并行连接 startup servers，为 `startup_connect=False` 的服务器 spawn 懒连接后台任务。
-- `call_tool(registered_name, arguments)` 经 `url_safety.validate_http_url` 校验 Playwright URL 工具。
+- `call_tool(registered_name, arguments)` 经 `url_safety.validate_http_url` 校验 Playwright URL 工具；失败抛 `ToolInvokeError`（未知工具 / 禁止 / 超时 / 执行失败），不返回 JSON error 字符串。
 - `get_server_status()` 报告每服务器 connected/lazy/disconnected/unavailable。
 
 ### 发现

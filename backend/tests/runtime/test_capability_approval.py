@@ -172,16 +172,16 @@ class TestCapabilityApproval:
         assert result["status"] == "error"
         assert "params" in result["error"]
 
-    async def test_pre_approved_cannot_replay(self, isolated_kernel):
+    async def test_pre_approved_cannot_replay(self, isolated_kernel, allow_tmp_fs):
         k, _ = isolated_kernel
+        args = {"path": str(allow_tmp_fs / "x.txt"), "content": "hi"}
         pending = await k.invoke_capability(
             "write_file",
-            {"path": "/tmp/x", "content": "hi"},
+            args,
             actor="user",
             correlation_id="replay",
         )
         approval_id = pending["approval_id"]
-        args = {"path": "/tmp/x", "content": "hi"}
 
         first = await k.invoke_capability(
             "write_file",
@@ -202,17 +202,18 @@ class TestCapabilityApproval:
         assert second["status"] == "error"
         assert "pending" in second["error"]
 
-    async def test_pre_approved_skips_new_approval(self, isolated_kernel):
+    async def test_pre_approved_skips_new_approval(self, isolated_kernel, allow_tmp_fs):
         k, _ = isolated_kernel
+        args = {"path": str(allow_tmp_fs / "x.txt"), "content": "hi"}
         pending = await k.invoke_capability(
-            "write_file", {"path": "/tmp/x", "content": "hi"}, actor="user", correlation_id="pre",
+            "write_file", args, actor="user", correlation_id="pre",
         )
         assert pending["status"] == "pending"
         approval_id = pending["approval_id"]
 
         result = await k.invoke_capability(
             "write_file",
-            {"path": "/tmp/x", "content": "hi"},
+            args,
             actor="user",
             correlation_id="pre_exec",
             pre_approved=True,

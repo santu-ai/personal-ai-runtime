@@ -42,6 +42,7 @@ from app.core.runtime.read_ports.events import (
     goal_events,
     query_recent_events,
     recent_events,
+    reconstruct_execution_trace,
     to_event_dict,
 )
 from app.core.runtime.read_ports.inbox import (
@@ -219,5 +220,6 @@ __all__ = [
     "goal_events",
     "recent_events",
     "query_recent_events",
+    "reconstruct_execution_trace",
     "build_memory_graph_edges",
 ]

@@ -305,36 +305,73 @@ class MCPMesh:
             self._started = False
 
     async def call_tool(self, registered_name: str, arguments: dict[str, Any]) -> str:
+        from app.core.harness.mcp_hub import (
+            OUTCOME_AUTHORIZATION_FAILURE,
+            OUTCOME_TOOL_EXECUTION_FAILURE,
+            OUTCOME_TOOL_INVALID_RESULT,
+            OUTCOME_TOOL_NOT_FOUND,
+            OUTCOME_TOOL_TIMEOUT,
+            ToolInvokeError,
+        )
+
         if registered_name not in self._tool_index:
-            return json.dumps({"error": f"Unknown external tool: {registered_name}"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_NOT_FOUND,
+                f"Unknown external tool: {registered_name}",
+                tool_name=registered_name,
+            )
 
         from app.core.runtime.capability_governance import capability_governance
 
         if capability_governance.is_forbidden(registered_name):
-            return json.dumps({"error": f"Tool forbidden: {registered_name}"})
+            raise ToolInvokeError(
+                OUTCOME_AUTHORIZATION_FAILURE,
+                f"Tool forbidden: {registered_name}",
+                tool_name=registered_name,
+            )
 
         server_name, original_name = self._tool_index[registered_name]
         try:
             conn = await self._ensure_server(server_name)
         except Exception as exc:
-            return json.dumps({"error": _safe_mcp_error(server_name, exc)})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_EXECUTION_FAILURE,
+                _safe_mcp_error(server_name, exc),
+                tool_name=registered_name,
+            ) from exc
 
         url_err = await self._validate_tool_arguments(original_name, arguments)
         if url_err:
-            return json.dumps({"error": url_err})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_INVALID_RESULT,
+                url_err,
+                tool_name=registered_name,
+            )
 
         try:
             result = await self._call_with_reconnect(
                 conn, server_name, original_name, arguments, registered_name
             )
+        except ToolInvokeError:
+            raise
         except asyncio.TimeoutError:
-            return json.dumps({"error": f"MCP tool timed out: {registered_name}"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_TIMEOUT,
+                f"MCP tool timed out: {registered_name}",
+                tool_name=registered_name,
+            ) from None
         except MCPError as exc:
-            # v2 下工具失败以 JSON-RPC 错误浮现——把消息透传给 LLM 让其自纠
-            # （v1 是以 is_error 内容返回）。
-            return json.dumps({"error": f"MCP tool error: {exc.message}"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_EXECUTION_FAILURE,
+                f"MCP tool error: {exc.message}",
+                tool_name=registered_name,
+            ) from exc
         except Exception as exc:
-            return json.dumps({"error": _safe_mcp_error(server_name, exc)})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_EXECUTION_FAILURE,
+                _safe_mcp_error(server_name, exc),
+                tool_name=registered_name,
+            ) from exc
 
         parts: list[str] = []
         for block in result.content:
@@ -346,7 +383,11 @@ class MCPMesh:
         # 兼容 v1 协议的外部 server——仍以 CallToolResult(is_error=True)
         # 而非抛 MCPError 的方式上报错误。
         if result.is_error:
-            return json.dumps({"error": "\n".join(parts) or "MCP tool returned error"})
+            raise ToolInvokeError(
+                OUTCOME_TOOL_EXECUTION_FAILURE,
+                "\n".join(parts) or "MCP tool returned error",
+                tool_name=registered_name,
+            )
         return "\n".join(parts) if parts else json.dumps({"status": "ok", "result": None})
 
     async def _call_with_reconnect(

@@ -219,6 +219,7 @@ def clear_plan_resumes(*, db: Any | None = None) -> None:
 # Synthetic approval_id keys keep zero new tables / event types:
 #   progress:{action_id}              — last completed step_index + output
 #   idem:{correlation_id}:{step}      — successful step result for replay skip
+#   chat_ckpt:{correlation_id}        — Chat tool-loop messages for interrupt replay
 
 
 def progress_key(action_id: str) -> str:
@@ -452,3 +453,62 @@ def lookup_chat_tool_success(
         chat_idempotency_key(correlation_id, tool_name, args), db=db, kernel=kernel,
     )
     return _success_result(row)
+
+
+CHAT_CHECKPOINT_PREFIX = "chat_ckpt:"
+
+
+def chat_checkpoint_key(correlation_id: str) -> str:
+    return f"{CHAT_CHECKPOINT_PREFIX}{correlation_id}"
+
+
+def record_chat_checkpoint(
+    correlation_id: str,
+    payload: dict[str, Any],
+    *,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> None:
+    """Persist Chat tool-loop cursor so interrupt replay can resume mid-turn."""
+    if not correlation_id:
+        return
+    register_plan_resume(
+        chat_checkpoint_key(correlation_id),
+        PlanResume(
+            kind="execute",
+            resume_from=int(payload.get("iteration") or 0),
+            previous_output=payload,
+        ),
+        db=db,
+        kernel=kernel,
+    )
+
+
+def load_chat_checkpoint(
+    correlation_id: str,
+    *,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> dict[str, Any] | None:
+    if not correlation_id:
+        return None
+    row = peek_plan_resume(
+        chat_checkpoint_key(correlation_id), db=db, kernel=kernel,
+    )
+    if row is None:
+        return None
+    payload = dict(row.previous_output or {})
+    return payload or None
+
+
+def clear_chat_checkpoint(
+    correlation_id: str,
+    *,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> None:
+    if not correlation_id:
+        return
+    take_plan_resume(
+        chat_checkpoint_key(correlation_id), db=db, kernel=kernel,
+    )

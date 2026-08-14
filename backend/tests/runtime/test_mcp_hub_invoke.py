@@ -1,14 +1,12 @@
 """MCPHub invoke_tool observability and kwargs filtering."""
 
-import json
-
 import pytest
 
-from app.core.harness.mcp_hub import MCPHub, ToolDef
+from app.core.harness.mcp_hub import MCPHub, ToolDef, ToolInvokeError
 
 
 @pytest.mark.asyncio
-async def test_invoke_tool_logs_and_returns_error_on_failure(monkeypatch):
+async def test_invoke_tool_raises_on_failure(monkeypatch):
     from unittest.mock import MagicMock
 
     import app.core.harness.mcp_hub as hub_mod
@@ -26,9 +24,10 @@ async def test_invoke_tool_logs_and_returns_error_on_failure(monkeypatch):
         parameters={"type": "object", "properties": {}},
         handler=boom,
     ))
-    result = await hub.invoke_tool("boom_tool", {})
-    payload = json.loads(result)
-    assert "kaboom" in payload["error"]
+    with pytest.raises(ToolInvokeError) as ei:
+        await hub.invoke_tool("boom_tool", {})
+    assert ei.value.reason == "tool_execution_failure"
+    assert "kaboom" in str(ei.value)
     logged.assert_called_once()
     assert logged.call_args.args[0] == "Tool %s failed"
     assert logged.call_args.args[1] == "boom_tool"

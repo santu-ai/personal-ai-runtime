@@ -40,18 +40,17 @@ def _intent_rows(db) -> list[str]:
 
 
 @pytest.mark.asyncio
-async def test_write_class_invoke_clears_intent_after_audit(isolated_kernel):
+async def test_write_class_invoke_clears_intent_after_audit(isolated_kernel, allow_tmp_fs):
     """成功路径：CapabilityInvoked 落库后意图行必须清除。"""
     k, db = isolated_kernel
+    args = {"path": str(allow_tmp_fs / "x.txt"), "content": "hi"}
 
-    cap = await k.invoke_capability(
-        "write_file", {"path": "/tmp/x", "content": "hi"}, actor="user"
-    )
+    cap = await k.invoke_capability("write_file", args, actor="user")
     assert cap["status"] == "pending"
 
     cap2 = await k.invoke_capability(
         "write_file",
-        {"path": "/tmp/x", "content": "hi"},
+        args,
         actor="user",
         correlation_id="intent-corr",
         pre_approved=True,

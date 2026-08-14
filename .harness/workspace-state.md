@@ -6,9 +6,9 @@
 ## 当前状态
 
 - 当前分支：`main`（开发阶段）
-- 进行中任务 / WIP：无
-- 已知坏点 / 待办：体检 Next 批次候选——verify_alembic 默认值 parity、webhook/ntfy SSRF-safe、untrusted prompt 定界、Scheduler.stop 排干、boundary 多行 SQL 扫描、§5 删除项 1-6
-- 最近审阅：2026-08-13 体检 Now 批次整改（P0 双写窗口 + P1×4）全绿收口
+- 进行中任务 / WIP：Runtime validation dogfood — Chat checkpoint + live eval landed
+- 已知坏点 / 待办：calendar 等仍 JSON error；Memory/Context live A/B 仍 NOT MEASURED；Chat max_retries=1
+- 最近审阅：2026-08-14 Runtime Validation — filesystem/git/fetch/shell/mesh 失败不再记 Invoked
 
 ## 产品观察（后续规划候选）
 

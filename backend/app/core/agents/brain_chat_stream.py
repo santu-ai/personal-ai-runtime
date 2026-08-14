@@ -23,6 +23,11 @@ from app.core.agents.tool_dispatcher import ToolDispatcher
 from app.core.agents.tool_postprocess import canned_summary
 from app.core.runtime.governance.context_pipeline import get_sources
 from app.core.runtime.kernel_instance import kernel
+from app.core.runtime.plan_resume import (
+    clear_chat_checkpoint,
+    load_chat_checkpoint,
+    record_chat_checkpoint,
+)
 from app.core.runtime.taint import taint_registry
 
 logger = logging.getLogger(__name__)
@@ -55,13 +60,49 @@ async def chat_stream(
     taint_registry.clear(correlation_id)
     conversation.correlation_id = correlation_id
 
-    messages = brain.build_messages(conversation, user_message, system_prompt=system_prompt)
+    ckpt: dict | None = None
+    try:
+        ckpt = load_chat_checkpoint(correlation_id, kernel=kernel)
+    except Exception:
+        logger.debug("chat checkpoint load failed", exc_info=True)
+
+    restored = bool(ckpt and isinstance(ckpt.get("messages"), list) and ckpt["messages"])
+    if restored:
+        messages = list(ckpt["messages"])
+        tool_iterations = int(ckpt.get("iteration") or 0)
+        saved_user = str(ckpt.get("user_message") or "")
+        if saved_user:
+            user_message = saved_user
+    else:
+        messages = brain.build_messages(conversation, user_message, system_prompt=system_prompt)
+        tool_iterations = 0
     # E-8: save_user_message is idempotent per correlation_id so scheduler
     # retries of ChatRequested do not duplicate the user turn.
     conversation.save_user_message(user_message)
 
+    def _persist_checkpoint() -> None:
+        try:
+            record_chat_checkpoint(
+                correlation_id,
+                {
+                    "conversation_id": conversation.conversation_id,
+                    "user_message": user_message,
+                    "messages": messages,
+                    "iteration": tool_iterations,
+                    "status": "in_progress",
+                },
+                kernel=kernel,
+            )
+        except Exception:
+            logger.debug("chat checkpoint save failed", exc_info=True)
+
+    def _drop_checkpoint() -> None:
+        try:
+            clear_chat_checkpoint(correlation_id, kernel=kernel)
+        except Exception:
+            logger.debug("chat checkpoint clear failed", exc_info=True)
+
     full_content = ""
-    tool_iterations = 0
     cumulative_prompt_tokens = 0
     loop_start = time.time()
     all_tc_for_msg: list[dict] = []
@@ -69,6 +110,7 @@ async def chat_stream(
     while tool_iterations < settings.max_tool_iterations:
         if time.time() - loop_start > settings.total_tool_loop_timeout:
             yield {"type": "error", "content": "Tool call loop timed out."}
+            _drop_checkpoint()
             return
         if cumulative_prompt_tokens >= settings.max_tool_loop_prompt_tokens:
             yield {"type": "text_delta", "content": _TOKEN_CAP_NOTE}
@@ -80,6 +122,7 @@ async def chat_stream(
             response, client, used_provider = await brain.llm.create_stream(messages)
         except Exception as e:
             yield {"type": "error", "content": f"LLM API error: {str(e)}"}
+            _drop_checkpoint()
             return
         if used_provider.name != brain.llm.provider.name:
             brain.llm.replace_provider(client, used_provider)
@@ -93,6 +136,7 @@ async def chat_stream(
 
         if assembled is None:
             yield {"type": "error", "content": "LLM stream ended without a result."}
+            _drop_checkpoint()
             return
 
         assistant_content = assembled.visible_text
@@ -148,6 +192,7 @@ async def chat_stream(
                 yield evt
 
         if pending_approval:
+            _drop_checkpoint()
             return
 
         tc_for_msg = [{
@@ -159,6 +204,7 @@ async def chat_stream(
 
         messages.extend(dispatcher.build_tool_call_messages(assistant_content, tool_calls_data))
         messages.extend(_tool_messages)
+        _persist_checkpoint()
 
         summary = canned_summary(tool_calls_data, iteration_tool_results)
         if summary:
@@ -197,4 +243,5 @@ async def chat_stream(
             sources=sources,
         )
 
+    _drop_checkpoint()
     yield {"type": "done"}

@@ -1,10 +1,9 @@
 """SSRF regression tests for fetch MCP server."""
 
-import json
-
 import pytest
 
 from app.core.harness.builtin_tools.fetch import fetch_server
+from app.core.harness.mcp_hub import ToolInvokeError
 
 
 @pytest.mark.asyncio
@@ -18,6 +17,5 @@ from app.core.harness.builtin_tools.fetch import fetch_server
     ],
 )
 async def test_fetch_blocks_internal_urls(url: str):
-    result = json.loads(await fetch_server.fetch_url(url))
-    assert "error" in result
-    assert "Blocked URL" in result["error"]
+    with pytest.raises(ToolInvokeError, match="Blocked URL"):
+        await fetch_server.fetch_url(url)

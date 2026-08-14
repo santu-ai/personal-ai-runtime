@@ -41,7 +41,7 @@ Personal AI Runtime 的所有执行路径用**一套三车道语义**解释。�
 | Lease / multi-worker ownership | Absent / **Non-goal** | 单进程；见 [runtime-invariants.md](runtime-invariants.md) INV-W6；`check_single_process_control_plane.py` |
 | Quota | Partial | HTTP/WS rate limits；tool-loop token/iteration caps；无 per-tenant scheduler quota |
 | Backpressure | Present | `scheduler_max_pending` → `queue_full` |
-| Durable continuation | Partial | `plan_resumes` for Execute/Approve；**Chat Brain 工具环跨进程不续跑**（审批后 one-shot `continue_after_tool_result`，见 ADR-R011） |
+| Durable continuation | Partial | `plan_resumes` for Execute/Approve；Chat 工具环 `chat_ckpt:{correlation_id}` 供 interrupt 重放；审批后仍是 one-shot `continue_after_tool_result`（ADR-R011） |
 
 ## 负空间登记（Negative Space）
 
@@ -49,7 +49,7 @@ Personal AI Runtime 的所有执行路径用**一套三车道语义**解释。�
 |-------------------|--------|-------|
 | Distributed lease | Non-goal | Personal single-process Runtime |
 | Multi-worker Scheduler | Non-goal | Same process as FastAPI lifespan |
-| Chat tool-loop cursor across restart | Absent (product: C2) | Resolve runs approved tool + one-shot text；不重开完整 tool loop |
+| Chat tool-loop cursor across restart | Partial | `chat_ckpt:{correlation_id}` + Scheduler interrupt replay；审批 resolve 仍 one-shot |
 | Multi-tenant isolation | Non-goal | Single-user Principal model |
 
 ## 生命周期对照（Work / Execution / PlanResume）
@@ -59,6 +59,6 @@ Personal AI Runtime 的所有执行路径用**一套三车道语义**解释。�
 | **ScheduledExecution** | ExecutionRequested | ExecutionStarted | Completed/Failed | ExecutionRetried (Lane A) | running→retrying→pending | Soft-prune terminal rows (`handler_executions_retention_days`) |
 | **WorkItem** | WorkItemCreated | StatusChanged(running) | completed/cancelled | Domain re-open: failed→pending | BG running→pending | Domain delete events |
 | **PlanResume** | register on pending approval | — | take on approve/deny | — | SQLite durable | clear on cancel/deny/expire |
-| **Chat tool loop** | ChatRequested | Brain.chat_stream | ChatCompleted / confirmation_required | — | **Not durable** (ADR-R011) | — |
+| **Chat tool loop** | ChatRequested | Brain.chat_stream | ChatCompleted / confirmation_required | — | `chat_ckpt:{correlation_id}` on interrupt replay | — |
 
 Domain FSM 不含 `retrying`；操作层重试由 Lane A（`ScheduledExecution`）独占。
