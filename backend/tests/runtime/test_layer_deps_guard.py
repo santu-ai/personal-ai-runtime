@@ -18,7 +18,8 @@ def run_check(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _write_tree(fake_app: Path) -> None:
-    for part in ("product", "api", "store", "core/runtime"):
+    for part in ("product", "api", "store", "core/runtime", "core/agents",
+                 "core/harness", "fragments"):
         (fake_app / part).mkdir(parents=True, exist_ok=True)
 
 
@@ -104,6 +105,56 @@ class TestLayerDepsGuard:
                 "from app.core.runtime.kernel import constants\n"
                 "from app.core.runtime.kernel.constants import EVENT_X\n"
                 "from app.core.runtime import read_ports\n",
+                encoding="utf-8",
+            )
+            monkeypatch.setattr(mod, "APP_ROOT", fake_app)
+            violations = mod.scan()
+            assert violations == [], violations
+        finally:
+            sys.path.pop(0)
+
+    def test_user_space_tool_bypass_detected(self, tmp_path, monkeypatch):
+        """R5：api/product/fragments/core/agents 直连 builtin_tools / mcp_hub 必须被拦。"""
+        sys.path.insert(0, str(BACKEND))
+        try:
+            import scripts.check_layer_deps as mod
+
+            fake_app = tmp_path / "app"
+            _write_tree(fake_app)
+            (fake_app / "api" / "bad_api.py").write_text(
+                "from app.core.harness.builtin_tools.email import email_server\n",
+                encoding="utf-8",
+            )
+            (fake_app / "product" / "bad_product.py").write_text(
+                "from app.core.harness import mcp_hub\n",
+                encoding="utf-8",
+            )
+            (fake_app / "fragments" / "bad_fragment.py").write_text(
+                "import app.core.harness.mcp_hub\n",
+                encoding="utf-8",
+            )
+            (fake_app / "core" / "agents" / "bad_agent.py").write_text(
+                "from app.core.harness.mcp_hub import mcp_hub\n",
+                encoding="utf-8",
+            )
+            monkeypatch.setattr(mod, "APP_ROOT", fake_app)
+            _known, new = mod.partition(mod.scan())
+            bypass = [v for v in new if v[2] == "user_space_tool_bypass"]
+            assert len(bypass) == 4, new
+        finally:
+            sys.path.pop(0)
+
+    def test_harness_internal_tool_import_is_not_bypass(self, tmp_path, monkeypatch):
+        """R5 只管 User Space：harness 注册路径自身 import 工具服务器是合法的。"""
+        sys.path.insert(0, str(BACKEND))
+        try:
+            import scripts.check_layer_deps as mod
+
+            fake_app = tmp_path / "app"
+            _write_tree(fake_app)
+            (fake_app / "core" / "harness" / "register.py").write_text(
+                "from app.core.harness.builtin_tools.fetch import fetch_server\n"
+                "from app.core.harness.mcp_hub import ToolDef\n",
                 encoding="utf-8",
             )
             monkeypatch.setattr(mod, "APP_ROOT", fake_app)

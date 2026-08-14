@@ -233,6 +233,11 @@ async def invoke_capability(
         get_current_execution_id,
         identity_resolver,
     )
+    from app.core.runtime.plan_resume import (
+        clear_capability_intent,
+        record_capability_intent,
+    )
+    from app.core.runtime.taint import is_write_class_tool
 
     tool = mcp_hub.get_tool(name)
     if tool is None:
@@ -306,6 +311,25 @@ async def invoke_capability(
         )
         return {"status": "pending", "approval_id": decision.approval_id}
 
+    # 双写窗口收窄（P0）：write-class 工具在外部副作用发生前先持久化调用
+    # 意图（APP_STORAGE ``plan_resumes``，键 ``cap_intent:{id}``），审计事件
+    # 落库后清除。进程在「副作用 → 审计事件」窗口内死亡时，遗留意图由
+    # RuntimeLoop 启动清扫补发 CapabilityFailed(error=interrupted_before_audit)，
+    # 保证每次可能已发生的副作用在 event_log 中留有记录（INV-C4 崩溃语义）。
+    intent_id: str | None = None
+    if is_write_class_tool(name):
+        import uuid as _uuid
+
+        intent_id = _uuid.uuid4().hex
+        record_capability_intent(
+            intent_id,
+            name=name,
+            args_summary=_cap_summary(args),
+            actor=principal.actor,
+            correlation_id=correlation_id,
+            kernel=kernel,
+        )
+
     import time as _time
     _t0 = _time.perf_counter()
     try:
@@ -326,6 +350,8 @@ async def invoke_capability(
             caused_by=capability_caused_by,
             correlation_id=correlation_id,
         )
+        if intent_id:
+            clear_capability_intent(intent_id, kernel=kernel)
         if correlation_id:
             from app.core.runtime.taint import is_external_ingestion_tool, taint_registry
 
@@ -351,4 +377,6 @@ async def invoke_capability(
             caused_by=capability_caused_by,
             correlation_id=correlation_id,
         )
+        if intent_id:
+            clear_capability_intent(intent_id, kernel=kernel)
         return {"status": "error", "error": str(exc)}

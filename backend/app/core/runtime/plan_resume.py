@@ -14,6 +14,7 @@ Execute 命中 ``pending`` 时，把 approval_id 映射到剩余计划，使
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from dataclasses import dataclass, replace
@@ -301,9 +302,153 @@ def lookup_step_success(
     row = peek_plan_resume(
         idempotency_key(correlation_id, step_index), db=db, kernel=kernel,
     )
+    return _success_result(row)
+
+
+def _success_result(row: PlanResume | None) -> str | None:
+    """从缓存行提取成功结果；非成功 / 形状不符返回 None。"""
     if row is None or not row.previous_output:
         return None
     if row.previous_output.get("status") != "success":
         return None
     result = row.previous_output.get("result")
     return result if isinstance(result, str) else None
+
+
+# ── Capability 调用意图 / chat 工具幂等（APP_STORAGE via plan_resumes）──────
+# 合成键延续零新增表 / 零新增事件类型的模式：
+#   cap_intent:{invocation_id}          — write-class 调用已开始、审计事件未落库
+#   idem:{correlation_id}:chat:{digest} — chat 工具环成功结果，重放去重
+
+
+CAPABILITY_INTENT_PREFIX = "cap_intent:"
+
+
+def capability_intent_key(invocation_id: str) -> str:
+    return f"{CAPABILITY_INTENT_PREFIX}{invocation_id}"
+
+
+def record_capability_intent(
+    invocation_id: str,
+    *,
+    name: str,
+    args_summary: str,
+    actor: str,
+    correlation_id: str | None = None,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> None:
+    """在外部副作用发生前持久化调用意图（收窄审计双写窗口）。
+
+    审计事件（CapabilityInvoked / CapabilityFailed）落库后由
+    :func:`clear_capability_intent` 清除；进程在窗口内死亡时，遗留行由
+    启动清扫补发 ``CapabilityFailed(error=interrupted_before_audit)``。
+    """
+    if not invocation_id:
+        return
+    register_plan_resume(
+        capability_intent_key(invocation_id),
+        PlanResume(
+            kind="execute",
+            resume_from=0,
+            previous_output={
+                "name": name,
+                "args_summary": args_summary,
+                "actor": actor,
+                "correlation_id": correlation_id or "",
+            },
+        ),
+        db=db,
+        kernel=kernel,
+    )
+
+
+def clear_capability_intent(
+    invocation_id: str,
+    *,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> None:
+    """审计事件已落库——清除对应调用意图行。"""
+    if not invocation_id:
+        return
+    take_plan_resume(capability_intent_key(invocation_id), db=db, kernel=kernel)
+
+
+def take_stale_capability_intents(
+    *,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> list[dict[str, Any]]:
+    """取走并清除全部遗留调用意图（启动清扫）。
+
+    行存在即说明上个进程在「副作用发生 → 审计事件落库」窗口内死亡，
+    外部副作用**可能已发生**。返回意图 payload 列表供补发审计事件。
+    """
+    database = _resolve_db(db if db is not None else _db_from_kernel(kernel))
+    with database.get_db() as conn:
+        rows = conn.execute(
+            "DELETE FROM plan_resumes WHERE approval_id LIKE ? RETURNING *",
+            (f"{CAPABILITY_INTENT_PREFIX}%",),
+        ).fetchall()
+    intents: list[dict[str, Any]] = []
+    for row in rows:
+        resume = PlanResume.from_row(row)
+        payload = dict(resume.previous_output or {})
+        payload["intent_key"] = row["approval_id"]
+        intents.append(payload)
+    return intents
+
+
+def chat_idempotency_key(
+    correlation_id: str, tool_name: str, args: dict[str, Any] | None
+) -> str:
+    """chat 工具环合成幂等键（与 plan 步骤 ``idem:{corr}:{step}`` 同款模式）。
+
+    chat 重放时 LLM 重新生成 tool_call_id，故键取 correlation + 工具名 +
+    规范化参数摘要：同一轮（correlation）内相同 write-class 调用视为同一次。
+    """
+    canonical = json.dumps(args or {}, sort_keys=True, ensure_ascii=False)
+    digest = hashlib.sha256(f"{tool_name}\n{canonical}".encode()).hexdigest()[:16]
+    return f"idem:{correlation_id}:chat:{digest}"
+
+
+def record_chat_tool_success(
+    correlation_id: str,
+    tool_name: str,
+    args: dict[str, Any] | None,
+    result: str,
+    *,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> None:
+    """记录 chat 工具环一次成功的 write-class 调用（重放去重用）。"""
+    if not correlation_id:
+        return
+    register_plan_resume(
+        chat_idempotency_key(correlation_id, tool_name, args),
+        PlanResume(
+            kind="execute",
+            resume_from=0,
+            previous_output={"result": result, "status": "success"},
+        ),
+        db=db,
+        kernel=kernel,
+    )
+
+
+def lookup_chat_tool_success(
+    correlation_id: str,
+    tool_name: str,
+    args: dict[str, Any] | None,
+    *,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> str | None:
+    """同一 correlation 已成功执行过相同调用时返回缓存结果。"""
+    if not correlation_id:
+        return None
+    row = peek_plan_resume(
+        chat_idempotency_key(correlation_id, tool_name, args), db=db, kernel=kernel,
+    )
+    return _success_result(row)

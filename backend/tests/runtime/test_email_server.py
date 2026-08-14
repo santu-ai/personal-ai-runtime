@@ -68,6 +68,26 @@ def test_check_inbox_unread_only_includes_all_unread_emails(monkeypatch):
     assert mids == {"<id-1@example.com>", "<id-2@example.com>"}
 
 
+def test_read_inbox_email_by_message_id(monkeypatch):
+    """message_id 直查路径 — 供治理面（inbox summary）取全文正文。"""
+    server = EmailServer()
+    monkeypatch.setattr(server, "read_email_body", lambda mid: f"full body of {mid}")
+
+    data = json.loads(server.read_inbox_email(message_id="<msg-1@example.com>"))
+    assert data == {
+        "message_id": "<msg-1@example.com>",
+        "body": "full body of <msg-1@example.com>",
+    }
+
+
+def test_read_inbox_email_by_message_id_not_found(monkeypatch):
+    server = EmailServer()
+    monkeypatch.setattr(server, "read_email_body", lambda mid: None)
+
+    data = json.loads(server.read_inbox_email(message_id="<missing@example.com>"))
+    assert "error" in data
+
+
 def test_mark_inbox_email_read_by_message_id(monkeypatch):
     server = EmailServer()
     store_calls: list[tuple] = []

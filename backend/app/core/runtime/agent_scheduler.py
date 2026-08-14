@@ -122,15 +122,35 @@ class Scheduler:
         self._recover()
 
     def _recover(self) -> None:
-        """Recover ScheduledExecutions interrupted by a restart."""
+        """Recover ScheduledExecutions interrupted by a restart.
+
+        interrupted 重放计入 retry 预算：retry_count 已达 max_retries 的行不再
+        重放，走与 ``_maybe_retry`` 超限一致的终态（failed → dead_letter），
+        阻断 crash-loop 下的无界重放。"""
         try:
             running, pending = self._kernel.recover_scheduled_executions()
         except Exception:
             return  # Table may not exist on first boot
 
         recovered = 0
+        dead_lettered = 0
         for item in running:
             item.error = "interrupted"
+            if not item.can_retry():
+                # 预算耗尽：mirror _maybe_retry 的超限路径（terminal + DLQ）。
+                item.transition_to("failed")
+                self._emit_verify(
+                    item,
+                    lambda it=item: emit_execution_failed(
+                        self._kernel, it, terminal=True, dead_letter=True,
+                    ),
+                )
+                dead_lettered += 1
+                logger.warning("Scheduler: %s interrupted, retry budget exhausted "
+                               "— dead-lettered", item.handler_name)
+                continue
+            # 未超限：照旧重放，retry_count +1 经 ExecutionRetried 投影递增。
+            item.retry_count += 1
             item.transition_to("retrying")
             self._emit_verify(
                 item,
@@ -154,8 +174,9 @@ class Scheduler:
 
         self._pending.extend(pending)
         recovered += len(pending)
-        if recovered:
-            logger.info("Scheduler: recovered %d scheduled execution(s)", recovered)
+        if recovered or dead_lettered:
+            logger.info("Scheduler: recovered %d scheduled execution(s), "
+                        "dead-lettered %d", recovered, dead_lettered)
 
     # --- lifecycle -------------------------------------------------------
 

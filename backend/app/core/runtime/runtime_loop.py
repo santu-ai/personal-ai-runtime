@@ -70,6 +70,12 @@ class RuntimeLoop:
                 "RuntimeLoop: re-queued %d interrupted background task(s)",
                 recovered,
             )
+        interrupted_caps = self._reconcile_interrupted_capability_intents()
+        if interrupted_caps:
+            logger.warning(
+                "RuntimeLoop: recorded %d interrupted capability invocation(s)",
+                interrupted_caps,
+            )
         self._loop_task = asyncio.create_task(self._loop())
         try:
             from app.core.runtime.kernel.event_dispatch import set_dispatch_loop
@@ -416,6 +422,49 @@ class RuntimeLoop:
                     "Failed to re-queue interrupted background work item %s", work_id
                 )
         return recovered
+
+    def _reconcile_interrupted_capability_intents(self) -> int:
+        """为上个进程遗留的 capability 调用意图补发审计事件。
+
+        write-class 工具在副作用发生前持久化 ``cap_intent:*`` 意图行、
+        审计事件落库后清除（见 ``governance_ops.invoke_capability``）。进程
+        在两者之间死亡时意图行残留——外部副作用**可能已发生**但
+        event_log 无记录。启动时补发 ``CapabilityFailed(error=
+        interrupted_before_audit)`` 使审计闭合（复用现有事件类型，
+        零新增词汇）。
+        """
+        from app.core.runtime.kernel.constants import EVENT_CAPABILITY_FAILED
+        from app.core.runtime.plan_resume import take_stale_capability_intents
+
+        try:
+            intents = take_stale_capability_intents(kernel=kernel)
+        except Exception:
+            logger.exception("Capability intent reconciliation scan failed")
+            return 0
+
+        recorded = 0
+        for intent in intents:
+            name = str(intent.get("name") or "")
+            try:
+                kernel.emit_event(
+                    EVENT_CAPABILITY_FAILED,
+                    "capability",
+                    f"cap_{name}",
+                    payload={
+                        "name": name,
+                        "error": "interrupted_before_audit",
+                        "args_summary": str(intent.get("args_summary") or ""),
+                        "latency_ms": 0,
+                    },
+                    actor=str(intent.get("actor") or "kernel"),
+                    correlation_id=intent.get("correlation_id") or None,
+                )
+                recorded += 1
+            except Exception:
+                logger.exception(
+                    "Failed to record interrupted capability intent %s", name
+                )
+        return recorded
 
     async def _process_background_tasks(self) -> None:
         """Process pending background work items via ExecuteRequested.

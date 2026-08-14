@@ -40,10 +40,10 @@
 
 | ID | 陈述 | 强度 |
 |---|---|---|
-| INV-C1 | 外部工具效果只能经 `Kernel.invoke_capability` | Strong |
+| INV-C1 | 外部工具效果只能经 `Kernel.invoke_capability`。已知例外：`core/runtime/notification_channel.py` 的 webhook/ntfy 原生 httpx（Runtime 内部通知通道，Next 批次收编）与 `api/settings_api` 的邮件连通性运维探针 | Strong（CI 守卫 `check_layer_deps` R5：User Space 禁止 import `builtin_tools`/`mcp_hub`） |
 | INV-C2 | 调用必须携带 `execution_id`（`check_execution_ownership.py`） | Strong |
 | INV-C3 | 授权走 3-gate：forbidden → pre-approved → risk assessment | Strong |
-| INV-C4 | 每次调用产生可审计 Capability* 事件 | Strong |
+| INV-C4 | 每次调用产生可审计 Capability* 事件；**崩溃语义**：write-class 工具在副作用发生前持久化调用意图（`plan_resumes` 键 `cap_intent:*`），进程在「副作用 → 审计事件」窗口内死亡时由 RuntimeLoop 启动清扫补发 `CapabilityFailed(error=interrupted_before_audit)` | Strong |
 | INV-C5 | 外部摄入类工具污染当前 correlation（taint），后续高风险写入受约束 | Medium |
 | INV-C6 | Policy 注册幂等：同 capability 在 active 且 risk 未变时不得重复 emit；MCP mesh stop/start 不得 revoke+recreate（`clear_external_tools` 默认不持久化） | Strong |
 
@@ -58,7 +58,7 @@
 | INV-W3 | 中断的调度执行可从投影恢复并重试 | Strong |
 | INV-W4 | 领域 Work（`work_items`）与调度 Work（`handler_executions`）分离存储、统一原语 | Medium |
 | INV-W5 | 后台异步任务以 `work_items(work_type=background)` 表达，经 `ExecuteRequested` 执行；不再保留平行 `background_tasks` 表 | Strong（已收敛） |
-| INV-W6 | 控制面为**单进程**；不提供分布式 lease / 多 worker Scheduler（Non-goal；见 [execution-model.md](execution-model.md)） | Strong（文档 + CI 守卫） |
+| INV-W6 | 控制面为**单进程**；不提供分布式 lease / 多 worker Scheduler（Non-goal；见 [execution-model.md](execution-model.md)）；启动时对 `{sqlite_path}.lock` 加非阻塞单实例文件锁，第二个实例拒绝启动 | Strong（启动文件锁 + CI 守卫） |
 
 执行车道语义见 [execution-model.md](execution-model.md)。
 

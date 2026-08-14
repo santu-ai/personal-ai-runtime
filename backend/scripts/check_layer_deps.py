@@ -9,6 +9,9 @@ Complements ``check_boundary.py`` (storage GOLDEN RULE). This script enforces
   R3  api           ─X→  private runtime names (``_foo``) and deep Runtime modules
                          outside the published ABI surface
   R4  product       may use Kernel ABI; deep Runtime modules are debt
+  R5  User Space    ─X→  app.core.harness.builtin_tools / app.core.harness.mcp_hub
+      (api / product / fragments / core/agents — 外部效果必须经
+      Kernel.invoke_capability，不得直连工具服务器)
 
 Known crossings are allowlisted so CI blocks *new* edges only.
 Shrink DEBT_ALLOWLIST as edges are removed (target: empty for R1/R2).
@@ -16,9 +19,9 @@ R1/R2 are currently empty; keep the allowlist mechanism for regressions.
 
 Limitations (same class as check_boundary): does not see ``importlib`` /
 dynamic imports or relative imports (``from .foo import …``).
-``core/agents`` → Product is User Space and intentionally unscanned.
-``core/harness`` domain tools are a separate directory-drift debt (R1 only
-covers ``core/runtime``).
+``core/agents`` → Product is User Space and intentionally unscanned (R5 仍扫
+其工具直连). ``core/harness`` domain tools are a separate directory-drift
+debt (R1 only covers ``core/runtime``).
 
 Usage:
     python -m scripts.check_layer_deps
@@ -74,6 +77,22 @@ PRODUCT_ABI_PACKAGE_NAMES: frozenset[str] = frozenset({
     "kernel_instance",
 })
 
+# ── R5: User Space 禁止直连工具服务器（必须经 Kernel.invoke_capability）────────
+
+# User Space 目录前缀（相对 app/）：api、product、fragments、core/agents。
+USER_SPACE_PREFIXES: tuple[tuple[str, ...], ...] = (
+    ("api",),
+    ("product",),
+    ("fragments",),
+    ("core", "agents"),
+)
+
+# 禁止直接 import 的工具服务器模块（含任意子模块）。
+FORBIDDEN_TOOL_PREFIXES: tuple[str, ...] = (
+    "app.core.harness.builtin_tools",
+    "app.core.harness.mcp_hub",
+)
+
 # ── Known debt (file, kind, module) — shrink toward empty for R1/R2 ───────────
 
 DebtKey = tuple[str, str, str]
@@ -113,6 +132,11 @@ def _import_targets(node: ast.AST) -> list[tuple[str, bool]]:
             out.append((f"{base}.{name}", False))
             continue
         if base == "app.product":
+            out.append((f"{base}.{name}", False))
+            continue
+        if base == "app.core.harness":
+            # ``from app.core.harness import mcp_hub / builtin_tools`` → 子模块路径，
+            # 使 R5 能命中包导入形式的工具服务器直连。
             out.append((f"{base}.{name}", False))
             continue
         if base == "app.core.runtime.kernel":
@@ -213,6 +237,12 @@ def scan() -> list[tuple[str, int, str, str, str]]:
                     violations.append((rel, lineno, "api_private_import", mod, mod))
                 elif not _is_abi(mod, API_ABI_PREFIXES, API_ABI_PACKAGE_NAMES):
                     violations.append((rel, lineno, "api_deep_runtime", mod, mod))
+
+            # R5: User Space → builtin_tools / mcp_hub（治理旁路）
+            if any(
+                parts[: len(prefix)] == prefix for prefix in USER_SPACE_PREFIXES
+            ) and any(_starts_with(mod, f) for f in FORBIDDEN_TOOL_PREFIXES):
+                violations.append((rel, lineno, "user_space_tool_bypass", mod, mod))
 
             # R4: product → deep runtime
             if parts[:1] == ("product",) and (

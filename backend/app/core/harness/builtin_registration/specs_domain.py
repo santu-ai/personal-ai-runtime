@@ -103,7 +103,7 @@ def _email_specs() -> list[BuiltinToolSpec]:
         BuiltinToolSpec(
             name="read_inbox_email",
             description=(
-                "Read the full content of one email by position. "
+                "Read the full content of one email by position or Message-ID. "
                 "Index 1 = newest. Use when user asks for 第N封, 下一封, or 继续 reading emails."
             ),
             parameters={
@@ -120,6 +120,10 @@ def _email_specs() -> list[BuiltinToolSpec]:
                     "unread_only": {
                         "type": "boolean",
                         "description": "Only search unread (default false).",
+                    },
+                    "message_id": {
+                        "type": "string",
+                        "description": "Stable Message-ID from check_inbox; overrides index when set.",
                     },
                 },
             },

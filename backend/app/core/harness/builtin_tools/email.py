@@ -339,8 +339,22 @@ class EmailServer:
         index: int = 1,
         limit: int = 30,
         unread_only: bool = False,
+        message_id: str | None = None,
     ) -> str:
-        """Read one email by 1-based index (1 = newest among recent messages)."""
+        """Read one email by 1-based index (1 = newest among recent messages).
+
+        提供 message_id 时按稳定 Message-ID 直查全文正文（供治理面调用方
+        如 inbox summary 使用），忽略 index/limit/unread_only。
+        """
+        if message_id and message_id.strip():
+            mid = message_id.strip()
+            body = self.read_email_body(mid)
+            if body is None:
+                return json.dumps(
+                    {"error": f"未找到 Message-ID 为 {mid} 的邮件"},
+                    ensure_ascii=False,
+                )
+            return json.dumps({"message_id": mid, "body": body}, ensure_ascii=False)
         try:
             emails = self._fetch_sorted_emails(limit, unread_only, body_max=4000)
             if not emails:

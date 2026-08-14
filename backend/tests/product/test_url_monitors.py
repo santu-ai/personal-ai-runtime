@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -134,6 +135,43 @@ def test_save_aborts_when_strict_load_fails(product_kernel, monkeypatch):
     cfg = inbox_mon.load_monitors_config()
     assert len(cfg["inbox_filters"]) == 1
     assert cfg["inbox_filters"][0]["id"] == "if_keep"
+
+
+@pytest.mark.asyncio
+async def test_fetch_page_goes_through_kernel_capability(monkeypatch):
+    """_fetch_page 必须走 kernel.invoke_capability（治理面），不得直连 fetch_server。"""
+    calls: list[dict] = []
+
+    class FakeKernel:
+        async def invoke_capability(self, name, args=None, **kwargs):
+            calls.append({"name": name, "args": args, **kwargs})
+            return {
+                "status": "success",
+                "result": json.dumps({"title": "T", "content": "hello"}),
+            }
+
+    monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", FakeKernel())
+
+    page = await um._fetch_page("https://example.com/x")
+    assert page == {"title": "T", "content": "hello"}
+    assert len(calls) == 1
+    assert calls[0]["name"] == "fetch_url"
+    assert calls[0]["args"] == {"url": "https://example.com/x", "extract_text": True}
+    assert calls[0]["actor"] == "scheduler"
+    assert calls[0]["correlation_id"].startswith("urlmon_")
+
+
+@pytest.mark.asyncio
+async def test_fetch_page_capability_failure_maps_to_error(monkeypatch):
+    class FakeKernel:
+        async def invoke_capability(self, name, args=None, **kwargs):
+            del name, args, kwargs
+            return {"status": "error", "error": "denied"}
+
+    monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", FakeKernel())
+
+    page = await um._fetch_page("https://example.com/x")
+    assert page == {"error": "denied"}
 
 
 @pytest.mark.asyncio

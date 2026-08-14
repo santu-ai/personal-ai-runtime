@@ -94,7 +94,7 @@ CI 报告用 `--cov-report=term-missing` 让缺失部分可见，开发者按需
 | 脚本 | 不变量 | 机制 |
 |---|---|---|
 | [`check_boundary.py`](../../backend/scripts/check_boundary.py) | Kernel 写入独占 | 静态正则扫描 User Space 的 DML/SELECT/import 违规。模式：默认（新违规失败）、`--inventory`（列全部，退出 0）、`--strict`（连 allowlist 债也失败） |
-| [`check_layer_deps.py`](../../backend/scripts/check_layer_deps.py) | Runtime/Product/Store/API 职责边 | AST 扫描跨层 import；`DEBT_ALLOWLIST` 记已知债；默认阻断新增边 |
+| [`check_layer_deps.py`](../../backend/scripts/check_layer_deps.py) | Runtime/Product/Store/API 职责边 | AST 扫描跨层 import；`DEBT_ALLOWLIST` 记已知债；默认阻断新增边；R5 禁止 User Space（api/product/fragments/core/agents）import `builtin_tools`/`mcp_hub` |
 | [`check_execution_ownership.py`](../../backend/scripts/check_execution_ownership.py) | 每次 `invoke_capability` 必带 `execution_id` | 静态扫描，平衡括号捕获完整调用文本，检查子串 `execution_id`。同样三种模式 |
 | [`check_projection_provenance.py`](../../backend/scripts/check_projection_provenance.py) | 每条 governed 投影行有对应 `event_log` 事件 | 运行时 SQL join（接受 `--db` 或自启 Kernel 到 `data/verify_provenance.db` 并跑 bootstrap 场景） |
 

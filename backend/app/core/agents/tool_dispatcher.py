@@ -45,6 +45,11 @@ class ToolDispatcher:
             {"type": "_dispatcher_done", "results": [...], "tool_messages": [...]}
         """
         from app.core.runtime.execution import get_current_execution_id
+        from app.core.runtime.plan_resume import (
+            lookup_chat_tool_success,
+            record_chat_tool_success,
+        )
+        from app.core.runtime.taint import is_write_class_tool
 
         exec_id = execution_id or get_current_execution_id() or ""
 
@@ -59,13 +64,30 @@ class ToolDispatcher:
             except json.JSONDecodeError:
                 tool_args = {}
 
-            cap_result = await self._kernel.invoke_capability(
-                name=tool_name,
-                args=tool_args,
-                actor="brain",
-                correlation_id=correlation_id,
-                execution_id=exec_id,
-            )
+            # 合成幂等键（与 plan 步骤 E-1 同款模式）：chat 轮被中断后重放时，
+            # 同一 correlation 内相同的 write-class 调用直接复用已记录的成功
+            # 结果，避免重复外部副作用（邮件重发、重复写文件）。只限
+            # write-class：读类工具缓存会在同轮「写后读」时返回陈旧内容。
+            cached: str | None = None
+            idem_eligible = bool(correlation_id) and is_write_class_tool(tool_name)
+            if idem_eligible:
+                try:
+                    cached = lookup_chat_tool_success(
+                        correlation_id, tool_name, tool_args, kernel=self._kernel,
+                    )
+                except Exception:
+                    logger.debug("chat idempotency lookup failed", exc_info=True)
+
+            if cached is not None:
+                cap_result = {"status": "success", "result": cached}
+            else:
+                cap_result = await self._kernel.invoke_capability(
+                    name=tool_name,
+                    args=tool_args,
+                    actor="brain",
+                    correlation_id=correlation_id,
+                    execution_id=exec_id,
+                )
 
             if cap_result["status"] == "pending":
                 # Suspend only this tool for approval; keep executing the rest
@@ -82,6 +104,14 @@ class ToolDispatcher:
 
             elif cap_result["status"] == "success":
                 tool_result = cap_result["result"]
+                if idem_eligible and cached is None:
+                    try:
+                        record_chat_tool_success(
+                            correlation_id, tool_name, tool_args, tool_result,
+                            kernel=self._kernel,
+                        )
+                    except Exception:
+                        logger.debug("chat idempotency record failed", exc_info=True)
                 yield {
                     "type": "tool_result",
                     "tool_name": tool_name,

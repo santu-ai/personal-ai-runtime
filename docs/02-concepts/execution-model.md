@@ -31,13 +31,13 @@ Personal AI Runtime 的所有执行路径用**一套三车道语义**解释。�
 
 ## 控制面原语（Control Plane）
 
-单进程 asyncio 控制面（**非目标**：分布式 lease / 多 worker）。强度与测试锚点：
+单进程 asyncio 控制面（**非目标**：分布式 lease / 多 worker）；启动时对 `{sqlite_path}.lock` 加单实例文件锁，运行时强制单进程（INV-W6）。强度与测试锚点：
 
 | Primitive | Status | Evidence / guard |
 |-----------|--------|------------------|
 | Retry | Present | Lane A `_maybe_retry` + ExecutionRetried；`test_scheduler*` / policy |
 | Cancellation (mid-flight) | Present (durable) | `Scheduler.request_cancel` → ExecutionFailed before `task.cancel`；BG via WorkItemStatusChanged；`test_background_control_plane` |
-| Recovery | Present | `recover_scheduled_executions` + BG running→pending；scheduler/runtime_loop tests |
+| Recovery | Present | `recover_scheduled_executions` + BG running→pending；interrupted 重放计入 retry 预算（超限走 ExecutionFailed / DLQ，不再重放）；scheduler/runtime_loop tests |
 | Lease / multi-worker ownership | Absent / **Non-goal** | 单进程；见 [runtime-invariants.md](runtime-invariants.md) INV-W6；`check_single_process_control_plane.py` |
 | Quota | Partial | HTTP/WS rate limits；tool-loop token/iteration caps；无 per-tenant scheduler quota |
 | Backpressure | Present | `scheduler_max_pending` → `queue_full` |

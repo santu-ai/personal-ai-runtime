@@ -1,12 +1,17 @@
-"""SQLite 数据库管理 —— 连接池 + Schema 生命周期。
+"""SQLite 数据库管理 —— 连接池 + Schema 生命周期 + 单实例文件锁。
 
 受治理的读会走 Kernel.query_state；本类仅负责：
   1. 连接池（线程本地、WAL 模式、busy_timeout）
   2. Schema 生命周期（构造时走 Alembic 或 raw DDL）
+
+模块级还提供 InstanceLock（INV-W6 运行时强制）：控制面为单进程，
+启动时对 ``{sqlite_path}.lock`` 加非阻塞文件锁，阻止第二个后端实例
+对同一数据库双倍重放 running 执行 / 双倍触发 timer。
 """
 
 import logging
 import sqlite3
+import sys
 import threading
 from contextlib import contextmanager
 from pathlib import Path
@@ -15,6 +20,113 @@ from typing import TYPE_CHECKING, Generator
 from app.store.bound_proxy import BoundProxy
 
 logger = logging.getLogger(__name__)
+
+
+# ── 单实例文件锁（INV-W6：控制面单进程，运行时强制） ──────────────────────
+
+
+class InstanceLockError(RuntimeError):
+    """获取单实例锁失败——另一个后端实例正在使用同一数据库。"""
+
+
+class InstanceLock:
+    """跨平台单实例文件锁（Windows: msvcrt.locking；POSIX: fcntl.flock）。
+
+    - 非阻塞获取：拿不到锁立即抛 InstanceLockError（清晰中文提示）。
+    - 同进程重入安全：已持有时重复 acquire 为 no-op（held 状态记录在实例上）。
+    - release 后可重新获取（FastAPI TestClient 反复进出 lifespan 必须稳定）。
+
+    Windows 的 msvcrt.locking 只锁字节区间且锁随句柄，因此锁句柄在
+    acquire→release 期间保持打开，release 时先解锁再关闭句柄。
+    """
+
+    def __init__(self, lock_path: str):
+        self.lock_path = lock_path
+        self._handle = None
+
+    @property
+    def held(self) -> bool:
+        return self._handle is not None
+
+    def acquire(self) -> None:
+        if self._handle is not None:
+            return  # 同进程重入：已持有，no-op
+        Path(self.lock_path).parent.mkdir(parents=True, exist_ok=True)
+        handle = open(self.lock_path, "a+b")  # noqa: SIM115 — 句柄持有到 release
+        try:
+            if sys.platform == "win32":
+                import msvcrt
+
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            handle.close()
+            raise InstanceLockError(
+                f"另一个后端实例正在使用同一数据库（锁文件：{self.lock_path}）。"
+                "控制面为单进程（INV-W6），请先停止已运行的实例再启动。"
+            ) from exc
+        self._handle = handle
+
+    def release(self) -> None:
+        handle = self._handle
+        if handle is None:
+            return
+        self._handle = None
+        try:
+            if sys.platform == "win32":
+                import msvcrt
+
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            logger.debug("Error unlocking instance lock", exc_info=True)
+        finally:
+            handle.close()
+
+
+# 进程内锁注册表（以锁文件路径为 key），保证同进程重复 acquire 是 no-op。
+_process_locks: dict[str, InstanceLock] = {}
+
+
+def _lock_path_for(db_path: str | None) -> str:
+    if db_path is None:
+        # 在调用期（而非 import 期）解析 settings，确保测试 reset_settings() 生效。
+        from app.config import settings as live_settings
+
+        db_path = live_settings.sqlite_path
+    return f"{db_path}.lock"
+
+
+def acquire_instance_lock(db_path: str | None = None) -> InstanceLock:
+    """获取当前进程对 ``{sqlite_path}.lock`` 的单实例锁。
+
+    同进程重复调用为 no-op；被其他进程持有时抛 InstanceLockError。
+    """
+    path = _lock_path_for(db_path)
+    lock = _process_locks.get(path)
+    if lock is None:
+        lock = InstanceLock(path)
+    lock.acquire()
+    _process_locks[path] = lock
+    return lock
+
+
+def release_instance_lock(db_path: str | None = None) -> None:
+    """释放当前进程持有的单实例锁（未持有时为 no-op）。"""
+    path = _lock_path_for(db_path)
+    lock = _process_locks.pop(path, None)
+    if lock is not None:
+        lock.release()
+
+
 # 每个 Database 路径在线程内独占一个 SQLite 连接，跨 get_db() 复用，close() 时释放。
 # 以 db_path 为 key 是为了阻止测试中不同 Database 复用同一连接。
 _tls = threading.local()

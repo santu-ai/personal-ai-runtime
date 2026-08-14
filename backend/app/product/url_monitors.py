@@ -2,7 +2,8 @@
 
 Config + last-seen snapshot live in APP_STORAGE ``app_settings`` category
 ``monitors`` (key ``url_monitors``), sharing the store with inbox filters.
-Zero new governed tables / event types. Fetch uses SSRF-safe harness client.
+Zero new governed tables / event types. Fetch goes through the governed
+``fetch_url`` capability via the Kernel (SSRF-safe, taint-marked).
 """
 
 from __future__ import annotations
@@ -207,13 +208,26 @@ def _persist_monitor_row(monitor_id: str, patch: dict[str, Any]) -> None:
 
 
 async def _fetch_page(url: str) -> dict[str, Any]:
-    """Fetch via SSRF-safe FetchServer; returns parsed JSON dict."""
-    from app.core.harness.builtin_tools.fetch import fetch_server
+    """经 Kernel 治理面调用 fetch_url 能力；返回解析后的 JSON dict。
 
-    raw = await fetch_server.fetch_url(url, extract_text=True)
+    fetch_url 为 auto_allow + external_ingestion：低风险自动放行，
+    correlation_id 让外部内容正确污染（taint）当前 correlation。
+    cron/timer 触发无 execution 上下文，actor=scheduler 不要求 ownership。
+    """
+    from app.core.runtime.kernel_instance import get_current_execution_id, kernel
+
+    cap = await kernel.invoke_capability(
+        "fetch_url",
+        {"url": url, "extract_text": True},
+        actor="scheduler",
+        correlation_id=f"urlmon_{uuid.uuid4().hex[:12]}",
+        execution_id=get_current_execution_id(),
+    )
+    if cap.get("status") != "success":
+        return {"error": str(cap.get("error") or f"fetch_url {cap.get('status')}")[:200]}
     try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
+        data = json.loads(cap.get("result") or "")
+    except (json.JSONDecodeError, TypeError):
         return {"error": "invalid fetch response"}
     return data if isinstance(data, dict) else {"error": "invalid fetch response"}
 

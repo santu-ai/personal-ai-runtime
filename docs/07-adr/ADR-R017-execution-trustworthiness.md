@@ -1,4 +1,4 @@
-# ADR-R017 — Execution trustworthiness (E-1…E-9)
+# ADR-R017 — Execution trustworthiness (E-1…E-11)
 
 | Field | Content |
 |-------|---------|
@@ -9,7 +9,7 @@
 | Consequences − | `plan_resumes` 属 APP_STORAGE（不在主权重建代数内）；跨进程 chat 多步续跑仍受 R011 限制 |
 | Still valid? | Accepted |
 
-## E-1…E-9 摘要
+## E-1…E-11 摘要
 
 1. **E-1** 步骤幂等：`idem:{correlation_id}:{step}` 成功结果可跳过重放  
 2. **E-2** 进度：`progress:{action_id}` 记录 resume_from  
@@ -20,5 +20,7 @@
 7. **E-7** Scheduler 非阻塞填槽  
 8. **E-8** 背景任务超时 → failed（非挂起）  
 9. **E-9** TimerFired emit-first 等控制面顺序约束  
+10. **E-10** Capability 双写窗口：write-class 调用前持久化意图 `cap_intent:{id}`，审计事件落库后清除；遗留意图由 RuntimeLoop 启动清扫补发 `CapabilityFailed(error=interrupted_before_audit)`（`governance_ops.invoke_capability` / `runtime_loop._reconcile_interrupted_capability_intents`；`test_capability_intent.py`）  
+11. **E-11** chat 工具环幂等：`idem:{correlation_id}:chat:{digest}`（工具名 + 规范化参数哈希），中断重放时 write-class 调用复用已记录结果，不重复外部副作用（`tool_dispatcher.py`；`test_tool_dispatcher_unit.py`）  
 
 触 Event / 投影面时：**零新增事件类型**，扩展 payload / APP_STORAGE 合成键。

@@ -7,8 +7,8 @@
 
 - 当前分支：`main`（开发阶段）
 - 进行中任务 / WIP：无
-- 已知坏点 / 待办：无阻塞项；God 拆分仍受 runtime_files 零和约束
-- 最近审阅：2026-08-07 记忆 triage（bulk/筛选/count + extractor 减流入）
+- 已知坏点 / 待办：体检 Next 批次候选——verify_alembic 默认值 parity、webhook/ntfy SSRF-safe、untrusted prompt 定界、Scheduler.stop 排干、boundary 多行 SQL 扫描、§5 删除项 1-6
+- 最近审阅：2026-08-13 体检 Now 批次整改（P0 双写窗口 + P1×4）全绿收口
 
 ## 产品观察（后续规划候选）
 
@@ -20,7 +20,8 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
-| 2026-08-07 | 记忆 triage：bulk/筛选/count + extractor 减流入（含 distance 去重修复） | 待推送 |
+| 2026-08-13 | 体检 Now 批次：cap_intent 意图+chat 幂等键（E-10/E-11）；url_monitors/inbox 旁路收编+layer-deps R5；单实例文件锁；interrupted 计入 retry 预算；INV-C1/C4/W6 文档校正 | 本提交推送 |
+| 2026-08-07 | 记忆 triage：bulk/筛选/count + extractor 减流入（含 distance 去重修复） | commit `59b66c6` |
 | 2026-08-06 | Tasks：执行日志 + plan 预览确认；needs_user 建议话术全覆盖 | 前端 |
 | 2026-08-06 | harness：TimerFired / APP_STORAGE merge / Monitor SOP | commit `e555558` |
 | 2026-08-06 | Inbox Filter Monitor：poll 后求值 + Dashboard 监控 tab | 零新事件/表 |

@@ -208,6 +208,86 @@ def test_recover_work_items_scans_without_mutating(kernel):
     assert any(w.id == running_item.id for w in rows)
 
 
+def _seed_running_execution(kernel, *, max_retries: int, retry_count: int) -> str:
+    """经既有 Execution* 事件把一行 handler_executions 播种为 running 态。
+
+    retry_count > 0 时经 ExecutionRetried（attempt=retry_count）投影递增，
+    再经 ExecutionStarted 回到 running —— 不直写 governed 表。
+    """
+    from app.core.runtime.kernel.constants import AGGREGATE_EXECUTION
+    from app.core.runtime.scheduled_execution import ScheduledExecution
+
+    item = ScheduledExecution(
+        event_type="TaskCreated",
+        handler_name="on_test",
+        instance_id="test",
+    )
+    eid = item.id
+    kernel.emit_event("ExecutionRequested", AGGREGATE_EXECUTION, eid, payload={
+        "execution_id": eid, "actor": "agent:test",
+        "handler_name": "on_test", "trigger_event_id": "evt_test",
+        "trigger_event_seq": 0, "trigger_event_type": "TaskCreated",
+        "instance_id": "test",
+        "policy": {"timeout": 30.0, "max_retries": max_retries, "retry_delay": 0.1},
+        "correlation_id": "", "created_at": item.created_at, "event_seq": 0,
+    }, actor="scheduler")
+    kernel.emit_event("ExecutionStarted", AGGREGATE_EXECUTION, eid, payload={
+        "execution_id": eid, "attempt": 1, "started_at": "2026-01-01T00:00:01Z",
+    }, actor="scheduler")
+    if retry_count > 0:
+        kernel.emit_event("ExecutionRetried", AGGREGATE_EXECUTION, eid, payload={
+            "execution_id": eid, "attempt": retry_count,
+            "reason": "boom", "status": "retrying",
+        }, actor="scheduler")
+        kernel.emit_event("ExecutionRetried", AGGREGATE_EXECUTION, eid, payload={
+            "execution_id": eid, "attempt": retry_count,
+            "reason": "boom", "status": "pending",
+        }, actor="scheduler")
+        kernel.emit_event("ExecutionStarted", AGGREGATE_EXECUTION, eid, payload={
+            "execution_id": eid, "attempt": retry_count + 1,
+            "started_at": "2026-01-01T00:00:02Z",
+        }, actor="scheduler")
+    return eid
+
+
+def test_recover_interrupted_increments_retry_budget(kernel):
+    """未超限的 interrupted 重放计入 retry 预算：retry_count 递增后重新入队。"""
+    from app.core.runtime.agent_scheduler import Scheduler
+
+    eid = _seed_running_execution(kernel, max_retries=3, retry_count=0)
+
+    sch = Scheduler(kernel)
+
+    # 重放入队，且 retry_count 已消耗 1 次预算。
+    queued = [it for it in sch._pending if it.id == eid]
+    assert len(queued) == 1
+    assert queued[0].retry_count == 1
+
+    # 投影经 ExecutionRetried 同步递增（不直写 governed 表）。
+    row = kernel.read_scheduled_execution(eid)
+    assert row.status == "pending"
+    assert row.retry_count == 1
+    assert row.dead_letter is False
+
+
+def test_recover_interrupted_exhausted_goes_dead_letter(kernel):
+    """retry 预算耗尽的 interrupted 行不再重放：走 ExecutionFailed → DLQ 终态。"""
+    from app.core.runtime.agent_scheduler import Scheduler
+
+    eid = _seed_running_execution(kernel, max_retries=1, retry_count=1)
+
+    sch = Scheduler(kernel)
+
+    # 不重放：不进入 pending 队列。
+    assert all(it.id != eid for it in sch._pending)
+
+    # 与 _maybe_retry 超限一致的终态：failed + dead_letter。
+    row = kernel.read_scheduled_execution(eid)
+    assert row.status == "failed"
+    assert row.error == "interrupted"
+    assert row.dead_letter is True
+
+
 def test_work_item_to_row_roundtrip(kernel):
     """WorkItem.to_row() and from_row() are symmetric."""
     from app.core.runtime.scheduled_execution import ExecutionPolicy, ScheduledExecution

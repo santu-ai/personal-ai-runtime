@@ -20,5 +20,5 @@
 - **审批流** → R011
 - **投影表维护/DML** → R014（维护特权例外，别扩大）
 - **MCP 生命周期** → R015、R016
-- **执行重试/幂等/DLQ/lease** → [R017](../docs/07-adr/ADR-R017-execution-trustworthiness.md)（E-1~E-9；触 Event/投影面时按零新增事件类型约束）
+- **执行重试/幂等/DLQ/lease** → [R017](../docs/07-adr/ADR-R017-execution-trustworthiness.md)（E-1~E-11；触 Event/投影面时按零新增事件类型约束）
 - 概念预算抬升 → R012（改脚本 + docs §4.4 同步）

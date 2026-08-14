@@ -53,6 +53,7 @@
 | R2 | `store` → `app.core.runtime` | 存储层不得装配 Runtime |
 | R3 | `api` → Runtime 私有名 / 非 ABI 深模块 | HTTP 只碰 Kernel ABI 面 |
 | R4 | `product` → Runtime 深模块 | Product 优先 `kernel` / Ports ABI（包名 `read_ports`）/ `constants` / `egress` |
+| R5 | User Space（`api` / `product` / `fragments` / `core/agents`）→ `app.core.harness.builtin_tools` / `app.core.harness.mcp_hub` | 外部效果必须经 `Kernel.invoke_capability`，不得直连工具服务器 |
 
 **API / Product 允许的 ABI 面**：
 

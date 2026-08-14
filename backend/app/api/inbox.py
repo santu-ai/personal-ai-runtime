@@ -1,6 +1,8 @@
 """Inbox API — proactive inbox app read surface."""
 
 import asyncio
+import json
+import re
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -75,17 +77,33 @@ async def get_inbox_email_summary(email_id: str):
     Fetches the full body from IMAP, then calls the configured
     LLM to produce a concise Chinese summary.
     """
-    from app.core.harness.builtin_tools.email import email_server
+    from app.core.runtime.kernel_instance import get_current_execution_id, kernel
     from app.core.runtime.read_ports.inbox import query_inbox_email
 
     row = query_inbox_email(email_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Email not found")
 
-    # Fetch full body from IMAP for accurate summarization.
-    body = email_server.read_email_body(email_id)
-    if not body or not body.strip():
-        # Fall back to the poll-time preview when IMAP body is unavailable.
+    # 经 Kernel 治理面取 IMAP 全文正文（read_inbox_email 为 auto_allow +
+    # external_ingestion，correlation_id 让外部内容正确打 taint 标记）。
+    body = ""
+    safe_id = re.sub(r"[^A-Za-z0-9_.-]", "_", email_id)[:48]
+    cap = await kernel.invoke_capability(
+        "read_inbox_email",
+        {"message_id": email_id},
+        actor="user",
+        correlation_id=f"inbox_summary_{safe_id}",
+        execution_id=get_current_execution_id(),
+    )
+    if cap.get("status") == "success":
+        try:
+            parsed = json.loads(cap.get("result") or "{}")
+            if isinstance(parsed, dict) and not parsed.get("error"):
+                body = str(parsed.get("body") or "")
+        except (ValueError, TypeError):
+            body = ""
+    if not body.strip():
+        # 正文取不到时回退到轮询期存下的 preview。
         body = (row.get("preview") or "")
 
     # Build a single-turn chat completion for summarization, routed through the

@@ -380,6 +380,13 @@ async def _run_startup_step(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
+    # INV-W6 运行时强制：在 kernel 装配之前获取单实例文件锁（{sqlite_path}.lock）。
+    # 拿不到锁说明另一个后端实例正在使用同一数据库 —— 直接拒绝启动，
+    # 避免双进程双倍重放 running 执行 / 双倍触发 timer。
+    from app.store.database import acquire_instance_lock
+
+    acquire_instance_lock()
+
     # Wire the WebSocket transport sink into Runtime before any broadcast is
     # issued. Breaks the runtime → main edge (notification_bridge no longer
     # imports app.main).
@@ -531,6 +538,11 @@ async def lifespan(app: FastAPI):
                 logging.getLogger(__name__).warning("Error during WebSocket shutdown", exc_info=True)
         _ws_connections.clear()
         _ws_reserved_slots = 0
+
+    # 关闭段末尾释放单实例锁，保证 TestClient 反复进出 lifespan 可重新获取。
+    from app.store.database import release_instance_lock
+
+    release_instance_lock()
 
 
 # ── App ──────────────────────────────────────────────────────────────────────
