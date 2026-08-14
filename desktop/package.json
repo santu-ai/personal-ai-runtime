@@ -13,7 +13,7 @@
     "postinstall": "node postinstall.js"
   },
   "dependencies": {
-    "ws": "^8.21.1"
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "electron": "^43.3.0",
