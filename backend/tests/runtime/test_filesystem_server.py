@@ -224,7 +224,7 @@ def test_write_through_symlink_rejected(fs_server: FilesystemServer, tmp_path: P
         pytest.skip("symlinks not supported on this platform")
 
     err = _fail(fs_server.write_file, str(link), "hacked")
-    assert "symlink" in str(err).lower()
+    assert str(err) == "Access denied: write path traverses a symlink"
     # Underlying target must be untouched.
     assert outside.read_text(encoding="utf-8") == "real"
 
@@ -237,6 +237,58 @@ def test_write_to_normal_file_under_allowed_still_works(
     target = allowed / "normal.txt"
     result = json.loads(fs_server.write_file(str(target), "ok"))
     assert result["success"] is True
+
+
+def test_configured_dir_via_system_symlink_allowed(tmp_path: Path):
+    """A root that the OS exposes via a symlinked alias stays writable.
+
+    macOS: /tmp is a symlink to /private/tmp. If FILESYSTEM_ALLOWED_DIRS=/tmp,
+    the resolved root (/private/tmp/...) is lexically disjoint from the /tmp/...
+    path the LLM sends, so the lexical gate must also consider the configured
+    (pre-resolve) form.
+    """
+    real_root = tmp_path / "real_root"
+    real_root.mkdir()
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(real_root)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not supported on this platform")
+
+    # Simulate: user configures the alias path (like /tmp), file target uses
+    # the same alias spelling (what the LLM would send).
+    server = FilesystemServer(allowed_dirs=[str(alias)])
+    target = alias / "via_alias.txt"
+    result = json.loads(server.write_file(str(target), "ok"))
+    assert result["success"] is True
+    assert (real_root / "via_alias.txt").read_text(encoding="utf-8") == "ok"
+
+
+def test_planted_symlink_via_alias_root_still_rejected(tmp_path: Path):
+    """The alias-form allowance must not weaken planted-symlink defense.
+
+    The symlink must point at a *file* (a directory target fails later with
+    EISDIR, which is not an authorization rejection). Assert the exact
+    denial message so a pytest tmp path containing the word "symlink"
+    cannot false-pass the test.
+    """
+    real_root = tmp_path / "real_root"
+    real_root.mkdir()
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(real_root)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not supported on this platform")
+
+    outside = tmp_path / "outside.txt"
+    outside.write_text("real", encoding="utf-8")
+
+    server = FilesystemServer(allowed_dirs=[str(alias)])
+    escape = alias / "escape"
+    escape.symlink_to(outside)
+    err = _fail(server.write_file, str(escape), "hacked")
+    assert str(err) == "Access denied: write path traverses a symlink"
+    assert outside.read_text(encoding="utf-8") == "real"
 
 
 def test_read_protected_path_rejected(fs_server: FilesystemServer, tmp_path: Path):
@@ -335,3 +387,19 @@ def test_default_allowed_dirs_excludes_home(monkeypatch):
     home = str(_Path.home().resolve())
     assert home not in [_Path(d).resolve().as_posix() for d in dirs], \
         "home directory must NOT be in the default allowed list"
+
+
+def test_default_allowed_dirs_appends_extras_not_replace(monkeypatch, tmp_path):
+    """FILESYSTEM_ALLOWED_DIRS adds roots; it does not replace the project root."""
+    extra = tmp_path / "extra"
+    extra.mkdir()
+    monkeypatch.setattr(
+        "app.core.harness.builtin_tools.filesystem.settings.filesystem_allowed_dirs",
+        str(extra),
+    )
+    from app.config import BASE_DIR
+    from app.core.harness.builtin_tools.filesystem import default_allowed_dirs
+
+    dirs = [Path(d).expanduser().resolve() for d in default_allowed_dirs()]
+    assert Path(BASE_DIR).resolve() in dirs
+    assert extra.resolve() in dirs

@@ -32,11 +32,22 @@ def default_allowed_dirs() -> list[str]:
     include any file under ``$HOME`` (browser profiles, dotfiles, …) once a
     user confirmed a single request. Reads of user files should be opt-in:
     set ``FILESYSTEM_ALLOWED_DIRS`` to add directories explicitly.
+
+    The project root is always kept: replacing it entirely (old behavior)
+    silently stranded the coding agent outside its own repo as soon as any
+    extra directory was configured.
     """
-    return _parse_path_list(
-        settings.filesystem_allowed_dirs,
-        [str(BASE_DIR.resolve())],
-    )
+    project_root = str(BASE_DIR.resolve())
+    extras = _parse_path_list(settings.filesystem_allowed_dirs, [])
+    # De-dup while preserving order (project root first).
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for p in [project_root, *extras]:
+        key = str(Path(p).expanduser().resolve())
+        if key not in seen:
+            seen.add(key)
+            ordered.append(p)
+    return ordered
 
 
 def default_protected_paths() -> list[str]:
@@ -70,10 +81,21 @@ class FilesystemServer:
         protected_paths: list[str] | None = None,
     ):
         raw_allowed = allowed_dirs if allowed_dirs is not None else default_allowed_dirs()
-        self.allowed_dirs = [
-            str(Path(d).expanduser().resolve())
-            for d in raw_allowed
-        ]
+        # Keep BOTH the configured (lexical) form and the resolved form. On
+        # macOS system-level symlinks (e.g. /tmp -> /private/tmp) make the
+        # resolved form lexically disjoint from paths the LLM sends, which
+        # would otherwise fail the lexical gate in _write_denied. Storing the
+        # lexical form preserves that check for user-configured roots.
+        self.allowed_dirs = sorted(
+            {
+                str(Path(d).expanduser().resolve())
+                for d in raw_allowed
+            }
+            | {
+                str(Path(d).expanduser().absolute())
+                for d in raw_allowed
+            }
+        )
         raw_protected = protected_paths if protected_paths is not None else default_protected_paths()
         self.protected_paths = [
             str(Path(p).expanduser().resolve())
@@ -126,7 +148,10 @@ class FilesystemServer:
         can then be rejected by the dedicated symlink check in ``_write_denied``.
         """
         try:
-            root_parts = root.resolve().parts
+            # Compare lexical forms on both sides: resolve() on the root would
+            # fold OS-level alias symlinks (macOS /tmp -> /private/tmp) back in
+            # and make user-configured alias roots unverifiable.
+            root_parts = root.expanduser().absolute().parts
             # Normalize target without resolving symlinks (strict=False allows
             # non-existent paths, which is the common case for new writes).
             target_parts = target.expanduser().absolute().parts
@@ -137,23 +162,33 @@ class FilesystemServer:
         return target_parts[: len(root_parts)] == root_parts
 
     def _contains_symlink_in_chain(self, path: Path, root: Path) -> bool:
-        """Return True if any segment between ``root`` and ``path`` is a symlink.
+        """Return True if any segment strictly below ``root`` is a symlink.
 
         Walks up from ``path`` towards ``root`` using ``lstat()`` so symlinks
         are detected even when ``resolve()`` would follow them into a protected
         location. This closes the TOCTOU window where an attacker plants a
         symlink inside an allowed directory pointing at /etc, /.ssh, etc.
+
+        Comparison is lexical (``absolute()``, not ``resolve()``). Resolving
+        the root first would make macOS alias roots (``/tmp`` vs
+        ``/private/tmp``) look disjoint from the path the caller sent, and
+        the walk would abort before seeing a planted symlink.
+
+        The allowed root itself is excluded: on macOS the configured root may
+        legitimately *be* an OS alias (e.g. /tmp); only segments strictly
+        below the root are attacker-plantable.
         """
         try:
-            root_resolved = root.resolve()
-            current = path
+            root_lex = root.expanduser().absolute()
+            current = path.expanduser().absolute()
             # Guard against infinite loops on pathological paths.
             for _ in range(64):
-                # Stop once we have climbed above the allowed root.
+                if current == root_lex:
+                    break
                 try:
-                    current.relative_to(root_resolved)
+                    current.relative_to(root_lex)
                 except ValueError:
-                    # current is no longer under root — we have climbed past it.
+                    # current is no longer under this lexical root.
                     break
                 try:
                     if current.is_symlink():
@@ -198,10 +233,11 @@ class FilesystemServer:
         # Step 3: symlink defense — reject writes that traverse a symlink
         # planted inside an allowed directory, which resolve() would have
         # silently followed into a protected or out-of-bounds location.
+        # Pass the stored form as-is (lexical *and* resolved copies live in
+        # allowed_dirs). Resolving here would collapse /tmp back to
+        # /private/tmp and skip the walk for alias-spelled targets.
         for allowed in self.allowed_dirs:
-            base = Path(allowed).resolve()
-            # Check the target itself AND every ancestor up to the allowed root.
-            if self._contains_symlink_in_chain(target, base):
+            if self._contains_symlink_in_chain(target, Path(allowed)):
                 _fail(
                     "Access denied: write path traverses a symlink",
                     OUTCOME_AUTHORIZATION_FAILURE,

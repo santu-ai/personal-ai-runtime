@@ -149,7 +149,7 @@ class Settings(BaseSettings):
 
     # --- Filesystem (agent coding) ---
     filesystem_allowed_dirs: str = ""
-    """Comma-separated allowed roots for read/write tools. Default: project root. Requires backend restart."""
+    """Comma-separated extra allowed roots appended to the project root. Empty = project root only. Requires backend restart."""
     filesystem_protected_paths: str = ""
     """Extra comma-separated paths appended to default governance write blocklist. Requires backend restart."""
 
