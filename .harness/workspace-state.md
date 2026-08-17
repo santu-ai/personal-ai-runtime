@@ -5,10 +5,10 @@
 
 ## 当前状态
 
-- 当前分支：`main`（与 origin 同步；开发阶段）
-- 进行中任务 / WIP：无
-- 已知坏点 / 待办：email 空收件箱仍 JSON miss；Context live A/B 未测；Chat max_retries=1；Chroma 质量未测；审批续写仍 one-shot（ADR-R011 Partial）；macOS Intel cryptography 49 无 wheel；Vite 只绑 IPv6 localhost；库内遗留 running 调试任务 + pending write_file 审批（脏数据）
-- 最近审阅：2026-08-17 收口测试 SQLITE_PATH 隔离，避免写 `app_settings` 的测试污染日用库
+- 当前分支：`main`（W34 日用修复待本地提交）
+- 进行中任务 / WIP：自主推进；下一刀是审批 deny 未持久化 tool result
+- 已知坏点 / 待办：Memory 2 条 proposed 未 ratify（入口已到 Chat，不代用户确认）；Context live A/B 未测；Chroma 质量未测；审批续写仍 one-shot（ADR-R011 Partial）；max_retries=2 需重启日用后端
+- 最近审阅：2026-08-17 用户授权自主推进，仅在必须时确认
 
 ## 本机环境
 
@@ -35,7 +35,9 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
-| 2026-08-17 | 测试隔离：pin SQLITE_PATH + 重绑 runtime_config.settings；防止 app_settings 写入日用库 | 收口未提交 |
+| 2026-08-17 | Chat/Home 内联确认 proposed；ChatRequested max_retries=2；真 LLM Chat+write_file 审批 deny | 未提交 |
+| 2026-08-17 | W34：email 应用 miss 记 CapabilityFailed；pending→completed 用户捷径；勾选子项重算父进度；soak 找对 SQLITE_PATH；Vite 绑 0.0.0.0 | 未提交 |
+| 2026-08-17 | 测试隔离：pin SQLITE_PATH + 重绑 runtime_config.settings；防止 app_settings 写入日用库 | 已推送 `315541f` |
 | 2026-08-16 | W33 日用修复：抽取降噪；简报用 pending 邮件计数且不铺 proposed 内容；Chat 待确认横幅；pending→completed 改 400；审批缺 decision 改 422；会话 JSON title；项目根豁免 /Users 敏感误伤 | 本提交 |
 | 2026-08-16 | W33-R2 dogfood：Chat/Memory/Work/Desktop/Inbox 全 pass；Memory 需 ratify 后新会话才能召回 | 记录在 `.harness/dogfood/2026-W33.md` |
 | 2026-08-16 | 修复 macOS 系统级 symlink（/tmp→/private/tmp）导致 FILESYSTEM_ALLOWED_DIRS 词法校验全拒；显式配置改为追加项目根；symlink 检查改为沿 lexical 根 walk（不先 resolve），堵住 alias 根下 planted symlink 逃逸；+回归测试 | commit `39b9da4` 未推送 |

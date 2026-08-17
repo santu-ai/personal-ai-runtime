@@ -101,7 +101,7 @@ make demo         # LLM_API_KEY=${LLM_API_KEY:-demo-seed} python3 -m scripts.see
 
 记录方式：在本地笔记或 PR 描述里记一行 `2026-WW Chat:pass Memory:fail Work:pass Desktop:pass Inbox:blocked`，无需入库。连续两周某项 `fail` 应优先排进下周计划。
 
-辅助工具：[`scripts/soak_dogfood_report.py`](../../scripts/soak_dogfood_report.py)（见 [testing.md](testing.md) soak 段）对当前 `backend/data/personal_ai.db` 输出只读计数报告，用于核对上面的主观判断是否与库内数据一致。
+辅助工具：[`scripts/soak_dogfood_report.py`](../../scripts/soak_dogfood_report.py)（见 [testing.md](testing.md) soak 段）对当前日用库输出只读计数报告（解析 `SQLITE_PATH` / `.env` / `data/personal_ai.db` / `backend/data/personal_ai.db`），用于核对上面的主观判断是否与库内数据一致。
 
 ### 基线快照
 

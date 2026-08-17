@@ -9,6 +9,16 @@ const setActiveConversation = vi.fn();
 vi.mock("../../api/client", () => ({
   listMemoriesGrouped: vi.fn(),
   listInboxEmails: vi.fn(),
+  countMemories: vi.fn().mockResolvedValue({ count: 0 }),
+  ratifyMemory: vi.fn(),
+  rejectMemory: vi.fn(),
+  ApiError: class extends Error {
+    status: number;
+    constructor(message: string, status: number) {
+      super(message);
+      this.status = status;
+    }
+  },
 }));
 
 vi.mock("../../api/workItems", () => ({
@@ -38,12 +48,13 @@ vi.mock("../../hooks/useApprovalsQuery", () => ({
   useApprovalsQuery: () => ({ data: [] }),
 }));
 
-import { listMemoriesGrouped, listInboxEmails } from "../../api/client";
+import { listMemoriesGrouped, listInboxEmails, countMemories } from "../../api/client";
 import { listWorkItems } from "../../api/workItems";
 
 const mockMemories = vi.mocked(listMemoriesGrouped);
 const mockGoals = vi.mocked(listWorkItems);
 const mockInbox = vi.mocked(listInboxEmails);
+const mockCount = vi.mocked(countMemories);
 
 describe("ChatHome", () => {
   beforeEach(() => {
@@ -52,6 +63,7 @@ describe("ChatHome", () => {
     mockMemories.mockResolvedValue({ memories: [] });
     mockGoals.mockResolvedValue([]);
     mockInbox.mockResolvedValue([]);
+    mockCount.mockResolvedValue({ count: 0 });
   });
 
   afterEach(() => {
@@ -94,6 +106,17 @@ describe("ChatHome", () => {
     await waitFor(() => {
       expect(screen.getByText(/收件箱有 1 封邮件/)).toBeInTheDocument();
     });
+  });
+
+  it("shows proposed memory banner on the home screen", async () => {
+    mockCount.mockResolvedValue({ count: 2 });
+    mockMemories.mockResolvedValue({
+      memories: [{ id: "m1", content: "喜欢早起跑步" }],
+      total: 2,
+    });
+    renderWithRouter(<ChatHome />);
+    expect(await screen.findByText(/2 条记忆待确认后才会进入对话/)).toBeInTheDocument();
+    expect(screen.getByText("喜欢早起跑步")).toBeInTheDocument();
   });
 
   it("continues last conversation on click", async () => {

@@ -57,8 +57,8 @@ Personal AI Runtime 的所有执行路径用**一套三车道语义**解释。�
 | Concept | Create | Start | End | Retry | Recover | Destroy/GC |
 |---------|--------|-------|-----|-------|---------|------------|
 | **ScheduledExecution** | ExecutionRequested | ExecutionStarted | Completed/Failed | ExecutionRetried (Lane A) | running→retrying→pending | Soft-prune terminal rows (`handler_executions_retention_days`) |
-| **WorkItem** | WorkItemCreated | StatusChanged(running) | completed/cancelled | Domain re-open: failed→pending | BG running→pending | Domain delete events |
+| **WorkItem** | WorkItemCreated | StatusChanged(running) 或用户 pending→completed | completed/cancelled | Domain re-open: failed→pending、completed→pending | BG running→pending | Domain delete events |
 | **PlanResume** | register on pending approval | — | take on approve/deny | — | SQLite durable | clear on cancel/deny/expire |
-| **Chat tool loop** | ChatRequested | Brain.chat_stream | ChatCompleted / confirmation_required | — | `chat_ckpt:{correlation_id}` on interrupt replay | — |
+| **Chat tool loop** | ChatRequested | Brain.chat_stream | ChatCompleted / confirmation_required | Lane A `max_retries=2` | `chat_ckpt:{correlation_id}` on interrupt replay | — |
 
 Domain FSM 不含 `retrying`；操作层重试由 Lane A（`ScheduledExecution`）独占。

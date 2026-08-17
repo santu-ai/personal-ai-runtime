@@ -7,6 +7,7 @@ from app.core.runtime.work_item_engine import WorkItemStatus, state_manager
 class TestStateManager:
     def test_valid_transitions(self):
         assert state_manager.validate_transition(WorkItemStatus.PENDING, WorkItemStatus.RUNNING)
+        assert state_manager.validate_transition(WorkItemStatus.PENDING, WorkItemStatus.COMPLETED)
         assert state_manager.validate_transition(WorkItemStatus.RUNNING, WorkItemStatus.COMPLETED)
         assert state_manager.validate_transition(WorkItemStatus.RUNNING, WorkItemStatus.BLOCKED)
         assert state_manager.validate_transition(WorkItemStatus.RUNNING, WorkItemStatus.WAITING_APPROVAL)
@@ -15,6 +16,7 @@ class TestStateManager:
         assert state_manager.validate_transition(WorkItemStatus.BLOCKED, WorkItemStatus.CANCELLED)
         assert state_manager.validate_transition(WorkItemStatus.FAILED, WorkItemStatus.PENDING)
         assert state_manager.validate_transition(WorkItemStatus.PENDING, WorkItemStatus.CANCELLED)
+        assert state_manager.validate_transition(WorkItemStatus.COMPLETED, WorkItemStatus.PENDING)
 
     def test_invalid_transitions(self):
         with pytest.raises(ValueError):
@@ -22,7 +24,7 @@ class TestStateManager:
         with pytest.raises(ValueError):
             state_manager.validate_transition(WorkItemStatus.CANCELLED, WorkItemStatus.RUNNING)
         with pytest.raises(ValueError):
-            state_manager.validate_transition(WorkItemStatus.COMPLETED, WorkItemStatus.PENDING)
+            state_manager.validate_transition(WorkItemStatus.PENDING, WorkItemStatus.FAILED)
         with pytest.raises(ValueError):
             # domain FSM no longer has retrying — Lane A owns operational retry
             state_manager.validate_transition(WorkItemStatus.RUNNING, WorkItemStatus("retrying"))

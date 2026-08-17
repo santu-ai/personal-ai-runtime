@@ -101,7 +101,7 @@ def test_policy_for_chat_requested_matches_tool_loop_budget():
 
     chat = policy_for_event("ChatRequested")
     assert chat.timeout_seconds == float(settings.total_tool_loop_timeout)
-    assert chat.max_retries == 1
+    assert chat.max_retries == 2
     assert policy_for_event("TimerFired") == ExecutionPolicy.default()
 
 

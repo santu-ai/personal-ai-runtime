@@ -89,12 +89,20 @@ def test_update_fields_missing_item_returns_none(isolated_kernel):
 # ── update_work_item_status: FSM enforcement via integration ───────────────
 
 
+def test_update_status_pending_to_completed_is_user_shortcut(isolated_kernel):
+    k, _db = isolated_kernel
+    task = _create_task(k)  # pending
+    done = work_item_engine.update_work_item_status(task["id"], "completed")
+    assert done["status"] == "completed"
+    reopened = work_item_engine.update_work_item_status(task["id"], "pending")
+    assert reopened["status"] == "pending"
+
+
 def test_update_status_illegal_transition_raises(isolated_kernel):
     k, _db = isolated_kernel
     task = _create_task(k)  # pending
-    # pending -> completed 不在 FSM 转换表中
     with pytest.raises(ValueError, match="Illegal state transition"):
-        work_item_engine.update_work_item_status(task["id"], "completed")
+        work_item_engine.update_work_item_status(task["id"], "failed")
 
 
 def test_update_status_running_then_completed(isolated_kernel):

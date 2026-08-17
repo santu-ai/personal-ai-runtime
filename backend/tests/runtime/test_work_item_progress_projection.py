@@ -116,3 +116,19 @@ def test_no_children_progress_unchanged(kernel):
 
     parent = kernel.query_state("work_items", id="goal_solo")[0]
     assert parent["progress"] == 0.3  # unchanged
+
+
+def test_child_completion_via_updated_recalculates_parent_progress(kernel):
+    """Goals checkbox PATCHes WorkItemUpdated(status=completed), not StatusChanged."""
+    kernel.emit_event("WorkItemCreated", "work_item", "goal_patch", payload={
+        "title": "Parent goal", "work_type": "goal", "progress": 0.0,
+    })
+    kernel.emit_event("WorkItemCreated", "work_item", "task_patch", payload={
+        "title": "Child", "work_type": "action", "parent_work_id": "goal_patch",
+    })
+    kernel.emit_event(
+        "WorkItemUpdated", "work_item", "task_patch",
+        payload={"status": "completed"},
+    )
+    parent = kernel.query_state("work_items", id="goal_patch")[0]
+    assert parent["progress"] == 1.0

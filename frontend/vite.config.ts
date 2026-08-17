@@ -15,6 +15,7 @@ export default defineConfig({
   base: isDesktopBuild ? "./" : "/",
   plugins: [react(), tailwindcss()],
   server: {
+    host: true,
     port: 5173,
     proxy: {
       "/api": {

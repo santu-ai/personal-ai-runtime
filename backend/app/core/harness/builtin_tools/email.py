@@ -23,6 +23,16 @@ from app.core.harness.mcp_hub import (
 logger = logging.getLogger(__name__)
 
 
+def _application_miss(message: str) -> None:
+    """IMAP succeeded but the requested mail does not exist.
+
+    Must raise ToolInvokeError so Kernel records CapabilityFailed instead of
+    treating ``{"error": ...}`` JSON as a successful CapabilityInvoked.
+    """
+    logger.info("email application miss: %s", message)
+    raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, message)
+
+
 class EmailFetchError(Exception):
     """IMAP/credential/connection failure while fetching a message body."""
 
@@ -366,19 +376,16 @@ class EmailServer:
             except EmailFetchError as exc:
                 raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(exc)) from exc
             if body is None:
-                return json.dumps(
-                    {"error": f"未找到 Message-ID 为 {mid} 的邮件"},
-                    ensure_ascii=False,
-                )
+                _application_miss(f"未找到 Message-ID 为 {mid} 的邮件")
             return json.dumps({"message_id": mid, "body": body}, ensure_ascii=False)
         try:
             emails = self._fetch_sorted_emails(limit, unread_only, body_max=4000)
             if not emails:
-                return json.dumps({"error": "收件箱中没有邮件"})
+                _application_miss("收件箱中没有邮件")
             if index < 1 or index > len(emails):
-                return json.dumps({
-                    "error": f"序号 {index} 超出范围，当前共 {len(emails)} 封（1=最新）",
-                })
+                _application_miss(
+                    f"序号 {index} 超出范围，当前共 {len(emails)} 封（1=最新）",
+                )
             em = emails[index - 1]
             return json.dumps({
                 "index": index,
@@ -476,9 +483,9 @@ class EmailServer:
     ) -> str:
         actual_mid = (message_id or "").strip()
         if not actual_mid and index is None:
-            return json.dumps({
-                "error": "Provide message_id or index (1=newest among recent mail)",
-            })
+            _application_miss(
+                "Provide message_id or index (1=newest among recent mail)",
+            )
 
         try:
             mail = self._connect_inbox()
@@ -508,7 +515,7 @@ class EmailServer:
                     mail, search_limit, search_unread_only, body_max=0
                 )
                 if not emails:
-                    return json.dumps({"error": "No messages found to mark"})
+                    _application_miss("No messages found to mark")
 
                 target = None
                 if actual_mid:
@@ -518,15 +525,15 @@ class EmailServer:
                             target = em
                             break
                     if target is None:
-                        return json.dumps({
-                            "error": f"Message {actual_mid} not found in last {search_limit} emails",
-                        })
+                        _application_miss(
+                            f"Message {actual_mid} not found in last {search_limit} emails",
+                        )
                 else:
                     assert index is not None
                     if index < 1 or index > len(emails):
-                        return json.dumps({
-                            "error": f"Index {index} out of range (1-{len(emails)})",
-                        })
+                        _application_miss(
+                            f"Index {index} out of range (1-{len(emails)})",
+                        )
                     target = emails[index - 1]
 
                 seq = target.get("seq_num")

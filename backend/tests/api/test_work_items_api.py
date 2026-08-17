@@ -98,14 +98,26 @@ def test_status_transition(client):
     assert r.json()["status"] == "running"
 
 
-def test_illegal_status_transition_returns_400(client):
-    """pending → completed is illegal; API must be 400 not 500."""
+def test_user_complete_from_pending_returns_200(client):
+    """pending → completed is the user mark-done shortcut (Goals checkbox)."""
     create = client.post("/api/work-items/", json={
         "title": "T", "work_type": "task",
     })
     item_id = create.json()["id"]
 
     r = client.post(f"/api/work-items/{item_id}/status", json={"status": "completed"})
+    assert r.status_code == 200
+    assert r.json()["status"] == "completed"
+
+
+def test_illegal_status_transition_returns_400(client):
+    """pending → failed is still illegal; API must be 400 not 500."""
+    create = client.post("/api/work-items/", json={
+        "title": "T", "work_type": "task",
+    })
+    item_id = create.json()["id"]
+
+    r = client.post(f"/api/work-items/{item_id}/status", json={"status": "failed"})
     assert r.status_code == 400
     assert "Illegal state transition" in r.json()["detail"]
 

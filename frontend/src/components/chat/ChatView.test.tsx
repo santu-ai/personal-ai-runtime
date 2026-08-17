@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import ChatView from "./ChatView";
-import { resolveApproval, sendMessage } from "../../api/client";
+import { resolveApproval, sendMessage, ratifyMemory } from "../../api/client";
 
 vi.mock("../../api/client", () => ({
   getMessages: vi.fn().mockResolvedValue([]),
@@ -13,6 +13,8 @@ vi.mock("../../api/client", () => ({
   listPendingApprovals: vi.fn().mockResolvedValue([]),
   listMemoriesGrouped: vi.fn().mockResolvedValue({ memories: [] }),
   searchMemories: vi.fn().mockResolvedValue([]),
+  ratifyMemory: vi.fn().mockResolvedValue({ status: "ok", claim_status: "ratified" }),
+  rejectMemory: vi.fn().mockResolvedValue({ status: "ok", claim_status: "rejected" }),
   getCapabilityPolicy: vi.fn().mockResolvedValue({
     auto_allow: ["read_file"],
     needs_user: ["write_file", "apply_patch", "send_email"],
@@ -59,7 +61,10 @@ vi.mock("../../stores/chatStore", () => {
 // tests can drive the memory cache (total + recent slice) and verify the
 // "I just remembered" toast logic without a QueryClientProvider.
 const memoriesState = {
-  data: { memories: [] as Array<{ content: string }>, recent: [] as Array<{ content: string }> },
+  data: {
+    memories: [] as Array<{ id?: string; content: string }>,
+    recent: [] as Array<{ id?: string; content: string }>,
+  },
 };
 const proposedCountState = { data: 0 };
 vi.mock("../../hooks/useMemoriesQuery", () => ({
@@ -224,5 +229,14 @@ describe("ChatView", () => {
     proposedCountState.data = 3;
     renderChatView();
     expect(screen.getByText(/3 条记忆待确认后才会进入对话/)).toBeInTheDocument();
+  });
+
+  it("ratifies a proposed memory from the chat banner", async () => {
+    proposedCountState.data = 1;
+    memoriesState.data.memories = [{ id: "m1", content: "喜欢早起跑步" }];
+    memoriesState.data.recent = [{ id: "m1", content: "喜欢早起跑步" }];
+    renderChatView();
+    fireEvent.click(screen.getByRole("button", { name: "确认" }));
+    await waitFor(() => expect(ratifyMemory).toHaveBeenCalledWith("m1"));
   });
 });

@@ -83,11 +83,22 @@ def test_read_inbox_email_by_message_id(monkeypatch):
 
 
 def test_read_inbox_email_by_message_id_not_found(monkeypatch):
+    from app.core.harness.mcp_hub import ToolInvokeError
+
     server = EmailServer()
     monkeypatch.setattr(server, "read_email_body", lambda mid: None)
 
-    data = json.loads(server.read_inbox_email(message_id="<missing@example.com>"))
-    assert "error" in data
+    with pytest.raises(ToolInvokeError, match="未找到 Message-ID"):
+        server.read_inbox_email(message_id="<missing@example.com>")
+
+
+def test_read_inbox_email_empty_inbox_raises(monkeypatch):
+    from app.core.harness.mcp_hub import ToolInvokeError
+
+    server = EmailServer()
+    monkeypatch.setattr(server, "_fetch_sorted_emails", lambda *a, **k: [])
+    with pytest.raises(ToolInvokeError, match="收件箱中没有邮件"):
+        server.read_inbox_email(index=1)
 
 
 def test_read_inbox_email_by_message_id_imap_failure_raises(monkeypatch):
@@ -138,9 +149,11 @@ def test_mark_inbox_email_read_by_message_id(monkeypatch):
 
 
 def test_mark_inbox_email_read_requires_selector():
+    from app.core.harness.mcp_hub import ToolInvokeError
+
     server = EmailServer()
-    data = json.loads(server.mark_inbox_email_read())
-    assert "error" in data
+    with pytest.raises(ToolInvokeError, match="message_id or index"):
+        server.mark_inbox_email_read()
 
 
 def test_mark_inbox_email_read_by_mid_alias(monkeypatch):

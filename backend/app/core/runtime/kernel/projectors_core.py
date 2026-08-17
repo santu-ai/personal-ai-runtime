@@ -210,6 +210,10 @@ def _on_work_item_updated(event: Event, conn) -> None:
         f"UPDATE work_items SET {set_clause}, updated_at = ? WHERE id = ?",
         params,
     )
+    # Goals checkbox / PATCH 走 WorkItemUpdated(status=…)，不是 StatusChanged。
+    # 父 goal 进度必须在同一事务重算，否则勾选子项后进度一直停在旧值。
+    if "status" in p:
+        _recalculate_parent_goal_progress(conn, event.aggregate_id, event.ts)
 
 
 @projector("WorkItemStatusChanged")

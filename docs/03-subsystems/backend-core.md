@@ -160,7 +160,7 @@ Handlers（[`handlers/`](../../backend/app/core/agents/handlers/)）：
 - `enqueue(instance_id, actor, event, policy)` → 查 handler → 创建 ScheduledExecution → emit `ExecutionRequested`。
 - `_process_work_item` 在 `execution_scope(item.id)` 内跑 handler，使能力调用正确归属。
 - `_emit_verify` 每次写后跑 `verify_persist_matches_projection`（影子比对）。
-- `ExecutionPolicy(timeout=30s, max_retries=3, retry_delay=5s)`。
+- 默认 `ExecutionPolicy(timeout=30s, max_retries=3, retry_delay=5s)`；`ChatRequested` 由 `policy_for_event` 覆盖为工具环超时 + `max_retries=2`（第三次崩溃仍 DLQ，见 [ADR-R011](../07-adr/ADR-R011-chat-approval-continuation.md)）。
 - `get_scheduler(kernel)` 是单例工厂。
 
 ### ScheduledExecution 与 ExecutionContext

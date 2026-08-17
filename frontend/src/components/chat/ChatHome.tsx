@@ -11,6 +11,7 @@ import { listWorkItems } from "../../api/workItems";
 import { useQuickChat } from "../../hooks/useQuickChat";
 import { useApprovalsQuery } from "../../hooks/useApprovalsQuery";
 import { timeAgo, isStagnant } from "../../utils/timeUtils";
+import ProposedMemoryBanner from "./ProposedMemoryBanner";
 
 interface ProactiveNudge {
   icon: string;
@@ -177,6 +178,8 @@ export default function ChatHome() {
           <h2 className="text-2xl font-semibold text-fg-primary">{greeting}</h2>
           <p className="text-fg-tertiary mt-2 text-sm">{subtitle}</p>
         </div>
+
+        <ProposedMemoryBanner className="rounded-xl border border-insight/30" />
 
         {!loading && (
           <div className="space-y-2">

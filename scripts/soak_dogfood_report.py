@@ -1,8 +1,12 @@
 """开发期 dogfood soak 报告（只读）。
 
-对当前 backend/data/personal_ai.db 输出只读计数报告，用于核对
+对当前日用 SQLite 输出只读计数报告，用于核对
 docs/05-engineering/development.md「开发期自用检查」表中的主观判断
 是否与库内数据一致。
+
+解析顺序：``--db`` → 环境变量 ``SQLITE_PATH`` → 仓库根 ``.env`` 的
+``SQLITE_PATH`` → 已存在的 ``<repo>/data/personal_ai.db`` 或
+``<repo>/backend/data/personal_ai.db``。
 
 用法:
     python scripts/soak_dogfood_report.py
@@ -12,16 +16,56 @@ docs/05-engineering/development.md「开发期自用检查」表中的主观判�
     - 只读，不触发应用初始化、不写库、不进 CI。
     - 直接用 sqlite3 标准库，避免 import app.* 带来的副作用。
     - 任何表/列缺失时降级为 SKIP 而非崩溃（兼容历史 DB 与 verify 残留库）。
+    - 读 ``.env`` 时只取 ``SQLITE_PATH``，不打印其它键。
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import sqlite3
 import sys
 from pathlib import Path
 
-DEFAULT_DB = Path(__file__).resolve().parent.parent / "backend" / "data" / "personal_ai.db"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_BACKEND_DB = REPO_ROOT / "backend" / "data" / "personal_ai.db"
+DEFAULT_ROOT_DB = REPO_ROOT / "data" / "personal_ai.db"
+
+
+def _sqlite_path_from_dotenv() -> Path | None:
+    env_file = REPO_ROOT / ".env"
+    if not env_file.is_file():
+        return None
+    for raw in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        if key.strip() != "SQLITE_PATH":
+            continue
+        val = val.strip().strip('"').strip("'")
+        if not val:
+            return None
+        path = Path(val)
+        return path if path.is_absolute() else (REPO_ROOT / path)
+    return None
+
+
+def resolve_db_path(cli_db: Path | None) -> Path:
+    if cli_db is not None:
+        return cli_db
+    env = os.environ.get("SQLITE_PATH", "").strip()
+    if env:
+        path = Path(env)
+        return path if path.is_absolute() else (REPO_ROOT / path)
+    from_dotenv = _sqlite_path_from_dotenv()
+    if from_dotenv is not None:
+        return from_dotenv
+    if DEFAULT_ROOT_DB.exists():
+        return DEFAULT_ROOT_DB
+    if DEFAULT_BACKEND_DB.exists():
+        return DEFAULT_BACKEND_DB
+    return DEFAULT_BACKEND_DB
 
 
 def _count(conn: sqlite3.Connection, table: str) -> int | str:
@@ -123,10 +167,12 @@ def report(db_path: Path) -> int:
         approved = _count_where(conn, "approvals", "status='approved'")
         pending = _count_where(conn, "approvals", "status='pending'")
         cap_invoked = _count_where(conn, "event_log", "type='CapabilityInvoked'")
+        cap_failed = _count_where(conn, "event_log", "type='CapabilityFailed'")
         print(f"  approvals total          {_count(conn, 'approvals')}")
         print(f"  approvals approved       {approved}")
         print(f"  approvals pending        {pending}")
         print(f"  CapabilityInvoked events {cap_invoked}")
+        print(f"  CapabilityFailed events  {cap_failed}")
 
         _section("记忆闭环（dogfood: Memory pass 证据）")
         mem_derived = _count_where(conn, "event_log", "type='MemoryDerived'")
@@ -134,6 +180,8 @@ def report(db_path: Path) -> int:
         print(f"  memories total           {_count(conn, 'memories')}")
         print(f"  MemoryDerived events     {mem_derived}")
         print(f"  MemoryUpdated events     {mem_updated}")
+        print(f"  claim proposed           {_count_where(conn, 'memories', "claim_status='proposed'")}")
+        print(f"  claim ratified           {_count_where(conn, 'memories', "claim_status='ratified'")}")
 
         _section("Work items（dogfood: Work pass 证据）")
         wi_completed = _count_where(conn, "work_items", "status='completed'")
@@ -141,6 +189,8 @@ def report(db_path: Path) -> int:
         print(f"  work_items total         {_count(conn, 'work_items')}")
         print(f"  completed                {wi_completed}")
         print(f"  running                  {wi_running}")
+        print(f"  pending                  {_count_where(conn, 'work_items', "status='pending'")}")
+        print(f"  handler dead_letter      {_count_where(conn, 'handler_executions', 'dead_letter=1')}")
 
         _section("Inbox（dogfood: Inbox 状态）")
         print(f"  inbox_emails total       {_count(conn, 'inbox_emails')}")
@@ -184,9 +234,9 @@ def report(db_path: Path) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="开发期 dogfood soak 只读报告")
-    parser.add_argument("--db", type=Path, default=DEFAULT_DB, help="SQLite DB 路径")
+    parser.add_argument("--db", type=Path, default=None, help="SQLite DB 路径（默认解析 SQLITE_PATH）")
     args = parser.parse_args()
-    sys.exit(report(args.db))
+    sys.exit(report(resolve_db_path(args.db)))
 
 
 if __name__ == "__main__":

@@ -184,7 +184,7 @@ vitest，**不需要 Electron 已安装**。读 `main.js` 源码，字符串 `to
 
 上述 soak 脚本针对**空库**跑架构不变量（崩溃恢复、批量执行）。开发期还需要一个针对**真实个人数据**的只读报告，回答「我是否真的每天在用它」。
 
-[`scripts/soak_dogfood_report.py`](../../scripts/soak_dogfood_report.py) 以 `mode=ro` 打开 `backend/data/personal_ai.db`，输出：
+[`scripts/soak_dogfood_report.py`](../../scripts/soak_dogfood_report.py) 以 `mode=ro` 打开日用库（`--db` → `SQLITE_PATH` → 仓库根 `.env` 的 `SQLITE_PATH` → 已存在的 `<repo>/data/personal_ai.db` 或 `backend/data/personal_ai.db`），输出：
 
 - 核心表计数（event_log / conversations / messages / memories / work_items / approvals / inbox_emails ...）
 - Chat 闭环证据：approvals 状态分布、`CapabilityInvoked` 事件数

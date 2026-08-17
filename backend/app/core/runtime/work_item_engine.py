@@ -34,9 +34,13 @@ class WorkItemStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-# Valid state transitions (domain FSM — Lane A owns operational retry)
+# Valid state transitions (domain FSM — Lane A owns operational retry).
+# pending → completed is the user "I did this" shortcut (Goals checkbox / PATCH);
+# agent execution still goes pending → running → completed.
 _TRANSITIONS: dict[WorkItemStatus, set[WorkItemStatus]] = {
-    WorkItemStatus.PENDING: {WorkItemStatus.RUNNING, WorkItemStatus.CANCELLED},
+    WorkItemStatus.PENDING: {
+        WorkItemStatus.RUNNING, WorkItemStatus.COMPLETED, WorkItemStatus.CANCELLED,
+    },
     WorkItemStatus.RUNNING: {
         WorkItemStatus.BLOCKED, WorkItemStatus.WAITING_APPROVAL,
         WorkItemStatus.COMPLETED, WorkItemStatus.FAILED,
@@ -45,7 +49,7 @@ _TRANSITIONS: dict[WorkItemStatus, set[WorkItemStatus]] = {
         WorkItemStatus.PENDING, WorkItemStatus.RUNNING, WorkItemStatus.CANCELLED,
     },
     WorkItemStatus.WAITING_APPROVAL: {WorkItemStatus.RUNNING, WorkItemStatus.CANCELLED},
-    WorkItemStatus.COMPLETED: set(),  # terminal
+    WorkItemStatus.COMPLETED: {WorkItemStatus.PENDING},  # user reopen
     WorkItemStatus.FAILED: {WorkItemStatus.PENDING},  # can re-open
     WorkItemStatus.CANCELLED: set(),  # terminal
 }

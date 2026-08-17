@@ -6,5 +6,5 @@
 | Context | 产品选择：最小 Chat checkpoint（C1）。核实：`brain_chat_stream` persist/load；`approve_handlers` → `continue_after_tool_result` 仍无 tools |
 | Evidence | `plan_resume.py` (`record_chat_checkpoint`)，`brain_chat_stream.py`，`test_chat_checkpoint.py` |
 | Consequences + | 工具环中断后可续跑；写类工具仍靠 `idem:{corr}:chat:*` 去重 |
-| Consequences − | checkpoint 体积随 messages 增长；`ChatRequested` max_retries=1，第二次崩溃仍 DLQ |
+| Consequences − | checkpoint 体积随 messages 增长；`ChatRequested` max_retries=2，第三次崩溃仍 DLQ |
 | Still valid? | Partial（审批 one-shot 仍成立；工具环跨进程续跑已落地） |

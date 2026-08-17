@@ -51,7 +51,10 @@ def policy_for_event(event_type: str) -> ExecutionPolicy:
 
         return ExecutionPolicy(
             timeout_seconds=float(settings.total_tool_loop_timeout),
-            max_retries=1,
+            # Two interrupt recoveries before DLQ. max_retries=1 made the
+            # second crash terminal (ADR-R011). Approval continuation stays
+            # one-shot and does not reopen tools.
+            max_retries=2,
             retry_delay_seconds=2.0,
         )
     return ExecutionPolicy.default()
