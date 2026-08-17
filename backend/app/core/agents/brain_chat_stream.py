@@ -202,6 +202,18 @@ async def chat_stream(
                 yield evt
 
         if pending_approval:
+            # Persist the assistant tool_calls turn before suspending.
+            # Otherwise approve → save_tool_result leaves an orphaned tool
+            # message, history-builder strips it, and continue_after_tool_result
+            # resumes as if the tool never ran.
+            tc_for_msg = [{
+                "id": tc["id"], "type": "function",
+                "function": {"name": tc["function_name"], "arguments": tc["arguments"]},
+            } for tc in tool_calls_data]
+            conversation.save_assistant_message(
+                assistant_content or "",
+                tool_calls=tc_for_msg,
+            )
             _drop_checkpoint()
             return
 

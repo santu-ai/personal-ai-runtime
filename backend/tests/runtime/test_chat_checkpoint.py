@@ -170,3 +170,97 @@ async def test_chat_stream_resumes_after_mid_loop_crash(isolated_kernel, monkeyp
         mcp_hub.unregister_tool("ckpt_step")
         configure_plan_resume_db(None)
         taint_registry.clear(cid)
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_persists_tool_calls_on_confirmation(isolated_kernel, monkeypatch):
+    """Approval interrupt must persist assistant tool_calls so resume sees the result."""
+    k, _db = isolated_kernel
+    configure_plan_resume_db(_db)
+    try:
+        monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", k)
+        monkeypatch.setattr("app.core.agents.brain_chat_stream.kernel", k)
+
+        async def pending_invoke(**_kwargs):
+            return {"status": "pending", "approval_id": "apr_persist"}
+
+        monkeypatch.setattr(k, "invoke_capability", pending_invoke)
+
+        async def fake_iter(_response):
+            yield {
+                "type": "_stream_assembled",
+                "result": AssembledStream(
+                    visible_text="",
+                    tool_calls=[{
+                        "id": "call_shell_1",
+                        "function_name": "shell_exec",
+                        "arguments": '{"command": "pwd"}',
+                    }],
+                ),
+            }
+
+        monkeypatch.setattr(
+            "app.core.agents.brain_chat_stream.iter_assembled_stream",
+            fake_iter,
+        )
+        monkeypatch.setattr(
+            "app.core.agents.brain_chat_stream.record_llm_call",
+            lambda *a, **_k: 0,
+        )
+
+        llm = SimpleNamespace(
+            provider=SimpleNamespace(
+                name="fake", model="fake",
+                price_per_prompt_token=0, price_per_completion_token=0,
+            ),
+            create_stream=AsyncMock(return_value=("resp", None, SimpleNamespace(
+                name="fake", model="fake",
+                price_per_prompt_token=0, price_per_completion_token=0,
+            ))),
+            replace_provider=lambda *_a, **_k: None,
+        )
+
+        def build_messages(_conv, user_message, *, system_prompt=""):
+            return [
+                {"role": "system", "content": system_prompt or "s"},
+                {"role": "user", "content": user_message},
+            ]
+
+        brain = SimpleNamespace(llm=llm, build_messages=build_messages)
+        conv = ConversationManager(conversation_id="apr-conv", kernel=k)
+        k.emit_event(
+            "ConversationCreated", "conversation", "apr-conv",
+            payload={"title": "apr"}, actor="user",
+        )
+
+        from app.core.agents import brain_chat_stream
+        from app.core.agents.brain_history_builder import build_messages as assemble
+
+        events = []
+        async for evt in brain_chat_stream.chat_stream(
+            brain, conv, "查看当前目录",
+            system_prompt="s",
+            correlation_id="apr-corr",
+        ):
+            events.append(evt)
+
+        assert any(e.get("type") == "confirmation_required" for e in events)
+        assistants = [m for m in conv.get_history() if m["role"] == "assistant"]
+        assert len(assistants) == 1
+        assert assistants[0]["tool_calls"][0]["id"] == "call_shell_1"
+
+        conv.save_tool_result(
+            '{"status":"error","error":"Command not found: echo"}',
+            "call_shell_1",
+        )
+        assembled = assemble(conv, "", system_prompt="s")
+        assert any(
+            m.get("role") == "assistant" and m.get("tool_calls")
+            for m in assembled
+        )
+        assert any(
+            m.get("role") == "tool" and m.get("tool_call_id") == "call_shell_1"
+            for m in assembled
+        )
+    finally:
+        configure_plan_resume_db(None)

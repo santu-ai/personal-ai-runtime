@@ -46,7 +46,9 @@ const chatStoreState = {
     chatStoreState.conversations = convs;
   }),
   pendingPrompt: null as string | null,
-  setPendingPrompt: vi.fn(),
+  setPendingPrompt: vi.fn((prompt: string | null) => {
+    chatStoreState.pendingPrompt = prompt;
+  }),
 };
 
 vi.mock("../../stores/chatStore", () => {
@@ -111,6 +113,7 @@ describe("ChatView", () => {
     memoriesState.data.recent = [];
     proposedCountState.data = 0;
     vi.mocked(getMessages).mockResolvedValue([]);
+    chatStoreState.pendingPrompt = null;
   });
 
   it("renders input area and send button", () => {
@@ -158,6 +161,8 @@ describe("ChatView", () => {
       expect(screen.getByText(/建议：写入文件/)).toBeInTheDocument();
     });
     expect(screen.queryByText(/抱歉，未能生成回复/)).not.toBeInTheDocument();
+    const band = screen.getByText(/建议：写入文件/).closest(".border-t");
+    expect(band?.className ?? "").not.toMatch(/bg-surface-raised/);
   });
 
   it("calls resolveApproval when user confirms pending tool", async () => {
@@ -271,6 +276,31 @@ describe("ChatView", () => {
     memoriesState.data.recent = [{ content: "likes tea" }];
     renderChatView();
     expect(screen.queryByText(/我刚记住了/)).not.toBeInTheDocument();
+  });
+
+  it("sends a pending home prompt after messages hydrate", async () => {
+    chatStoreState.pendingPrompt = "帮我规划今天";
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({ type: "text_delta", content: "好的，开始规划。" });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+
+    renderChatView();
+
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith(
+        "test-conv-1",
+        "帮我规划今天",
+        expect.any(Function),
+        expect.any(Function),
+        expect.any(Function),
+        expect.any(AbortSignal),
+      );
+    });
+    expect(chatStoreState.pendingPrompt).toBeNull();
   });
 
   it("shows a review banner when proposed memories exist", () => {

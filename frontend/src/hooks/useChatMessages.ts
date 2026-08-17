@@ -180,6 +180,7 @@ export function useChatMessages(
 ) {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [messagesHydrated, setMessagesHydrated] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
 
   const conversations = useChatStore((s) => s.conversations);
@@ -197,6 +198,7 @@ export function useChatMessages(
   const allToolResults = useMemo(() => messages.flatMap((m) => m.toolResults || []), [messages]);
 
   const loadMessages = useCallback(async () => {
+    setMessagesHydrated(false);
     try {
       const msgs = await getMessages(conversationId);
       setMessages(parseLoadedMessages(msgs));
@@ -206,6 +208,7 @@ export function useChatMessages(
       onLoadErrorRef.current?.(msg, "对话");
     }
     setStreamingContent("");
+    setMessagesHydrated(true);
   }, [conversationId]);
 
   useEffect(() => {
@@ -406,6 +409,7 @@ export function useChatMessages(
     messages,
     setMessages,
     isLoading,
+    messagesHydrated,
     streamingContent,
     setStreamingContent,
     loadMessages,

@@ -48,11 +48,13 @@ export default function ChatView({ conversationId }: Props) {
   // — only then do we want "I just remembered" toasts. Initial cache load
   // must not fire a toast, and StrictMode double-invocation must not either.
   const hasSentRef = useRef(false);
+  const pendingSentKeyRef = useRef<string | null>(null);
 
   const {
     messages,
     setMessages,
     isLoading,
+    messagesHydrated,
     streamingContent,
     handleSend: sendMessageBase,
     lastUserMessage,
@@ -62,11 +64,56 @@ export default function ChatView({ conversationId }: Props) {
   const { pendingConfirmation, setFromEvent, confirm, deny } = useApprovalFlow(conversationId);
 
   useEffect(() => {
-    if (pendingPrompt) {
-      setInput(pendingPrompt);
-      setPendingPrompt(null);
-    }
-  }, [pendingPrompt, setPendingPrompt]);
+    pendingSentKeyRef.current = null;
+  }, [conversationId]);
+
+  const dispatchSend = useCallback(
+    async (trimmed: string) => {
+      if (!trimmed || isLoading || pendingConfirmation) return;
+      hasSentRef.current = true;
+      isAtBottomRef.current = true;
+      setShowJumpToLatest(false);
+      isProgrammaticScrollRef.current = false;
+      prevMemoryTotalRef.current = memData?.memories.length ?? 0;
+      await sendMessageBase(
+        trimmed,
+        (assistantMsgId, event: StreamEvent) => {
+          setFromEvent(assistantMsgId, event, setMessages);
+        },
+        (error) => {
+          addError(error, "对话");
+        },
+      );
+    },
+    [
+      isLoading,
+      pendingConfirmation,
+      sendMessageBase,
+      setFromEvent,
+      setMessages,
+      addError,
+      memData,
+    ],
+  );
+
+  useEffect(() => {
+    if (!pendingPrompt || !messagesHydrated || isLoading || pendingConfirmation) return;
+    const key = `${conversationId}:${pendingPrompt}`;
+    if (pendingSentKeyRef.current === key) return;
+    pendingSentKeyRef.current = key;
+    const prompt = pendingPrompt;
+    setPendingPrompt(null);
+    setInput("");
+    void dispatchSend(prompt);
+  }, [
+    pendingPrompt,
+    messagesHydrated,
+    isLoading,
+    pendingConfirmation,
+    conversationId,
+    setPendingPrompt,
+    dispatchSend,
+  ]);
 
   // Read memories via ref so WS `memory_changed` (which changes memData
   // identity every time) does NOT re-create this callback or re-fetch goals —
@@ -216,37 +263,10 @@ export default function ChatView({ conversationId }: Props) {
 
   const handleSend = useCallback(async () => {
     const trimmed = input.trim();
-    if (!trimmed || isLoading || pendingConfirmation) return;
+    if (!trimmed) return;
     setInput("");
-    hasSentRef.current = true;
-    // Sending a new message re-engages stick-to-bottom.
-    isAtBottomRef.current = true;
-    setShowJumpToLatest(false);
-    isProgrammaticScrollRef.current = false;
-    // Reset the memory baseline so a memory derived from THIS exchange can
-    // still trigger the "I just remembered" toast once.
-    prevMemoryTotalRef.current = memData?.memories.length ?? 0;
-    await sendMessageBase(
-      trimmed,
-      (assistantMsgId, event: StreamEvent) => {
-        setFromEvent(assistantMsgId, event, setMessages);
-      },
-      (error) => {
-        addError(error, "对话");
-      },
-    );
-    // No setTimeout here — memory refresh arrives via WS `memory_changed`,
-    // which invalidates the TanStack Query cache automatically.
-  }, [
-    input,
-    isLoading,
-    pendingConfirmation,
-    sendMessageBase,
-    setFromEvent,
-    setMessages,
-    addError,
-    memData,
-  ]);
+    await dispatchSend(trimmed);
+  }, [input, dispatchSend]);
 
   const handleConfirm = useCallback(async () => {
     await confirm(setMessages, addError);
@@ -269,7 +289,7 @@ export default function ChatView({ conversationId }: Props) {
   }, [messages.length, pendingConfirmation]);
 
   // Welcome screen when no messages and still in initial load
-  if (initialLoad && messages.length === 0 && !isLoading) {
+  if (initialLoad && messages.length === 0 && !isLoading && !pendingPrompt) {
     return (
       <div className="flex-1 flex flex-col min-h-0">
         <ProposedMemoryBanner />
@@ -358,7 +378,7 @@ export default function ChatView({ conversationId }: Props) {
       </div>
 
       {pendingConfirmation && (
-        <div className="border-t border-warning/40 px-4 py-2 bg-surface-raised/95 backdrop-blur-sm shrink-0">
+        <div className="border-t border-warning/40 px-4 py-2 shrink-0">
           <div className="max-w-3xl mx-auto">
             <ConfirmationDialog
               toolCall={pendingConfirmation.toolCall}

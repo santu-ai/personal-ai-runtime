@@ -71,6 +71,7 @@ class Brain:
         pending_tool_name = ""
         pending_tool_args: dict = {}
         pending_approval_id = ""
+        pending_tool_call_id = ""
         conv_id = conversation.conversation_id
 
         async for event in self.chat_stream(
@@ -83,6 +84,7 @@ class Brain:
                 pending_tool_name = event.get("tool_name", "")
                 pending_tool_args = event.get("tool_args", {})
                 pending_approval_id = event.get("approval_id", "")
+                pending_tool_call_id = event.get("tool_call_id", "")
             elif event.get("type") == "error":
                 return {"status": "error", "content": event.get("content", "Unknown error")}
 
@@ -95,6 +97,7 @@ class Brain:
             "tool_name": pending_tool_name,
             "tool_args": pending_tool_args,
             "approval_id": pending_approval_id,
+            "tool_call_id": pending_tool_call_id,
         }
 
     async def continue_after_tool_result(
