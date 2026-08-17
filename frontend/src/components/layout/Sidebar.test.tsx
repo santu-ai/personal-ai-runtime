@@ -47,8 +47,8 @@ describe("Sidebar", () => {
 
   it("renders app title", () => {
     renderSidebar();
-    expect(screen.getByText("Personal AI Runtime")).toBeInTheDocument();
-    expect(screen.getByText("你的第二大脑")).toBeInTheDocument();
+    expect(screen.getByText("Personal AI")).toBeInTheDocument();
+    expect(screen.getByText("本地第二大脑")).toBeInTheDocument();
   });
 
   it("shows chat as primary nav and settings on chat route", () => {
@@ -63,10 +63,11 @@ describe("Sidebar", () => {
     expect(screen.getByText("周末计划")).toBeInTheDocument();
   });
 
-  it("hides data nav items on chat route", () => {
+  it("shows data nav on chat route so destinations stay reachable", () => {
     renderSidebar();
-    expect(screen.queryByText("目标")).not.toBeInTheDocument();
-    expect(screen.queryByText("收件箱")).not.toBeInTheDocument();
+    expect(screen.getByText("目标")).toBeInTheDocument();
+    expect(screen.getByText("收件箱")).toBeInTheDocument();
+    expect(screen.getByText("概览")).toBeInTheDocument();
   });
 
   it("shows data nav items on non-chat route", () => {
@@ -84,10 +85,10 @@ describe("Sidebar", () => {
     expect(onSelectConversation).toHaveBeenCalledWith("c2");
   });
 
-  it("calls onNewChat when + 新对话 clicked", () => {
+  it("calls onNewChat when 新对话 clicked", () => {
     const onNewChat = vi.fn();
     renderSidebar("/", { onNewChat });
-    fireEvent.click(screen.getByText("+ 新对话"));
+    fireEvent.click(screen.getByText("新对话"));
     expect(onNewChat).toHaveBeenCalled();
   });
 

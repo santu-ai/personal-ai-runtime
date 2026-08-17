@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Brain } from "lucide-react";
 import { useChatStore } from "../../stores/chatStore";
 import {
   listMemoriesGrouped,
@@ -13,6 +14,7 @@ import { useApprovalsQuery } from "../../hooks/useApprovalsQuery";
 import { useProposedMemoryCountQuery } from "../../hooks/useMemoriesQuery";
 import { timeAgo, isStagnant } from "../../utils/timeUtils";
 import ProposedMemoryBanner from "./ProposedMemoryBanner";
+import ChatComposer from "./ChatComposer";
 
 interface ProactiveNudge {
   icon: string;
@@ -37,6 +39,8 @@ export default function ChatHome() {
   const [goals, setGoals] = useState<WorkItem[]>([]);
   const [inbox, setInbox] = useState<{ id: string; subject?: string; sender?: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [input, setInput] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -155,11 +159,16 @@ export default function ChatHome() {
     }
   };
 
-  const handleNewChat = () => quickChat();
-
   const handleContinueConversation = (conv: Conversation) => {
     setActiveConversation(conv.id);
     navigate(`/chat/${conv.id}`);
+  };
+
+  const handleSend = () => {
+    const text = input.trim();
+    if (!text) return;
+    const title = text.length > 25 ? `讨论「${text.slice(0, 25)}…」` : `讨论「${text}」`;
+    void quickChat({ prompt: text, title });
   };
 
   const lastConversation = conversations
@@ -176,78 +185,81 @@ export default function ChatHome() {
       : "今天没有待决断事项，开始新对话吧";
 
   return (
-    <div className="flex-1 overflow-y-auto p-6">
-      <div className="max-w-2xl mx-auto space-y-5">
-        <div className="text-center pt-8 pb-2">
-          <div className="text-4xl mb-3">🧠</div>
-          <h2 className="text-2xl font-semibold text-fg-primary">{greeting}</h2>
-          <p className="text-fg-tertiary mt-2 text-sm">{subtitle}</p>
-        </div>
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="max-w-2xl mx-auto space-y-5">
+          <div className="text-center pt-6 pb-2">
+            <Brain size={36} strokeWidth={1.5} className="mx-auto mb-3 text-insight" />
+            <h2 className="text-2xl font-semibold text-fg-primary">{greeting}</h2>
+            <p className="text-fg-tertiary mt-2 text-sm">{subtitle}</p>
+          </div>
 
-        <ProposedMemoryBanner className="rounded-xl border border-insight/30" />
+          <ProposedMemoryBanner className="rounded-xl border border-insight/30" />
 
-        {insightsReady && (
-          <div className="space-y-2">
-            {nudges.map((nudge, i) => {
-              const toneClass =
-                nudge.tone === "warning"
-                  ? "border-warning/30 bg-warning/10"
-                  : nudge.tone === "success"
-                    ? "border-success/30 bg-success/10"
-                    : "border-insight/30 bg-insight/10";
-              const actionClass =
-                nudge.tone === "warning"
-                  ? "bg-warning/20 hover:bg-warning/30 text-warning"
-                  : nudge.tone === "success"
-                    ? "bg-success/20 hover:bg-success/30 text-success"
-                    : "bg-insight/20 hover:bg-insight/30 text-insight";
-              return (
-                <div
-                  key={i}
-                  className={`flex items-center gap-3 p-4 rounded-xl border ${toneClass} transition-colors`}
-                >
-                  <span className="text-2xl shrink-0">{nudge.icon}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-fg-primary">{nudge.message}</p>
-                  </div>
-                  <button
-                    onClick={() => handleNudge(nudge)}
-                    className={`shrink-0 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${actionClass}`}
+          {insightsReady && (
+            <div className="space-y-2">
+              {nudges.map((nudge, i) => {
+                const toneClass =
+                  nudge.tone === "warning"
+                    ? "border-warning/30 bg-warning/10"
+                    : nudge.tone === "success"
+                      ? "border-success/30 bg-success/10"
+                      : "border-insight/30 bg-insight/10";
+                const actionClass =
+                  nudge.tone === "warning"
+                    ? "bg-warning/20 hover:bg-warning/30 text-warning"
+                    : nudge.tone === "success"
+                      ? "bg-success/20 hover:bg-success/30 text-success"
+                      : "bg-insight/20 hover:bg-insight/30 text-insight";
+                return (
+                  <div
+                    key={i}
+                    className={`flex items-center gap-3 p-4 rounded-xl border ${toneClass} transition-colors`}
                   >
-                    {nudge.action}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {lastConversation && (
-          <div
-            className="bg-surface-raised border border-border-subtle rounded-xl p-4 hover:border-border-strong transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-            onClick={() => handleContinueConversation(lastConversation)}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-sm text-fg-tertiary">💬 继续上次</span>
+                    <span className="text-2xl shrink-0">{nudge.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-fg-primary">{nudge.message}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleNudge(nudge)}
+                      className={`shrink-0 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${actionClass}`}
+                    >
+                      {nudge.action}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
-            <p className="text-sm text-fg-primary">{lastConversation.title || "新对话"}</p>
-            {lastConversation.summary && (
-              <p className="text-xs text-fg-tertiary mt-1 line-clamp-1">
-                {lastConversation.summary}
-              </p>
-            )}
-            <p className="text-xs text-fg-disabled mt-2">{timeAgo(lastConversation.updated_at)}</p>
-          </div>
-        )}
+          )}
 
-        <div className="text-center pt-4 pb-8">
-          <button
-            onClick={handleNewChat}
-            className="px-6 py-3 bg-surface-overlay hover:bg-border-strong rounded-xl text-white font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-          >
-            开始新对话
-          </button>
-          <p className="text-xs text-fg-disabled mt-3">或者直接在下方输入框告诉我你想做什么</p>
+          {lastConversation && (
+            <div
+              className="bg-surface-raised border border-border-subtle rounded-xl p-4 hover:border-border-strong transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+              onClick={() => handleContinueConversation(lastConversation)}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-sm text-fg-tertiary">继续上次</span>
+              </div>
+              <p className="text-sm text-fg-primary">{lastConversation.title || "新对话"}</p>
+              {lastConversation.summary && (
+                <p className="text-xs text-fg-tertiary mt-1 line-clamp-1">
+                  {lastConversation.summary}
+                </p>
+              )}
+              <p className="text-xs text-fg-disabled mt-2">{timeAgo(lastConversation.updated_at)}</p>
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="border-t border-border-subtle p-4 shrink-0">
+        <div className="max-w-2xl mx-auto">
+          <ChatComposer
+            value={input}
+            onChange={setInput}
+            onSend={handleSend}
+            inputRef={inputRef}
+          />
         </div>
       </div>
     </div>

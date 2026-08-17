@@ -11,7 +11,7 @@ test.describe("Navigation and pages", () => {
 
   test("home page shows sidebar and navigation", async ({ page }) => {
     await page.goto("/", { waitUntil: "networkidle" });
-    await expect(page.getByText("Personal AI Runtime")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Personal AI")).toBeVisible({ timeout: 10000 });
     await expect(page.getByRole("link", { name: "对话" })).toBeVisible();
   });
 

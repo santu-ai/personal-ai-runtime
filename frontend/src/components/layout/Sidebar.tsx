@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   MessageSquare,
@@ -9,9 +8,6 @@ import {
   Settings,
   ShieldCheck,
   Trash2,
-  ChevronDown,
-  ChevronRight,
-  FolderOpen,
   Clock,
   ListTodo,
 } from "lucide-react";
@@ -46,10 +42,6 @@ function isChatRoute(pathname: string) {
   return pathname === "/" || pathname.startsWith("/chat/");
 }
 
-function isDataRoute(pathname: string) {
-  return DATA_NAV.some((item) => pathname.startsWith(item.path));
-}
-
 function NavBadge({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
@@ -69,7 +61,6 @@ export default function Sidebar({
 }: SidebarProps) {
   const location = useLocation();
   const onChatPage = isChatRoute(location.pathname);
-  const [dataExpanded, setDataExpanded] = useState(isDataRoute(location.pathname));
   const { data: approvals = [] } = useApprovalsQuery();
   const { data: inbox } = useInboxQuery();
   const { data: proposedCount = 0 } = useProposedMemoryCountQuery();
@@ -86,8 +77,8 @@ export default function Sidebar({
   return (
     <aside className="w-64 bg-surface-raised border-r border-border-subtle flex flex-col shrink-0">
       <div className="p-4 border-b border-border-subtle">
-        <h1 className="text-lg font-bold text-fg-primary">Personal AI Runtime</h1>
-        <p className="text-xs text-fg-tertiary mt-1">你的第二大脑</p>
+        <h1 className="text-base font-semibold text-fg-primary leading-tight">Personal AI</h1>
+        <p className="text-xs text-fg-tertiary mt-1">本地第二大脑</p>
       </div>
 
       <nav className="px-2 py-2 border-b border-border-subtle">
@@ -148,16 +139,44 @@ export default function Sidebar({
         )}
       </nav>
 
-      {onChatPage && (
-        <>
-          <button
-            onClick={onNewChat}
-            className="mx-3 mt-3 px-4 py-2 bg-surface-overlay hover:bg-border-strong text-white rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-          >
-            + 新对话
-          </button>
+      <nav className="px-2 py-2 border-b border-border-subtle overflow-y-auto shrink-0">
+        <p className="px-3 py-1.5 text-[11px] text-fg-tertiary uppercase tracking-wide">我的数据</p>
+        {DATA_NAV.map((item) => {
+          const Icon = item.icon;
+          const count = badgeFor(item.badgeKey);
+          return (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              className={({ isActive }) =>
+                `w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm mb-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                  isActive
+                    ? "bg-surface-overlay text-fg-primary"
+                    : "text-fg-secondary hover:bg-surface-overlay/50 hover:text-fg-primary"
+                }`
+              }
+            >
+              <Icon size={16} className="shrink-0" />
+              <span>{item.label}</span>
+              <NavBadge count={count} />
+            </NavLink>
+          );
+        })}
+      </nav>
 
-          <div className="flex-1 overflow-y-auto mt-3 px-2">
+      {onChatPage ? (
+        <>
+          <div className="px-3 pt-3 pb-1 flex items-center justify-between gap-2">
+            <p className="text-[11px] text-fg-tertiary uppercase tracking-wide">最近对话</p>
+            <button
+              type="button"
+              onClick={onNewChat}
+              className="text-xs text-insight hover:text-insight/80 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+            >
+              新对话
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto px-2 pb-2">
             {conversations.map((conv) => (
               <div
                 key={conv.id}
@@ -175,6 +194,7 @@ export default function Sidebar({
                   )}
                 </div>
                 <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     onDeleteChat(conv.id);
@@ -192,44 +212,8 @@ export default function Sidebar({
             )}
           </div>
         </>
-      )}
-
-      {!onChatPage && (
-        <div className="px-2 py-2 flex-1 overflow-y-auto">
-          <button
-            onClick={() => setDataExpanded(!dataExpanded)}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-fg-tertiary hover:text-fg-secondary transition-colors uppercase tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
-          >
-            {dataExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            <FolderOpen size={14} />
-            <span>我的数据</span>
-          </button>
-          {dataExpanded && (
-            <div className="mt-1">
-              {DATA_NAV.map((item) => {
-                const Icon = item.icon;
-                const count = badgeFor(item.badgeKey);
-                return (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    className={({ isActive }) =>
-                      `w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm mb-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
-                        isActive
-                          ? "bg-surface-overlay text-fg-primary"
-                          : "text-fg-secondary hover:bg-surface-overlay/50 hover:text-fg-primary"
-                      }`
-                    }
-                  >
-                    <Icon size={18} className="shrink-0" />
-                    <span>{item.label}</span>
-                    <NavBadge count={count} />
-                  </NavLink>
-                );
-              })}
-            </div>
-          )}
-        </div>
+      ) : (
+        <div className="flex-1" />
       )}
 
       <div className="border-t border-border-subtle px-2 py-2 mt-auto">

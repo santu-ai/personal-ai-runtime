@@ -42,7 +42,7 @@ export default function WelcomeScreen({
     <div className="flex-1 flex flex-col min-h-0">
       <div className="flex-1 flex items-center justify-center px-4">
         <div className="max-w-lg w-full text-center">
-          <div className="text-4xl mb-4">🧠</div>
+          <BrainCircuit size={36} strokeWidth={1.5} className="mx-auto mb-4 text-insight" />
           <h2 className="text-xl font-semibold text-fg-primary mb-2">开始对话</h2>
           <p className="text-sm text-fg-tertiary mb-4">
             我是你的个人 AI 助手。所有数据保存在你的机器上，完全私有。
@@ -52,7 +52,7 @@ export default function WelcomeScreen({
           {recentMemories.length > 0 && (
             <div className="mb-5 text-left bg-insight/10 border border-insight/30 rounded-xl p-4">
               <div className="flex items-center gap-1.5 mb-2">
-                <span className="text-sm">🧠</span>
+                <BrainCircuit size={14} className="text-insight" />
                 <span className="text-xs text-insight font-medium">我记得你</span>
               </div>
               <div className="space-y-1.5">

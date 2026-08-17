@@ -143,11 +143,14 @@ describe("ChatHome", () => {
     expect(setActiveConversation).toHaveBeenCalledWith("conv-1");
   });
 
-  it("starts new chat", async () => {
+  it("sends from the home composer into a new chat", async () => {
     renderWithRouter(<ChatHome />);
-    await waitFor(() => expect(screen.getByText("开始新对话")).toBeInTheDocument());
-    fireEvent.click(screen.getByText("开始新对话"));
-    expect(quickChat).toHaveBeenCalled();
+    const input = await screen.findByPlaceholderText(/输入消息/);
+    fireEvent.change(input, { target: { value: "帮我规划今天" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    expect(quickChat).toHaveBeenCalledWith(
+      expect.objectContaining({ prompt: "帮我规划今天" }),
+    );
   });
 
   it("handles proactive nudge click", async () => {
