@@ -56,6 +56,7 @@
 | GET | `/api/inbox/digest` | auth | — | Get Digest |
 | POST | `/api/inbox/digest` | auth | — | Trigger Digest |
 | POST | `/api/inbox/poll` | auth | — | Trigger Poll |
+| GET | `/api/inbox/sync-status` | auth | — | Get Sync Status |
 | GET | `/api/inbox/{email_id}` | auth | — | Get Inbox Email |
 | PATCH | `/api/inbox/{email_id}/status` | auth | — | Update Inbox Status |
 | GET | `/api/inbox/{email_id}/summary` | auth | — | Get Inbox Email Summary |

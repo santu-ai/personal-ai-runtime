@@ -39,6 +39,43 @@ export async function triggerInboxPoll(): Promise<Record<string, unknown>> {
   return request(`${API_BASE}/inbox/poll`, { method: "POST" });
 }
 
+export type InboxPollErrorKind =
+  | "credentials"
+  | "json"
+  | "imap"
+  | "classification"
+  | "other";
+
+export interface InboxSyncMetrics {
+  days: number;
+  poll_count: number;
+  requested_count: number;
+  error_count: number;
+  errors_by_kind: Record<string, number>;
+  new_count: number;
+  duplicate_count: number;
+  synced_read: number;
+  classification_fallback: number;
+  rapid_repeat_polls: number;
+}
+
+export interface InboxSyncStatus {
+  status: "ok" | "error" | "idle" | "success";
+  error: string | null;
+  error_kind: InboxPollErrorKind | null;
+  new_count: number;
+  synced_read: number;
+  duplicate_count: number;
+  classification_fallback: number;
+  synced_at: string | null;
+  event_id: string | null;
+  metrics: InboxSyncMetrics;
+}
+
+export async function getInboxSyncStatus(): Promise<InboxSyncStatus> {
+  return request(`${API_BASE}/inbox/sync-status`);
+}
+
 export async function getInboxEmailDetail(emailId: string): Promise<InboxEmail> {
   return request<InboxEmail>(`${API_BASE}/inbox/${encodeURIComponent(emailId)}`);
 }

@@ -77,6 +77,35 @@ def test_query_inbox_email(kernel):
     pending = read_ports.query_pending_inbox_emails(limit=10)
     assert any(r["id"] == "e1" for r in pending)
 
+
+def test_query_latest_inbox_poll_and_metrics(kernel):
+    assert read_ports.query_latest_inbox_poll() is None
+    kernel.emit_event(
+        "InboxPollCompleted",
+        "inbox",
+        "inbox_poll_a",
+        payload={
+            "status": "error",
+            "error": "invalid inbox JSON",
+            "error_kind": "json",
+            "new_count": 0,
+            "duplicate_count": 2,
+            "synced_read": 1,
+        },
+        actor="scheduler",
+    )
+    latest = read_ports.query_latest_inbox_poll()
+    assert latest is not None
+    assert latest["status"] == "error"
+    assert latest["error_kind"] == "json"
+    assert latest["duplicate_count"] == 2
+    metrics = read_ports.summarize_inbox_sync_metrics(days=7)
+    assert metrics["poll_count"] >= 1
+    assert metrics["error_count"] >= 1
+    assert metrics["errors_by_kind"].get("json", 0) >= 1
+    assert metrics["duplicate_count"] >= 2
+
+
 def test_query_conversation_and_profile(kernel):
     kernel.emit_event(
         "ConversationCreated", "conversation", "c1",

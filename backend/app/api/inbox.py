@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.product.inbox import (
     generate_inbox_digest,
+    inbox_sync_status,
     latest_digest,
     list_inbox_emails,
     mark_inbox_email_status,
@@ -51,6 +52,12 @@ async def get_digest():
 @router.post("/poll")
 async def trigger_poll(limit: int = Query(20, ge=1, le=50)):
     return await poll_inbox(limit=limit)
+
+
+@router.get("/sync-status")
+async def get_sync_status():
+    """Last InboxPollCompleted plus reconstructed poll/duplicate/read-sync metrics."""
+    return inbox_sync_status()
 
 
 @router.post("/digest")

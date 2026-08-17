@@ -90,10 +90,12 @@ export {
   listInboxEmails,
   getInboxDigest,
   triggerInboxPoll,
+  getInboxSyncStatus,
   updateInboxEmailStatus,
   getInboxEmailDetail,
   getInboxEmailSummary,
 } from "./inbox";
+export type { InboxSyncStatus, InboxSyncMetrics, InboxPollErrorKind } from "./inbox";
 
 // Memory
 export {

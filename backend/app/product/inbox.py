@@ -225,6 +225,10 @@ async def apply_inbox_poll_payload(payload: dict, *, execution_id: str | None = 
     synced_read = _sync_unread_status(unread_ids)
     known = _existing_message_ids()
 
+    fetched_ids = {e["message_id"] for e in emails if e.get("message_id")}
+    fetched_ids |= {ue.get("message_id") for ue in unread_metadata if ue.get("message_id")}
+    duplicate_count = len(fetched_ids & known)
+
     # Identify all emails that should be in our DB but aren't
     # 1. Start with the "top" emails (with bodies/previews)
     to_record = {e["message_id"]: e for e in emails if e.get("message_id") and e["message_id"] not in known}
@@ -236,7 +240,14 @@ async def apply_inbox_poll_payload(payload: dict, *, execution_id: str | None = 
             to_record[mid] = ue
 
     if not to_record:
-        return {"status": "ok", "new_count": 0, "notified": 0, "synced_read": synced_read}
+        return {
+            "status": "ok",
+            "new_count": 0,
+            "notified": 0,
+            "synced_read": synced_read,
+            "duplicate_count": duplicate_count,
+            "classification_fallback": 0,
+        }
 
     new_emails_list = list(to_record.values())
 
@@ -342,7 +353,19 @@ async def apply_inbox_poll_payload(payload: dict, *, execution_id: str | None = 
     except Exception:
         logger.warning("inbox_monitors evaluation failed", exc_info=True)
 
-    return {"status": "ok", "new_count": len(stored), "notified": notified, "synced_read": synced_read}
+    classification_fallback = sum(
+        1
+        for meta in by_id.values()
+        if "分类失败" in (meta.get("reason") or "") or "无法解析分类" in (meta.get("reason") or "")
+    )
+    return {
+        "status": "ok",
+        "new_count": len(stored),
+        "notified": notified,
+        "synced_read": synced_read,
+        "duplicate_count": duplicate_count,
+        "classification_fallback": classification_fallback,
+    }
 
 
 def _assert_imap_capability_ok(cap_res: dict, *, action: str) -> None:
@@ -465,7 +488,29 @@ async def poll_inbox(limit: int = 20, *, execution_id: str | None = None) -> dic
         "new_count": int(result.get("new_count", 0)),
         "notified": int(result.get("notified", 0)),
         "synced_read": int(result.get("synced_read", 0)),
+        "duplicate_count": int(result.get("duplicate_count", 0)),
+        "classification_fallback": int(result.get("classification_fallback", 0)),
     }
+
+
+def inbox_sync_status(*, metrics_days: int = 7) -> dict:
+    """Last poll result plus reconstructed 7-day sync metrics."""
+    latest = read_ports.query_latest_inbox_poll()
+    metrics = read_ports.summarize_inbox_sync_metrics(days=metrics_days)
+    if latest is None:
+        return {
+            "status": "idle",
+            "error": None,
+            "error_kind": None,
+            "new_count": 0,
+            "synced_read": 0,
+            "duplicate_count": 0,
+            "classification_fallback": 0,
+            "synced_at": None,
+            "event_id": None,
+            "metrics": metrics,
+        }
+    return {**latest, "metrics": metrics}
 
 
 def generate_inbox_digest() -> dict | None:

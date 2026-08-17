@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
 import InboxPage from "./Inbox";
-import { listInboxEmails, triggerInboxPoll } from "../api/client";
+import { listInboxEmails, triggerInboxPoll, getInboxSyncStatus } from "../api/client";
 import { RECENT_INBOX_LIMIT } from "../hooks/useInboxQuery";
 
 const { addError } = vi.hoisted(() => ({ addError: vi.fn() }));
@@ -11,6 +11,29 @@ vi.mock("../api/client", () => ({
   listInboxEmails: vi.fn().mockResolvedValue([]),
   getInboxDigest: vi.fn().mockResolvedValue({ title: "今日摘要", content: "无新邮件" }),
   triggerInboxPoll: vi.fn().mockResolvedValue({}),
+  getInboxSyncStatus: vi.fn().mockResolvedValue({
+    status: "idle",
+    error: null,
+    error_kind: null,
+    new_count: 0,
+    synced_read: 0,
+    duplicate_count: 0,
+    classification_fallback: 0,
+    synced_at: null,
+    event_id: null,
+    metrics: {
+      days: 7,
+      poll_count: 0,
+      requested_count: 0,
+      error_count: 0,
+      errors_by_kind: {},
+      new_count: 0,
+      duplicate_count: 0,
+      synced_read: 0,
+      classification_fallback: 0,
+      rapid_repeat_polls: 0,
+    },
+  }),
   updateInboxEmailStatus: vi.fn().mockResolvedValue({ id: "x", status: "read" }),
   getInboxEmailDetail: vi.fn(),
   createConversation: vi.fn(),
@@ -159,5 +182,37 @@ describe("InboxPage", () => {
     await waitFor(() => {
       expect(addError).toHaveBeenCalledWith("invalid inbox JSON", "收件箱");
     });
+  });
+
+  it("shows last sync failure kind and a retry action", async () => {
+    vi.mocked(getInboxSyncStatus).mockResolvedValue({
+      status: "error",
+      error: "invalid inbox JSON",
+      error_kind: "json",
+      new_count: 0,
+      synced_read: 0,
+      duplicate_count: 0,
+      classification_fallback: 0,
+      synced_at: new Date().toISOString(),
+      event_id: "evt_1",
+      metrics: {
+        days: 7,
+        poll_count: 2,
+        requested_count: 2,
+        error_count: 1,
+        errors_by_kind: { json: 1 },
+        new_count: 0,
+        duplicate_count: 3,
+        synced_read: 1,
+        classification_fallback: 0,
+        rapid_repeat_polls: 1,
+      },
+    });
+    renderWithRouter(<InboxPage />);
+    expect(await screen.findByText(/JSON 错误/)).toBeInTheDocument();
+    expect(screen.getByText("invalid inbox JSON")).toBeInTheDocument();
+    expect(screen.getByText("重试同步")).toBeInTheDocument();
+    expect(screen.getByText(/快速重复 1/)).toBeInTheDocument();
+    expect(screen.getByText(/重复邮件 3/)).toBeInTheDocument();
   });
 });

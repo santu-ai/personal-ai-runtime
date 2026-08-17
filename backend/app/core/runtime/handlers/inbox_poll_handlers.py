@@ -22,10 +22,17 @@ logger = logging.getLogger(__name__)
 
 
 def _fail_poll(ctx: "ExecutionContext", event: "Event", error: str) -> None:
+    from app.core.runtime.read_ports.inbox import poll_error_kind
+
     logger.warning("Inbox poll failed: %s", error)
     ctx.emit(
         "InboxPollCompleted", "inbox", f"inbox_{event.aggregate_id}",
-        payload={"status": "error", "error": error, "new_count": 0},
+        payload={
+            "status": "error",
+            "error": error,
+            "error_kind": poll_error_kind(error),
+            "new_count": 0,
+        },
         caused_by=event.id,
     )
 

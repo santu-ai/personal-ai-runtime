@@ -133,6 +133,7 @@ async def test_capability_failure_emits_error(monkeypatch):
 
     assert kernel.emitted[0]["payload"]["status"] == "error"
     assert kernel.emitted[0]["payload"]["error"] == "check_inbox failed"
+    assert kernel.emitted[0]["payload"]["error_kind"] == "other"
 
 
 def _logged_messages(records: list[logging.LogRecord]) -> str:
@@ -230,8 +231,8 @@ async def test_invalid_json_string_emits_error(monkeypatch):
 
     out = kernel.emitted[0]["payload"]
     assert out["status"] == "error"
-    assert out["error"] == "invalid inbox JSON"
-    assert out["new_count"] == 0
+    assert kernel.emitted[0]["payload"]["error"] == "invalid inbox JSON"
+    assert kernel.emitted[0]["payload"]["error_kind"] == "json"
 
 
 @pytest.mark.asyncio

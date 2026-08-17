@@ -49,9 +49,11 @@ from app.core.runtime.read_ports.inbox import (
     count_pending_inbox_emails,
     query_inbox_email,
     query_inbox_emails,
+    query_latest_inbox_poll,
     query_pending_inbox_emails,
     query_recent_inbox_emails,
     search_inbox_emails,
+    summarize_inbox_sync_metrics,
 )
 from app.core.runtime.read_ports.memory import (
     build_memory_graph_edges,
@@ -177,6 +179,8 @@ __all__ = [
     "count_pending_inbox_emails",
     "query_inbox_email",
     "query_inbox_emails",
+    "query_latest_inbox_poll",
+    "summarize_inbox_sync_metrics",
     "query_pending_approval_count",
     "query_pending_approvals",
     "query_approval",

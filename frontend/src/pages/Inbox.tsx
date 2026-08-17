@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Mail } from "lucide-react";
+import { Mail, RefreshCw } from "lucide-react";
 import {
   triggerInboxPoll,
   updateInboxEmailStatus,
   getInboxEmailDetail,
   ApiError,
   type InboxEmail,
+  type InboxSyncStatus,
 } from "../api/client";
 import { useErrorStore } from "../stores/errorStore";
 import { useQuickChat } from "../hooks/useQuickChat";
@@ -20,12 +21,93 @@ const COLUMNS: { key: string; label: string; color: string }[] = [
   { key: "ignorable", label: "可忽略", color: "text-fg-tertiary" },
 ];
 
+const ERROR_KIND_LABEL: Record<string, string> = {
+  imap: "IMAP 错误",
+  json: "JSON 错误",
+  classification: "分类失败",
+  credentials: "邮箱未配置",
+  other: "同步失败",
+};
+
+function formatSyncTime(iso: string | null): string {
+  if (!iso) return "尚未同步";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return iso;
+  const delta = Date.now() - t;
+  if (delta < 60_000) return "刚刚";
+  if (delta < 3_600_000) return `${Math.floor(delta / 60_000)} 分钟前`;
+  if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)} 小时前`;
+  return new Date(t).toLocaleString();
+}
+
+function SyncStatusBar({
+  sync,
+  polling,
+  onRetry,
+}: {
+  sync: InboxSyncStatus | null;
+  polling: boolean;
+  onRetry: () => void;
+}) {
+  if (!sync) return null;
+  const failed = sync.status === "error";
+  const idle = sync.status === "idle";
+  const kindLabel = sync.error_kind ? ERROR_KIND_LABEL[sync.error_kind] || "同步失败" : null;
+  const metrics = sync.metrics;
+  return (
+    <div
+      className={`mb-6 rounded-xl border px-4 py-3 ${
+        failed ? "border-danger/40 bg-danger/5" : "border-border-subtle bg-surface-raised"
+      }`}
+      data-testid="inbox-sync-status"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className={`text-sm ${failed ? "text-danger" : "text-fg-secondary"}`}>
+            {idle
+              ? "还没有同步记录"
+              : failed
+                ? `${formatSyncTime(sync.synced_at)} · ${kindLabel || "同步失败"}`
+                : `${formatSyncTime(sync.synced_at)} · 同步成功`}
+          </p>
+          {failed && sync.error && (
+            <p className="text-xs text-fg-secondary mt-1 truncate" title={sync.error}>
+              {sync.error}
+            </p>
+          )}
+          {!failed && !idle && (
+            <p className="text-xs text-fg-tertiary mt-1">
+              新邮件 {sync.new_count} · 已读同步 {sync.synced_read} · 重复 {sync.duplicate_count}
+            </p>
+          )}
+          {metrics && (
+            <p className="text-xs text-fg-disabled mt-1">
+              {metrics.days} 日轮询 {metrics.poll_count} 次
+              {metrics.rapid_repeat_polls > 0 ? ` · 快速重复 ${metrics.rapid_repeat_polls}` : ""}
+              {metrics.duplicate_count > 0 ? ` · 重复邮件 ${metrics.duplicate_count}` : ""}
+              {metrics.synced_read > 0 ? ` · 已读同步 ${metrics.synced_read}` : ""}
+              {metrics.error_count > 0 ? ` · 失败 ${metrics.error_count}` : ""}
+            </p>
+          )}
+        </div>
+        {failed && (
+          <Button onClick={onRetry} disabled={polling} className="shrink-0">
+            <RefreshCw size={14} className="mr-1 inline" />
+            {polling ? "重试中..." : "重试同步"}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function InboxPage() {
   const { data, isLoading: loading, error, refetch } = useInboxQuery();
   const invalidateInbox = useInvalidateInbox();
   const emails = data?.emails ?? [];
   const allEmails = data?.allEmails ?? [];
   const digest = data?.digest ?? null;
+  const sync = data?.sync ?? null;
   const [polling, setPolling] = useState(false);
   const [initialPollDone, setInitialPollDone] = useState(false);
   const [selectedEmail, setSelectedEmail] = useState<InboxEmail | null>(null);
@@ -124,6 +206,8 @@ export default function InboxPage() {
             {polling ? "轮询中..." : "立即轮询"}
           </Button>
         </div>
+
+        <SyncStatusBar sync={sync} polling={polling} onRetry={() => void handlePoll()} />
 
         {digest && digest.content && (
           <Card className="mb-6">

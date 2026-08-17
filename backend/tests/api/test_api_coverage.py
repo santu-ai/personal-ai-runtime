@@ -333,6 +333,14 @@ class TestInboxAPI:
         assert data["status"] in ("ok", "error")
         assert "new_count" in data
 
+    def test_sync_status(self, client):
+        resp = client.get("/api/inbox/sync-status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] in ("ok", "error", "idle")
+        assert "metrics" in data
+        assert "poll_count" in data["metrics"]
+
 
 # ── Notifications API ─────────────────────────────────────────────────────
 

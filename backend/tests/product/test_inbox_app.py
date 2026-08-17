@@ -185,6 +185,7 @@ async def test_poll_inbox_dedupes_and_notifies_important(product_kernel):
             with patch("app.product.inbox._classify_emails", new=AsyncMock(return_value=classified)):
                 result2 = await poll_inbox(limit=10, execution_id="wi_inbox_test")
     assert result2["new_count"] == 0
+    assert result2["duplicate_count"] == 2
 
 
 @pytest.mark.asyncio
