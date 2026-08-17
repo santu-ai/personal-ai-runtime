@@ -22,6 +22,8 @@ export const useErrorStore = create<ErrorState>((set) => ({
   backendUnavailable: false,
 
   addError: (message, source) => {
+    const prefix = source ? `[${source}] ` : "";
+    console.error(`${prefix}${message}`);
     const id = `err-${Date.now()}-${++errorSeq}`;
     set((state) => ({
       errors: [{ id, message, source, timestamp: Date.now() }, ...state.errors].slice(0, 5),

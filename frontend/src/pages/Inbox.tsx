@@ -51,14 +51,23 @@ export default function InboxPage() {
     }
   }, [error, addError]);
 
-  // One-shot sync poll on first mount (best-effort), then rely on query cache.
+  // One-shot sync poll on first mount, then rely on query cache.
   useEffect(() => {
     if (initialPollDone) return;
     setInitialPollDone(true);
     void triggerInboxPoll()
-      .then(() => invalidateInbox())
-      .catch(() => null);
-  }, [initialPollDone, invalidateInbox]);
+      .then(async (res) => {
+        if (res && res.status === "error") {
+          addError(String(res.error || "轮询邮件失败"), "收件箱");
+          return;
+        }
+        await invalidateInbox();
+      })
+      .catch((err) => {
+        const msg = err instanceof ApiError ? err.message : "轮询邮件失败";
+        addError(msg, "收件箱");
+      });
+  }, [initialPollDone, invalidateInbox, addError]);
 
   const handleAiProcess = async (em: InboxEmail) => {
     try {

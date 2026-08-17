@@ -1,8 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
 import InboxPage from "./Inbox";
-import { listInboxEmails } from "../api/client";
+import { listInboxEmails, triggerInboxPoll } from "../api/client";
+
+const { addError } = vi.hoisted(() => ({ addError: vi.fn() }));
 
 vi.mock("../api/client", () => ({
   listInboxEmails: vi.fn().mockResolvedValue([]),
@@ -22,7 +24,7 @@ vi.mock("../api/client", () => ({
 
 vi.mock("../stores/errorStore", () => ({
   useErrorStore: (selector: (s: { addError: ReturnType<typeof vi.fn> }) => unknown) =>
-    selector({ addError: vi.fn() }),
+    selector({ addError }),
 }));
 
 vi.mock("../stores/chatStore", () => ({
@@ -97,5 +99,16 @@ describe("InboxPage", () => {
     expect(await screen.findByText("主题 1")).toBeInTheDocument();
     expect(screen.getByText("主题 20")).toBeInTheDocument();
     expect(screen.queryByText("主题 21")).not.toBeInTheDocument();
+  });
+
+  it("surfaces a failed initial poll instead of swallowing it", async () => {
+    vi.mocked(triggerInboxPoll).mockResolvedValue({
+      status: "error",
+      error: "invalid inbox JSON",
+    });
+    renderWithRouter(<InboxPage />);
+    await waitFor(() => {
+      expect(addError).toHaveBeenCalledWith("invalid inbox JSON", "收件箱");
+    });
   });
 });

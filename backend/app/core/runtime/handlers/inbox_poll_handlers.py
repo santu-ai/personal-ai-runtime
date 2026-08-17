@@ -8,6 +8,7 @@ and reloads of this module do not drop the bind.
 from __future__ import annotations
 
 import json
+import logging
 from typing import TYPE_CHECKING
 
 from app.core.runtime.handler_registry import subscribe
@@ -17,6 +18,17 @@ if TYPE_CHECKING:
     from app.core.runtime.execution import ExecutionContext
     from app.core.runtime.kernel.event import Event
 
+logger = logging.getLogger(__name__)
+
+
+def _fail_poll(ctx: "ExecutionContext", event: "Event", error: str) -> None:
+    logger.warning("Inbox poll failed: %s", error)
+    ctx.emit(
+        "InboxPollCompleted", "inbox", f"inbox_{event.aggregate_id}",
+        payload={"status": "error", "error": error, "new_count": 0},
+        caused_by=event.id,
+    )
+
 
 @subscribe("InboxPollRequested")
 async def on_inbox_poll_requested(ctx: "ExecutionContext", event: "Event") -> None:
@@ -25,15 +37,7 @@ async def on_inbox_poll_requested(ctx: "ExecutionContext", event: "Event") -> No
 
     apply = runtime.inbox_poll_applier
     if apply is None:
-        ctx.emit(
-            "InboxPollCompleted", "inbox", f"inbox_{event.aggregate_id}",
-            payload={
-                "status": "error",
-                "error": "inbox poll applier not bound",
-                "new_count": 0,
-            },
-            caused_by=event.id,
-        )
+        _fail_poll(ctx, event, "inbox poll applier not bound")
         return
 
     limit = event.payload.get("limit", 20)
@@ -52,11 +56,7 @@ async def on_inbox_poll_requested(ctx: "ExecutionContext", event: "Event") -> No
         raw_error = cap.get("error", "check_inbox failed")
         if "EMAIL_USER" in raw_error or "EMAIL_PASS" in raw_error:
             raw_error = "Email credentials not configured"
-        ctx.emit(
-            "InboxPollCompleted", "inbox", f"inbox_{event.aggregate_id}",
-            payload={"status": "error", "error": raw_error, "new_count": 0},
-            caused_by=event.id,
-        )
+        _fail_poll(ctx, event, raw_error)
         return
 
     result = cap["result"]
@@ -67,28 +67,12 @@ async def on_inbox_poll_requested(ctx: "ExecutionContext", event: "Event") -> No
         except json.JSONDecodeError:
             parse_error = "invalid inbox JSON"
     if parse_error or not isinstance(result, dict):
-        ctx.emit(
-            "InboxPollCompleted", "inbox", f"inbox_{event.aggregate_id}",
-            payload={
-                "status": "error",
-                "error": parse_error or "invalid inbox JSON",
-                "new_count": 0,
-            },
-            caused_by=event.id,
-        )
+        _fail_poll(ctx, event, parse_error or "invalid inbox JSON")
         return
 
     summary = await apply(result, execution_id=ctx.execution_id)
     if summary.get("status") == "error":
-        ctx.emit(
-            "InboxPollCompleted", "inbox", f"inbox_{event.aggregate_id}",
-            payload={
-                "status": "error",
-                "error": summary.get("error", "inbox poll failed"),
-                "new_count": 0,
-            },
-            caused_by=event.id,
-        )
+        _fail_poll(ctx, event, str(summary.get("error", "inbox poll failed")))
         return
 
     ctx.emit(

@@ -96,6 +96,20 @@ async def test_capability_failure_emits_error(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_capability_failure_is_logged(monkeypatch, caplog):
+    import logging
+
+    kernel = _RecordingKernel({"status": "error", "error": "check_inbox failed"})
+    monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", kernel)
+    runtime.bind_inbox_poll_applier(lambda *_a, **_k: {"status": "ok"})
+
+    with caplog.at_level(logging.WARNING, logger="app.core.runtime.handlers.inbox_poll_handlers"):
+        await on_inbox_poll_requested(_ctx(kernel), _event())
+
+    assert "Inbox poll failed: check_inbox failed" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_email_credential_error_is_scrubbed(monkeypatch):
     kernel = _RecordingKernel(
         {"status": "error", "error": "missing EMAIL_USER or EMAIL_PASS"},

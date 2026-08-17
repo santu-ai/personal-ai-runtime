@@ -216,6 +216,7 @@ async def apply_inbox_poll_payload(payload: dict, *, execution_id: str | None = 
         raw_error = payload["error"]
         if "EMAIL_USER" in raw_error or "EMAIL_PASS" in raw_error:
             raw_error = "Email credentials not configured"
+        logger.warning("Inbox poll payload error: %s", raw_error)
         return {"status": "error", "error": raw_error, "new_count": 0}
 
     emails = payload.get("emails") or []
@@ -431,10 +432,12 @@ async def poll_inbox(limit: int = 20, *, execution_id: str | None = None) -> dic
             raw_error = cap.get("error", "check_inbox failed")
             if "EMAIL_USER" in raw_error or "EMAIL_PASS" in raw_error:
                 raw_error = "Email credentials not configured"
+            logger.warning("Inbox poll failed: %s", raw_error)
             return {"status": "error", "error": raw_error, "new_count": 0}
         try:
             payload = _json.loads(cap.get("result", "{}"))
         except (ValueError, TypeError):
+            logger.warning("Inbox poll failed: invalid inbox JSON")
             return {"status": "error", "error": "invalid inbox JSON", "new_count": 0}
         return await apply_inbox_poll_payload(payload, execution_id=execution_id)
 
@@ -450,9 +453,11 @@ async def poll_inbox(limit: int = 20, *, execution_id: str | None = None) -> dic
         timeout=settings.submit_command_timeout_inbox,
     )
     if result.get("status") == "error":
+        err = result.get("error", "inbox poll failed")
+        logger.warning("Inbox poll failed: %s", err)
         return {
             "status": "error",
-            "error": result.get("error", "inbox poll failed"),
+            "error": err,
             "new_count": 0,
         }
     return {
