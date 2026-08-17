@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { ShieldCheck, Target, Mail, Activity } from "lucide-react";
+import { Activity, AlertTriangle, Mail, ShieldCheck, Target, Timer } from "lucide-react";
 import { type WorkItem } from "../../api/client";
 import { formatTime } from "../../utils/time";
 
@@ -63,7 +63,11 @@ export default function TodayActions({
                       key={item.id}
                       className="flex items-center gap-2 text-xs p-2 bg-warning/5 rounded-lg border border-warning/20"
                     >
-                      <span className="text-warning shrink-0">{isExpiring ? "⏱" : "⚠"}</span>
+                      {isExpiring ? (
+                        <Timer size={14} className="text-warning shrink-0" />
+                      ) : (
+                        <AlertTriangle size={14} className="text-warning shrink-0" />
+                      )}
                       <span className="text-fg-primary truncate flex-1">{item.action || "—"}</span>
                       {item.expires_at && (
                         <span

@@ -65,7 +65,7 @@ function inboxSummaryFromResults(results: ToolResult[]): string | null {
     try {
       const data = JSON.parse(r.content);
       if (data.emails && !data.error) {
-        return `📧 已读取 ${data.count ?? data.emails.length} 封邮件`;
+        return `已读取 ${data.count ?? data.emails.length} 封邮件`;
       }
     } catch {
       // ignore

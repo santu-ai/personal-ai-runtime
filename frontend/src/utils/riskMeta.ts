@@ -5,6 +5,8 @@
  * 未知 / 未加载策略时默认 medium（假定有风险），避免静默归为 low。
  */
 
+import type { LucideIcon } from "lucide-react";
+import { AlertTriangle, Info, Shield } from "lucide-react";
 import type { CapabilityPolicy } from "../api/settings";
 
 /** 风险等级 */
@@ -39,7 +41,13 @@ export function getRiskLevelFromPolicy(
 /**
  * 根据风险等级获取对应的 Tailwind 色调类名。
  */
-export function getRiskTone(level: RiskLevel) {
+export function getRiskTone(level: RiskLevel): {
+  container: string;
+  icon: string;
+  title: string;
+  desc: string;
+  Icon: LucideIcon;
+} {
   switch (level) {
     case "high":
       return {
@@ -47,7 +55,7 @@ export function getRiskTone(level: RiskLevel) {
         icon: "text-danger",
         title: "text-danger/90",
         desc: "text-danger/70",
-        iconEmoji: "🔒",
+        Icon: Shield,
       };
     case "medium":
       return {
@@ -55,7 +63,7 @@ export function getRiskTone(level: RiskLevel) {
         icon: "text-warning",
         title: "text-warning/90",
         desc: "text-warning/70",
-        iconEmoji: "⚠️",
+        Icon: AlertTriangle,
       };
     case "low":
       return {
@@ -63,7 +71,7 @@ export function getRiskTone(level: RiskLevel) {
         icon: "text-fg-secondary",
         title: "text-fg-primary",
         desc: "text-fg-tertiary",
-        iconEmoji: "ℹ️",
+        Icon: Info,
       };
   }
 }

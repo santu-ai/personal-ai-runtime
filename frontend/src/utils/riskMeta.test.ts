@@ -43,7 +43,7 @@ describe("getRiskTone", () => {
       expect(tone.icon).toBeTruthy();
       expect(tone.title).toBeTruthy();
       expect(tone.desc).toBeTruthy();
-      expect(tone.iconEmoji).toBeTruthy();
+      expect(tone.Icon).toBeTruthy();
     }
   });
 });

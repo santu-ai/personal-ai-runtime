@@ -13,6 +13,7 @@
  */
 
 import { type ReactNode } from "react";
+import { Timer } from "lucide-react";
 import { toolLabel, describeToolAction } from "../../utils/toolLabels";
 import {
   getRiskLevelFromPolicy,
@@ -151,17 +152,25 @@ export default function RiskCard({
   const isWrite = action === "write_file";
   const showBackendFields = reversible !== undefined || impactSummary !== undefined;
   const heading = title ?? `确认${label}`;
+  const RiskIcon = tone.Icon;
 
   return (
     <div className={`${tone.container} rounded-lg ${variant === "panel" ? "p-5" : "p-4"}`}>
       <div className="flex items-start gap-3">
-        <div className={`${tone.icon} text-xl mt-0.5 shrink-0`}>{tone.iconEmoji}</div>
+        <div className={`${tone.icon} mt-0.5 shrink-0`}>
+          <RiskIcon size={20} />
+        </div>
 
         <div className="flex-1 min-w-0 space-y-2">
           <div className="flex items-center gap-2 flex-wrap">
             <h4 className={`${tone.title} font-medium`}>{heading}</h4>
             {riskLevel === "high" && <Badge tone="danger">高风险</Badge>}
-            {expiringSoon && <Badge tone="danger">⏱ 即将过期</Badge>}
+            {expiringSoon && (
+              <Badge tone="danger">
+                <Timer size={12} />
+                即将过期
+              </Badge>
+            )}
             {source?.flowLabel && <Badge tone="insight">{source.flowLabel}</Badge>}
           </div>
 

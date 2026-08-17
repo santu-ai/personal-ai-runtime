@@ -162,7 +162,10 @@ export default function GoalDetailPanel({
         {suggestedSteps.length > 0 && (
           <div className="mb-4 p-3 bg-insight/10 border border-insight/30 rounded-lg">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-insight font-medium">✨ AI 建议的行动步骤</span>
+              <span className="text-xs text-insight font-medium inline-flex items-center gap-1">
+                <Sparkles size={12} />
+                AI 建议的行动步骤
+              </span>
               <button
                 onClick={handleAddAllSuggestedSteps}
                 className="text-xs px-2 py-1 bg-insight/30 hover:bg-insight/40 rounded text-insight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
