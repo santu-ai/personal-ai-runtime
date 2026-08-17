@@ -70,7 +70,7 @@ make test-backend     # cd backend && pytest tests/ -q -m "not live_llm"
 make test-live        # RUN_LIVE_LLM=1 pytest tests/e2e_live/ -m live_llm（需真实 LLM_API_KEY）
 ```
 
-`-m "not live_llm"` 排除需要真实 LLM API 的测试。`make test-live` 是显式启用的真 LLM 冒烟通道（见 [`tests/e2e_live/`](../../backend/tests/e2e_live/)）。
+`-m "not live_llm"` 排除需要真实 LLM API 的测试。`make test-live` 是显式启用的真 LLM 冒烟通道（见 [`tests/e2e_live/`](../../backend/tests/e2e_live/)）：one-shot smoke、Brain tool-loop、Memory A/B（手工注入召回）、Context A/B（`PromptCompiler` + `mail.recent_emails`）、Gmail IMAP 只读。
 
 ### 覆盖率策略
 

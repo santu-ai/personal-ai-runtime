@@ -111,3 +111,7 @@ token 估算用 [`backend/app/core/agents/token_counter.py`](../../backend/app/c
 ## 读边界
 
 Fragment **必须**通过 [`backend/app/core/runtime/read_ports/`](../../backend/app/core/runtime/read_ports/__init__.py) 访问数据，绝不直访 Kernel 存储。可用端口：`query_top_active_goals`、`query_recent_inbox_emails`、`retrieve_memory_with_sources`、`query_world_context`、`query_calendar_*`、MCP connector 探针、治理读端口（`query_pending_approval_count`、`query_stagnant_goal_count`）。这是 Kernel 边界的一部分，详见 [kernel-boundary.md](kernel-boundary.md)。
+
+## 行为验证
+
+选择本身由 `bm07`（数学题不选 `mail.*`）和 `bm07b`（播种收件箱后，邮件问句的编译结果含 nonce、数学题不含）覆盖，不调用 LLM。有/无正确 fragment 时模型是否做成任务，由 opt-in [`tests/e2e_live/test_live_context_eval.py`](../../backend/tests/e2e_live/test_live_context_eval.py) 测：同一封带 nonce 的邮件走 `PromptCompiler`，对照（空箱）不得答出 token，处理组必须答出。默认 `make test-backend` 排除；`RUN_LIVE_LLM=1 make test-live` 才跑。

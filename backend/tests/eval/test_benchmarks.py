@@ -347,7 +347,8 @@ async def test_benchmark_07_context_selection_vs_noise(isolated_kernel):
     """Chat-stage selection for a math question must not pull mail fragments.
 
     Does not assert brief<=chat length: brief always injects calendar and can
-    be larger when chat has no memories. LLM task success is NOT MEASURED.
+    be larger when chat has no memories. LLM task success is measured by
+    ``tests/e2e_live/test_live_context_eval.py`` (opt-in live LLM).
     """
     clock = EvalClock()
     compiler = PromptCompiler()
@@ -373,7 +374,76 @@ async def test_benchmark_07_context_selection_vs_noise(isolated_kernel):
         success=not mail_in_math and len(full) > 0,
         failure_reason=None,
         duration_s=clock.elapsed(),
-        notes="Task success vs relevance is NOT MEASURED without live LLM; this measures selection.",
+        notes="Task success vs relevance is measured by live_bm07_context_ab; this measures selection.",
+    )
+    assert rec.success, rec.as_dict()
+
+
+@pytest.mark.asyncio
+async def test_benchmark_07b_mail_fragment_content_vs_offtopic(isolated_kernel):
+    """Seeded inbox nonce is assembled for a mail question and omitted for math.
+
+    Does not call an LLM. Live task-success is ``live_bm07_context_ab``.
+    """
+    from datetime import UTC, datetime
+
+    from app.core.runtime.kernel import constants
+
+    k, _db = isolated_kernel
+    nonce = "QX-7N-MIRROR"
+    k.emit_event(
+        constants.EVENT_INBOX_EMAIL_RECORDED,
+        constants.AGGREGATE_INBOX_EMAIL,
+        "bm07b-mail",
+        payload={
+            "sender": "ops@example.test",
+            "subject": f"Runtime passphrase {nonce}",
+            "preview": f"Passphrase: {nonce}. Ignore other mail.",
+            "received_at": datetime.now(UTC).isoformat(),
+            "category": "important",
+            "importance": 0.99,
+            "reason": "bm07b",
+        },
+        actor="test",
+    )
+
+    clock = EvalClock()
+    compiler = PromptCompiler()
+    from app.core.runtime.governance.context_pipeline import context_pipeline
+
+    math_prompt = await compiler.compile(
+        CompileContext(
+            conversation_id="bm07b-math",
+            execution_id="bm07b-math-ex",
+            user_message="What is 2+2?",
+            stage="chat",
+        ),
+        budget=8000,
+    )
+    math_ids = list(context_pipeline.last_compile_plan().selected_fragment_ids)
+    math_ok = (not any(i.startswith("mail.") for i in math_ids)) and (nonce not in math_prompt)
+
+    mail_prompt = await compiler.compile(
+        CompileContext(
+            conversation_id="bm07b-mail",
+            execution_id="bm07b-mail-ex",
+            user_message="What passphrase is in my latest email?",
+            stage="chat",
+        ),
+        budget=8000,
+    )
+    mail_ids = list(context_pipeline.last_compile_plan().selected_fragment_ids)
+    mail_ok = ("mail.recent_emails" in mail_ids) and (nonce in mail_prompt)
+
+    rec = EvalRecord(
+        task_id="bm07b_context_content",
+        input="mail question vs 2+2 after seeding inbox nonce",
+        expected_behavior="mail compile contains nonce; math compile does not select mail or leak nonce",
+        actual_behavior=f"math_ids={math_ids} mail_ids={mail_ids} math_has={nonce in math_prompt} mail_has={nonce in mail_prompt}",
+        success=math_ok and mail_ok,
+        failure_reason=None if math_ok and mail_ok else "mail fragment assembly/selection mismatch",
+        duration_s=clock.elapsed(),
+        notes="Compile-only. Live LLM A/B is tests/e2e_live/test_live_context_eval.py.",
     )
     assert rec.success, rec.as_dict()
 
