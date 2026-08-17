@@ -211,6 +211,53 @@ describe("ChatView", () => {
     });
   });
 
+  it("shows a denial note when the user cancels a pending tool", async () => {
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({
+          type: "confirmation_required",
+          tool_name: "write_file",
+          tool_args: { path: "/tmp/x", content: "data" },
+          approval_id: "ap-test-deny",
+          tool_call_id: "tc-test-deny",
+        });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+    vi.mocked(resolveApproval).mockResolvedValue({ status: "denied" });
+
+    const { container } = renderChatView();
+
+    const inputs = screen.getAllByPlaceholderText(/输入消息/);
+    fireEvent.change(inputs[inputs.length - 1], {
+      target: { value: "create a file" },
+    });
+    const sendButtons = screen.getAllByRole("button", { name: "发送" });
+    fireEvent.click(sendButtons[sendButtons.length - 1]);
+
+    await waitFor(() => {
+      expect(screen.getByText(/建议：写入文件/)).toBeInTheDocument();
+    });
+
+    fireEvent.click(within(container).getByRole("button", { name: "取消" }));
+
+    await waitFor(() => {
+      expect(resolveApproval).toHaveBeenCalledWith(
+        "ap-test-deny",
+        "deny",
+        "write_file",
+        { path: "/tmp/x", content: "data" },
+        "test-conv-1",
+        "tc-test-deny",
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/已拒绝「write_file」/)).toBeInTheDocument();
+    });
+  });
+
   it("does not show 'I just remembered' toast on initial mount", () => {
     // Regression for Issue 5: initial cache load (or StrictMode remount)
     // must never fire a spurious toast. The notice only fires after the

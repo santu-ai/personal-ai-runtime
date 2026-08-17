@@ -46,6 +46,13 @@ function applyResolveToMessages(
         content: stripToolMarkup(res.assistant_message),
         isStreaming: false,
       });
+    } else if (options?.denied) {
+      updated.push({
+        id: `assistant-followup-${Date.now()}`,
+        role: "assistant",
+        content: toolName ? `已拒绝「${toolName}」，没有执行该操作。` : "已拒绝该操作。",
+        isStreaming: false,
+      });
     }
     return updated;
   });

@@ -51,6 +51,43 @@ def _dispatch_plan_resume(
     return False
 
 
+def _denied_user_note(tool_name: str) -> str:
+    if tool_name:
+        return f"已拒绝「{tool_name}」，没有执行该操作。"
+    return "已拒绝该操作。"
+
+
+def _persist_denied_chat_turn(
+    conv_id: str,
+    tool_call_id: str,
+    tool_name: str,
+    correlation_id: str | None,
+) -> str:
+    """Record the denied tool call in the conversation without calling the LLM.
+
+    Approve path persists via save_tool_result + continue_after_tool_result.
+    Deny previously only flipped the approval row, so a refresh left a hanging
+    tool_call and a blank turn.
+    """
+    from app.core.agents.conversation import ConversationManager
+
+    conversation = ConversationManager(
+        conversation_id=conv_id,
+        correlation_id=correlation_id or None,
+    )
+    conversation.save_tool_result(
+        json.dumps({
+            "status": "denied",
+            "reason": "user_denied",
+            "tool_name": tool_name,
+        }),
+        tool_call_id,
+    )
+    note = _denied_user_note(tool_name)
+    conversation.save_assistant_message(note)
+    return note
+
+
 @subscribe("ApproveRequested")
 async def on_approve_requested(ctx: "ExecutionContext", event: "Event") -> None:
     """Resolve a pending approval (approve or deny) via Scheduler."""
@@ -74,6 +111,14 @@ async def on_approve_requested(ctx: "ExecutionContext", event: "Event") -> None:
     if decision == "deny":
         take_plan_resume(approval_id, kernel=kernel)  # drop any queued plan resume
         kernel.deny_approval(approval_id, action=tool_name, actor="user", reason="user_denied")
+        assistant_message = ""
+        if conv_id and tool_call_id:
+            try:
+                assistant_message = _persist_denied_chat_turn(
+                    conv_id, tool_call_id, tool_name, ctx.correlation_id,
+                )
+            except Exception as exc:
+                logger.warning("Approve: persist denied chat turn failed: %s", exc)
         ctx.emit(
             "ApproveCompleted", "approval", f"approve_{approval_id}",
             payload={
@@ -81,6 +126,7 @@ async def on_approve_requested(ctx: "ExecutionContext", event: "Event") -> None:
                 "approval_id": approval_id,
                 "conv_id": conv_id,
                 "tool_call_id": tool_call_id,
+                "assistant_message": assistant_message,
             },
             caused_by=event.id,
         )
