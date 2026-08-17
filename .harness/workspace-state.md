@@ -7,8 +7,8 @@
 
 - 当前分支：`main`（布局 lucide 收口已本地提交，未推送）
 - 进行中任务 / WIP：自主推进
-- 已知坏点 / 待办：Memory 2 条 proposed 未 ratify（不代用户确认）；Context live A/B 未测；Chroma 质量未测；审批续写仍 one-shot（ADR-R011，不推翻）；日用后端需重启才吃到 max_retries/deny/search/dashboard 过滤
-- 最近审阅：2026-08-17 页面装饰 emoji 已收口（风险卡/错误页/今日待办）
+- 已知坏点 / 待办：Memory 2 条 proposed 未 ratify（不代用户确认）；Context live A/B 未测；审批续写仍 one-shot（ADR-R011，不推翻）；日用后端需重启才吃到 max_retries/deny/search/dashboard 过滤
+- 最近审阅：2026-08-17 页面装饰 emoji 已收口；日用库 SQLite↔Chroma 对账 27 条记忆一致
 
 ## 本机环境
 
@@ -35,7 +35,8 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
-| 2026-08-17 | 审批卡/错误页/今日待办改 lucide；收件箱摘要去掉 emoji 前缀 | 本提交未推送 |
+| 2026-08-17 | 审批卡/错误页/今日待办改 lucide；收件箱摘要去掉 emoji 前缀 | 已提交 `49c3c29` 未推送 |
+| 2026-08-17 | 日用库 `verify_vector_consistency`：27 条记忆 SQLite↔Chroma 一致 | 只读对账，无代码改动 |
 | 2026-08-17 | 工具/时间线/引导页/记忆分类改 lucide；describeArgs 去掉 emoji 前缀 | 已提交 `0a852bc` 未推送 |
 | 2026-08-17 | 上下文收进顶栏；Chat lucide；概览「今天」；主按钮 insight；记忆角标直达 review | 已提交未推送 |
 | 2026-08-17 | 侧栏常驻数据导航；首页底部真输入条；吐司避开顶栏 | 已提交 `f148ebf` 未推送 |
