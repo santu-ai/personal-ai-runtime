@@ -152,6 +152,8 @@ make ci-local
 | `make test` | backend + frontend 单测 |
 | `make test-backend` | `pytest tests/ -q -m "not live_llm"` |
 | `make test-frontend` | `tsc --noEmit && npm test` |
+| `make frontend-build` | `npm run build` |
+| `make merge-gate` | 后端全量测试 + 前端测试与构建 + `boundary` / `layer-deps` / `projection-provenance` / `rebuild-verify` |
 | `make test-e2e` | Playwright（先 `npx playwright install chromium`） |
 | `make test-e2e-real` | 真实 backend + fake LLM 的 SSE/审批 Playwright |
 

@@ -84,6 +84,8 @@ Available tasks:
   test-backend         Run backend pytest
   test-live            Run opt-in live LLM smoke (needs RUN_LIVE_LLM=1 + LLM_API_KEY)
   test-frontend        Run frontend unit tests
+  frontend-build       Frontend production build
+  merge-gate           Backend tests + frontend test/build + boundary/layer-deps/provenance/rebuild
   lint                 Run ruff on backend
   typecheck            Run mypy on backend
   boundary             Kernel boundary guard
@@ -135,8 +137,33 @@ PowerShell runs modules sequentially for reliable exit codes; use make/WSL for p
     "test-frontend" {
         Push-Location $Frontend
         npx tsc --noEmit
+        if ($LASTEXITCODE -ne 0) { Pop-Location; exit $LASTEXITCODE }
         npm test
+        if ($LASTEXITCODE -ne 0) { Pop-Location; exit $LASTEXITCODE }
         Pop-Location
+    }
+    "frontend-build" {
+        Push-Location $Frontend
+        npm run build
+        if ($LASTEXITCODE -ne 0) { Pop-Location; exit $LASTEXITCODE }
+        Pop-Location
+    }
+    "merge-gate" {
+        & $PSCommandPath "test-backend"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        & $PSCommandPath "test-frontend"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        & $PSCommandPath "frontend-build"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        & $PSCommandPath "boundary"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        & $PSCommandPath "layer-deps"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        & $PSCommandPath "projection-provenance"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        & $PSCommandPath "rebuild-verify"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        Write-Host "merge-gate checks passed"
     }
     "lint" {
         Push-Location $Backend

@@ -53,7 +53,8 @@
 
 - [ ] 已有测试全部通过
 - [ ] 新增了必要的测试
-- [ ] 运行了 `make backend-ci-core`（或 `powershell -File Makefile.ps1 -Task backend-ci-core`）全部通过
+- [ ] 运行了合并门槛 `make merge-gate`（或 `powershell -File Makefile.ps1 -Task merge-gate`）全部通过：后端全量测试、前端测试与构建、`boundary`、`layer-deps`、`projection-provenance`、`rebuild-verify`
+- [ ] 涉及架构/CI 全量时另跑 `make backend-ci-core`（或 `powershell -File Makefile.ps1 -Task backend-ci-core`）
 
 ---
 

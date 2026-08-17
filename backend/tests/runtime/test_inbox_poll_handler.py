@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Iterator
 from types import SimpleNamespace
 from typing import Any
 
@@ -11,6 +13,8 @@ from app.core.runtime.execution import ExecutionContext, Principal
 from app.core.runtime.handlers.inbox_poll_handlers import on_inbox_poll_requested
 from app.core.runtime.kernel.event import Event
 from app.core.runtime.runtime_container import runtime
+
+_INBOX_POLL_LOGGER = "app.core.runtime.handlers.inbox_poll_handlers"
 
 
 class _RecordingKernel:
@@ -63,6 +67,42 @@ def _clear_applier():
     runtime._inbox_poll_applier = prev
 
 
+@pytest.fixture
+def inbox_poll_log_records() -> Iterator[list[logging.LogRecord]]:
+    """Capture WARNING+ on the handler logger without depending on suite order.
+
+    Production ``configure_logging()`` installs a ProcessorFormatter on root
+    that mutates LogRecord in place, so pytest ``caplog.text`` is not stable
+    once any earlier test (or ``app.main`` import) has configured logging.
+    Attach a private handler, freeze level/propagate, then restore.
+    """
+    log = logging.getLogger(_INBOX_POLL_LOGGER)
+    prev_level = log.level
+    prev_propagate = log.propagate
+    prev_disabled = log.disabled
+    prev_handlers = list(log.handlers)
+    records: list[logging.LogRecord] = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    handler = _Capture(level=logging.WARNING)
+    log.handlers = [handler]
+    log.setLevel(logging.WARNING)
+    log.propagate = False
+    log.disabled = False
+    try:
+        yield records
+    finally:
+        log.removeHandler(handler)
+        handler.close()
+        log.handlers = prev_handlers
+        log.setLevel(prev_level)
+        log.propagate = prev_propagate
+        log.disabled = prev_disabled
+
+
 @pytest.mark.asyncio
 async def test_applier_unbound_emits_error(monkeypatch):
     kernel = _RecordingKernel({"status": "success", "result": {}})
@@ -95,18 +135,53 @@ async def test_capability_failure_emits_error(monkeypatch):
     assert kernel.emitted[0]["payload"]["error"] == "check_inbox failed"
 
 
-@pytest.mark.asyncio
-async def test_capability_failure_is_logged(monkeypatch, caplog):
-    import logging
+def _logged_messages(records: list[logging.LogRecord]) -> str:
+    return "\n".join(record.getMessage() for record in records)
 
+
+@pytest.mark.asyncio
+async def test_capability_failure_is_logged(monkeypatch, inbox_poll_log_records):
     kernel = _RecordingKernel({"status": "error", "error": "check_inbox failed"})
     monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", kernel)
     runtime.bind_inbox_poll_applier(lambda *_a, **_k: {"status": "ok"})
 
-    with caplog.at_level(logging.WARNING, logger="app.core.runtime.handlers.inbox_poll_handlers"):
+    await on_inbox_poll_requested(_ctx(kernel), _event())
+
+    assert "Inbox poll failed: check_inbox failed" in _logged_messages(
+        inbox_poll_log_records,
+    )
+
+
+@pytest.mark.asyncio
+async def test_capability_failure_is_logged_after_production_config(
+    monkeypatch, inbox_poll_log_records,
+):
+    """Business logger capture must survive production logging setup."""
+    from app.core.logging_config import configure_logging
+
+    root = logging.getLogger()
+    prev_handlers = list(root.handlers)
+    prev_level = root.level
+    configure_logging()
+    try:
+        kernel = _RecordingKernel({"status": "error", "error": "IMAP timeout"})
+        monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", kernel)
+        runtime.bind_inbox_poll_applier(lambda *_a, **_k: {"status": "ok"})
+
         await on_inbox_poll_requested(_ctx(kernel), _event())
 
-    assert "Inbox poll failed: check_inbox failed" in caplog.text
+        assert "Inbox poll failed: IMAP timeout" in _logged_messages(
+            inbox_poll_log_records,
+        )
+    finally:
+        for handler in list(root.handlers):
+            if handler not in prev_handlers:
+                root.removeHandler(handler)
+                handler.close()
+        for handler in prev_handlers:
+            if handler not in root.handlers:
+                root.addHandler(handler)
+        root.setLevel(prev_level)
 
 
 @pytest.mark.asyncio

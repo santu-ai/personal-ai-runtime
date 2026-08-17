@@ -229,6 +229,64 @@ def test_write_through_symlink_rejected(fs_server: FilesystemServer, tmp_path: P
     assert outside.read_text(encoding="utf-8") == "real"
 
 
+def test_apply_patch_through_symlink_rejected(
+    fs_server: FilesystemServer, tmp_path: Path,
+):
+    allowed = tmp_path / "allowed"
+    outside = tmp_path / "outside_target"
+    outside.write_text("real", encoding="utf-8")
+
+    link = allowed / "escape"
+    try:
+        link.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not supported on this platform")
+
+    err = _fail(fs_server.apply_patch, str(link), "real", "hacked")
+    assert str(err) == "Access denied: write path traverses a symlink"
+    assert outside.read_text(encoding="utf-8") == "real"
+
+
+def test_write_file_rejects_dotdot_escape(fs_server: FilesystemServer, tmp_path: Path):
+    """``allowed/../outside.txt`` must not write outside the sandbox.
+
+    Path.absolute() keeps the ``..`` component, so a prefix check against
+    ``allowed`` would false-allow this path; lexical collapse + resolved
+    destination check must both reject it.
+    """
+    allowed = tmp_path / "allowed"
+    outside = tmp_path / "outside.txt"
+    outside.write_text("keep", encoding="utf-8")
+    traversal = allowed / ".." / "outside.txt"
+
+    err = _fail(fs_server.write_file, str(traversal), "hacked")
+    assert "outside allowed" in str(err).lower()
+    assert outside.read_text(encoding="utf-8") == "keep"
+
+
+def test_apply_patch_rejects_dotdot_escape(fs_server: FilesystemServer, tmp_path: Path):
+    allowed = tmp_path / "allowed"
+    outside = tmp_path / "outside.txt"
+    outside.write_text("keep", encoding="utf-8")
+    traversal = allowed / ".." / "outside.txt"
+
+    err = _fail(fs_server.apply_patch, str(traversal), "keep", "hacked")
+    assert "outside allowed" in str(err).lower()
+    assert outside.read_text(encoding="utf-8") == "keep"
+
+
+def test_write_file_dotdot_staying_inside_allowed(
+    fs_server: FilesystemServer, tmp_path: Path,
+):
+    """``allowed/sub/../ok.txt`` collapses to a path still inside allowed."""
+    allowed = tmp_path / "allowed"
+    (allowed / "sub").mkdir()
+    target = allowed / "sub" / ".." / "ok.txt"
+    result = json.loads(fs_server.write_file(str(target), "ok"))
+    assert result["success"] is True
+    assert (allowed / "ok.txt").read_text(encoding="utf-8") == "ok"
+
+
 def test_write_to_normal_file_under_allowed_still_works(
     fs_server: FilesystemServer, tmp_path: Path,
 ):
@@ -287,6 +345,43 @@ def test_planted_symlink_via_alias_root_still_rejected(tmp_path: Path):
     escape = alias / "escape"
     escape.symlink_to(outside)
     err = _fail(server.write_file, str(escape), "hacked")
+    assert str(err) == "Access denied: write path traverses a symlink"
+    assert outside.read_text(encoding="utf-8") == "real"
+
+
+def test_apply_patch_via_alias_root_allowed(tmp_path: Path):
+    real_root = tmp_path / "real_root"
+    real_root.mkdir()
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(real_root)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not supported on this platform")
+
+    target = alias / "via_alias.txt"
+    target.write_text("before", encoding="utf-8")
+    server = FilesystemServer(allowed_dirs=[str(alias)])
+    result = json.loads(server.apply_patch(str(target), "before", "after"))
+    assert result["success"] is True
+    assert (real_root / "via_alias.txt").read_text(encoding="utf-8") == "after"
+
+
+def test_apply_patch_planted_symlink_via_alias_root_still_rejected(tmp_path: Path):
+    real_root = tmp_path / "real_root"
+    real_root.mkdir()
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(real_root)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not supported on this platform")
+
+    outside = tmp_path / "outside.txt"
+    outside.write_text("real", encoding="utf-8")
+
+    server = FilesystemServer(allowed_dirs=[str(alias)])
+    escape = alias / "escape"
+    escape.symlink_to(outside)
+    err = _fail(server.apply_patch, str(escape), "real", "hacked")
     assert str(err) == "Access denied: write path traverses a symlink"
     assert outside.read_text(encoding="utf-8") == "real"
 

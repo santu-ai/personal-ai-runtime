@@ -38,6 +38,7 @@
 
 ```bash
 # Unix
+make merge-gate        # 后端全量 + 前端测试构建 + boundary/layer-deps/provenance/rebuild
 make boundary && make layer-deps && make architecture-check
 make test-backend
 make docs-gen          # 从代码重生 api-endpoints / tool-catalog / makefile-targets
@@ -45,6 +46,7 @@ make docs-gen-check    # CI：生成物是否过期
 make ci-local          # 本地完整 CI 等价
 
 # Windows PowerShell
+powershell -File Makefile.ps1 -Task merge-gate
 powershell -File Makefile.ps1 -Task test-backend
 powershell -File Makefile.ps1 -Task boundary
 powershell -File Makefile.ps1 -Task layer-deps

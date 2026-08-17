@@ -88,7 +88,7 @@ CI 报告用 `--cov-report=term-missing` 让缺失部分可见，开发者按需
 
 ## 层 2：架构不变量脚本
 
-独立脚本位于 [`backend/scripts/`](../../backend/scripts/)，每个验证一个不变量。它们通过 Makefile 的 `backend-ci-core` 单一入口同时接入 `make ci-local` 与 GitHub Actions：先并行跑 `backend-ci-static`，再并行跑 `backend-ci-runtime`；清单由 `BACKEND_CI_STATIC` / `BACKEND_CI_RUNTIME` 维护。调用约定为 `python -m scripts.<name>`（从 `backend/` 目录）。
+独立脚本位于 [`backend/scripts/`](../../backend/scripts/)，每个验证一个不变量。它们通过 Makefile 的 `backend-ci-core` 单一入口同时接入 `make ci-local` 与 GitHub Actions：先并行跑 `backend-ci-static`，再并行跑 `backend-ci-runtime`；清单由 `BACKEND_CI_STATIC` / `BACKEND_CI_RUNTIME` 维护。调用约定为 `python -m scripts.<name>`（从 `backend/` 目录）。每个 PR 的合并门槛是 `make merge-gate`：后端全量测试、前端测试与构建、`boundary`、`layer-deps`、`projection-provenance`、`rebuild-verify`。
 
 ### 边界 / 归属 / 溯源
 

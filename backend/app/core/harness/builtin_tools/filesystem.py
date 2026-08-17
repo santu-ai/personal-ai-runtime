@@ -1,6 +1,7 @@
 """Filesystem MCP Server — safe file read/write/search within allowed directories."""
 
 import json
+import os
 from pathlib import Path
 from typing import NoReturn
 
@@ -16,6 +17,18 @@ from app.core.harness.mcp_hub import (
 def _fail(message: str, reason: str = OUTCOME_TOOL_EXECUTION_FAILURE) -> NoReturn:
     """Abort a filesystem tool with a typed failure (Kernel → CapabilityFailed)."""
     raise ToolInvokeError(reason, message)
+
+
+def _lexical_abs(path: Path) -> Path:
+    """Absolute path with ``.`` / ``..`` collapsed, without resolving symlinks.
+
+    ``Path.resolve()`` follows planted symlinks out of the sandbox.
+    ``Path.absolute()`` keeps ``..`` components, so ``allowed/../outside.txt``
+    still looks like it starts with ``allowed``. ``os.path.abspath`` is the
+    lexical middle ground: it normalizes ``.`` / ``..`` but leaves OS aliases
+    such as macOS ``/tmp`` → ``/private/tmp`` unexpanded.
+    """
+    return Path(os.path.abspath(os.path.expanduser(str(path))))
 
 
 def _parse_path_list(raw: str, default: list[str]) -> list[str]:
@@ -92,7 +105,7 @@ class FilesystemServer:
                 for d in raw_allowed
             }
             | {
-                str(Path(d).expanduser().absolute())
+                str(_lexical_abs(Path(d)))
                 for d in raw_allowed
             }
         )
@@ -146,20 +159,19 @@ class FilesystemServer:
         Unlike ``resolve().is_relative_to()``, this does NOT follow symlinks,
         so a symlink planted inside ``root`` still counts as "within root" and
         can then be rejected by the dedicated symlink check in ``_write_denied``.
+        ``.`` / ``..`` are collapsed first so ``allowed/../outside.txt`` does
+        not match the ``allowed`` prefix.
         """
         try:
-            # Compare lexical forms on both sides: resolve() on the root would
-            # fold OS-level alias symlinks (macOS /tmp -> /private/tmp) back in
-            # and make user-configured alias roots unverifiable.
-            root_parts = root.expanduser().absolute().parts
-            # Normalize target without resolving symlinks (strict=False allows
-            # non-existent paths, which is the common case for new writes).
-            target_parts = target.expanduser().absolute().parts
+            root_norm = _lexical_abs(root)
+            target_norm = _lexical_abs(target)
         except Exception:
             return False
-        if len(target_parts) < len(root_parts):
+        try:
+            target_norm.relative_to(root_norm)
+            return True
+        except ValueError:
             return False
-        return target_parts[: len(root_parts)] == root_parts
 
     def _contains_symlink_in_chain(self, path: Path, root: Path) -> bool:
         """Return True if any segment strictly below ``root`` is a symlink.
@@ -179,8 +191,8 @@ class FilesystemServer:
         below the root are attacker-plantable.
         """
         try:
-            root_lex = root.expanduser().absolute()
-            current = path.expanduser().absolute()
+            root_lex = _lexical_abs(root)
+            current = _lexical_abs(path)
             # Guard against infinite loops on pathological paths.
             for _ in range(64):
                 if current == root_lex:
@@ -242,6 +254,15 @@ class FilesystemServer:
                     "Access denied: write path traverses a symlink",
                     OUTCOME_AUTHORIZATION_FAILURE,
                 )
+
+        # Resolved destination must also stay inside an allowed dir. This is
+        # the acceptance gate for ``..`` escapes that the lexical prefix
+        # check used to miss, and a last check after symlink rejection.
+        if not self.is_path_allowed(path):
+            _fail(
+                "Access denied: path outside allowed directories",
+                OUTCOME_AUTHORIZATION_FAILURE,
+            )
 
     def _read_denied(self, path: str) -> None:
         """Raise if ``path`` must not be read.

@@ -19,6 +19,8 @@ Windows 子集见 [`Makefile.ps1`](../../Makefile.ps1)。
 | `test-backend-coverage` | `python3 -m pytest tests/ -v --cov=app/core/runtime --cov=app/core/harness --cov=app/api --cov-rep...` |
 | `test-live` | `RUN_LIVE_LLM=1 python3 -m pytest tests/e2e_live/ -v -m live_llm` |
 | `test-frontend` | `frontend: npx tsc --noEmit && npm test` |
+| `frontend-build` | `frontend: npm run build` |
+| `merge-gate` | `@echo "merge-gate checks passed"` |
 | `test-e2e` | `frontend: npx playwright install chromium && npm run test:e2e` |
 | `lint` | `ruff check app/` |
 | `typecheck` | `python3 -m mypy app/ scripts/ --ignore-missing-imports` |

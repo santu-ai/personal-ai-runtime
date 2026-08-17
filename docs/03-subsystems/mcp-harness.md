@@ -125,5 +125,5 @@
 ## 安全相关
 
 - URL 工具经 `url_safety.validate_http_url` 防 SSRF（详见 [05-engineering/security.md](../05-engineering/security.md)）。
-- `filesystem` 受 `FILESYSTEM_ALLOWED_DIRS`/`FILESYSTEM_PROTECTED_PATHS` 限制；写保护路径默认含 `kernel/`、`policy`、`taint.py`、`.env*`、`.git/`（见 [`coding_rules.md`](../../backend/prompts/coding_rules.md)）。
+- `filesystem` 受 `FILESYSTEM_ALLOWED_DIRS`/`FILESYSTEM_PROTECTED_PATHS` 限制；写路径词法折叠 `.`/`..` 且不跟随 planted symlink，解析后越界一律拒绝。写保护路径默认含 `kernel/`、`policy`、`taint.py`、`.env*`、`.git/`（见 [`coding_rules.md`](../../backend/prompts/coding_rules.md)）。
 - 高级类别（computer_use/voice/clipboard_ocr）需显式 `BUILTIN_TOOL_CATEGORIES` opt-in。

@@ -61,7 +61,7 @@ URL 抓取类工具经 `url_safety.validate_http_url` 校验。相关测试：`t
 
 ## 文件系统隔离
 
-`filesystem` 内建工具受 `settings.filesystem_allowed_dirs`/`filesystem_protected_paths` 限制。默认保护路径含 `kernel/`、`policy`、`taint.py`、`.env*`、`.git/`（见 [`backend/prompts/coding_rules.md`](../../backend/prompts/coding_rules.md)）。`shell_exec` 工具受同一治理（needs_user）。
+`filesystem` 内建工具受 `settings.filesystem_allowed_dirs`/`filesystem_protected_paths` 限制。写路径先做纯词法归一化（折叠 `.` / `..`，不解析 symlink），再拒绝允许目录内的 planted symlink；解析后落在允许目录之外的写入一律拒绝。macOS `/tmp` → `/private/tmp` 这类系统 alias 根仍可写。默认保护路径含 `kernel/`、`policy`、`taint.py`、`.env*`、`.git/`（见 [`backend/prompts/coding_rules.md`](../../backend/prompts/coding_rules.md)）。`shell_exec` 工具受同一治理（needs_user）。
 
 ## 加密导出
 

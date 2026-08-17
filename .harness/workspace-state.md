@@ -5,10 +5,10 @@
 
 ## 当前状态
 
-- 当前分支：`main`（收件箱最近列表展示 15 封）
-- 进行中任务 / WIP：自主推进
-- 已知坏点 / 待办：Memory 2 条 proposed 未 ratify（不代用户确认）；审批续写仍 one-shot（ADR-R011，不推翻）；日用后端需重启才吃到 JSON 截断修复与错误日志
-- 最近审阅：2026-08-17 前端无 console.error；后端 poll 失败只写事件不打 warning
+- 当前分支：`main`（merge-gate 已落地；filesystem `..` 穿越已修）
+- 进行中任务 / WIP：第二阶段可信闭环（收件箱同步状态、记忆确认、执行可信度）
+- 已知坏点 / 待办：Memory 2 条 proposed 未 ratify（不代用户确认）；审批续写仍 one-shot（ADR-R011，不推翻）
+- 最近审阅：2026-08-17 merge-gate 全绿（1438 passed / 前端 190 / boundary / layer-deps / provenance / rebuild）
 
 ## 本机环境
 
@@ -35,7 +35,7 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
-| 2026-08-17 | 收件箱 actionable 改「需跟进」；最近列表只留标题/发件人并用样式区分未读 | 本提交 |
+| 2026-08-17 | 词法折叠 `..` 堵住 filesystem 穿越；日志测试不再依赖顺序；新增 `merge-gate` | 本提交未推送 |
 | 2026-08-17 | addError 同步打 console.error；收件箱轮询失败写 warning 且进页不再吞错 | 本提交 |
 | 2026-08-17 | 工具 JSON 不再被 8000 字截成非法串；收件箱轮询才能写入最近邮件 | 本提交 |
 | 2026-08-17 | 收件箱轮询同步最近已读邮件，不再只拉 UNSEEN | 本提交 |

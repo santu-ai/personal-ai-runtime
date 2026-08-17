@@ -1,9 +1,32 @@
-"""Tests for logging configuration."""
+"""Tests for logging configuration.
+
+These tests exercise production ``configure_logging()`` only. Business-logger
+capture (inbox poll warnings, etc.) lives in the owning handler tests and
+must restore logger/handler/propagate itself so suite order cannot leak.
+"""
 
 import logging
 
+import pytest
+
 from app.core.logging_config import configure_logging
 from app.core.request_context import request_id_var
+
+
+@pytest.fixture(autouse=True)
+def _restore_root_logging():
+    root = logging.getLogger()
+    prev_handlers = list(root.handlers)
+    prev_level = root.level
+    yield
+    for handler in list(root.handlers):
+        if handler not in prev_handlers:
+            root.removeHandler(handler)
+            handler.close()
+    for handler in prev_handlers:
+        if handler not in root.handlers:
+            root.addHandler(handler)
+    root.setLevel(prev_level)
 
 
 def test_configure_logging_smoke():

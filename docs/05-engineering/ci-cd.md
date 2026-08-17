@@ -81,6 +81,15 @@ make ci-local
 
 `ci-local` 复用 CI 调用的 `backend-ci-core`，并追加 frontend 单测/E2E、real-backend E2E 与 desktop smoke。后端清单只有 Makefile 的 `BACKEND_CI_TARGETS` 一个维护点；完成打印「ci-local checks passed」。
 
+合并门槛（每个 PR 必须过，比 `ci-local` 更短）：
+
+```bash
+make merge-gate
+# Windows: powershell -File Makefile.ps1 -Task merge-gate
+```
+
+覆盖后端全量测试、前端测试与构建、`boundary`、`layer-deps`、`projection-provenance`、`rebuild-verify`。
+
 ## Windows 支持
 
 [`Makefile.ps1`](../../Makefile.ps1) 是 PowerShell 等价，`switch` on `$Task`。提供：`help`、`install`、`install-hooks`、`test-backend`、`test-frontend`、`lint`、`typecheck`、`boundary`、`layer-deps`、`architecture-check`、`event-schema`、`backend-ci-static`、`backend-ci-runtime`、`backend-ci-core`、`projection-provenance`、`rebuild-verify`、`alembic-verify`、`docs-gen` / `docs-gen-check`、以及与 Unix `Makefile` 对齐的单进程/动态导入/except 卫生守卫。**不提供** Unix 的 `dev` 聚合任务（需手动开两个终端跑前后端）。
