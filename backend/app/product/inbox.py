@@ -164,6 +164,17 @@ def _unread_ids_from_poll_payload(payload: dict) -> set[str]:
     return {e["message_id"] for e in emails if e.get("message_id")}
 
 
+def _inbox_cursor_payload() -> dict[str, Any]:
+    latest = read_ports.query_latest_inbox_poll()
+    if not latest or latest.get("status") != "ok":
+        return {}
+    next_uid = latest.get("next_uid")
+    uid_validity = latest.get("uid_validity")
+    if next_uid is None or not uid_validity:
+        return {}
+    return {"after_uid": int(next_uid), "uid_validity": str(uid_validity)}
+
+
 def _sync_unread_status(unread_ids: set[str]) -> int:
     """Synchronize local status with IMAP UNSEEN.
 
@@ -247,6 +258,9 @@ async def apply_inbox_poll_payload(payload: dict, *, execution_id: str | None = 
             "synced_read": synced_read,
             "duplicate_count": duplicate_count,
             "classification_fallback": 0,
+            "uid_validity": payload.get("uid_validity"),
+            "next_uid": payload.get("next_uid"),
+            "cursor_reset": bool(payload.get("cursor_reset", False)),
         }
 
     new_emails_list = list(to_record.values())
@@ -365,6 +379,9 @@ async def apply_inbox_poll_payload(payload: dict, *, execution_id: str | None = 
         "synced_read": synced_read,
         "duplicate_count": duplicate_count,
         "classification_fallback": classification_fallback,
+        "uid_validity": payload.get("uid_validity"),
+        "next_uid": payload.get("next_uid"),
+        "cursor_reset": bool(payload.get("cursor_reset", False)),
     }
 
 
@@ -445,9 +462,14 @@ async def poll_inbox(limit: int = 20, *, execution_id: str | None = None) -> dic
     from app.core.runtime.kernel_instance import ensure_runtime_scheduler, get_runtime_scheduler
 
     if execution_id:
+        cursor = _inbox_cursor_payload()
         cap = await kernel.invoke_capability(
             "check_inbox",
-            {"unread_only": False, "limit": max(1, min(int(limit), 20))},
+            {
+                "unread_only": False,
+                "limit": max(1, min(int(limit), 20)),
+                **cursor,
+            },
             actor="scheduler",
             execution_id=execution_id,
         )
@@ -471,7 +493,7 @@ async def poll_inbox(limit: int = 20, *, execution_id: str | None = None) -> dic
         "InboxPollRequested",
         "inbox",
         f"inbox_poll_{uuid.uuid4().hex[:8]}",
-        payload={"limit": limit},
+        payload={"limit": limit, **_inbox_cursor_payload()},
         actor="scheduler",
         timeout=settings.submit_command_timeout_inbox,
     )
@@ -490,6 +512,9 @@ async def poll_inbox(limit: int = 20, *, execution_id: str | None = None) -> dic
         "synced_read": int(result.get("synced_read", 0)),
         "duplicate_count": int(result.get("duplicate_count", 0)),
         "classification_fallback": int(result.get("classification_fallback", 0)),
+        "uid_validity": result.get("uid_validity"),
+        "next_uid": result.get("next_uid"),
+        "cursor_reset": bool(result.get("cursor_reset", False)),
     }
 
 

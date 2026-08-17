@@ -19,6 +19,9 @@ vi.mock("../api/client", () => ({
     synced_read: 0,
     duplicate_count: 0,
     classification_fallback: 0,
+    uid_validity: null,
+    next_uid: null,
+    cursor_reset: false,
     synced_at: null,
     event_id: null,
     metrics: {
@@ -193,6 +196,9 @@ describe("InboxPage", () => {
       synced_read: 0,
       duplicate_count: 0,
       classification_fallback: 0,
+      uid_validity: null,
+      next_uid: null,
+      cursor_reset: false,
       synced_at: new Date().toISOString(),
       event_id: "evt_1",
       metrics: {
@@ -202,9 +208,9 @@ describe("InboxPage", () => {
         error_count: 1,
         errors_by_kind: { json: 1 },
         new_count: 0,
-        duplicate_count: 3,
-        synced_read: 1,
-        classification_fallback: 0,
+      duplicate_count: 3,
+      synced_read: 1,
+      classification_fallback: 0,
         rapid_repeat_polls: 1,
       },
     });

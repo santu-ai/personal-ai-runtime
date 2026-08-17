@@ -232,17 +232,25 @@ async def _run_inbox_poll():
     """
     import uuid
 
+    from app.core.runtime import read_ports
     from app.core.runtime.agent_scheduler import ensure_scheduler, get_scheduler
     from app.core.runtime.kernel_instance import kernel
 
     await ensure_scheduler(kernel)
     sched = get_scheduler(kernel)
     await sched.start()
+    cursor = {}
+    latest = read_ports.query_latest_inbox_poll()
+    if latest and latest.get("status") == "ok" and latest.get("next_uid") is not None and latest.get("uid_validity"):
+        cursor = {
+            "after_uid": int(latest["next_uid"]),
+            "uid_validity": str(latest["uid_validity"]),
+        }
     kernel.emit_event(
         "InboxPollRequested",
         "inbox",
         f"inbox_poll_{uuid.uuid4().hex[:8]}",
-        payload={"limit": 20},
+        payload={"limit": 20, **cursor},
         actor="scheduler",
     )
 

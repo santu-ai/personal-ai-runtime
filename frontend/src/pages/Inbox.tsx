@@ -82,6 +82,11 @@ function SyncStatusBar({
           新邮件 {sync.new_count} · 已读同步 {sync.synced_read} · 重复 {sync.duplicate_count}
         </p>
       )}
+      {sync.cursor_reset && (
+        <p className="text-xs text-warning mt-1">
+          同步游标已重建，本次执行了安全刷新
+        </p>
+      )}
       {metrics && (
         <p className="text-xs text-fg-disabled mt-1">
           {metrics.days} 日轮询 {metrics.poll_count} 次

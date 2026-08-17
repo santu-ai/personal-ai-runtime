@@ -34,10 +34,20 @@ class _RecordingKernel:
         return SimpleNamespace(id=f"evt_{len(self.emitted)}", **kwargs)
 
 
-def _event(*, limit: int | None = None, aggregate_id: str = "poll1") -> Event:
+def _event(
+    *,
+    limit: int | None = None,
+    aggregate_id: str = "poll1",
+    after_uid: int | None = None,
+    uid_validity: str | None = None,
+) -> Event:
     payload: dict[str, Any] = {}
     if limit is not None:
         payload["limit"] = limit
+    if after_uid is not None:
+        payload["after_uid"] = after_uid
+    if uid_validity is not None:
+        payload["uid_validity"] = uid_validity
     return Event(
         type="InboxPollRequested",
         aggregate_type="inbox",
@@ -298,11 +308,28 @@ async def test_limit_capped_at_20_recent(monkeypatch):
     await on_inbox_poll_requested(_ctx(kernel), _event(limit=5))
     assert kernel.invoke_calls[0]["args"]["limit"] == 5
     assert kernel.invoke_calls[0]["args"]["unread_only"] is False
-
     kernel.invoke_calls.clear()
     await on_inbox_poll_requested(_ctx(kernel), _event(limit=150))
     assert kernel.invoke_calls[0]["args"]["limit"] == 20
     assert kernel.invoke_calls[0]["args"]["unread_only"] is False
+
+
+@pytest.mark.asyncio
+async def test_uid_cursor_is_forwarded_to_check_inbox(monkeypatch):
+    kernel = _RecordingKernel({"status": "success", "result": {}})
+    monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", kernel)
+
+    async def _apply(_result, **_kwargs):
+        return {"status": "success", "new_count": 0}
+
+    runtime.bind_inbox_poll_applier(_apply)
+    await on_inbox_poll_requested(
+        _ctx(kernel),
+        _event(limit=5, after_uid=42, uid_validity="uid-7"),
+    )
+
+    assert kernel.invoke_calls[0]["args"]["after_uid"] == 42
+    assert kernel.invoke_calls[0]["args"]["uid_validity"] == "uid-7"
 
 
 @pytest.mark.asyncio

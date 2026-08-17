@@ -82,6 +82,11 @@ def query_latest_inbox_poll() -> dict[str, Any] | None:
     if status == "success":
         status = "ok"
     kind = payload.get("error_kind") or poll_error_kind(str(error) if error else None)
+    raw_next_uid = payload.get("next_uid")
+    try:
+        next_uid = int(raw_next_uid) if raw_next_uid is not None else None
+    except (TypeError, ValueError):
+        next_uid = None
     return {
         "status": status,
         "error": error,
@@ -90,6 +95,9 @@ def query_latest_inbox_poll() -> dict[str, Any] | None:
         "synced_read": int(payload.get("synced_read") or 0),
         "duplicate_count": int(payload.get("duplicate_count") or 0),
         "classification_fallback": int(payload.get("classification_fallback") or 0),
+        "uid_validity": str(payload.get("uid_validity") or "") or None,
+        "next_uid": next_uid,
+        "cursor_reset": bool(payload.get("cursor_reset", False)),
         "synced_at": ev.ts,
         "event_id": ev.id,
     }
@@ -170,4 +178,3 @@ def query_inbox_emails(
     if digested is not None:
         filters["digested"] = digested
     return kernel().query_state("inbox_emails", **filters)
-

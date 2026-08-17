@@ -91,6 +91,9 @@ def test_query_latest_inbox_poll_and_metrics(kernel):
             "new_count": 0,
             "duplicate_count": 2,
             "synced_read": 1,
+            "uid_validity": "uid-1",
+            "next_uid": 42,
+            "cursor_reset": False,
         },
         actor="scheduler",
     )
@@ -99,6 +102,9 @@ def test_query_latest_inbox_poll_and_metrics(kernel):
     assert latest["status"] == "error"
     assert latest["error_kind"] == "json"
     assert latest["duplicate_count"] == 2
+    assert latest["uid_validity"] == "uid-1"
+    assert latest["next_uid"] == 42
+    assert latest["cursor_reset"] is False
     metrics = read_ports.summarize_inbox_sync_metrics(days=7)
     assert metrics["poll_count"] >= 1
     assert metrics["error_count"] >= 1

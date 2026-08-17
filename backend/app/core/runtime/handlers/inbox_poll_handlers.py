@@ -52,9 +52,13 @@ async def on_inbox_poll_requested(ctx: "ExecutionContext", event: "Event") -> No
         recent_limit = max(1, min(int(limit), 20))
     except (TypeError, ValueError):
         recent_limit = 20
+    capability_args = {"unread_only": False, "limit": recent_limit}
+    for key in ("after_uid", "uid_validity"):
+        if event.payload.get(key) is not None:
+            capability_args[key] = event.payload[key]
     cap = await kernel.invoke_capability(
         "check_inbox",
-        {"unread_only": False, "limit": recent_limit},
+        capability_args,
         actor="scheduler",
         execution_id=ctx.execution_id,
         correlation_id=ctx.correlation_id,

@@ -67,6 +67,9 @@ export interface InboxSyncStatus {
   synced_read: number;
   duplicate_count: number;
   classification_fallback: number;
+  uid_validity: string | null;
+  next_uid: number | null;
+  cursor_reset: boolean;
   synced_at: string | null;
   event_id: string | null;
   metrics: InboxSyncMetrics;

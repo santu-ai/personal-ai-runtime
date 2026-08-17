@@ -100,6 +100,66 @@ def test_check_inbox_recent_mail_still_includes_unseen_index(monkeypatch):
     assert data["all_unread_emails"] == [{"message_id": "<unseen@example.com>"}]
 
 
+def test_check_inbox_uses_uid_cursor_when_mailbox_is_stable(monkeypatch):
+    server = EmailServer()
+    mail = SimpleNamespace(
+        response=lambda name: ("OK", [b"uid-validity-7"]),
+        uid=lambda *args: ("OK", [b"11 12"]),
+        logout=lambda: None,
+    )
+    monkeypatch.setattr(server, "_connect_inbox", lambda: mail)
+    monkeypatch.setattr(server, "_fetch_unread_emails_connected", lambda _mail: [])
+
+    calls = []
+
+    def fetch_since(_mail, limit, unread_only, after_uid, body_max=300):
+        calls.append((limit, unread_only, after_uid, body_max))
+        return ([{"message_id": "<new@example.com>", "subject": "New"}], 12)
+
+    monkeypatch.setattr(server, "_fetch_sorted_emails_since_uid_connected", fetch_since)
+
+    data = json.loads(
+        server.check_inbox(
+            limit=2,
+            after_uid=10,
+            uid_validity="uid-validity-7",
+        )
+    )
+
+    assert calls == [(2, False, 10, 300)]
+    assert data["next_uid"] == 12
+    assert data["uid_validity"] == "uid-validity-7"
+    assert data["cursor_reset"] is False
+
+
+def test_check_inbox_resets_cursor_when_uidvalidity_changes(monkeypatch):
+    server = EmailServer()
+    mail = SimpleNamespace(
+        response=lambda name: ("OK", [b"uid-validity-new"]),
+        uid=lambda *args: ("OK", [b"20"]),
+        logout=lambda: None,
+    )
+    monkeypatch.setattr(server, "_connect_inbox", lambda: mail)
+    monkeypatch.setattr(server, "_fetch_unread_emails_connected", lambda _mail: [])
+    monkeypatch.setattr(
+        server,
+        "_fetch_sorted_emails_connected",
+        lambda _mail, limit, unread_only, body_max=300: [],
+    )
+
+    data = json.loads(
+        server.check_inbox(
+            limit=2,
+            after_uid=10,
+            uid_validity="uid-validity-old",
+        )
+    )
+
+    assert data["cursor_reset"] is True
+    assert data["uid_validity"] == "uid-validity-new"
+    assert data["next_uid"] == 20
+
+
 def test_read_inbox_email_by_message_id(monkeypatch):
     """message_id 直查路径 — 供治理面（inbox summary）取全文正文。"""
     server = EmailServer()

@@ -87,6 +87,14 @@ def _email_specs() -> list[BuiltinToolSpec]:
             parameters={
                 "type": "object",
                 "properties": {
+                    "after_uid": {
+                        "type": "integer",
+                        "description": "Fetch messages after this stable IMAP UID when the mailbox cursor is valid.",
+                    },
+                    "uid_validity": {
+                        "type": "string",
+                        "description": "IMAP UIDVALIDITY associated with after_uid; mismatch triggers a safe full refresh.",
+                    },
                     "limit": {
                         "type": "integer",
                         "description": "Max emails to return (default 10).",

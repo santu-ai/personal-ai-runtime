@@ -192,6 +192,129 @@ class EmailServer:
                     })
         return result
 
+    @staticmethod
+    def _mailbox_uid_validity(mail) -> str | None:
+        """Read the selected mailbox UIDVALIDITY when the server exposes it."""
+        response_fn = getattr(mail, "response", None)
+        if not callable(response_fn):
+            return None
+        try:
+            response = response_fn("UIDVALIDITY")
+        except Exception:
+            logger.debug("Could not read IMAP UIDVALIDITY", exc_info=True)
+            return None
+        values = response[1] if isinstance(response, tuple) and len(response) > 1 else response
+        if isinstance(values, (list, tuple)):
+            values = values[0] if values else None
+        if isinstance(values, bytes):
+            values = values.decode(errors="ignore")
+        value = str(values or "").strip()
+        return value or None
+
+    @staticmethod
+    def _uid_values(raw) -> list[int]:
+        if isinstance(raw, bytes):
+            raw = raw.decode(errors="ignore")
+        if not isinstance(raw, str):
+            return []
+        return sorted({int(token) for token in raw.split() if token.isdigit()})
+
+    def _search_uids_connected(
+        self,
+        mail: imaplib.IMAP4_SSL,
+        *,
+        after_uid: int,
+        unread_only: bool,
+    ) -> list[int]:
+        uid_fn = getattr(mail, "uid", None)
+        if not callable(uid_fn):
+            return []
+        criteria = ["UNSEEN" if unread_only else "ALL", "UID", f"{after_uid + 1}:*"]
+        _status, data = uid_fn("search", None, *criteria)
+        raw = data[0] if data else b""
+        return self._uid_values(raw)
+
+    def _highest_uid_connected(self, mail: imaplib.IMAP4_SSL) -> int | None:
+        uid_fn = getattr(mail, "uid", None)
+        if not callable(uid_fn):
+            return None
+        _status, data = uid_fn("search", None, "ALL")
+        values = self._uid_values(data[0] if data else b"")
+        return max(values) if values else None
+
+    def _fetch_sorted_emails_since_uid_connected(
+        self,
+        mail: imaplib.IMAP4_SSL,
+        limit: int,
+        unread_only: bool,
+        after_uid: int,
+        body_max: int = 300,
+    ) -> tuple[list[dict], int | None]:
+        """Fetch the oldest new UIDs first so a small limit cannot skip mail."""
+        uids = self._search_uids_connected(
+            mail, after_uid=after_uid, unread_only=unread_only,
+        )
+        if not uids:
+            return [], after_uid
+        selected_uids = uids[:limit]
+        uid_set = ",".join(str(uid) for uid in selected_uids)
+        _status, msg_data = mail.uid(
+            "fetch",
+            uid_set,
+            "(INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID)])",
+        )
+
+        candidates: list[dict] = []
+        for part in msg_data:
+            if not isinstance(part, tuple) or not part[1]:
+                continue
+            info = part[0].decode(errors="ignore") if isinstance(part[0], bytes) else str(part[0])
+            uid_match = re.search(r"\bUID\s+(\d+)\b", info, flags=re.IGNORECASE)
+            if not uid_match:
+                continue
+            uid = int(uid_match.group(1))
+            msg = email.message_from_bytes(part[1])
+            from_raw = _decode_mime_header(msg.get("From"))
+            subject = _decode_mime_header(msg.get("Subject")) or "(无主题)"
+            date_raw = msg.get("Date")
+            candidates.append({
+                "uid": uid,
+                "message_id": _stable_message_id(msg, from_raw, subject, date_raw),
+                "from": from_raw,
+                "subject": subject,
+                "date_raw": date_raw,
+            })
+
+        candidates.sort(key=lambda item: item["uid"])
+        if not candidates:
+            return [], after_uid
+        body_uids = ",".join(str(item["uid"]) for item in candidates)
+        _status, body_data = mail.uid("fetch", body_uids, "(BODY.PEEK[])")
+        body_map: dict[int, str] = {}
+        for part in body_data:
+            if not isinstance(part, tuple):
+                continue
+            info = part[0].decode(errors="ignore") if isinstance(part[0], bytes) else str(part[0])
+            uid_match = re.search(r"\bUID\s+(\d+)\b", info, flags=re.IGNORECASE)
+            if uid_match:
+                body_map[int(uid_match.group(1))] = _extract_body(
+                    email.message_from_bytes(part[1]), max_len=body_max,
+                )
+
+        results = [
+            {
+                "uid": item["uid"],
+                "message_id": item["message_id"],
+                "from": item["from"],
+                "subject": item["subject"],
+                "date": _format_date(item["date_raw"]),
+                "preview": body_map.get(item["uid"], "")[:200],
+                "body": body_map.get(item["uid"], ""),
+            }
+            for item in candidates
+        ]
+        return results, max(item["uid"] for item in candidates)
+
     def _normalize_mid(self, mid: str | None) -> str:
         if not mid:
             return ""
@@ -317,17 +440,52 @@ class EmailServer:
             except Exception:
                 logger.warning("Error during IMAP logout", exc_info=True)
 
-    def check_inbox(self, limit: int = 10, unread_only: bool = False) -> str:
+    def check_inbox(
+        self,
+        limit: int = 10,
+        unread_only: bool = False,
+        after_uid: int | None = None,
+        uid_validity: str | None = None,
+    ) -> str:
         """Check inbox for recent emails (default: all mail, not unread-only)."""
         try:
             mail = self._connect_inbox()
             try:
+                current_uid_validity = self._mailbox_uid_validity(mail)
+                requested_after_uid = None
+                try:
+                    if after_uid is not None and int(after_uid) >= 0:
+                        requested_after_uid = int(after_uid)
+                except (TypeError, ValueError):
+                    requested_after_uid = None
+                cursor_reset = bool(
+                    requested_after_uid is not None
+                    and current_uid_validity
+                    and (
+                        not uid_validity
+                        or str(uid_validity) != current_uid_validity
+                    )
+                )
+                can_increment = bool(
+                    requested_after_uid is not None
+                    and not cursor_reset
+                    and current_uid_validity
+                    and uid_validity
+                    and str(uid_validity) == current_uid_validity
+                    and callable(getattr(mail, "uid", None))
+                )
                 # Unseen index is always needed so poll can sync read-state
                 # even when listing recent mail (unread_only=false).
                 all_unread_emails = self._fetch_unread_emails_connected(mail)
-                emails = self._fetch_sorted_emails_connected(
-                    mail, limit, unread_only, body_max=300
-                )
+                if can_increment:
+                    emails, next_uid = self._fetch_sorted_emails_since_uid_connected(
+                        mail, limit, unread_only, requested_after_uid,
+                    )
+                else:
+                    emails = self._fetch_sorted_emails_connected(
+                        mail, limit, unread_only, body_max=300,
+                    )
+                    next_uid = self._highest_uid_connected(mail)
             finally:
                 try:
                     mail.logout()
@@ -350,6 +508,9 @@ class EmailServer:
                 "unread_only": unread_only,
                 "emails": slim,
                 "all_unread_emails": unread_index,
+                "uid_validity": current_uid_validity,
+                "next_uid": next_uid,
+                "cursor_reset": cursor_reset,
             }
             return json.dumps(payload, ensure_ascii=False)
         except imaplib.IMAP4.error as e:
