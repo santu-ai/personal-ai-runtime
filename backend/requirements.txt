@@ -10,7 +10,7 @@ chromadb==1.5.9
 httpx==0.28.1
 mcp==2.0.0
 alembic==1.19.0
-sqlalchemy==2.0.51
+sqlalchemy==2.0.52
 tiktoken==0.13.0
 structlog==26.1.0
 cryptography==49.0.0
