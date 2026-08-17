@@ -297,24 +297,24 @@ export default function ChatView({ conversationId }: Props) {
   }
 
   return (
-    <div className="flex-1 flex flex-row min-h-0 relative">
-      <div className="flex-1 flex flex-col min-h-0">
-        <ProposedMemoryBanner />
-        {memoryNotice && (
-          <div className="px-4 py-2 bg-insight/10 border-b border-insight/30 flex items-center gap-2 text-xs text-insight animate-pulse">
-            <span>🧠</span>
-            <span className="flex-1 truncate">{memoryNotice}</span>
-            <button
-              type="button"
-              onClick={() => setMemoryNotice(null)}
-              className="text-insight/70 hover:text-insight shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
-              aria-label="关闭"
-            >
-              ×
-            </button>
-          </div>
-        )}
-        <div className="flex-1 relative min-h-0">
+    <div className="flex-1 flex flex-col min-h-0">
+      <ProposedMemoryBanner />
+      {memoryNotice && (
+        <div className="px-4 py-2 bg-insight/10 border-b border-insight/30 flex items-center gap-2 text-xs text-insight animate-pulse">
+          <span>🧠</span>
+          <span className="flex-1 truncate">{memoryNotice}</span>
+          <button
+            type="button"
+            onClick={() => setMemoryNotice(null)}
+            className="text-insight/70 hover:text-insight shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+            aria-label="关闭"
+          >
+            ×
+          </button>
+        </div>
+      )}
+      <div className="flex-1 flex flex-row min-h-0 relative">
+        <div className="flex-1 relative min-h-0 min-w-0">
           <div
             ref={scrollContainerRef}
             onScroll={handleScroll}
@@ -337,57 +337,56 @@ export default function ChatView({ conversationId }: Props) {
             </button>
           )}
         </div>
-
-        {pendingConfirmation && (
-          <div className="border-t border-warning/40 px-4 py-3 bg-surface-raised/95 backdrop-blur-sm shrink-0">
-            <ConfirmationDialog
-              toolCall={pendingConfirmation.toolCall}
-              onConfirm={handleConfirm}
-              onDeny={handleDeny}
-            />
-          </div>
-        )}
-
-        <div className="border-t border-border-subtle p-4">
-          <div className="max-w-3xl mx-auto">
-            {suggestions.length > 0 && !isLoading && !pendingConfirmation && (
-              <div className="flex flex-wrap gap-2 mb-3">
-                {suggestions.map((s) => {
-                  const SIcon = getSuggestionIcon(s);
-                  return (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => handlePickPrompt(s)}
-                      className="flex items-center gap-1 text-xs px-3 py-1.5 bg-surface-overlay hover:bg-border-strong text-fg-secondary hover:text-fg-primary rounded-full border border-border-subtle hover:border-border-strong transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-                    >
-                      <SIcon size={12} className="text-fg-secondary" />
-                      <span>{s.length > 50 ? s.slice(0, 50) + "…" : s}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            <ChatComposer
-              value={input}
-              onChange={setInput}
-              onSend={handleSend}
-              disabled={isLoading || !!pendingConfirmation}
-              inputRef={inputRef}
-            />
-            <p className="text-xs text-fg-disabled mt-2 text-center">
-              Personal AI Runtime 可能会犯错，请验证重要信息。
-            </p>
-          </div>
-        </div>
+        <ContextPanel
+          lastUserMessage={lastUserMessage}
+          toolResults={allToolResults}
+          open={contextOpen}
+          onToggle={() => setContextOpen(!contextOpen)}
+        />
       </div>
 
-      <ContextPanel
-        lastUserMessage={lastUserMessage}
-        toolResults={allToolResults}
-        open={contextOpen}
-        onToggle={() => setContextOpen(!contextOpen)}
-      />
+      {pendingConfirmation && (
+        <div className="border-t border-warning/40 px-4 py-3 bg-surface-raised/95 backdrop-blur-sm shrink-0">
+          <ConfirmationDialog
+            toolCall={pendingConfirmation.toolCall}
+            onConfirm={handleConfirm}
+            onDeny={handleDeny}
+          />
+        </div>
+      )}
+
+      <div className="border-t border-border-subtle p-4">
+        <div className="max-w-3xl mx-auto">
+          {suggestions.length > 0 && !isLoading && !pendingConfirmation && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {suggestions.map((s) => {
+                const SIcon = getSuggestionIcon(s);
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => handlePickPrompt(s)}
+                    className="flex items-center gap-1 text-xs px-3 py-1.5 bg-surface-overlay hover:bg-border-strong text-fg-secondary hover:text-fg-primary rounded-full border border-border-subtle hover:border-border-strong transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                  >
+                    <SIcon size={12} className="text-fg-secondary" />
+                    <span>{s.length > 50 ? s.slice(0, 50) + "…" : s}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <ChatComposer
+            value={input}
+            onChange={setInput}
+            onSend={handleSend}
+            disabled={isLoading || !!pendingConfirmation}
+            inputRef={inputRef}
+          />
+          <p className="text-xs text-fg-disabled mt-2 text-center">
+            Personal AI Runtime 可能会犯错，请验证重要信息。
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

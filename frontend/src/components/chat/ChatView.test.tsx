@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import ChatView from "./ChatView";
-import { resolveApproval, sendMessage, ratifyMemory } from "../../api/client";
+import { getMessages, resolveApproval, sendMessage, ratifyMemory } from "../../api/client";
 
 vi.mock("../../api/client", () => ({
   getMessages: vi.fn().mockResolvedValue([]),
@@ -110,6 +110,7 @@ describe("ChatView", () => {
     memoriesState.data.memories = [];
     memoriesState.data.recent = [];
     proposedCountState.data = 0;
+    vi.mocked(getMessages).mockResolvedValue([]);
   });
 
   it("renders input area and send button", () => {
@@ -285,5 +286,28 @@ describe("ChatView", () => {
     renderChatView();
     fireEvent.click(screen.getByRole("button", { name: "确认" }));
     await waitFor(() => expect(ratifyMemory).toHaveBeenCalledWith("m1"));
+  });
+
+  it("keeps the context toggle out of the proposed-memory banner", async () => {
+    vi.mocked(getMessages).mockResolvedValue([
+      {
+        id: "u1",
+        conversation_id: "test-conv-1",
+        role: "user",
+        content: "hello",
+        tool_calls: null,
+        tool_call_id: null,
+        created_at: "2026-08-17T00:00:00Z",
+      },
+    ]);
+    proposedCountState.data = 1;
+    memoriesState.data.memories = [{ id: "m1", content: "喜欢早起跑步" }];
+    renderChatView();
+
+    const banner = await screen.findByText(/1 条记忆待确认后才会进入对话/);
+    const contextBtn = await screen.findByRole("button", { name: "上下文" });
+    const positioningRoot = contextBtn.closest(".relative");
+    expect(positioningRoot).toBeTruthy();
+    expect(positioningRoot?.contains(banner)).toBe(false);
   });
 });

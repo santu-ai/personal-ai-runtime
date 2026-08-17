@@ -69,6 +69,7 @@ export default function ContextPanel({ lastUserMessage, toolResults = [], open, 
   if (!open) {
     return (
       <button
+        type="button"
         onClick={onToggle}
         className="absolute top-3 right-3 z-10 px-2 py-1 text-xs bg-surface-overlay hover:bg-border-strong rounded-lg text-fg-secondary border border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         title="展开上下文面板"

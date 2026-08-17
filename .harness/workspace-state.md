@@ -5,10 +5,10 @@
 
 ## 当前状态
 
-- 当前分支：`main`（领先 origin：W34 + deny + 首页/IPv4 + search/dashboard claim 过滤，均未推送）
+- 当前分支：`main`（本轮 Chat 布局修复未推送）
 - 进行中任务 / WIP：自主推进
 - 已知坏点 / 待办：Memory 2 条 proposed 未 ratify（不代用户确认）；Context live A/B 未测；Chroma 质量未测；审批续写仍 one-shot；日用后端需重启才吃到 max_retries/deny/search/dashboard 过滤
-- 最近审阅：2026-08-17 公开搜索与仪表盘 recent_memories 均走 claim 过滤召回
+- 最近审阅：2026-08-17 Chat 待确认记忆条与「上下文」按钮错层，不再重合
 
 ## 本机环境
 
@@ -35,7 +35,8 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
-| 2026-08-17 | 仪表盘 recent_memories 走 `recall_memories_for_context` | 本提交 |
+| 2026-08-17 | Chat 待确认记忆条与上下文按钮分层，避免右上角重合 | 本提交 |
+| 2026-08-17 | 仪表盘 recent_memories 走 `recall_memories_for_context` | 已提交 `918a707` 已推送 |
 | 2026-08-17 | 公开 `GET /memories/search` 走 claim 过滤召回；抽取去重仍用未过滤 Chroma | 已提交 `b8700a6` 未推送 |
 | 2026-08-17 | 首页只计 ratified；Desktop/Vite/CORS 默认 IPv4 回环 | 已提交 `e26849a` 未推送 |
 | 2026-08-17 | 审批 deny 持久化 tool result + 会话说明（不调 LLM） | 已提交 `937a97e` 未推送 |
