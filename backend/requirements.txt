@@ -9,7 +9,7 @@ python-dotenv==1.2.2
 chromadb==1.5.9
 httpx==0.28.1
 mcp==2.0.0
-alembic==1.19.0
+alembic==1.19.1
 sqlalchemy==2.0.51
 tiktoken==0.13.0
 structlog==26.1.0
