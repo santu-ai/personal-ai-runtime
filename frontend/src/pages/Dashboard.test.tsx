@@ -229,4 +229,78 @@ describe("DashboardPage", () => {
     fireEvent.click(refreshButtons[0]);
     expect(mockRefresh).toHaveBeenCalledOnce();
   });
+
+  it("shows execution trust from dashboard widget", () => {
+    mockDashboardData({
+      dashboard: {
+        generated_at: "2026-08-17T00:00:00Z",
+        data_sovereignty: {
+          total_events: 1,
+          total_memories: 1,
+          memories_self_report: 0,
+          memories_claim: 1,
+          total_goals: 0,
+          goals_active: 0,
+          goals_completed: 0,
+          total_conversations: 0,
+          total_messages: 0,
+          data_location: "本地",
+          last_belief_reflection: null,
+          export_supported: true,
+        },
+        active_goals: { count: 0, top: [] },
+        execution_trust: {
+          by_status: { failed: 1, completed: 2, retrying: 1 },
+          pending_approvals: 0,
+          failed: [
+            {
+              id: "ex1",
+              status: "failed",
+              handler_name: "inbox_poll",
+              event_type: "InboxPollRequested",
+              error: "imap timeout",
+              retry_count: 3,
+              dead_letter: true,
+              created_at: "2026-08-17T00:00:00Z",
+              completed_at: "2026-08-17T00:01:00Z",
+              correlation_id: "",
+            },
+          ],
+          retrying: [
+            {
+              id: "ex2",
+              status: "retrying",
+              handler_name: "memory_decay",
+              event_type: "TimerFired",
+              error: "lock",
+              retry_count: 1,
+              dead_letter: false,
+              created_at: "2026-08-17T00:02:00Z",
+              completed_at: null,
+              correlation_id: "",
+            },
+          ],
+          dead_letter: [],
+          dead_letter_count: 1,
+          last_completed: null,
+          last_failed: {
+            id: "ex1",
+            status: "failed",
+            handler_name: "inbox_poll",
+            event_type: "InboxPollRequested",
+            error: "imap timeout",
+            retry_count: 3,
+            dead_letter: true,
+            created_at: "2026-08-17T00:00:00Z",
+            completed_at: "2026-08-17T00:01:00Z",
+            correlation_id: "",
+          },
+        },
+      },
+    });
+    renderDashboard();
+    expect(screen.getByTestId("execution-trust")).toBeInTheDocument();
+    expect(screen.getByText(/imap timeout/)).toBeInTheDocument();
+    expect(screen.getByText(/重试中 memory_decay/)).toBeInTheDocument();
+  });
 });

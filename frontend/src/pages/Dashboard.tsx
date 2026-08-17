@@ -9,6 +9,7 @@ import { useGoalsQuery } from "../hooks/useGoalsQuery";
 import NotificationDetailModal from "../components/notifications/NotificationDetailModal";
 import { TrustReportPanel } from "./TrustReport";
 import TodayActions from "../components/dashboard/TodayActions";
+import ExecutionTrustPanel from "../components/dashboard/ExecutionTrustPanel";
 import RemindersPanel from "../components/dashboard/RemindersPanel";
 import HealthPanel from "../components/dashboard/HealthPanel";
 import MonitorsPanel from "../components/dashboard/MonitorsPanel";
@@ -183,6 +184,10 @@ export default function DashboardPage() {
           pendingInboxCount={pendingInboxCount}
           inboxEmails={inboxData?.emails ?? []}
         />
+
+        {dashboard?.execution_trust && (
+          <ExecutionTrustPanel trust={dashboard.execution_trust} />
+        )}
 
         {/* ── AI 给你的提醒 ── */}
         <RemindersPanel

@@ -113,3 +113,55 @@ def test_bulk_rejects_empty_ids(client):
         json={"action": "ratify", "ids": []},
     )
     assert r.status_code == 422
+
+
+def test_reject_reason_roundtrip_restore_and_stats(client):
+    mid = _store_claim("User prefers tabs over spaces in Python")
+    reject = client.post(
+        f"/api/memory/memories/{mid}/reject",
+        json={"reason": "记错了"},
+    )
+    assert reject.status_code == 200, reject.text
+    assert reject.json()["claim_status"] == "rejected"
+
+    listed = client.get(
+        "/api/memory/memories/grouped",
+        params={"claim_status": "rejected"},
+    )
+    assert listed.status_code == 200
+    row = next(m for m in listed.json()["memories"] if m["id"] == mid)
+    assert row["reject_reason"] == "记错了"
+
+    stats = client.get("/api/memory/memories/claims/stats")
+    assert stats.status_code == 200
+    body = stats.json()
+    assert body["rejected"] >= 1
+    assert body["decided"] >= 1
+    assert "conversion_rate" in body
+    assert "false_positive_rate" in body
+    assert "proposed_open" in body
+
+    restore = client.post(f"/api/memory/memories/{mid}/ratify")
+    assert restore.status_code == 200
+    assert restore.json()["claim_status"] == "ratified"
+    ratified = client.get(
+        "/api/memory/memories/grouped",
+        params={"claim_status": "ratified"},
+    )
+    ids = {m["id"] for m in ratified.json()["memories"]}
+    assert mid in ids
+
+
+def test_bulk_reject_persists_shared_reason(client):
+    mid = _store_claim("User never drinks coffee after 3pm")
+    r = client.post(
+        "/api/memory/memories/claims/bulk",
+        json={"action": "reject", "ids": [mid], "reason": "过时"},
+    )
+    assert r.status_code == 200
+    listed = client.get(
+        "/api/memory/memories/grouped",
+        params={"claim_status": "rejected"},
+    )
+    row = next(m for m in listed.json()["memories"] if m["id"] == mid)
+    assert row["reject_reason"] == "过时"

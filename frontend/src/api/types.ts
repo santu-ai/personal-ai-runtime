@@ -130,6 +130,7 @@ export interface MemoryRow {
   source_document_id?: string | null;
   source_document_name?: string | null;
   created_at?: string;
+  reject_reason?: string | null;
 }
 
 export interface MemoriesGrouped {
@@ -296,4 +297,29 @@ export interface DashboardData {
       importance: number;
     }>;
   };
+  execution_trust?: ExecutionTrust;
+}
+
+export interface ExecutionTrustItem {
+  id: string;
+  status: string;
+  handler_name: string;
+  event_type: string;
+  error: string | null;
+  retry_count: number;
+  dead_letter: boolean;
+  created_at: string;
+  completed_at: string | null;
+  correlation_id: string;
+}
+
+export interface ExecutionTrust {
+  by_status: Record<string, number>;
+  pending_approvals: number;
+  failed: ExecutionTrustItem[];
+  retrying: ExecutionTrustItem[];
+  dead_letter: ExecutionTrustItem[];
+  dead_letter_count: number;
+  last_completed: ExecutionTrustItem | null;
+  last_failed: ExecutionTrustItem | null;
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createMemory,
   deleteMemory,
@@ -8,6 +8,7 @@ import {
   ratifyMemory,
   rejectMemory,
   bulkClaimAction,
+  getClaimConversionStats,
   getMemoryGraph,
   ApiError,
   type MemoryRow,
@@ -67,8 +68,19 @@ export default function MemoriesPage() {
     limit: 100,
   });
   const { data: proposedTotal = 0 } = useProposedMemoryCountQuery();
+  const { data: rejectedData } = useMemoriesGroupedQuery({
+    claimStatus: "rejected",
+    limit: 50,
+    order: "created_at_desc",
+  });
+  const { data: claimStats } = useQuery({
+    queryKey: ["memory", "claim-stats"],
+    queryFn: () => getClaimConversionStats(30),
+    staleTime: 10_000,
+  });
   const memories = data?.memories ?? [];
   const proposedMemories = proposedData?.memories ?? [];
+  const rejectedMemories = rejectedData?.memories ?? [];
   const filteredTotal = proposedData?.total ?? proposedMemories.length;
   // First visit only — filter changes keep placeholderData so the page stays up.
   const reviewInitialLoading = viewMode === "review" && proposedLoading && !proposedData;
@@ -77,6 +89,8 @@ export default function MemoriesPage() {
 
   const [newContent, setNewContent] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<MemoryRow | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<MemoryRow | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
   const [editTarget, setEditTarget] = useState<MemoryRow | null>(null);
   const [editContent, setEditContent] = useState("");
   const [editCategory, setEditCategory] = useState("");
@@ -87,6 +101,7 @@ export default function MemoriesPage() {
   const invalidateMemories = () => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.memories });
     void queryClient.invalidateQueries({ queryKey: queryKeys.memoriesGrouped });
+    void queryClient.invalidateQueries({ queryKey: ["memory", "claim-stats"] });
   };
 
   // Drop selections that left the current page after filter/refresh.
@@ -162,9 +177,19 @@ export default function MemoriesPage() {
     }
   };
 
-  const handleReject = async (m: MemoryRow) => {
+  const handleReject = (m: MemoryRow) => {
+    setRejectTarget(m);
+    setRejectReason("");
+  };
+
+  const confirmReject = async () => {
+    if (!rejectTarget) return;
+    const id = rejectTarget.id;
+    const reason = rejectReason.trim();
+    setRejectTarget(null);
+    setRejectReason("");
     try {
-      await rejectMemory(m.id);
+      await rejectMemory(id, reason);
       invalidateMemories();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "拒绝记忆失败", "记忆");
@@ -322,6 +347,16 @@ export default function MemoriesPage() {
             <p className="text-sm text-fg-secondary">
               以下记忆由对话推断而来，确认后才会进入聊天上下文；拒绝则不会再被召回。
             </p>
+            {claimStats && (
+              <p className="text-xs text-fg-tertiary" data-testid="claim-conversion-stats">
+                近 {claimStats.days} 天：确认 {claimStats.ratified} · 拒绝 {claimStats.rejected}
+                {claimStats.conversion_rate != null &&
+                  ` · 转化率 ${Math.round(claimStats.conversion_rate * 100)}%`}
+                {claimStats.false_positive_rate != null &&
+                  ` · 误报率 ${Math.round(claimStats.false_positive_rate * 100)}%`}
+                {` · 待确认 ${claimStats.proposed_open}`}
+              </p>
+            )}
 
             <div className="flex flex-wrap items-center gap-3">
               <label className="text-xs text-fg-secondary flex items-center gap-1.5">
@@ -412,6 +447,29 @@ export default function MemoriesPage() {
                 ))}
               </ul>
             )}
+
+            {rejectedMemories.length > 0 && (
+              <section className="pt-4">
+                <h3 className="text-sm font-semibold text-fg-secondary mb-3">已拒绝</h3>
+                <p className="text-xs text-fg-tertiary mb-2">
+                  拒绝后不会进入对话。若判断有误，可恢复为已确认。
+                </p>
+                <ul className="space-y-2">
+                  {rejectedMemories.map((m) => (
+                    <MemoryListItem
+                      key={m.id}
+                      memory={m}
+                      onRatify={handleRatify}
+                      onReject={handleReject}
+                      onEdit={handleEdit}
+                      onDelete={(row) => setDeleteTarget(row)}
+                      onContinueChat={handleContinueChat}
+                      onShowProvenance={setProvenanceTarget}
+                    />
+                  ))}
+                </ul>
+              </section>
+            )}
           </>
         ) : viewMode === "list" ? (
           <>
@@ -495,6 +553,45 @@ export default function MemoriesPage() {
         onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
       />
+
+      {rejectTarget && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setRejectTarget(null)}
+        >
+          <div
+            className="bg-surface-raised border border-border-strong rounded-xl p-6 w-96 max-w-[90vw] space-y-4 outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-fg-primary">拒绝这条记忆？</h3>
+            <p className="text-xs text-fg-tertiary">可选填写原因，便于之后核对误报。</p>
+            <input
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              maxLength={200}
+              className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary outline-none focus:border-focus-ring"
+              placeholder="例如：记错了、过时了"
+              autoFocus
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setRejectTarget(null)}
+                className="px-3 py-1.5 bg-surface-overlay hover:bg-border-strong rounded-lg text-sm text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmReject()}
+                className="px-3 py-1.5 bg-surface-overlay hover:bg-border-strong rounded-lg text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+              >
+                拒绝
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editTarget && (
         <div

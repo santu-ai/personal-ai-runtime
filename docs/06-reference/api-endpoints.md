@@ -69,6 +69,7 @@
 | GET | `/api/memory/memories` | auth | — | List Memories |
 | POST | `/api/memory/memories` | auth | public | Create Memory |
 | POST | `/api/memory/memories/claims/bulk` | auth | — | Bulk Claim Action |
+| GET | `/api/memory/memories/claims/stats` | auth | — | Claim Conversion Stats |
 | GET | `/api/memory/memories/count` | auth | — | Count Memories |
 | GET | `/api/memory/memories/grouped` | auth | — | List Memories Grouped |
 | GET | `/api/memory/memories/search` | auth | public | Search Memories |

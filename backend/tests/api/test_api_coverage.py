@@ -98,6 +98,13 @@ class TestMemoryAPI:
         assert resp.status_code == 200
         assert "memories" in resp.json()
 
+    def test_claim_stats(self, client):
+        resp = client.get("/api/memory/memories/claims/stats")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "proposed_open" in body
+        assert "conversion_rate" in body
+
 
 # ── Work Items smoke (deep coverage in test_work_items_api.py) ────────────
 

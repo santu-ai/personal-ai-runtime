@@ -34,7 +34,7 @@ describe("ProposedMemoryBanner", () => {
     mockCount.mockResolvedValue({ count: 2 });
     mockList.mockResolvedValue({
       memories: [
-        { id: "m1", content: "喜欢早起跑步" },
+        { id: "m1", content: "喜欢早起跑步", confidence: 0.8 },
         { id: "m2", content: "偏好绿茶" },
       ],
       total: 2,
@@ -54,6 +54,7 @@ describe("ProposedMemoryBanner", () => {
     renderWithRouter(<ProposedMemoryBanner />);
     expect(await screen.findByText(/2 条记忆待确认后才会进入对话/)).toBeInTheDocument();
     expect(screen.getByText("喜欢早起跑步")).toBeInTheDocument();
+    expect(screen.getByText(/80%/)).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole("button", { name: "确认" })[0]);
     await waitFor(() => expect(mockRatify).toHaveBeenCalledWith("m1"));
   });

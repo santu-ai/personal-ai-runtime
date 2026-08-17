@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.core.runtime.read_ports._common import kernel
@@ -93,6 +94,53 @@ def count_memories(
 def summarize_memory_stats() -> dict[str, Any]:
     """Memory totals / categories / recent_7d via SQL COUNT."""
     return kernel().aggregate_state("memory_stats")
+
+
+def attach_claim_reject_reasons(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Fill ``reject_reason`` from the latest ClaimRejected payload (event log)."""
+    rejected_ids = {r.get("id") for r in rows if r.get("claim_status") == "rejected" and r.get("id")}
+    if not rejected_ids:
+        return rows
+    events = kernel().read_events(type="ClaimRejected", limit=500, order="desc")
+    latest: dict[str, str] = {}
+    for ev in events:
+        mid = ev.aggregate_id
+        if mid in rejected_ids and mid not in latest:
+            latest[mid] = str((ev.payload or {}).get("reason") or "").strip()
+            if len(latest) == len(rejected_ids):
+                break
+    return [
+        {**row, "reject_reason": latest.get(row["id"]) or None}
+        if row.get("id") in rejected_ids
+        else row
+        for row in rows
+    ]
+
+
+def summarize_claim_conversion(*, days: int = 30, limit: int = 500) -> dict[str, Any]:
+    """proposed → ratified conversion and reject rate from claim events."""
+    since_ts = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+    ratified = kernel().read_events(
+        type="ClaimRatified", since_ts=since_ts, limit=limit, order="desc",
+    )
+    rejected = kernel().read_events(
+        type="ClaimRejected", since_ts=since_ts, limit=limit, order="desc",
+    )
+    proposed_open = count_memories(claim_status="proposed")
+    ratified_n = len(ratified)
+    rejected_n = len(rejected)
+    decided = ratified_n + rejected_n
+    conversion_rate = (ratified_n / decided) if decided else None
+    false_positive_rate = (rejected_n / decided) if decided else None
+    return {
+        "days": days,
+        "proposed_open": proposed_open,
+        "ratified": ratified_n,
+        "rejected": rejected_n,
+        "decided": decided,
+        "conversion_rate": conversion_rate,
+        "false_positive_rate": false_positive_rate,
+    }
 
 
 def build_memory_graph_edges(sources: list[dict]) -> list[dict]:

@@ -66,6 +66,13 @@ def test_generate_dashboard_with_seeded_data(product_kernel):
     assert isinstance(dashboard["governance_status"]["active_policies"], int)
     assert "generated_at" in dashboard
     assert "recent_memories" in dashboard
+    trust = dashboard["execution_trust"]
+    assert isinstance(trust["by_status"], dict)
+    assert isinstance(trust["pending_approvals"], int)
+    assert isinstance(trust["failed"], list)
+    assert isinstance(trust["retrying"], list)
+    assert isinstance(trust["dead_letter"], list)
+    assert isinstance(trust["dead_letter_count"], int)
 
 
 def test_recent_memories_uses_claim_filtered_recall(product_kernel, monkeypatch):
@@ -116,3 +123,66 @@ def test_recent_memories_uses_claim_filtered_recall(product_kernel, monkeypatch)
         assert sovereignty[key] >= 0
     assert sovereignty["export_supported"] is True
     assert "本地" in sovereignty["data_location"]
+
+
+def test_execution_trust_widget_surfaces_failed_and_dead_letter(product_kernel):
+    """Dashboard execution_trust is rebuilt from existing Kernel ABI, no new selector."""
+    from app.core.runtime.kernel.constants import AGGREGATE_EXECUTION
+    from app.product.personal_dashboard import generate_dashboard
+
+    k = product_kernel
+    eid = "ex_fail_1"
+    k.emit_event(
+        "ExecutionRequested",
+        AGGREGATE_EXECUTION,
+        eid,
+        payload={
+            "handler_name": "inbox_poll",
+            "trigger_event_type": "InboxPollRequested",
+            "created_at": "2026-08-17T00:00:00+00:00",
+            "event_seq": 0,
+            "policy": {},
+        },
+        actor="scheduler",
+    )
+    k.emit_event(
+        "ExecutionFailed",
+        AGGREGATE_EXECUTION,
+        eid,
+        payload={
+            "error": "imap timeout",
+            "attempt": 3,
+            "dead_letter": True,
+            "failed_at": "2026-08-17T00:01:00+00:00",
+        },
+        actor="scheduler",
+    )
+    cid = "ex_ok_1"
+    k.emit_event(
+        "ExecutionRequested",
+        AGGREGATE_EXECUTION,
+        cid,
+        payload={
+            "handler_name": "memory_decay",
+            "trigger_event_type": "TimerFired",
+            "created_at": "2026-08-17T00:02:00+00:00",
+            "event_seq": 1,
+            "policy": {},
+        },
+        actor="scheduler",
+    )
+    k.emit_event(
+        "ExecutionCompleted",
+        AGGREGATE_EXECUTION,
+        cid,
+        payload={"completed_at": "2026-08-17T00:03:00+00:00"},
+        actor="scheduler",
+    )
+
+    trust = generate_dashboard()["execution_trust"]
+    assert trust["by_status"].get("failed") == 1
+    assert trust["by_status"].get("completed") == 1
+    assert trust["dead_letter_count"] == 1
+    assert trust["last_failed"]["handler_name"] == "inbox_poll"
+    assert "imap timeout" in (trust["last_failed"]["error"] or "")
+    assert trust["last_completed"]["handler_name"] == "memory_decay"

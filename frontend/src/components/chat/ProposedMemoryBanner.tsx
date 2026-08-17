@@ -80,6 +80,9 @@ export default function ProposedMemoryBanner({ className = "" }: Props) {
             <li key={m.id} className="flex items-center gap-2 text-fg-primary">
               <span className="flex-1 min-w-0 truncate" title={m.content}>
                 {m.content}
+                {typeof m.confidence === "number" && (
+                  <span className="text-fg-tertiary"> · {Math.round(m.confidence * 100)}%</span>
+                )}
               </span>
               <button
                 type="button"

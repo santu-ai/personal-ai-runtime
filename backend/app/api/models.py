@@ -127,6 +127,13 @@ class BulkClaimActionRequest(BaseModel):
 
     action: Literal["ratify", "reject"]
     ids: list[str] = Field(..., min_length=1, max_length=100)
+    reason: str = Field(default="", max_length=200)
+
+
+class RejectMemoryRequest(BaseModel):
+    """Optional reason persisted on ClaimRejected payload (no new column)."""
+
+    reason: str = Field(default="", max_length=200)
 
 
 # ── Trigger models ────────────────────────────────────────────────────────

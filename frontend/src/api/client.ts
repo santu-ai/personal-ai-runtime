@@ -39,6 +39,8 @@ export type {
   EnrichedApproval,
   DataSovereignty,
   DashboardData,
+  ExecutionTrust,
+  ExecutionTrustItem,
 } from "./types";
 
 // Chat
@@ -108,6 +110,7 @@ export {
   ratifyMemory,
   rejectMemory,
   bulkClaimAction,
+  getClaimConversionStats,
   getMemoryGraph,
   getMemoryProvenance,
 } from "./memory";
@@ -118,6 +121,7 @@ export type {
   MemoryProvenance,
   MemoryProvenanceEvent,
   ListMemoriesGroupedOpts,
+  ClaimConversionStats,
 } from "./memory";
 
 // Telemetry

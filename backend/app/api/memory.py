@@ -4,7 +4,12 @@ import asyncio
 
 from fastapi import APIRouter, HTTPException
 
-from app.api.models import BulkClaimActionRequest, CreateMemoryRequest, UpdateMemoryRequest
+from app.api.models import (
+    BulkClaimActionRequest,
+    CreateMemoryRequest,
+    RejectMemoryRequest,
+    UpdateMemoryRequest,
+)
 from app.core.agents.memory_engine import memory_engine
 from app.core.agents.user_profile import user_profile
 from app.core.runtime import read_ports
@@ -23,7 +28,7 @@ def _get_memory(memory_id: str) -> dict | None:
     return read_ports.query_memory(memory_id)
 
 
-def _apply_claim_action(memory_id: str, action: str) -> dict:
+def _apply_claim_action(memory_id: str, action: str, *, reason: str = "") -> dict:
     """Emit ClaimRatified/Rejected for one memory; raise HTTPException on failure."""
     mem = _get_memory(memory_id)
     if not mem:
@@ -32,9 +37,14 @@ def _apply_claim_action(memory_id: str, action: str) -> dict:
         raise HTTPException(
             status_code=400, detail="Only inferred (claim) memories can be updated")
     event_type, status = _CLAIM_EVENT[action]
+    payload: dict = {"by": "user"}
+    if action == "reject":
+        trimmed = reason.strip()[:200]
+        if trimmed:
+            payload["reason"] = trimmed
     kernel.emit_event(
         event_type, "memory", memory_id,
-        payload={"by": "user"},
+        payload=payload,
         actor="user",
     )
     return {"status": "ok", "claim_status": status}
@@ -47,12 +57,13 @@ async def list_memories(
     limit: int = 50,
 ):
     """List all memories, optionally filtered by category / claim_status."""
-    return await asyncio.to_thread(
+    rows = await asyncio.to_thread(
         read_ports.query_memories,
         category=category,
         claim_status=claim_status,
         limit=limit,
     )
+    return await asyncio.to_thread(read_ports.attach_claim_reject_reasons, rows)
 
 
 @router.get("/memories/count")
@@ -88,6 +99,7 @@ async def list_memories_grouped(
         order=order,
         limit=limit,
     )
+    rows = await asyncio.to_thread(read_ports.attach_claim_reject_reasons, rows)
     total = await asyncio.to_thread(
         read_ports.count_memories,
         claim_status=claim_status,
@@ -184,6 +196,12 @@ async def update_memory(memory_id: str, body: UpdateMemoryRequest):
 
 # --- Claim authority endpoints (user confirms/corrects memories) ---
 
+@router.get("/memories/claims/stats")
+async def claim_conversion_stats(days: int = 30):
+    """proposed → ratified conversion from ClaimRatified / ClaimRejected events."""
+    return await asyncio.to_thread(read_ports.summarize_claim_conversion, days=days)
+
+
 @router.post("/memories/claims/bulk")
 async def bulk_claim_action(body: BulkClaimActionRequest):
     """Batch ratify or reject claim memories (same Kernel events as single-item)."""
@@ -197,6 +215,7 @@ async def bulk_claim_action(body: BulkClaimActionRequest):
 
     ok = 0
     skipped: list[dict] = []
+    reject_reason = body.reason.strip()[:200] if body.action == "reject" else ""
     for mid in ids:
         mem = _get_memory(mid)
         if not mem:
@@ -206,9 +225,12 @@ async def bulk_claim_action(body: BulkClaimActionRequest):
             skipped.append({"id": mid, "reason": "not_claim"})
             continue
         event_type, _status = _CLAIM_EVENT[body.action]
+        payload: dict = {"by": "user"}
+        if reject_reason:
+            payload["reason"] = reject_reason
         kernel.emit_event(
             event_type, "memory", mid,
-            payload={"by": "user"},
+            payload=payload,
             actor="user",
         )
         ok += 1
@@ -222,14 +244,16 @@ async def bulk_claim_action(body: BulkClaimActionRequest):
 
 @router.post("/memories/{memory_id}/ratify")
 async def ratify_memory(memory_id: str):
-    """Confirm an AI-inferred memory as correct."""
+    """Confirm an AI-inferred memory as correct (also restores a rejected claim)."""
     return _apply_claim_action(memory_id, "ratify")
 
 
 @router.post("/memories/{memory_id}/reject")
-async def reject_memory(memory_id: str):
-    """Reject an AI-inferred memory as incorrect."""
-    return _apply_claim_action(memory_id, "reject")
+async def reject_memory(memory_id: str, body: RejectMemoryRequest | None = None):
+    """Reject an AI-inferred memory; optional reason lives on ClaimRejected payload."""
+    return _apply_claim_action(
+        memory_id, "reject", reason=(body.reason if body else ""),
+    )
 
 
 @router.post("/memories/{memory_id}/contest")

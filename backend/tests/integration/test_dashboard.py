@@ -34,4 +34,11 @@ def test_dashboard_widget_shapes(client: TestClient):
 
     gov = data["governance_status"]
     assert isinstance(gov["active_policies"], int)
-    assert isinstance(gov["active_policies"], int)
+
+    trust = data["execution_trust"]
+    assert isinstance(trust["by_status"], dict)
+    assert isinstance(trust["pending_approvals"], int)
+    assert isinstance(trust["failed"], list)
+    assert isinstance(trust["retrying"], list)
+    assert isinstance(trust["dead_letter"], list)
+    assert isinstance(trust["dead_letter_count"], int)

@@ -56,6 +56,7 @@ from app.core.runtime.read_ports.inbox import (
     summarize_inbox_sync_metrics,
 )
 from app.core.runtime.read_ports.memory import (
+    attach_claim_reject_reasons,
     build_memory_graph_edges,
     count_memories,
     query_memories,
@@ -63,6 +64,7 @@ from app.core.runtime.read_ports.memory import (
     recall_memories_for_context,
     retrieve_memory_context,
     retrieve_memory_with_sources,
+    summarize_claim_conversion,
     summarize_memory_stats,
 )
 from app.core.runtime.read_ports.notifications import (
@@ -167,6 +169,8 @@ __all__ = [
     "retrieve_memory_with_sources",
     "query_memory",
     "query_memories",
+    "attach_claim_reject_reasons",
+    "summarize_claim_conversion",
     "notify_goal_action_completed",
     "query_conversation_messages",
     "query_conversation",

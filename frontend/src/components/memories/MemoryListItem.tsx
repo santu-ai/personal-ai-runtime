@@ -10,6 +10,7 @@ import {
   History,
   Pin,
   RefreshCw,
+  RotateCcw,
   StickyNote,
   Target,
   X,
@@ -26,6 +27,11 @@ export const CATEGORY_LABELS: Record<string, { title: string; icon: LucideIcon }
 
 export function getCategoryMeta(cat: string) {
   return CATEGORY_LABELS[cat] ?? { title: cat, icon: StickyNote };
+}
+
+function confidenceLabel(value: number | undefined): string | null {
+  if (typeof value !== "number" || Number.isNaN(value)) return null;
+  return `${Math.round(value * 100)}%`;
 }
 
 interface Props {
@@ -52,6 +58,10 @@ export default function MemoryListItem({
   selected,
   onToggleSelect,
 }: Props) {
+  const confidence = confidenceLabel(m.confidence);
+  const isProposed = m.origin === "claim" && m.claim_status === "proposed";
+  const isRejected = m.origin === "claim" && m.claim_status === "rejected";
+
   return (
     <li className="bg-surface-raised border border-border-subtle rounded-lg p-3 text-sm group flex gap-3">
       {onToggleSelect && (
@@ -76,9 +86,15 @@ export default function MemoryListItem({
             <span>源自：《{m.source_document_name}》</span>
           </span>
         )}
+        {isRejected && m.reject_reason && (
+          <p className="mt-1.5 text-xs text-danger/80">拒绝原因：{m.reject_reason}</p>
+        )}
         <div className="flex items-center gap-2 mt-2 flex-wrap">
           {m.created_at && (
             <span className="text-xs text-fg-disabled">{timeAgoShort(m.created_at)}</span>
+          )}
+          {confidence && (
+            <span className="text-xs text-fg-tertiary">置信度 {confidence}</span>
           )}
           {m.category && (
             <span className="text-xs text-fg-tertiary">{getCategoryMeta(m.category).title}</span>
@@ -99,23 +115,35 @@ export default function MemoryListItem({
           {m.claim_status === "contested" && (
             <span className="text-xs bg-insight/15 text-insight px-1.5 py-0.5 rounded">有争议</span>
           )}
-          {m.origin === "claim" && m.claim_status === "proposed" && (
+          {isProposed && (
             <>
               <button
+                type="button"
                 onClick={() => onRatify(m)}
-                className="text-xs text-success hover:text-success/80 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+                className="text-xs text-success hover:text-success/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
               >
                 <Check size={14} className="inline mr-0.5" />
                 确认
               </button>
               <button
+                type="button"
                 onClick={() => onReject(m)}
-                className="text-xs text-fg-secondary hover:text-fg-primary opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+                className="text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
               >
                 <X size={14} className="inline mr-0.5" />
                 拒绝
               </button>
             </>
+          )}
+          {isRejected && (
+            <button
+              type="button"
+              onClick={() => onRatify(m)}
+              className="text-xs text-insight hover:text-insight/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+            >
+              <RotateCcw size={12} className="inline mr-0.5" />
+              恢复
+            </button>
           )}
           <button
             onClick={() => onEdit(m)}

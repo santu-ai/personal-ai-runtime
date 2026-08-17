@@ -73,13 +73,18 @@ export async function ratifyMemory(
 
 export async function rejectMemory(
   memoryId: string,
+  reason = "",
 ): Promise<{ status: string; claim_status: string }> {
-  return request(`${API_BASE}/memory/memories/${memoryId}/reject`, { method: "POST" });
+  return request(`${API_BASE}/memory/memories/${memoryId}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
 }
 
 export async function bulkClaimAction(
   action: "ratify" | "reject",
   ids: string[],
+  reason = "",
 ): Promise<{
   status: string;
   action: string;
@@ -88,8 +93,26 @@ export async function bulkClaimAction(
 }> {
   return request(`${API_BASE}/memory/memories/claims/bulk`, {
     method: "POST",
-    body: JSON.stringify({ action, ids }),
+    body: JSON.stringify({ action, ids, reason }),
   });
+}
+
+export interface ClaimConversionStats {
+  days: number;
+  proposed_open: number;
+  ratified: number;
+  rejected: number;
+  decided: number;
+  conversion_rate: number | null;
+  false_positive_rate: number | null;
+}
+
+export async function getClaimConversionStats(
+  days = 30,
+): Promise<ClaimConversionStats> {
+  return request<ClaimConversionStats>(
+    `${API_BASE}/memory/memories/claims/stats?days=${days}`,
+  );
 }
 
 export interface MemoryProvenanceEvent {
