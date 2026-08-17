@@ -116,7 +116,7 @@ async def _classify_emails(emails: list[dict]) -> list[dict]:
                 "message_id": em.get("message_id", ""),
                 "category": "actionable",
                 "importance": 0.5,
-                "reason": "分类失败，默认待处理",
+                "reason": "分类失败，默认需跟进",
             }
             for em in emails
         ]
@@ -498,7 +498,7 @@ def generate_inbox_digest() -> dict | None:
     ]
     labels = {
         "important": "重要",
-        "actionable": "待处理",
+        "actionable": "需跟进",
         "ignorable": "可忽略",
     }
     for cat, label in labels.items():

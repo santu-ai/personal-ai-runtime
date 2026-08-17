@@ -10,26 +10,15 @@ import {
 import { useErrorStore } from "../stores/errorStore";
 import { useQuickChat } from "../hooks/useQuickChat";
 import { useInboxQuery, useInvalidateInbox } from "../hooks/useInboxQuery";
-import { timeAgoShort } from "../utils/timeUtils";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import InboxEmailDetailModal from "../components/inbox/InboxEmailDetailModal";
 
 const COLUMNS: { key: string; label: string; color: string }[] = [
   { key: "important", label: "重要", color: "text-danger" },
-  { key: "actionable", label: "待处理", color: "text-warning" },
+  { key: "actionable", label: "需跟进", color: "text-warning" },
   { key: "ignorable", label: "可忽略", color: "text-fg-tertiary" },
 ];
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: "待处理",
-  read: "已读",
-  handled: "已处理",
-};
-
-function categoryMeta(category: string) {
-  return COLUMNS.find((c) => c.key === category) ?? { key: category, label: category, color: "text-fg-tertiary" };
-}
 
 export default function InboxPage() {
   const { data, isLoading: loading, error, refetch } = useInboxQuery();
@@ -129,7 +118,7 @@ export default function InboxPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-2xl font-semibold text-fg-primary">收件箱</h2>
-            <p className="text-sm text-fg-tertiary mt-1">待处理分拣，以及同步到的全部邮件</p>
+            <p className="text-sm text-fg-tertiary mt-1">未读分拣，以及同步到的全部邮件</p>
           </div>
           <Button onClick={handlePoll} disabled={polling}>
             {polling ? "轮询中..." : "立即轮询"}
@@ -190,67 +179,29 @@ export default function InboxPage() {
               ) : (
                 <div className="space-y-2">
                   {allEmails.map((em) => {
-                    const cat = categoryMeta(em.category);
-                    const when = em.received_at || em.created_at;
+                    const unread = em.status === "pending";
                     return (
                       <Card
                         key={em.id}
                         variant="interactive"
                         padding="sm"
-                        className="p-3"
+                        className={`p-3 ${unread ? "" : "opacity-70"}`}
                         onClick={() => handleViewDetail(em)}
+                        aria-label={`${unread ? "未读" : "已读"} ${em.subject || "（无主题）"} ${em.sender}`}
                       >
-                        <div className="flex items-start gap-3">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="text-sm font-medium text-fg-primary truncate">
-                                {em.subject || "（无主题）"}
-                              </span>
-                              <span className={`text-[11px] shrink-0 ${cat.color}`}>{cat.label}</span>
-                              {em.status && em.status !== "pending" && (
-                                <span className="text-[11px] text-fg-disabled shrink-0">
-                                  {STATUS_LABELS[em.status] ?? em.status}
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-xs text-fg-tertiary mt-0.5 truncate">{em.sender}</div>
-                            {em.preview && (
-                              <p className="text-xs text-fg-disabled mt-1 line-clamp-2">{em.preview}</p>
-                            )}
-                          </div>
-                          {when && (
-                            <span className="text-xs text-fg-disabled shrink-0" title={when}>
-                              {timeAgoShort(when)}
-                            </span>
-                          )}
+                        <div
+                          className={`text-sm truncate ${
+                            unread ? "font-semibold text-fg-primary" : "font-normal text-fg-secondary"
+                          }`}
+                        >
+                          {em.subject || "（无主题）"}
                         </div>
-                        <div className="flex gap-3 mt-2" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            onClick={() => handleViewDetail(em)}
-                            disabled={loadingDetail}
-                            className="text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded disabled:opacity-50"
-                          >
-                            {loadingDetail ? "加载中..." : "查看"}
-                          </button>
-                          {em.status !== "read" && em.status !== "handled" && (
-                            <button
-                              type="button"
-                              onClick={() => handleMarkRead(em)}
-                              className="text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
-                            >
-                              标记已读
-                            </button>
-                          )}
-                          {em.status !== "handled" && (
-                            <button
-                              type="button"
-                              onClick={() => handleAiProcess(em)}
-                              className="text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
-                            >
-                              让 AI 处理
-                            </button>
-                          )}
+                        <div
+                          className={`text-xs mt-0.5 truncate ${
+                            unread ? "text-fg-secondary" : "text-fg-tertiary"
+                          }`}
+                        >
+                          {em.sender}
                         </div>
                       </Card>
                     );
@@ -283,9 +234,6 @@ function TriageCard({
     <div className="p-3 bg-surface-sunken rounded-lg border border-border-subtle">
       <div className="text-sm font-medium text-fg-primary truncate">{email.subject}</div>
       <div className="text-xs text-fg-tertiary mt-1 truncate">{email.sender}</div>
-      {email.reason && (
-        <div className="text-xs text-fg-disabled mt-2 line-clamp-2">{email.reason}</div>
-      )}
       <div className="flex gap-3 mt-2">
         <button
           type="button"

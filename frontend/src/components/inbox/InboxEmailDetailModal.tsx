@@ -6,7 +6,7 @@ import { formatTime } from "../../utils/time";
 
 const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
   important: { label: "重要", color: "text-danger" },
-  actionable: { label: "待处理", color: "text-warning" },
+  actionable: { label: "需跟进", color: "text-warning" },
   ignorable: { label: "可忽略", color: "text-fg-tertiary" },
 };
 

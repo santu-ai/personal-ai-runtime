@@ -73,6 +73,7 @@ describe("InboxPage", () => {
     expect(await screen.findByText("八月账单")).toBeInTheDocument();
     expect(screen.getByText("最近邮件")).toBeInTheDocument();
     expect(screen.getByText("billing@example.com")).toBeInTheDocument();
+    expect(screen.queryByText("您的账单已出")).not.toBeInTheDocument();
     expect(screen.queryByText("暂无")).not.toBeInTheDocument();
     expect(listInboxEmails).toHaveBeenCalledWith(undefined, "all", 20);
   });
@@ -99,6 +100,53 @@ describe("InboxPage", () => {
     expect(await screen.findByText("主题 1")).toBeInTheDocument();
     expect(screen.getByText("主题 20")).toBeInTheDocument();
     expect(screen.queryByText("主题 21")).not.toBeInTheDocument();
+  });
+
+  it("labels actionable unread as 需跟进 and styles unread stronger than read", async () => {
+    const unread = {
+      id: "u1",
+      sender: "boss@corp.com",
+      subject: "请尽快回复",
+      preview: "这段预览不应出现",
+      received_at: "2026-08-17T01:00:00Z",
+      category: "actionable" as const,
+      importance: 0.6,
+      reason: "需要跟进",
+      notified: 0,
+      digested: 0,
+      status: "pending" as const,
+      created_at: "2026-08-17T01:00:00Z",
+    };
+    const read = {
+      id: "r1",
+      sender: "news@shop.com",
+      subject: "促销活动",
+      preview: "五折优惠也不应出现",
+      received_at: "2026-08-17T00:00:00Z",
+      category: "ignorable" as const,
+      importance: 0.1,
+      reason: "营销",
+      notified: 0,
+      digested: 1,
+      status: "read" as const,
+      created_at: "2026-08-17T00:00:00Z",
+    };
+    vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") =>
+      status === "pending" ? [unread] : [unread, read],
+    );
+    renderWithRouter(<InboxPage />);
+    expect(await screen.findByText(/需跟进/)).toBeInTheDocument();
+    expect(screen.queryByText("这段预览不应出现")).not.toBeInTheDocument();
+    expect(screen.queryByText("五折优惠也不应出现")).not.toBeInTheDocument();
+    expect(screen.queryByText("需要跟进")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("未读 请尽快回复 boss@corp.com")).toBeInTheDocument();
+    expect(screen.getByLabelText("已读 促销活动 news@shop.com")).toBeInTheDocument();
+    const unreadTitle = screen.getByLabelText("未读 请尽快回复 boss@corp.com")
+      .querySelector("div");
+    const readTitle = screen.getByLabelText("已读 促销活动 news@shop.com")
+      .querySelector("div");
+    expect(unreadTitle?.className).toContain("font-semibold");
+    expect(readTitle?.className).toContain("font-normal");
   });
 
   it("surfaces a failed initial poll instead of swallowing it", async () => {
