@@ -61,8 +61,10 @@ vi.mock("../../stores/chatStore", () => {
 const memoriesState = {
   data: { memories: [] as Array<{ content: string }>, recent: [] as Array<{ content: string }> },
 };
-vi.mock("../../hooks/useMemoriesGroupedQuery", () => ({
+const proposedCountState = { data: 0 };
+vi.mock("../../hooks/useMemoriesQuery", () => ({
   useMemoriesGroupedQuery: () => memoriesState,
+  useProposedMemoryCountQuery: () => proposedCountState,
 }));
 
 vi.mock("../../hooks/useSettingsQuery", () => ({
@@ -102,6 +104,7 @@ describe("ChatView", () => {
     // from a clean baseline.
     memoriesState.data.memories = [];
     memoriesState.data.recent = [];
+    proposedCountState.data = 0;
   });
 
   it("renders input area and send button", () => {
@@ -215,5 +218,11 @@ describe("ChatView", () => {
     memoriesState.data.recent = [{ content: "likes tea" }];
     renderChatView();
     expect(screen.queryByText(/我刚记住了/)).not.toBeInTheDocument();
+  });
+
+  it("shows a review banner when proposed memories exist", () => {
+    proposedCountState.data = 3;
+    renderChatView();
+    expect(screen.getByText(/3 条记忆待确认后才会进入对话/)).toBeInTheDocument();
   });
 });

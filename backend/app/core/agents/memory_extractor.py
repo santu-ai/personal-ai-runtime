@@ -37,9 +37,13 @@ _MAX_FACT_CHARS = 280
 _MAX_FACTS_PER_TURN = 3
 
 _EXTRACT_PROMPT = (
-    "Extract durable, specific facts about the user from this conversation. "
+    "Extract durable, specific facts about the user as a person "
+    "(identity, preferences, relationships, places, standing decisions). "
     "One fact per line, no bullets. Max 3 facts. "
-    "Skip ephemeral chatter, questions, greetings, and vague statements.\n\n"
+    "Skip ephemeral chatter, questions, greetings, vague statements, "
+    "tool/file operations, file paths, debug tokens, work-item status, "
+    "the language the user spoke, and meta comments about missing facts "
+    "or confidence.\n\n"
 )
 
 # English phrases use word boundaries; CJK markers use plain substring match
@@ -47,7 +51,10 @@ _EXTRACT_PROMPT = (
 _NOISE_EN_RE = re.compile(
     r"(?i)\b("
     r"i don't know|as an ai|as a language model|"
-    r"user said|the user mentioned|the conversation"
+    r"user said|the user mentioned|the conversation|"
+    r"used chinese language|write_file|file write|file-writing|"
+    r"file creation|debug identifier|exact file content|"
+    r"requested a file|testing or debugging"
     r")\b"
 )
 _NOISE_CJK_MARKERS = (
@@ -58,6 +65,14 @@ _NOISE_CJK_MARKERS = (
     "用户说",
     "对话中",
     "根据对话",
+    "用户未提供",
+    "可提取的持久性",
+    "完成了行动步骤",
+    "置信度为",
+    "暗号记忆置信度",
+)
+_PATHISH_RE = re.compile(
+    r"(?i)(/tmp/|/home/|/users/|C:\\Users|\\\\|[A-Za-z]:\\|\bwrite_file\b)",
 )
 
 
@@ -206,6 +221,8 @@ class MemoryExtractor:
             return True
         compact = re.sub(r"\s+", "", fact)
         if any(marker in fact or marker in compact for marker in _NOISE_CJK_MARKERS):
+            return True
+        if _PATHISH_RE.search(fact):
             return True
         # Reject lines that are mostly whitespace / punctuation after strip.
         alnum = sum(1 for c in fact if c.isalnum())

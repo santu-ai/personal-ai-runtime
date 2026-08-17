@@ -288,7 +288,10 @@ async def update_status(item_id: str, body: dict):
 
         return read_ports.query_work_item(item_id)
 
-    updated = read_ports.update_work_item_status(item_id, new_status)
+    try:
+        updated = read_ports.update_work_item_status(item_id, new_status)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not updated:
         raise HTTPException(status_code=404, detail="Work item not found")
 

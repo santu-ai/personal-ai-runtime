@@ -51,6 +51,12 @@ def _create_conversation(client, title: str) -> str:
     return conv.json()["id"]
 
 
+def test_create_conversation_accepts_json_title(client):
+    r = client.post("/api/chat/conversations", json={"title": "dogfood json title"})
+    assert r.status_code == 200, r.text
+    assert r.json()["title"] == "dogfood json title"
+
+
 # ── tests ──────────────────────────────────────────────────────────────
 
 

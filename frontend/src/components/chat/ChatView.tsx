@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { Zap, MailSearch, Target as TargetIcon, BrainCircuit, Lightbulb } from "lucide-react";
 import { type MemoryRow, type StreamEvent } from "../../api/client";
 import { listWorkItems } from "../../api/workItems";
@@ -6,7 +7,7 @@ import { useErrorStore } from "../../stores/errorStore";
 import { useChatStore } from "../../stores/chatStore";
 import { useChatMessages } from "../../hooks/useChatMessages";
 import { useApprovalFlow } from "../../hooks/useApprovalFlow";
-import { useMemoriesGroupedQuery } from "../../hooks/useMemoriesQuery";
+import { useMemoriesGroupedQuery, useProposedMemoryCountQuery } from "../../hooks/useMemoriesQuery";
 import MessageItem from "./MessageItem";
 import ConfirmationDialog from "./ConfirmationDialog";
 import ContextPanel from "./ContextPanel";
@@ -41,6 +42,7 @@ export default function ChatView({ conversationId }: Props) {
   // Server state lives in TanStack Query; cache is invalidated by WS
   // `memory_changed` events so we never need setTimeout polling.
   const { data: memData } = useMemoriesGroupedQuery();
+  const { data: proposedCount = 0 } = useProposedMemoryCountQuery();
   const recentMemories: MemoryRow[] = memData?.recent ?? [];
   const memoryTotal: number = memData?.memories.length ?? 0;
   // Track whether the user has sent at least one message in this session
@@ -271,6 +273,14 @@ export default function ChatView({ conversationId }: Props) {
   if (initialLoad && messages.length === 0 && !isLoading) {
     return (
       <div className="flex-1 flex flex-col min-h-0">
+        {proposedCount > 0 && (
+          <Link
+            to="/memories?tab=review"
+            className="px-4 py-2 bg-insight/10 border-b border-insight/30 text-xs text-insight hover:bg-insight/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+          >
+            {proposedCount} 条记忆待确认后才会进入对话 →
+          </Link>
+        )}
         <WelcomeScreen
           recentMemories={recentMemories}
           suggestions={suggestions}
@@ -297,6 +307,14 @@ export default function ChatView({ conversationId }: Props) {
   return (
     <div className="flex-1 flex flex-row min-h-0 relative">
       <div className="flex-1 flex flex-col min-h-0">
+        {proposedCount > 0 && (
+          <Link
+            to="/memories?tab=review"
+            className="px-4 py-2 bg-insight/10 border-b border-insight/30 text-xs text-insight hover:bg-insight/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+          >
+            {proposedCount} 条记忆待确认后才会进入对话 →
+          </Link>
+        )}
         {memoryNotice && (
           <div className="px-4 py-2 bg-insight/10 border-b border-insight/30 flex items-center gap-2 text-xs text-insight animate-pulse">
             <span>🧠</span>

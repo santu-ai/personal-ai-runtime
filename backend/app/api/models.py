@@ -13,8 +13,12 @@ class SendMessageRequest(BaseModel):
     content: str
 
 
+class CreateConversationRequest(BaseModel):
+    title: str | None = None
+
+
 class ResolveApprovalRequest(BaseModel):
-    decision: str = "deny"
+    decision: Literal["approve", "deny"]
     tool_name: str = ""
     tool_args: dict = Field(default_factory=dict)
     conv_id: str = ""

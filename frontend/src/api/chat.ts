@@ -4,10 +4,10 @@ import { API_BASE, request, getAuthToken } from "./core";
 import type { Conversation, Message, StreamEvent } from "./types";
 
 export async function createConversation(title?: string): Promise<Conversation> {
-  const url = title
-    ? `${API_BASE}/chat/conversations?title=${encodeURIComponent(title)}`
-    : `${API_BASE}/chat/conversations`;
-  return request<Conversation>(url, { method: "POST" });
+  return request<Conversation>(`${API_BASE}/chat/conversations`, {
+    method: "POST",
+    body: JSON.stringify({ title: title ?? null }),
+  });
 }
 
 export async function listConversations(): Promise<Conversation[]> {
@@ -19,8 +19,10 @@ export async function deleteConversation(id: string): Promise<void> {
 }
 
 export async function updateConversation(id: string, title: string): Promise<{ status: string }> {
-  const url = `${API_BASE}/chat/conversations/${id}?title=${encodeURIComponent(title)}`;
-  return request<{ status: string }>(url, { method: "PATCH" });
+  return request<{ status: string }>(`${API_BASE}/chat/conversations/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ title }),
+  });
 }
 
 export async function getMessages(convId: string): Promise<Message[]> {

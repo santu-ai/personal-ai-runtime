@@ -93,7 +93,7 @@ flowchart LR
 | 字段 | 默认 | 环境变量 |
 |---|---|---|
 | `memory_extractor` | `ollama` | `MEMORY_EXTRACTOR`（`ollama` 本地 或 `cloud`） |
-| `sensitive_ops_local` | `True` | `SENSITIVE_OPS_LOCAL` |
+| `sensitive_ops_local` | `True` | `SENSITIVE_OPS_LOCAL`（家目录路径启发式；**项目根内路径不升级**） |
 | `execution_shadow_compare` | `False` | `EXECUTION_SHADOW_COMPARE` |
 | `scheduler_max_concurrent` | `8` | `SCHEDULER_MAX_CONCURRENT` |
 | `scheduler_max_pending` | `256` | `SCHEDULER_MAX_PENDING` |

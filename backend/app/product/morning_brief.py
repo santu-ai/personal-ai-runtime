@@ -129,11 +129,10 @@ def generate_morning_brief() -> MorningBriefResult:
         )
     result.steps_ms["goals"] = round((time.perf_counter() - t0) * 1000, 1)
 
-    # Unread inbox
+    # Unread inbox — product status is ``pending`` (not ``new``/``unread``).
     t0 = time.perf_counter()
     try:
-        inbox_items = read_ports.query_inbox_emails(limit=500, status="new")
-        result.inbox_count = len(inbox_items)
+        result.inbox_count = int(read_ports.count_pending_inbox_emails() or 0)
         logger.info(
             "morning_brief: inbox ok count=%d",
             result.inbox_count,
@@ -148,28 +147,15 @@ def generate_morning_brief() -> MorningBriefResult:
         )
     result.steps_ms["inbox"] = round((time.perf_counter() - t0) * 1000, 1)
 
-    # Proposed memories awaiting user claim authority
+    # Proposed memories: count + review link only (do not dump noisy snippets).
     t0 = time.perf_counter()
     proposed_lines = "  无"
     try:
         result.proposed_count = int(
             read_ports.count_memories(claim_status="proposed") or 0
         )
-        proposed = (
-            read_ports.query_memories(claim_status="proposed", limit=3)
-            if result.proposed_count
-            else []
-        )
-        if proposed:
-            snippets = []
-            for m in proposed:
-                content = (m.get("content") or "").strip().replace("\n", " ")
-                if len(content) > 60:
-                    content = content[:57] + "…"
-                snippets.append(f"  · {content}")
-            proposed_lines = "\n".join(snippets)
-            if result.proposed_count > len(proposed):
-                proposed_lines += f"\n  …另有 {result.proposed_count - len(proposed)} 条"
+        if result.proposed_count:
+            proposed_lines = "  打开 /memories?tab=review 批量确认后才会进入对话"
         logger.info(
             "morning_brief: proposed_memories ok count=%d",
             result.proposed_count,
@@ -190,8 +176,7 @@ def generate_morning_brief() -> MorningBriefResult:
         f"📋 进行中的目标:\n{goal_lines}\n\n"
         f"📧 未读邮件: {result.inbox_count} 封\n\n"
         f"📅 今日日程: {result.calendar_count} 个\n\n"
-        f"🧠 待确认记忆: {result.proposed_count} 条\n{proposed_lines}\n"
-        f"（打开 /memories?tab=review 批量确认）\n\n"
+        f"🧠 待确认记忆: {result.proposed_count} 条\n{proposed_lines}\n\n"
         f"祝你今天一切顺利！"
     )
 

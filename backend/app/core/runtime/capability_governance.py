@@ -28,9 +28,10 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from app.config import settings
+from app.config import BASE_DIR, settings
 from app.core.runtime.execution import Principal
 from app.core.runtime.runtime_container import _LazyProxy, runtime
 
@@ -423,6 +424,39 @@ _SENSITIVE_PATTERNS = [
 ]
 
 
+def _looks_like_path(text: str) -> bool:
+    if text.startswith(("~", "/", "\\\\")) or ":\\" in text or ":/" in text[:3]:
+        return True
+    return "/" in text or "\\" in text
+
+
+def _is_under_project_root(raw: str) -> bool:
+    """True when ``raw`` looks like a filesystem path inside the repo (BASE_DIR)."""
+    text = (raw or "").strip()
+    if not text or not _looks_like_path(text):
+        return False
+    try:
+        path = Path(text).expanduser()
+        if not path.is_absolute():
+            path = (BASE_DIR / path).resolve()
+        else:
+            path = path.resolve()
+        root = BASE_DIR.resolve()
+        return path == root or root in path.parents
+    except (OSError, RuntimeError, ValueError):
+        return False
+
+
+def _args_blob_for_sensitive_scan(args: dict) -> str:
+    """Drop project-root paths so macOS/Linux home-dir regexes do not fire on the repo."""
+    cleaned: dict[str, Any] = {}
+    for key, value in args.items():
+        if isinstance(value, str) and _is_under_project_root(value):
+            continue
+        cleaned[key] = value
+    return str(cleaned)
+
+
 class SensitiveRouter:
     def is_sensitive_capability(self, name: str, args: dict | None = None) -> bool:
         if not settings.sensitive_ops_local:
@@ -434,7 +468,7 @@ class SensitiveRouter:
         if name in WRITE_CLASS_TOOLS:
             return True
         if args:
-            blob = str(args)
+            blob = _args_blob_for_sensitive_scan(args)
             return any(p.search(blob) for p in _SENSITIVE_PATTERNS)
         return False
 

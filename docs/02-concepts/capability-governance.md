@@ -93,7 +93,7 @@ flowchart TB
 
 ## 敏感操作路由
 
-[`backend/app/core/runtime/capability_governance.py`](../../backend/app/core/runtime/capability_governance.py) 末尾的 `SensitiveRouter` 用启发式判定敏感操作：写工具永远敏感；正则匹配 password/api_key/secret/token、`.pem`/`.key`/`.env` 文件、家目录路径。`sensitive_router.elevated_risk(name, args)` 返回 `"high"` 或空（由原 `sensitive_router.py` 折叠而来）。
+[`backend/app/core/runtime/capability_governance.py`](../../backend/app/core/runtime/capability_governance.py) 末尾的 `SensitiveRouter` 用启发式判定敏感操作：写工具永远敏感；正则匹配 password/api_key/secret/token、`.pem`/`.key`/`.env` 文件、家目录路径。落在项目根（`BASE_DIR`）内的路径会从扫描中剔除，避免 macOS `/Users/`、Linux `/home/` 把仓库内 `read_file` 误判为 high risk。`sensitive_router.elevated_risk(name, args)` 返回 `"high"` 或空（由原 `sensitive_router.py` 折叠而来）。
 
 ## 身份与执行归属
 

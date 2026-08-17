@@ -125,6 +125,6 @@ connectors, timeline, work_items
 
 ## 请求/响应模型
 
-所有 Pydantic 模型定义于 [`backend/app/api/models.py`](../../backend/app/api/models.py)（如 `SendMessageRequest`、`ResolveApprovalRequest`、`CreateMemoryRequest`、`UpdateMemoryRequest`（category 必须在 `{fact, preference, habit, belief, insight, work, personal}`）、`CreateTriggerRequest`、`ExportRequest`/`ImportRequest`/`EncryptedExportRequest`/`EncryptedImportRequest`、`UpdateInboxStatusRequest`、`LlmProviderInput`/`UpdateLlmConfigRequest`/`UpdateEmailConfigRequest`/`TestEmailRequest`/`TestLlmRequest`/`PromptConfig`/`NotificationSettings`、`InstallConnectorRequest`）。Work item 请求体定义在 [`work_items.py`](../../backend/app/api/work_items.py)。
+所有 Pydantic 模型定义于 [`backend/app/api/models.py`](../../backend/app/api/models.py)（如 `SendMessageRequest`、`CreateConversationRequest`、`ResolveApprovalRequest`（`decision` 必须显式为 `approve`/`deny`，缺省 422）、`CreateMemoryRequest`、`UpdateMemoryRequest`（category 必须在 `{fact, preference, habit, belief, insight, work, personal}`）、`CreateTriggerRequest`、`ExportRequest`/`ImportRequest`/`EncryptedExportRequest`/`EncryptedImportRequest`、`UpdateInboxStatusRequest`、`LlmProviderInput`/`UpdateLlmConfigRequest`/`UpdateEmailConfigRequest`/`TestEmailRequest`/`TestLlmRequest`/`PromptConfig`/`NotificationSettings`、`InstallConnectorRequest`）。Work item 请求体定义在 [`work_items.py`](../../backend/app/api/work_items.py)。
 
 确认码常量（[`system.py`](../../backend/app/api/system.py)）：`EXPORT_CONFIRM="EXPORT_ALL_DATA"`、`DESTROY_CONFIRM="DESTROY_ALL_DATA"`、`IMPORT_CONFIRM="DESTROY_AND_IMPORT"`。

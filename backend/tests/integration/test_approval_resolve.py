@@ -79,3 +79,14 @@ def test_resolve_executes_server_record(client: TestClient, monkeypatch):
     assert r.status_code == 200
     assert captured["name"] == "write_file"
     assert captured["args"] == {"path": "/tmp/safe.txt", "content": "hello"}
+
+
+def test_resolve_missing_decision_returns_422(client: TestClient):
+    from app.core.runtime.kernel_instance import kernel
+
+    pending = _pending_write_file(kernel)
+    r = client.post(
+        f"/api/chat/approvals/{pending['approval_id']}/resolve",
+        json={"conv_id": "", "tool_call_id": ""},
+    )
+    assert r.status_code == 422

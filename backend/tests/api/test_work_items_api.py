@@ -98,6 +98,18 @@ def test_status_transition(client):
     assert r.json()["status"] == "running"
 
 
+def test_illegal_status_transition_returns_400(client):
+    """pending → completed is illegal; API must be 400 not 500."""
+    create = client.post("/api/work-items/", json={
+        "title": "T", "work_type": "task",
+    })
+    item_id = create.json()["id"]
+
+    r = client.post(f"/api/work-items/{item_id}/status", json={"status": "completed"})
+    assert r.status_code == 400
+    assert "Illegal state transition" in r.json()["detail"]
+
+
 def test_get_children(client):
     """GET /{id}/children returns direct sub-items."""
     parent = client.post("/api/work-items/", json={

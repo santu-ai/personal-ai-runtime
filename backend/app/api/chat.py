@@ -6,7 +6,11 @@ import json
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from app.api.models import ResolveApprovalRequest, SendMessageRequest
+from app.api.models import (
+    CreateConversationRequest,
+    ResolveApprovalRequest,
+    SendMessageRequest,
+)
 from app.config import settings
 from app.core.agents.brain import Brain
 from app.core.agents.conversation import ConversationAPI, ConversationManager
@@ -43,9 +47,16 @@ def _yield_completion_extras(result: dict, conv_id: str) -> list[str]:
 
 
 @router.post("/conversations")
-async def create_conversation(title: str | None = None):
-    """Create a new conversation."""
-    conv = ConversationAPI.create(title=title)
+async def create_conversation(
+    title: str | None = None,
+    body: CreateConversationRequest | None = None,
+):
+    """Create a new conversation.
+
+    Title may come from a query string (legacy) or JSON body ``{"title": "..."}``.
+    """
+    resolved = (body.title if body and body.title else None) or title
+    conv = ConversationAPI.create(title=resolved)
     return conv
 
 
@@ -75,12 +86,17 @@ async def delete_conversation(conv_id: str):
 
 
 @router.patch("/conversations/{conv_id}")
-async def update_conversation(conv_id: str, title: str | None = None):
-    """Update conversation title."""
+async def update_conversation(
+    conv_id: str,
+    title: str | None = None,
+    body: CreateConversationRequest | None = None,
+):
+    """Update conversation title (query or JSON body)."""
     conv = ConversationAPI.get(conv_id)
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    ConversationAPI.update(conv_id, title=title)
+    resolved = (body.title if body and body.title else None) or title
+    ConversationAPI.update(conv_id, title=resolved)
     return {"status": "ok"}
 
 

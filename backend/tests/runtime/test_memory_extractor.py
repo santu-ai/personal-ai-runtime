@@ -193,6 +193,26 @@ class TestMemoryExtractor:
         stored = await extractor.extract_and_store("anything")
         assert stored == ["User prefers TypeScript for frontend work"]
 
+    async def test_session_and_path_noise_not_stored(self, tmp_path, monkeypatch):
+        db = Database(db_path=str(tmp_path / "extract_session.db"))
+        k = Kernel(db=db, memory_index=None)
+        monkeypatch.setattr("app.core.agents.memory_engine.kernel", k)
+        monkeypatch.setattr(memory_engine, "search_relevant_memories", lambda *_a, **_k: [])
+
+        async def extract_noise(_t: str) -> list[str]:
+            return [
+                "User used Chinese language for the request.",
+                "User requested a file write operation to /tmp/pai_debug/dogfood.txt",
+                "用户未提供可提取的持久性具体事实。",
+                "QILIAN-DF-R2-0816 is the user's second-round dogfood personal passcode.",
+            ]
+
+        extractor = MemoryExtractor(extract_fn=extract_noise)
+        stored = await extractor.extract_and_store("anything")
+        assert stored == [
+            "QILIAN-DF-R2-0816 is the user's second-round dogfood personal passcode.",
+        ]
+
     async def test_caps_facts_per_turn(self, tmp_path, monkeypatch):
         db = Database(db_path=str(tmp_path / "extract_cap.db"))
         k = Kernel(db=db, memory_index=None)

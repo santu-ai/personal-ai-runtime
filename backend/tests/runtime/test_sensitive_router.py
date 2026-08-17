@@ -29,6 +29,18 @@ def test_sensitive_patterns_in_args(router, monkeypatch):
     assert router.is_sensitive_capability("read_file", {"path": "/tmp/safe.txt"}) is False
 
 
+def test_project_root_path_is_not_home_sensitive(router, monkeypatch):
+    """Repo lives under /Users or /home; reading project files must not escalate."""
+    from app.config import BASE_DIR
+
+    monkeypatch.setattr("app.core.runtime.capability_governance.settings.sensitive_ops_local", True)
+    project_file = str(BASE_DIR / "AGENTS.md")
+    assert router.is_sensitive_capability("read_file", {"path": project_file}) is False
+    assert router.is_sensitive_capability(
+        "read_file", {"path": project_file, "content": "api_key=abc"},
+    ) is True
+
+
 def test_singleton_instance():
     assert isinstance(sensitive_router, SensitiveRouter)
 

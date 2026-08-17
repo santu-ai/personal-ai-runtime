@@ -5,10 +5,10 @@
 
 ## 当前状态
 
-- 当前分支：`main`（与 origin/main 同步，commit `4129540`）
-- 进行中任务 / WIP：Runtime validation dogfood — remaining JSON tools + live memory A/B landed
-- 已知坏点 / 待办：email 空收件箱仍 JSON miss；Context live A/B 未测；Chat max_retries=1；Chroma 质量未测
-- 最近审阅：2026-08-14 Runtime Validation — filesystem/git/fetch/shell/mesh 失败不再记 Invoked
+- 当前分支：`main`
+- 进行中任务 / WIP：无
+- 已知坏点 / 待办：cryptography 49 无 Intel wheel；Vite 只绑 IPv6 localhost；库内遗留 running 调试任务 + 10 条 pending write_file 审批（脏数据，未清）
+- 最近审阅：2026-08-16 W33 日用修复
 
 ## 本机环境（macOS Intel x86_64, 13.7.8）— 2026-08-16 主开发接手
 
@@ -16,7 +16,7 @@
 - **cryptography 例外**：PyPI 49.0.0 无 Intel macOS wheel，本机 venv 装的是 **45.0.6**（universal2 wheel，API 兼容，测试全绿）；仓库 lock 仍是 49.0.0。本机勿跑 `make install`（会重装 49.0.0 失败）；若正式降级需走三步锁文件纪律（requirements.txt + pyproject.toml → dependency-sync → lockfile）
 - **SENSITIVE_OPS_LOCAL=false** 已写入根目录 `.env`：`_SENSITIVE_PATTERNS` 含 `/Users/` 正则，macOS 本机路径会误触发 high risk（Linux CI 不受影响）；5 个测试（test_taint 1 + eval/benchmarks 4）依赖此设置
 - 基线：`make test-backend` 等价 1411 passed / 3 skipped / 4 deselected；boundary / layer-deps / concept-growth 全过
-- `LLM_API_KEY=sk-placeholder` 占位，真 LLM 冒烟前需填真实 key
+- 根目录 `.env` 已配置真实 DeepSeek key；Gmail 已写入运行时 settings（R2 Inbox 通）
 
 ## 产品观察（后续规划候选）
 
@@ -28,7 +28,9 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
-| 2026-08-16 | 修复 macOS 系统级 symlink（/tmp→/private/tmp）导致 FILESYSTEM_ALLOWED_DIRS 词法校验全拒；显式配置改为追加项目根；symlink 检查改为沿 lexical 根 walk（不先 resolve），堵住 alias 根下 planted symlink 逃逸；+回归测试 | 未提交 |
+| 2026-08-16 | W33 日用修复：抽取降噪；简报用 pending 邮件计数且不铺 proposed 内容；Chat 待确认横幅；pending→completed 改 400；审批缺 decision 改 422；会话 JSON title；项目根豁免 /Users 敏感误伤 | 本提交 |
+| 2026-08-16 | W33-R2 dogfood：Chat/Memory/Work/Desktop/Inbox 全 pass；Memory 需 ratify 后新会话才能召回 | 记录在 `.harness/dogfood/2026-W33.md` |
+| 2026-08-16 | 修复 macOS 系统级 symlink（/tmp→/private/tmp）导致 FILESYSTEM_ALLOWED_DIRS 词法校验全拒；显式配置改为追加项目根；symlink 检查改为沿 lexical 根 walk（不先 resolve），堵住 alias 根下 planted symlink 逃逸；+回归测试 | commit `39b9da4` 未推送 |
 | 2026-08-13 | 体检 Now 批次：cap_intent 意图+chat 幂等键（E-10/E-11）；url_monitors/inbox 旁路收编+layer-deps R5；单实例文件锁；interrupted 计入 retry 预算；INV-C1/C4/W6 文档校正 | 本提交推送 |
 | 2026-08-07 | 记忆 triage：bulk/筛选/count + extractor 减流入（含 distance 去重修复） | commit `59b66c6` |
 | 2026-08-06 | Tasks：执行日志 + plan 预览确认；needs_user 建议话术全覆盖 | 前端 |
