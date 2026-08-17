@@ -1,5 +1,7 @@
 """MCPHub invoke_tool observability and kwargs filtering."""
 
+import json
+
 import pytest
 
 from app.core.harness.mcp_hub import MCPHub, ToolDef, ToolInvokeError
@@ -51,6 +53,70 @@ async def test_invoke_tool_filters_unexpected_kwargs():
     result = await hub.invoke_tool("echo_path", {"path": "/a", "noise": True})
     assert result == "/a"
     assert seen == {"path": "/a"}
+
+
+@pytest.mark.asyncio
+async def test_invoke_tool_keeps_oversized_json_parseable():
+    """Inbox poll json.loads the hub result; clipping must not break JSON."""
+    from app.core.harness.mcp_hub import TOOL_RESULT_CHAR_LIMIT
+
+    hub = MCPHub(enabled_categories=set())
+    payload = {
+        "count": 20,
+        "unread_only": False,
+        "emails": [
+            {
+                "message_id": f"<msg-{i}.long-id@zhouyao-PF4MWDSJ.al.com>",
+                "from": "Test Sender <sender@example.com>",
+                "subject": f"这是一封比较长的中文主题 {i}",
+                "date": "2026-08-17 15:00",
+                "preview": "预览正文" * 40,
+            }
+            for i in range(20)
+        ],
+        "all_unread_emails": [
+            {"message_id": f"<unseen-{i}@example.com>"}
+            for i in range(50)
+        ],
+    }
+    raw = json.dumps(payload, ensure_ascii=False)
+    assert len(raw) > TOOL_RESULT_CHAR_LIMIT
+
+    hub.register_tool(ToolDef(
+        name="fat_json",
+        description="x",
+        parameters={"type": "object", "properties": {}},
+        handler=lambda: raw,
+    ))
+    result = await hub.invoke_tool("fat_json", {})
+    parsed = json.loads(result)
+    assert parsed["count"] == 20
+    assert len(parsed["emails"]) == 20
+    assert parsed["emails"][0]["message_id"] == "<msg-0.long-id@zhouyao-PF4MWDSJ.al.com>"
+
+
+def test_clip_replaces_json_over_hard_cap():
+    from app.core.harness.mcp_hub import JSON_RESULT_CHAR_LIMIT, _clip_tool_result
+
+    huge = json.dumps({"blob": "a" * (JSON_RESULT_CHAR_LIMIT + 10)})
+    out = _clip_tool_result(huge)
+    assert json.loads(out) == {"error": "result_too_large", "truncated": True}
+
+
+@pytest.mark.asyncio
+async def test_invoke_tool_still_clips_plain_text():
+    from app.core.harness.mcp_hub import TOOL_RESULT_CHAR_LIMIT
+
+    hub = MCPHub(enabled_categories=set())
+    hub.register_tool(ToolDef(
+        name="fat_text",
+        description="x",
+        parameters={"type": "object", "properties": {}},
+        handler=lambda: "x" * (TOOL_RESULT_CHAR_LIMIT + 50),
+    ))
+    result = await hub.invoke_tool("fat_text", {})
+    assert result.endswith("\n... [output truncated]")
+    assert len(result) == TOOL_RESULT_CHAR_LIMIT + len("\n... [output truncated]")
 
 
 @pytest.mark.asyncio

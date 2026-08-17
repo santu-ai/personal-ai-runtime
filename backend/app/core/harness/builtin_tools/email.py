@@ -338,11 +338,18 @@ class EmailServer:
                 {k: v for k, v in em.items() if k not in ("body", "seq_num")}
                 for em in emails
             ]
+            # Unread index is ids-only: full headers for every UNSEEN message
+            # previously blew mcp_hub's text clip and produced invalid JSON.
+            unread_index = [
+                {"message_id": em["message_id"]}
+                for em in all_unread_emails
+                if em.get("message_id")
+            ]
             payload: dict = {
                 "count": len(slim),
                 "unread_only": unread_only,
                 "emails": slim,
-                "all_unread_emails": all_unread_emails,
+                "all_unread_emails": unread_index,
             }
             return json.dumps(payload, ensure_ascii=False)
         except imaplib.IMAP4.error as e:

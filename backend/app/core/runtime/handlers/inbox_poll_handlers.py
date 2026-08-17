@@ -60,13 +60,23 @@ async def on_inbox_poll_requested(ctx: "ExecutionContext", event: "Event") -> No
         return
 
     result = cap["result"]
+    parse_error: str | None = None
     if isinstance(result, str):
         try:
             result = json.loads(result)
         except json.JSONDecodeError:
-            result = {}
-    if not isinstance(result, dict):
-        result = {}
+            parse_error = "invalid inbox JSON"
+    if parse_error or not isinstance(result, dict):
+        ctx.emit(
+            "InboxPollCompleted", "inbox", f"inbox_{event.aggregate_id}",
+            payload={
+                "status": "error",
+                "error": parse_error or "invalid inbox JSON",
+                "new_count": 0,
+            },
+            caused_by=event.id,
+        )
+        return
 
     summary = await apply(result, execution_id=ctx.execution_id)
     if summary.get("status") == "error":

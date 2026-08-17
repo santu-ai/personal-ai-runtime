@@ -7,6 +7,7 @@
 
 import asyncio
 import inspect
+import json
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -43,6 +44,34 @@ class ToolDef:
     handler: Callable[..., str | Awaitable[str]]
     is_async: bool = False
     requires_confirmation: bool = False
+
+
+# Plain-text tool output is clipped so a single call cannot blow LLM context.
+# Structured JSON must stay parseable: Kernel consumers (inbox poll, mark-read)
+# json.loads the full result. LLM-facing compaction lives in tool_postprocess.
+TOOL_RESULT_CHAR_LIMIT = 8000
+JSON_RESULT_CHAR_LIMIT = 256_000
+
+
+def _clip_tool_result(result: str) -> str:
+    """Clip oversized tool output without turning JSON into a parse error."""
+    if len(result) <= TOOL_RESULT_CHAR_LIMIT:
+        return result
+    stripped = result.lstrip()
+    if stripped[:1] in "{[":
+        try:
+            json.loads(result)
+        except (json.JSONDecodeError, ValueError, TypeError):
+            pass
+        else:
+            if len(result) <= JSON_RESULT_CHAR_LIMIT:
+                return result
+            logger.warning(
+                "JSON tool result exceeds %s chars; replacing with error payload",
+                JSON_RESULT_CHAR_LIMIT,
+            )
+            return json.dumps({"error": "result_too_large", "truncated": True})
+    return result[:TOOL_RESULT_CHAR_LIMIT] + "\n... [output truncated]"
 
 
 def _filter_tool_kwargs(handler: Callable[..., Any], arguments: dict) -> dict:
@@ -174,10 +203,7 @@ class MCPHub:
 
             if not isinstance(result, str):
                 result = str(result)
-            # 超长输出截断到 8000 字符，避免一次工具结果把整个上下文撑爆。
-            if len(result) > 8000:
-                result = result[:8000] + "\n... [output truncated]"
-            return result
+            return _clip_tool_result(result)
         except ToolInvokeError:
             raise
         except TimeoutError:

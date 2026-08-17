@@ -129,19 +129,34 @@ async def test_json_string_result_is_parsed_before_apply(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_invalid_json_string_becomes_empty_dict(monkeypatch):
+async def test_invalid_json_string_emits_error(monkeypatch):
     kernel = _RecordingKernel({"status": "success", "result": "not-json{"})
     monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", kernel)
-    seen: list[Any] = []
 
-    async def _apply(result, **kwargs):
-        seen.append(result)
-        return {"status": "success", "new_count": 0}
+    async def _apply(_result, **_kwargs):
+        raise AssertionError("applier must not run on invalid JSON")
 
     runtime.bind_inbox_poll_applier(_apply)
     await on_inbox_poll_requested(_ctx(kernel), _event())
 
-    assert seen == [{}]
+    out = kernel.emitted[0]["payload"]
+    assert out["status"] == "error"
+    assert out["error"] == "invalid inbox JSON"
+    assert out["new_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_non_dict_result_emits_error(monkeypatch):
+    kernel = _RecordingKernel({"status": "success", "result": ["emails"]})
+    monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", kernel)
+
+    async def _apply(_result, **_kwargs):
+        raise AssertionError("applier must not run on non-dict result")
+
+    runtime.bind_inbox_poll_applier(_apply)
+    await on_inbox_poll_requested(_ctx(kernel), _event())
+
+    assert kernel.emitted[0]["payload"]["error"] == "invalid inbox JSON"
 
 
 @pytest.mark.asyncio

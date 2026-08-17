@@ -64,10 +64,12 @@ def test_check_inbox_unread_only_includes_all_unread_emails(monkeypatch):
         ],
     )
 
-    data = __import__("json").loads(server.check_inbox(limit=1, unread_only=True))
+    data = json.loads(server.check_inbox(limit=1, unread_only=True))
     assert data["count"] == 1
-    mids = {e["message_id"] for e in data["all_unread_emails"]}
-    assert mids == {"<id-1@example.com>", "<id-2@example.com>"}
+    assert data["all_unread_emails"] == [
+        {"message_id": "<id-1@example.com>"},
+        {"message_id": "<id-2@example.com>"},
+    ]
 
 
 def test_check_inbox_recent_mail_still_includes_unseen_index(monkeypatch):
@@ -95,7 +97,7 @@ def test_check_inbox_recent_mail_still_includes_unseen_index(monkeypatch):
     data = json.loads(server.check_inbox(limit=1, unread_only=False))
     assert data["unread_only"] is False
     assert data["emails"][0]["message_id"] == "<seen@example.com>"
-    assert data["all_unread_emails"][0]["message_id"] == "<unseen@example.com>"
+    assert data["all_unread_emails"] == [{"message_id": "<unseen@example.com>"}]
 
 
 def test_read_inbox_email_by_message_id(monkeypatch):
