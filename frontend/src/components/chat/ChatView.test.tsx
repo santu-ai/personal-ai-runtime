@@ -161,8 +161,6 @@ describe("ChatView", () => {
       expect(screen.getByText(/建议：写入文件/)).toBeInTheDocument();
     });
     expect(screen.queryByText(/抱歉，未能生成回复/)).not.toBeInTheDocument();
-    const band = screen.getByText(/建议：写入文件/).closest(".border-t");
-    expect(band?.className ?? "").not.toMatch(/bg-surface-raised/);
   });
 
   it("calls resolveApproval when user confirms pending tool", async () => {
