@@ -8,6 +8,7 @@ from typing import Any
 
 from app.core.runtime.kernel.event import Event
 from app.core.runtime.read_ports._common import kernel
+from app.core.runtime.read_ports.approvals import query_pending_approval_count
 
 
 def _goal_id_for(event: Event) -> str | None:
@@ -226,4 +227,52 @@ def reconstruct_execution_trace(correlation_id: str) -> dict[str, Any]:
             {"type": e.type, "ts": e.ts, "aggregate_id": e.aggregate_id}
             for e in events
         ],
+    }
+
+
+def _public_execution(item: Any) -> dict[str, Any]:
+    error = getattr(item, "error", None) or None
+    if isinstance(error, str) and len(error) > 200:
+        error = error[:200]
+    return {
+        "id": getattr(item, "id", "") or "",
+        "status": getattr(item, "status", "") or "",
+        "handler_name": getattr(item, "handler_name", "") or "",
+        "event_type": getattr(item, "event_type", "") or "",
+        "error": error,
+        "retry_count": int(getattr(item, "retry_count", 0) or 0),
+        "dead_letter": bool(getattr(item, "dead_letter", False)),
+        "created_at": getattr(item, "created_at", "") or "",
+        "completed_at": getattr(item, "completed_at", None) or None,
+        "correlation_id": getattr(item, "correlation_id", "") or "",
+    }
+
+
+def _newest_executions(items: list[Any], limit: int) -> list[dict[str, Any]]:
+    """Execution repository results are ascending by created_at."""
+    if limit <= 0 or not items:
+        return []
+    return [_public_execution(item) for item in reversed(items[-limit:])]
+
+
+def query_execution_trust_summary(*, recent_limit: int = 5) -> dict[str, Any]:
+    """Dashboard-facing Lane A health: pending / failed / retry / dead-letter."""
+    runtime = kernel()
+    by_status = runtime.count_scheduled_executions_by_status()
+    failed_rows = runtime.read_scheduled_executions(status="failed")
+    retrying_rows = runtime.read_scheduled_executions(status="retrying")
+    completed_rows = runtime.read_scheduled_executions(status="completed")
+    dead_rows = runtime.list_dead_letter_executions()
+    failed = _newest_executions(failed_rows, recent_limit)
+    last_completed = _newest_executions(completed_rows, 1)
+    last_failed = failed[:1]
+    return {
+        "by_status": {str(key): int(value) for key, value in (by_status or {}).items()},
+        "pending_approvals": int(query_pending_approval_count() or 0),
+        "failed": failed,
+        "retrying": _newest_executions(retrying_rows, recent_limit),
+        "dead_letter": _newest_executions(dead_rows, recent_limit),
+        "dead_letter_count": len(dead_rows),
+        "last_completed": last_completed[0] if last_completed else None,
+        "last_failed": last_failed[0] if last_failed else None,
     }

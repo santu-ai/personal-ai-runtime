@@ -227,54 +227,10 @@ _EXECUTION_TRUST_EMPTY = {
 }
 
 
-def _public_execution(item) -> dict:
-    error = getattr(item, "error", None) or None
-    if isinstance(error, str) and len(error) > 200:
-        error = error[:200]
-    return {
-        "id": getattr(item, "id", "") or "",
-        "status": getattr(item, "status", "") or "",
-        "handler_name": getattr(item, "handler_name", "") or "",
-        "event_type": getattr(item, "event_type", "") or "",
-        "error": error,
-        "retry_count": int(getattr(item, "retry_count", 0) or 0),
-        "dead_letter": bool(getattr(item, "dead_letter", False)),
-        "created_at": getattr(item, "created_at", "") or "",
-        "completed_at": getattr(item, "completed_at", None) or None,
-        "correlation_id": getattr(item, "correlation_id", "") or "",
-    }
-
-
-def _newest_executions(items, n: int) -> list[dict]:
-    """handler_executions are stored created_at ASC; surface newest first."""
-    if n <= 0 or not items:
-        return []
-    return [_public_execution(item) for item in reversed(items[-n:])]
-
-
 def _widget_execution_trust() -> dict:
     """Lane A execution health — pending / failed / retry / dead-letter / last result."""
     try:
-        by_status = kernel.count_scheduled_executions_by_status()
-        failed_rows = kernel.read_scheduled_executions(status="failed")
-        retrying_rows = kernel.read_scheduled_executions(status="retrying")
-        completed_rows = kernel.read_scheduled_executions(status="completed")
-        dead_rows = kernel.list_dead_letter_executions()
-        pending_approvals = read_ports.query_pending_approval_count()
+        return read_ports.query_execution_trust_summary(recent_limit=5)
     except Exception:
         logger.warning("Dashboard: Failed to fetch execution trust widget", exc_info=True)
         return dict(_EXECUTION_TRUST_EMPTY)
-
-    failed = _newest_executions(failed_rows, 5)
-    last_completed = _newest_executions(completed_rows, 1)
-    last_failed = failed[:1]
-    return {
-        "by_status": {str(k): int(v) for k, v in (by_status or {}).items()},
-        "pending_approvals": int(pending_approvals or 0),
-        "failed": failed,
-        "retrying": _newest_executions(retrying_rows, 5),
-        "dead_letter": _newest_executions(dead_rows, 5),
-        "dead_letter_count": len(dead_rows),
-        "last_completed": last_completed[0] if last_completed else None,
-        "last_failed": last_failed[0] if last_failed else None,
-    }

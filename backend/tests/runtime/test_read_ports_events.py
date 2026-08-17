@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 
@@ -197,3 +198,40 @@ def test_goal_events_combines_work_item_own_and_children(kernel):
     assert rows[0]["summary"] == "WorkItem active: g1"
     assert rows[1]["summary"] == "WorkItem created: Step"
     assert rows[2]["summary"] == "WorkItem created: Ship"
+
+
+# ── execution trust summary (injected kernel) ─────────────────────────────
+
+
+class _FakeExecutionKernel:
+    def count_scheduled_executions_by_status(self):
+        return {"failed": 2, "completed": 3, "retrying": 1}
+
+    def read_scheduled_executions(self, status=None):
+        rows = {
+            "failed": [
+                SimpleNamespace(id="f1", status="failed", created_at="1", error="old"),
+                SimpleNamespace(id="f2", status="failed", created_at="2", error="new"),
+            ],
+            "completed": [SimpleNamespace(id="c1", status="completed", created_at="3")],
+            "retrying": [SimpleNamespace(id="r1", status="retrying", created_at="4")],
+        }
+        return rows.get(status, [])
+
+    def list_dead_letter_executions(self):
+        return [SimpleNamespace(id="d1", status="failed", created_at="5", dead_letter=True)]
+
+
+def test_query_execution_trust_summary_shapes_and_limits(monkeypatch):
+    monkeypatch.setattr(events_port, "kernel", lambda: _FakeExecutionKernel())
+    monkeypatch.setattr(events_port, "query_pending_approval_count", lambda: 4)
+
+    result = events_port.query_execution_trust_summary(recent_limit=1)
+
+    assert result["by_status"] == {"failed": 2, "completed": 3, "retrying": 1}
+    assert result["pending_approvals"] == 4
+    assert [row["id"] for row in result["failed"]] == ["f2"]
+    assert [row["id"] for row in result["retrying"]] == ["r1"]
+    assert result["last_failed"]["id"] == "f2"
+    assert result["last_completed"]["id"] == "c1"
+    assert [row["id"] for row in result["dead_letter"]] == ["d1"]

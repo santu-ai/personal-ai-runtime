@@ -40,6 +40,7 @@ from app.core.runtime.read_ports.conversation import (
 )
 from app.core.runtime.read_ports.events import (
     goal_events,
+    query_execution_trust_summary,
     query_recent_events,
     recent_events,
     reconstruct_execution_trace,
@@ -231,5 +232,6 @@ __all__ = [
     "recent_events",
     "query_recent_events",
     "reconstruct_execution_trace",
+    "query_execution_trust_summary",
     "build_memory_graph_edges",
 ]

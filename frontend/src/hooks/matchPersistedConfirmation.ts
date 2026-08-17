@@ -35,7 +35,7 @@ export function matchPersistedConfirmation(
   const pending = approvals.filter(
     (a) =>
       a.status === "pending" &&
-      (!a.conversation_id || a.conversation_id === conversationId),
+      a.conversation_id === conversationId && Boolean(a.tool_call_id),
   );
   if (pending.length === 0) return null;
 
@@ -45,9 +45,7 @@ export function matchPersistedConfirmation(
     const results = msg.toolResults ?? [];
     for (const tc of msg.toolCalls) {
       if (results.some((r) => r.tool_call_id === tc.id)) continue;
-      const approval =
-        pending.find((a) => a.tool_call_id && a.tool_call_id === tc.id) ??
-        pending.find((a) => a.action === tc.function_name);
+      const approval = pending.find((a) => a.tool_call_id === tc.id);
       if (!approval) continue;
       const toolArgs = parseArgs(tc.arguments) || parseArgs(approval.params);
       return {

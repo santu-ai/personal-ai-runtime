@@ -67,4 +67,24 @@ describe("matchPersistedConfirmation", () => {
       ),
     ).toBeNull();
   });
+
+  it("does not restore an approval without conversation identity", () => {
+    expect(
+      matchPersistedConfirmation(
+        [assistant()],
+        [approval({ id: "ap-1", conversation_id: undefined })],
+        "conv-1",
+      ),
+    ).toBeNull();
+  });
+
+  it("does not match an approval without tool-call identity by action name", () => {
+    expect(
+      matchPersistedConfirmation(
+        [assistant()],
+        [approval({ id: "ap-1", tool_call_id: undefined })],
+        "conv-1",
+      ),
+    ).toBeNull();
+  });
 });

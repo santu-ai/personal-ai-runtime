@@ -113,7 +113,7 @@ describe("MemoriesPage", () => {
     fireEvent.change(screen.getByPlaceholderText("例如：记错了、过时了"), {
       target: { value: "过时了" },
     });
-    const confirmReject = screen.getAllByRole("button", { name: "拒绝" }).at(-1);
+    const confirmReject = screen.getAllByRole("button", { name: "拒绝" }).slice(-1)[0];
     fireEvent.click(confirmReject!);
     await waitFor(() => expect(rejectMemory).toHaveBeenCalledWith("p1", "过时了"));
   });

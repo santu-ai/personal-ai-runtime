@@ -113,10 +113,12 @@ def test_summarize_memory_stats_forwards(fake_kernel):
 
 
 class _Ev:
-    def __init__(self, aggregate_id, payload, type_="ClaimRejected"):
+    def __init__(self, aggregate_id, payload, type_="ClaimRejected", seq=None, ts=""):
         self.aggregate_id = aggregate_id
         self.payload = payload
         self.type = type_
+        self.seq = seq
+        self.ts = ts
 
 
 def test_attach_claim_reject_reasons_uses_latest_event(fake_kernel):
@@ -155,6 +157,25 @@ def test_summarize_claim_conversion(fake_kernel):
     assert result["conversion_rate"] == pytest.approx(2 / 3)
     assert result["false_positive_rate"] == pytest.approx(1 / 3)
     assert result["days"] == 30
+
+
+def test_summarize_claim_conversion_deduplicates_latest_decision(fake_kernel):
+    fake_kernel.events_by_type["ClaimRatified"] = [
+        _Ev("m1", {}, type_="ClaimRatified", seq=2),
+        _Ev("m2", {}, type_="ClaimRatified", seq=1),
+    ]
+    fake_kernel.events_by_type["ClaimRejected"] = [
+        _Ev("m1", {"reason": "corrected"}, seq=3),
+        _Ev("m3", {"reason": "wrong"}, seq=4),
+    ]
+
+    result = memory_port.summarize_claim_conversion(days=30)
+
+    assert result["ratified"] == 1
+    assert result["rejected"] == 2
+    assert result["decided"] == 3
+    assert result["conversion_rate"] == pytest.approx(1 / 3)
+    assert result["false_positive_rate"] == pytest.approx(2 / 3)
 
 
 # ── Retrieval paths (mock memory_engine) ──────────────────────────────────

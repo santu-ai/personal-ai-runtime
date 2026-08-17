@@ -5,10 +5,10 @@
 
 ## 当前状态
 
-- 当前分支：`main`（第三阶段 UX 状态条统一 + 可信闭环 e2e 已落地）
+- 当前分支：`main`（第三阶段 UX + 执行信任读端口收口）
 - 进行中任务 / WIP：无（P1–P3 本地提交，未推送）
 - 已知坏点 / 待办：Memory 2 条 proposed 未 ratify（不代用户确认）；审批续写仍 one-shot（ADR-R011，不推翻）
-- 最近审阅：2026-08-17 统一 NoticeBanner/ToastCard；Chat 重载恢复 pending 审批卡；e2e trust-loops 19 passed
+- 最近审阅：2026-08-17 执行信任并入 `read_ports/events.py`（不新增 runtime 文件）；审批恢复要求 conversation/tool-call 身份
 
 ## 本机环境
 
@@ -35,6 +35,9 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
+| 2026-08-17 | 执行信任汇总并入 `read_ports/events.py`（不新增 runtime 文件）；审批恢复要求会话/tool-call 身份 | 本提交未推送 |
+| 2026-08-17 | 记忆转化率按记忆 ID 的最新 Claim 决策去重；新增执行信任读端口测试和产品边界守卫 | 后端全量 1450 passed / 9 skipped / 5 deselected；lint、boundary 通过 |
+| 2026-08-17 | 修复审批恢复的会话/tool-call 身份误匹配；执行信任汇总下沉到 read_ports；修复前端 ES2020 类型错误 | merge-gate 全部通过：1447 backend / 203 frontend tests，build、boundary、layer-deps、projection-provenance、rebuild-verify OK |
 | 2026-08-17 | 统一 NoticeBanner/ToastCard；Chat 重载恢复审批卡；trust-loops e2e 覆盖首页发送/审批恢复/inbox 重试/proposed 确认 | 本提交未推送 |
 | 2026-08-17 | 记忆拒绝原因进 ClaimRejected payload，review 可恢复并看转化率；今天页展示执行失败/重试/死信 | 本提交未推送 |
 | 2026-08-17 | 收件箱页展示最近同步时间/结果/失败原因与重试；7 日轮询/重复/已读同步指标从事件重建 | 本提交未推送 |

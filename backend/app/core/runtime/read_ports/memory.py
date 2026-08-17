@@ -117,6 +117,34 @@ def attach_claim_reject_reasons(rows: list[dict[str, Any]]) -> list[dict[str, An
     ]
 
 
+def _claim_event_order(event: Any, source_index: int, event_index: int) -> tuple[int, str, int]:
+    """Return a comparable newest-first key for claim decision events."""
+    seq = getattr(event, "seq", None)
+    if seq is not None:
+        return (2, f"{int(seq):020d}", 0)
+    timestamp = str(getattr(event, "ts", "") or "")
+    return (1, timestamp, -(source_index * 1000000 + event_index))
+
+
+def _latest_claim_decisions(
+    ratified: list[Any], rejected: list[Any],
+) -> dict[str, str]:
+    """Keep one latest decision per memory aggregate ID."""
+    latest: dict[str, tuple[tuple[int, str, int], str]] = {}
+    for source_index, (event_type, events) in enumerate(
+        (("ClaimRatified", ratified), ("ClaimRejected", rejected)),
+    ):
+        for event_index, event in enumerate(events):
+            aggregate_id = str(getattr(event, "aggregate_id", "") or "")
+            if not aggregate_id:
+                continue
+            order = _claim_event_order(event, source_index, event_index)
+            current = latest.get(aggregate_id)
+            if current is None or order > current[0]:
+                latest[aggregate_id] = (order, event_type)
+    return {aggregate_id: decision for aggregate_id, (_, decision) in latest.items()}
+
+
 def summarize_claim_conversion(*, days: int = 30, limit: int = 500) -> dict[str, Any]:
     """proposed → ratified conversion and reject rate from claim events."""
     since_ts = (datetime.now(UTC) - timedelta(days=days)).isoformat()
@@ -127,8 +155,9 @@ def summarize_claim_conversion(*, days: int = 30, limit: int = 500) -> dict[str,
         type="ClaimRejected", since_ts=since_ts, limit=limit, order="desc",
     )
     proposed_open = count_memories(claim_status="proposed")
-    ratified_n = len(ratified)
-    rejected_n = len(rejected)
+    decisions = _latest_claim_decisions(ratified, rejected)
+    ratified_n = sum(decision == "ClaimRatified" for decision in decisions.values())
+    rejected_n = sum(decision == "ClaimRejected" for decision in decisions.values())
     decided = ratified_n + rejected_n
     conversion_rate = (ratified_n / decided) if decided else None
     false_positive_rate = (rejected_n / decided) if decided else None
