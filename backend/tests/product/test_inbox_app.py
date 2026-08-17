@@ -188,6 +188,36 @@ async def test_poll_inbox_dedupes_and_notifies_important(product_kernel):
 
 
 @pytest.mark.asyncio
+async def test_poll_records_already_read_recent_mail(product_kernel):
+    """Recent mailbox sync must persist SEEN mail, not only UNSEEN."""
+    k = product_kernel
+    payload = {
+        "count": 1,
+        "unread_only": False,
+        "all_unread_emails": [],
+        "emails": [
+            {
+                "message_id": "msg-seen-recent",
+                "from": "a@b.com",
+                "subject": "Already read",
+                "preview": "hello",
+                "date": "2026-08-17",
+            },
+        ],
+    }
+
+    with patch("app.product.inbox._classify_emails", new=AsyncMock(return_value=[])):
+        result = await apply_inbox_poll_payload(payload)
+
+    assert result["status"] == "ok"
+    assert result["new_count"] == 1
+    rows = {r["id"]: r for r in k.query_state("inbox_emails", limit=10)}
+    assert "msg-seen-recent" in rows
+    assert rows["msg-seen-recent"]["status"] == "read"
+    assert rows["msg-seen-recent"]["subject"] == "Already read"
+
+
+@pytest.mark.asyncio
 async def test_mark_inbox_email_status_syncs_unread_to_imap(product_kernel):
     k = product_kernel
     _seed_inbox_email(k, email_id="msg-sync-unread", status="read")

@@ -292,6 +292,14 @@ async def apply_inbox_poll_payload(payload: dict, *, execution_id: str | None = 
             mid,
             **kwargs,
         )
+        if mid not in unread_ids:
+            kernel.emit_event(
+                constants.EVENT_INBOX_EMAIL_STATUS_CHANGED,
+                constants.AGGREGATE_INBOX_EMAIL,
+                mid,
+                payload={"status": "read"},
+                actor="inbox",
+            )
         stored.append({
             "id": mid,
             "category": category,
@@ -415,7 +423,7 @@ async def poll_inbox(limit: int = 20, *, execution_id: str | None = None) -> dic
     if execution_id:
         cap = await kernel.invoke_capability(
             "check_inbox",
-            {"unread_only": True, "limit": max(limit, 100)},
+            {"unread_only": False, "limit": max(1, min(int(limit), 20))},
             actor="scheduler",
             execution_id=execution_id,
         )

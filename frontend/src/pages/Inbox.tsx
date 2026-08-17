@@ -98,7 +98,11 @@ export default function InboxPage() {
   const handlePoll = async () => {
     setPolling(true);
     try {
-      await triggerInboxPoll();
+      const res = await triggerInboxPoll();
+      if (res && res.status === "error") {
+        addError(String(res.error || "轮询邮件失败"), "收件箱");
+        return;
+      }
       await refetch();
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "轮询邮件失败";

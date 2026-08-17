@@ -70,6 +70,34 @@ def test_check_inbox_unread_only_includes_all_unread_emails(monkeypatch):
     assert mids == {"<id-1@example.com>", "<id-2@example.com>"}
 
 
+def test_check_inbox_recent_mail_still_includes_unseen_index(monkeypatch):
+    server = EmailServer()
+    monkeypatch.setattr(server, "_connect_inbox", lambda: object())
+    monkeypatch.setattr(
+        server,
+        "_fetch_unread_emails_connected",
+        lambda _mail: [{"message_id": "<unseen@example.com>", "from": "u", "subject": "s", "date": "d"}],
+    )
+    monkeypatch.setattr(
+        server,
+        "_fetch_sorted_emails_connected",
+        lambda _mail, limit, unread_only, body_max=300: [
+            {
+                "message_id": "<seen@example.com>",
+                "from": "user@example.com",
+                "subject": "Already read",
+                "date": "2026-08-17 15:00",
+                "preview": "preview",
+            }
+        ],
+    )
+
+    data = json.loads(server.check_inbox(limit=1, unread_only=False))
+    assert data["unread_only"] is False
+    assert data["emails"][0]["message_id"] == "<seen@example.com>"
+    assert data["all_unread_emails"][0]["message_id"] == "<unseen@example.com>"
+
+
 def test_read_inbox_email_by_message_id(monkeypatch):
     """message_id 直查路径 — 供治理面（inbox summary）取全文正文。"""
     server = EmailServer()

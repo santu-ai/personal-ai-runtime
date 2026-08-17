@@ -180,8 +180,8 @@ async def test_success_passthrough_new_count(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_limit_floored_to_at_least_100(monkeypatch):
-    """Handler passes max(limit, 100) to check_inbox regardless of request limit."""
+async def test_limit_capped_at_20_recent(monkeypatch):
+    """Handler fetches recent mail (including read), capped at 20 bodies."""
     kernel = _RecordingKernel({"status": "success", "result": {}})
     monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", kernel)
 
@@ -191,11 +191,13 @@ async def test_limit_floored_to_at_least_100(monkeypatch):
     runtime.bind_inbox_poll_applier(_apply)
 
     await on_inbox_poll_requested(_ctx(kernel), _event(limit=5))
-    assert kernel.invoke_calls[0]["args"]["limit"] == 100
+    assert kernel.invoke_calls[0]["args"]["limit"] == 5
+    assert kernel.invoke_calls[0]["args"]["unread_only"] is False
 
     kernel.invoke_calls.clear()
     await on_inbox_poll_requested(_ctx(kernel), _event(limit=150))
-    assert kernel.invoke_calls[0]["args"]["limit"] == 150
+    assert kernel.invoke_calls[0]["args"]["limit"] == 20
+    assert kernel.invoke_calls[0]["args"]["unread_only"] is False
 
 
 @pytest.mark.asyncio
@@ -209,8 +211,8 @@ async def test_default_limit_when_payload_omits_it(monkeypatch):
     runtime.bind_inbox_poll_applier(_apply)
     await on_inbox_poll_requested(_ctx(kernel), _event())  # no limit key
 
-    # default limit=20 → max(20, 100) = 100
-    assert kernel.invoke_calls[0]["args"]["limit"] == 100
-    assert kernel.invoke_calls[0]["args"]["unread_only"] is True
+    # default limit=20, unread_only=false so already-read mail still syncs
+    assert kernel.invoke_calls[0]["args"]["limit"] == 20
+    assert kernel.invoke_calls[0]["args"]["unread_only"] is False
     assert kernel.invoke_calls[0]["name"] == "check_inbox"
     assert kernel.invoke_calls[0]["execution_id"] == "exec_poll_1"

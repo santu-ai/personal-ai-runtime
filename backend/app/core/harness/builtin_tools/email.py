@@ -322,9 +322,9 @@ class EmailServer:
         try:
             mail = self._connect_inbox()
             try:
-                all_unread_emails: list[dict] | None = None
-                if unread_only:
-                    all_unread_emails = self._fetch_unread_emails_connected(mail)
+                # Unseen index is always needed so poll can sync read-state
+                # even when listing recent mail (unread_only=false).
+                all_unread_emails = self._fetch_unread_emails_connected(mail)
                 emails = self._fetch_sorted_emails_connected(
                     mail, limit, unread_only, body_max=300
                 )
@@ -342,9 +342,8 @@ class EmailServer:
                 "count": len(slim),
                 "unread_only": unread_only,
                 "emails": slim,
+                "all_unread_emails": all_unread_emails,
             }
-            if all_unread_emails is not None:
-                payload["all_unread_emails"] = all_unread_emails
             return json.dumps(payload, ensure_ascii=False)
         except imaplib.IMAP4.error as e:
             raise ToolInvokeError(
