@@ -1,18 +1,31 @@
 import type { MemoryRow } from "../../api/client";
 import { timeAgoShort } from "../../utils/timeUtils";
-import { Check, X, Edit3, FileText, History } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import {
+  Calendar,
+  Check,
+  Edit3,
+  FileText,
+  Heart,
+  History,
+  Pin,
+  RefreshCw,
+  StickyNote,
+  Target,
+  X,
+} from "lucide-react";
 
-export const CATEGORY_LABELS: Record<string, { title: string; icon: string }> = {
-  preference: { title: "你的偏好", icon: "💜" },
-  habit: { title: "你的习惯", icon: "🔄" },
-  fact: { title: "关于你", icon: "📌" },
-  goal: { title: "你的目标", icon: "🎯" },
-  event: { title: "你经历过的事", icon: "📅" },
-  note: { title: "其他", icon: "📝" },
+export const CATEGORY_LABELS: Record<string, { title: string; icon: LucideIcon }> = {
+  preference: { title: "你的偏好", icon: Heart },
+  habit: { title: "你的习惯", icon: RefreshCw },
+  fact: { title: "关于你", icon: Pin },
+  goal: { title: "你的目标", icon: Target },
+  event: { title: "你经历过的事", icon: Calendar },
+  note: { title: "其他", icon: StickyNote },
 };
 
 export function getCategoryMeta(cat: string) {
-  return CATEGORY_LABELS[cat] ?? { title: cat, icon: "📝" };
+  return CATEGORY_LABELS[cat] ?? { title: cat, icon: StickyNote };
 }
 
 interface Props {

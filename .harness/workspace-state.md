@@ -5,10 +5,10 @@
 
 ## 当前状态
 
-- 当前分支：`main`（布局审查续做未推送）
+- 当前分支：`main`（lucide 图标债已本地提交，未推送）
 - 进行中任务 / WIP：自主推进
 - 已知坏点 / 待办：Memory 2 条 proposed 未 ratify（不代用户确认）；Context live A/B 未测；Chroma 质量未测；审批续写仍 one-shot；日用后端需重启才吃到 max_retries/deny/search/dashboard 过滤
-- 最近审阅：2026-08-17 上下文收进顶栏；nudge/胶囊 lucide；概览「今天」；主按钮 insight
+- 最近审阅：2026-08-17 工具/时间线/引导/记忆分类改 lucide；审批风险卡与错误页 emoji 仍留
 
 ## 本机环境
 
@@ -35,7 +35,8 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
-| 2026-08-17 | 上下文收进顶栏；Chat lucide；概览「今天」；主按钮 insight；记忆角标直达 review | 本提交 |
+| 2026-08-17 | 工具/时间线/引导页/记忆分类改 lucide；describeArgs 去掉 emoji 前缀 | 本提交未推送 |
+| 2026-08-17 | 上下文收进顶栏；Chat lucide；概览「今天」；主按钮 insight；记忆角标直达 review | 已提交未推送 |
 | 2026-08-17 | 侧栏常驻数据导航；首页底部真输入条；吐司避开顶栏 | 已提交 `f148ebf` 未推送 |
 | 2026-08-17 | Chat 待确认记忆条与上下文按钮分层，避免右上角重合 | 已提交 `27067b6` 未推送 |
 | 2026-08-17 | 仪表盘 recent_memories 走 `recall_memories_for_context` | 已提交 `918a707` 已推送 |

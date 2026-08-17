@@ -149,10 +149,6 @@ function formatResult(content: string, toolName: string): ReactNode {
   }
 }
 
-function getToolIcon(name: string): string {
-  return toolIcon(name);
-}
-
 export default function ToolCallDisplay({
   toolCalls,
   toolResults,
@@ -182,6 +178,7 @@ export default function ToolCallDisplay({
         } catch {
           /* keep empty */
         }
+        const Icon = toolIcon(tc.function_name);
 
         return (
           <div
@@ -194,7 +191,7 @@ export default function ToolCallDisplay({
               onClick={() => setExpandedCall(isExpanded ? null : idx)}
               className="w-full text-left px-3 py-2 text-xs text-fg-secondary hover:text-fg-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             >
-              <span>{getToolIcon(tc.function_name)}</span>
+              <Icon size={12} className="inline-block mr-1.5 align-text-bottom" />
               <span className="text-fg-primary font-medium">{toolLabel(tc.function_name)}</span>
               {argsSummary && <span className="text-fg-tertiary ml-1.5">{argsSummary}</span>}
               {outcome === "done" ? (

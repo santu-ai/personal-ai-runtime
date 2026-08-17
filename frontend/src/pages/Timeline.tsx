@@ -1,22 +1,40 @@
 import { useMemo } from "react";
-import { Clock, Loader2 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import {
+  Activity,
+  Bell,
+  Brain,
+  Check,
+  CircleCheck,
+  Clock,
+  Lightbulb,
+  Loader2,
+  Mail,
+  MessageSquare,
+  Play,
+  Shield,
+  ShieldCheck,
+  Target,
+  Zap,
+} from "lucide-react";
 import { useTimelineInfiniteQuery } from "../hooks/useTimelineQuery";
 import type { TimelineEvent } from "../api/timeline";
 
-const ICON_LABELS: Record<string, { icon: string; color: string }> = {
-  target: { icon: "🎯", color: "text-warning" },
-  "check-circle": { icon: "✅", color: "text-success" },
-  check: { icon: "☑️", color: "text-success" },
-  brain: { icon: "🧠", color: "text-insight" },
-  lightbulb: { icon: "💡", color: "text-warning" },
-  "message-square": { icon: "💬", color: "text-insight" },
-  zap: { icon: "⚡", color: "text-warning" },
-  shield: { icon: "🛡️", color: "text-danger" },
-  "shield-check": { icon: "✅", color: "text-success" },
-  mail: { icon: "📧", color: "text-insight" },
-  clock: { icon: "⏰", color: "text-fg-tertiary" },
-  bell: { icon: "🔔", color: "text-warning" },
-  play: { icon: "▶️", color: "text-success" },
+const ICON_MAP: Record<string, { Icon: LucideIcon; color: string }> = {
+  target: { Icon: Target, color: "text-warning" },
+  "check-circle": { Icon: CircleCheck, color: "text-success" },
+  check: { Icon: Check, color: "text-success" },
+  brain: { Icon: Brain, color: "text-insight" },
+  lightbulb: { Icon: Lightbulb, color: "text-warning" },
+  "message-square": { Icon: MessageSquare, color: "text-insight" },
+  zap: { Icon: Zap, color: "text-warning" },
+  shield: { Icon: Shield, color: "text-danger" },
+  "shield-check": { Icon: ShieldCheck, color: "text-success" },
+  mail: { Icon: Mail, color: "text-insight" },
+  clock: { Icon: Clock, color: "text-fg-tertiary" },
+  bell: { Icon: Bell, color: "text-warning" },
+  play: { Icon: Play, color: "text-success" },
+  activity: { Icon: Activity, color: "text-fg-tertiary" },
 };
 
 function formatDate(dateStr: string): string {
@@ -128,18 +146,17 @@ export default function TimelinePage() {
                 <div className="space-y-2">
                   {groupedEvents[day].map((event) => {
                     const iconKey = icons[event.type] || "activity";
-                    const iconInfo = ICON_LABELS[iconKey] || {
-                      icon: "●",
+                    const iconInfo = ICON_MAP[iconKey] ?? {
+                      Icon: Activity,
                       color: "text-fg-tertiary",
                     };
+                    const Icon = iconInfo.Icon;
                     return (
                       <div
                         key={event.id}
                         className="flex items-start gap-3 p-3 bg-surface-raised border border-border-subtle rounded-lg hover:border-border-strong transition-colors"
                       >
-                        <span className={`text-lg ${iconInfo.color} mt-0.5 shrink-0`}>
-                          {iconInfo.icon}
-                        </span>
+                        <Icon size={16} className={`${iconInfo.color} mt-0.5 shrink-0`} />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm text-fg-secondary">{event.description}</p>
                           <div className="flex items-center gap-2 mt-1">

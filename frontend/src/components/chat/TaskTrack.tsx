@@ -54,7 +54,7 @@ export default function TaskTrack({ stages }: Props) {
         {stages.map((stage, idx) => {
           const status = detectOutcome(stage.result);
           const label = toolLabel(stage.toolCall.function_name);
-          const icon = toolIcon(stage.toolCall.function_name);
+          const Icon = toolIcon(stage.toolCall.function_name);
           const isExpanded = expandedStageIdx === idx;
 
           const dotColor = {
@@ -78,7 +78,7 @@ export default function TaskTrack({ stages }: Props) {
                 className="w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
               >
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="text-xs shrink-0">{icon}</span>
+                  <Icon size={12} className="shrink-0" />
                   <span className="text-xs font-medium text-fg-primary truncate">{label}</span>
 
                   {/* Status badge */}

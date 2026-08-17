@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import type { LucideIcon } from "lucide-react";
+import { Brain, Mail, MessageSquare, Target } from "lucide-react";
 import { getSystemHealth, getLlmProviders, createConversation, ApiError } from "../../api/client";
 import { useChatStore } from "../../stores/chatStore";
 import { useErrorStore } from "../../stores/errorStore";
@@ -13,26 +15,31 @@ const STEPS = [
   { title: "开始第一次对话", description: "选一个话题，立即体验 AI 能为你做什么" },
 ];
 
-const STARTER_PROMPTS = [
+const STARTER_PROMPTS: Array<{
+  icon: LucideIcon;
+  label: string;
+  prompt: string;
+  title: string;
+}> = [
   {
-    icon: "🎯",
+    icon: Target,
     label: "帮我规划一个目标",
     prompt: "帮我设定一个这周想完成的目标，拆解成可执行的步骤",
     title: "目标规划",
   },
   {
-    icon: "📬",
+    icon: Mail,
     label: "总结我的收件箱",
     prompt: "帮我看看收件箱里有什么重要的邮件，总结一下需要我处理的",
     title: "收件箱摘要",
   },
   {
-    icon: "🧠",
+    icon: Brain,
     label: "记下关于我的事",
     prompt: "我想让你记住一些关于我的事情：我的工作、兴趣和习惯，方便以后更好地帮助我",
     title: "建立记忆",
   },
-  { icon: "💬", label: "自由聊几句", prompt: "", title: "新对话" },
+  { icon: MessageSquare, label: "自由聊几句", prompt: "", title: "新对话" },
 ];
 
 interface Props {
@@ -186,7 +193,9 @@ export default function OnboardingWizard({ onComplete }: Props) {
             <p className="text-xs text-fg-tertiary mb-3">
               一切就绪。选一个开始——你的 AI 会立即响应：
             </p>
-            {STARTER_PROMPTS.map((sp) => (
+            {STARTER_PROMPTS.map((sp) => {
+              const Icon = sp.icon;
+              return (
               <button
                 key={sp.label}
                 type="button"
@@ -194,7 +203,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
                 disabled={launching}
                 className="w-full flex items-center gap-3 p-3 bg-surface-overlay/50 hover:bg-surface-overlay border border-border-subtle hover:border-border-strong rounded-lg text-left transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               >
-                <span className="text-xl">{sp.icon}</span>
+                <Icon size={18} className="text-insight shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm text-fg-primary">{sp.label}</div>
                   {sp.prompt && (
@@ -202,7 +211,8 @@ export default function OnboardingWizard({ onComplete }: Props) {
                   )}
                 </div>
               </button>
-            ))}
+              );
+            })}
             {launching && (
               <p className="text-xs text-fg-secondary text-center pt-2">正在开启对话…</p>
             )}

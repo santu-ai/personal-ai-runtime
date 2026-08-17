@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { FileText, Search } from "lucide-react";
 import { toolLabel, toolIcon, describeToolAction } from "./toolLabels";
 
 describe("toolLabels", () => {
@@ -7,13 +8,14 @@ describe("toolLabels", () => {
     expect(toolLabel("web_search")).toBe("搜索网页");
   });
 
-  it("returns icon for known tools", () => {
-    expect(toolIcon("read_file")).toBe("📄");
+  it("returns lucide icon for known tools", () => {
+    expect(toolIcon("read_file")).toBe(FileText);
   });
 
   it("describes tool action with args", () => {
     const desc = describeToolAction("read_file", { path: "/tmp/foo.txt" });
     expect(desc).toContain("/tmp/foo.txt");
+    expect(desc).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
   });
 
   it("falls back for unknown tools", () => {
@@ -23,6 +25,6 @@ describe("toolLabels", () => {
   });
 
   it("falls back icon for unknown search-like tools", () => {
-    expect(toolIcon("custom_search_tool")).toBe("🔍");
+    expect(toolIcon("custom_search_tool")).toBe(Search);
   });
 });

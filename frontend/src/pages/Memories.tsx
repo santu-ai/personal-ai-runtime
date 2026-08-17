@@ -25,7 +25,7 @@ import MemoryListItem, {
   getCategoryMeta,
 } from "../components/memories/MemoryListItem";
 import MemoryProvenanceDialog from "../components/memories/MemoryProvenanceDialog";
-import { Network, List, User, ClipboardCheck } from "lucide-react";
+import { Brain, ClipboardCheck, List, Network, User } from "lucide-react";
 
 type ViewMode = "list" | "graph" | "portrait" | "review";
 type ReviewOrder = "created_at_desc" | "created_at_asc";
@@ -434,7 +434,7 @@ export default function MemoriesPage() {
 
             {Object.keys(grouped).length === 0 ? (
               <div className="text-center py-12">
-                <div className="text-4xl mb-3">🧠</div>
+                <Brain size={40} className="mx-auto mb-3 text-fg-disabled" />
                 <p className="text-fg-tertiary text-sm">
                   我还没有记住任何事。开始一段对话，或者在上方告诉我关于你的事情。
                 </p>
@@ -442,10 +442,11 @@ export default function MemoriesPage() {
             ) : (
               Object.entries(grouped).map(([category, items]) => {
                 const meta = getCategoryMeta(category);
+                const CategoryIcon = meta.icon;
                 return (
                   <section key={category}>
                     <h3 className="text-sm font-semibold text-fg-secondary mb-3 flex items-center gap-1.5">
-                      <span>{meta.icon}</span>
+                      <CategoryIcon size={14} className="text-fg-tertiary" />
                       <span>{meta.title}</span>
                       <span className="text-fg-disabled">({items.length})</span>
                     </h3>
