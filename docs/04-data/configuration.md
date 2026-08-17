@@ -147,6 +147,8 @@ Host/port 默认值在 `runtime_config.GMAIL_DEFAULTS`（非 Settings 字段）�
 
 [`backend/app/core/runtime/runtime_config.py`](../../backend/app/core/runtime/runtime_config.py) 把 LLM 与邮件设置持久化于 SQLite `app_settings` 表。env 播种默认值，UI 编辑持久化到 DB。若存在 `runtime_config.json`，首次读取时自动导入 `app_settings`。
 
+**DB 行一旦存在即覆盖 env。** `llm` / `email` 任一类有行，启动不再从 `.env` 重新播种该类。邮件没有 placeholder 回退；LLM 仅当存储的 `api_key` 属于 `test-key` / `keep-this-key` / `ollama` / 空时才回退 `.env`，`base_url` / `model` 仍以 DB 为准。测试必须把 `SQLITE_PATH` 指到临时文件；误写入日后删除这两行即可让 `.env` 重新播种。
+
 关键概念：
 
 - `PROVIDER_TYPES`：`openai_compatible`、`ollama`

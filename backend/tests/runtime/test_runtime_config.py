@@ -1,6 +1,7 @@
 """Tests for runtime configuration storage."""
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -12,39 +13,54 @@ from app.core.runtime.runtime_config import (
 
 @pytest.fixture
 def isolated_runtime_config(tmp_path, monkeypatch):
-    monkeypatch.setenv("DATA_DIR", str(tmp_path))
-    from app.config import reset_settings
+    """Pin SQLITE_PATH to tmp so updates cannot land in the day-to-day DB.
 
-    reset_settings()
+    DATA_DIR alone is not enough: a non-empty SQLITE_PATH in .env still wins.
+    runtime.reset() drops any Database bound before the path change.
+    """
+    import app.config as cfg
+    from app.core.runtime.runtime_container import runtime
+
+    db_path = str(tmp_path / "personal_ai.db")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("SQLITE_PATH", db_path)
+    monkeypatch.setenv("VECTOR_DIR", str(tmp_path / "vectors"))
+    cfg.reset_settings()
+    monkeypatch.setattr("app.core.runtime.runtime_config.settings", cfg.settings)
+    runtime.reset()
     invalidate_runtime_config_cache()
-    config_file = tmp_path / "runtime_config.json"
-    if config_file.exists():
-        config_file.unlink()
     yield tmp_path
-    if config_file.exists():
-        config_file.unlink()
+
+
+def test_isolated_runtime_config_uses_tmp_sqlite(isolated_runtime_config):
+    from app.config import settings
+    from app.core.runtime.runtime_container import runtime
+
+    tmp = isolated_runtime_config.resolve()
+    assert Path(settings.sqlite_path).resolve().is_relative_to(tmp)
+    assert Path(runtime.db.db_path).resolve().is_relative_to(tmp)
 
 
 def test_default_llm_config_from_env(isolated_runtime_config, monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "test-key")
     monkeypatch.setenv("LLM_MODEL", "deepseek-chat")
-    from app.config import reset_settings
+    import app.config as cfg
 
-    reset_settings()
-    from app.core.runtime import runtime_config as rc_mod
+    cfg.reset_settings()
+    monkeypatch.setattr("app.core.runtime.runtime_config.settings", cfg.settings)
+    invalidate_runtime_config_cache()
+    from app.core.runtime.runtime_config import RuntimeConfig
 
-    rc_mod.runtime_config = rc_mod.RuntimeConfig()
-    rc_mod.invalidate_runtime_config_cache()
-    llm = rc_mod.runtime_config.get_llm_config(masked=False)
+    llm = RuntimeConfig().get_llm_config(masked=False)
     assert llm["default_provider"] == "deepseek"
     assert any(p["id"] == "deepseek" for p in llm["providers"])
 
 
 def test_update_llm_masks_api_key(isolated_runtime_config):
-    from app.core.runtime import runtime_config as rc_mod
+    from app.core.runtime.runtime_config import RuntimeConfig
 
-    rc_mod.runtime_config = rc_mod.RuntimeConfig()
-    rc_mod.runtime_config.update_llm_config({
+    rc = RuntimeConfig()
+    rc.update_llm_config({
         "providers": [{
             "id": "deepseek",
             "name": "DeepSeek",
@@ -55,16 +71,16 @@ def test_update_llm_masks_api_key(isolated_runtime_config):
             "enabled": True,
         }],
     })
-    masked = rc_mod.runtime_config.get_llm_config(masked=True)
+    masked = rc.get_llm_config(masked=True)
     assert masked["providers"][0]["api_key"] == _MASKED_SECRET
     assert masked["providers"][0]["has_api_key"] is True
 
 
 def test_update_llm_preserves_key_when_masked(isolated_runtime_config):
-    from app.core.runtime import runtime_config as rc_mod
+    from app.core.runtime.runtime_config import RuntimeConfig
 
-    rc_mod.runtime_config = rc_mod.RuntimeConfig()
-    rc_mod.runtime_config.update_llm_config({
+    rc = RuntimeConfig()
+    rc.update_llm_config({
         "providers": [{
             "id": "deepseek",
             "name": "DeepSeek",
@@ -75,7 +91,7 @@ def test_update_llm_preserves_key_when_masked(isolated_runtime_config):
             "enabled": True,
         }],
     })
-    rc_mod.runtime_config.update_llm_config({
+    rc.update_llm_config({
         "providers": [{
             "id": "deepseek",
             "name": "DeepSeek",
@@ -86,22 +102,22 @@ def test_update_llm_preserves_key_when_masked(isolated_runtime_config):
             "enabled": True,
         }],
     })
-    raw = rc_mod.runtime_config.get_llm_config(masked=False)
+    raw = rc.get_llm_config(masked=False)
     assert raw["providers"][0]["api_key"] == "keep-this-key"
 
 
 def test_update_email_config(isolated_runtime_config):
-    from app.core.runtime import runtime_config as rc_mod
+    from app.core.runtime.runtime_config import RuntimeConfig
 
-    rc_mod.runtime_config = rc_mod.RuntimeConfig()
-    result = rc_mod.runtime_config.update_email_config({
+    rc = RuntimeConfig()
+    result = rc.update_email_config({
         "user": "test@gmail.com",
         "password": "app-password",
     })
     assert result["user"] == "test@gmail.com"
     assert result["password"] == _MASKED_SECRET
 
-    creds = rc_mod.runtime_config.get_email_credentials()
+    creds = rc.get_email_credentials()
     assert creds["user"] == "test@gmail.com"
     assert creds["password"] == "app-password"
 

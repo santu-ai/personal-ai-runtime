@@ -189,9 +189,16 @@ def _reset_runtime():
     DB while reads hit the new one). Re-bind it to the runtime-backed LazyProxy
     so every call resolves the current test's Kernel.
     """
+    import app.config as cfg
     import app.core.runtime.kernel_instance as ki
     from app.core.runtime.runtime_container import _LazyProxy, runtime
 
+    # Re-read env at test start so a previous fixture's reset_settings()
+    # (tmp SQLITE_PATH) cannot leak after monkeypatch restores os.environ.
+    cfg.reset_settings()
+    from app.core.runtime.runtime_config import invalidate_runtime_config_cache
+
+    invalidate_runtime_config_cache()
     runtime.reset()
     if not isinstance(ki.kernel, _LazyProxy):
         ki.kernel = _LazyProxy(lambda: runtime.kernel)
@@ -199,6 +206,11 @@ def _reset_runtime():
     import app.core.runtime.work_item_engine as _work_item_engine
     if not isinstance(_work_item_engine.kernel, _LazyProxy):
         _work_item_engine.kernel = _LazyProxy(lambda: runtime.kernel)
+
+    import app.core.runtime.runtime_config as _runtime_config
+    _runtime_config.settings = cfg.settings
+    if not isinstance(_runtime_config.runtime_config, _LazyProxy):
+        _runtime_config.runtime_config = _LazyProxy(lambda: runtime.runtime_config)
 
     # BoundProxy stores monkeypatch/setattr on the proxy object. After reset the
     # underlying MCPHub is new, but a restored bound method (hub.invoke_tool)
@@ -245,6 +257,10 @@ def _build_test_app(tmp_path, monkeypatch, *, auth_token: str = ""):
     )
 
     app.config.reset_settings()
+    monkeypatch.setattr("app.core.runtime.runtime_config.settings", app.config.settings)
+    from app.core.runtime.runtime_container import runtime
+
+    runtime.reset()
     importlib.reload(app.api.system)
     # Re-register @subscribe handlers after reset_handlers() cleared them.
     # importlib.reload alone isn't enough because sub-module decorators
@@ -312,12 +328,19 @@ def authed_client(authed_app):
 
 @pytest.fixture
 def isolated_kernel(tmp_path, monkeypatch):
-    """Fresh Kernel + Database fully isolated from the global runtime."""
+    """Fresh Kernel + Database on a tmp SQLITE_PATH (not the day-to-day DB)."""
+    import app.config as cfg
     from app.core.runtime.kernel.kernel import Kernel
     from app.core.runtime.runtime_container import runtime
     from app.store.database import Database
 
     db_path = str(tmp_path / "test.db")
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("SQLITE_PATH", db_path)
+    monkeypatch.setenv("VECTOR_DIR", str(tmp_path / "vectors"))
+    cfg.reset_settings()
+    monkeypatch.setattr("app.core.runtime.runtime_config.settings", cfg.settings)
+
     db = Database(db_path=db_path)
     k = Kernel(db=db)
 

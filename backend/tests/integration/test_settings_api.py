@@ -50,17 +50,25 @@ def test_invalid_default_provider_rejected_without_persisting(client: TestClient
     Regression: the endpoint used to write the config + reload the router
     first, then validate default_provider — leaving the config half-updated
     on a 400.
+
+    Compare against a pre-request snapshot: env default temperature is 0.7,
+    so asserting ``!= 0.7`` is a false pass/fail depending on the day-to-day DB.
     """
+    before = client.get("/api/settings/llm").json()["config"]["temperature"]
+    rejected_temperature = 0.3 if before != 0.3 else 0.4
     r = client.put(
         "/api/settings/llm",
-        json={"default_provider": "no-such-provider", "temperature": 0.7},
+        json={
+            "default_provider": "no-such-provider",
+            "temperature": rejected_temperature,
+        },
     )
     assert r.status_code == 400
     assert "default_provider" in r.json()["detail"]
 
-    # The rejected temperature must not have been persisted.
     llm = client.get("/api/settings/llm").json()
-    assert llm["config"]["temperature"] != 0.7
+    assert llm["config"]["temperature"] == before
+    assert llm["config"]["temperature"] != rejected_temperature
 
 
 

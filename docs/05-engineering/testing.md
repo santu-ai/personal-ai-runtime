@@ -45,7 +45,8 @@ flowchart TB
 
 - 设默认 env（`LLM_API_KEY=test-key`、Chroma telemetry off、`MCP_EXTERNAL_ENABLED=false`），re-read settings。
 - **autouse fixture `_reset_runtime`**：每个测试间调 `runtime.reset()` 清空泄漏的全局单例（`capability_governance`、`taint_registry`、`source_registry` 等 RuntimeContainer 持有的懒加载实例）。
-- **`isolated_kernel` fixture**：在 `tmp_path` 下构建全新 Kernel + Database，monkey-patch `kernel_instance.kernel` 与 `database.db`。
+- **`isolated_kernel` fixture**：pin `DATA_DIR` / `SQLITE_PATH` / `VECTOR_DIR` 到 `tmp_path`，在临时库上构建全新 Kernel + Database，monkey-patch `kernel_instance.kernel` 与 `database.db`。
+- 写 `app_settings`（LLM/Email）的测试必须同时 pin `SQLITE_PATH`（不只 `DATA_DIR`）。`.env` 里非空的 `SQLITE_PATH` 会盖过 `DATA_DIR`，否则夹具密钥会写入日用库，重启后 LLM/邮件不可用。
 
 集成子 conftest（[`tests/integration/conftest.py`](../../backend/tests/integration/conftest.py)）提供 `client`/`authed_client` fixture，reload `app.api.system`/`app.main`，stub `start_mcp_mesh`/`stop_mcp_mesh`，每测设独立 `SQLITE_PATH`/`DATA_DIR`/`VECTOR_DIR`。
 
