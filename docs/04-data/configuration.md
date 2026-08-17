@@ -52,7 +52,7 @@ flowchart LR
 |---|---|---|
 | `host` | `127.0.0.1` | `HOST` |
 | `port` | `8000` | `PORT` |
-| `cors_origins` | `http://localhost:5173,http://localhost:5174` | `CORS_ORIGINS` |
+| `cors_origins` | `http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174` | `CORS_ORIGINS` |
 
 ### 认证
 
@@ -139,7 +139,7 @@ Host/port 默认值在 `runtime_config.GMAIL_DEFAULTS`（非 Settings 字段）�
 
 | 变量 | 用途 |
 |---|---|
-| `VITE_API_HOST` | 前端 dev proxy 目标主机（默认 `localhost`） |
+| `VITE_API_HOST` | 前端 dev proxy 目标主机（默认 `127.0.0.1`） |
 | `VITE_API_PORT` | 前端 dev proxy 目标端口（默认 `8000`） |
 | `VITE_AUTH_TOKEN` | 前端 Bearer token（启用认证时必须与 `AUTH_TOKEN` 一致） |
 

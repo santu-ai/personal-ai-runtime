@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     # --- Server ---
     host: str = "127.0.0.1"
     port: int = 8000
-    cors_origins: str = "http://localhost:5173,http://localhost:5174"
+    cors_origins: str = "http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174"
     timezone: str = "Asia/Shanghai"
     """System timezone for cron schedules and time-sensitive product logic."""
 

@@ -17,7 +17,7 @@
 |---|---|---|
 | [`desktop/main.js`](../../desktop/main.js) | 704 | 主进程 |
 | [`desktop/preload.js`](../../desktop/preload.js) | 9 | preload（无 IPC 暴露） |
-| [`desktop/main.test.js`](../../desktop/main.test.js) | 105 | vitest smoke 测试 |
+| [`desktop/main.test.js`](../../desktop/main.test.js) | 120 | vitest smoke 测试 |
 | [`desktop/package.json`](../../desktop/package.json) | — | scripts + electron-builder 配置 |
 | [`desktop/vitest.config.js`](../../desktop/vitest.config.js) | — | vitest 配置 |
 | [`desktop/generate_icon.py`](../../desktop/generate_icon.py) | — | `postinstall` 时生成 `icon.png` |
@@ -28,7 +28,7 @@
 
 ```
 WEB_URL      = process.env.WEB_URL      || ""    # 空则自动解析
-BACKEND_URL  = process.env.BACKEND_URL  || "http://localhost:8000"
+BACKEND_URL  = process.env.BACKEND_URL  || "http://127.0.0.1:8000"
 BACKEND_PORT = new URL(BACKEND_URL).port || "8000"
 AUTH_TOKEN   = process.env.AUTH_TOKEN   || ""
 ```
@@ -36,7 +36,7 @@ AUTH_TOKEN   = process.env.AUTH_TOKEN   || ""
 `resolveWebUrl()` 按 `app.isPackaged` 分流：
 
 - **打包发行**：注册自定义 `app://` 协议服务 `frontend-dist/`，主窗口加载 `app://./index.html`；`/api/*` 与 `/ws` 通过 `session.webRequest` 转发到本地后端。
-- **开发**：回退到 Vite dev server `http://localhost:5173`（其 vite proxy 已转发 `/api`、`/ws`）。
+- **开发**：回退到 Vite dev server `http://127.0.0.1:5173`（其 vite proxy 已转发 `/api`、`/ws`）。默认用 IPv4，避免 Windows 上 `localhost` 只解析到 `::1` 而后端绑 `127.0.0.1`。
 - `WEB_URL` 环境变量总是最高优先级（允许手动覆盖）。
 
 `resolveBackendDir()` 按打包状态分流：打包时指向 `process.resourcesPath/backend`（extraResources），开发时指向 `<repo>/backend`。`readAppVersion()` 读 `../VERSION`，缺失回退 `"1.0.0"`。
@@ -138,5 +138,5 @@ electron-builder 配置：
 
 | 场景 | 行为 |
 |---|---|
-| 开发（`make dev` + `make desktop`） | uvicorn 与 vite 各自前台运行；Electron 加载 `http://localhost:5173`，探测到 8000 端口已有后端则复用；`app://` 协议与 webRequest 代理不启用 |
+| 开发（`make dev` + `make desktop`） | uvicorn 与 vite 各自前台运行；Electron 加载 `http://127.0.0.1:5173`，探测到 8000 端口已有后端则复用；`app://` 协议与 webRequest 代理不启用 |
 | 打包发行（`npm run build`） | `prebuild.js` 构建前端并复制到 `desktop/frontend-dist/`；electron-builder 把 backend 源码 + frontend-dist 一起打入；运行时 Electron 注册 `app://` 协议服务前端，spawn 系统 python3 跑后端，`/api` 与 `/ws` 经 webRequest 转发；**离线可用** |

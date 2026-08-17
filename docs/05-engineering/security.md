@@ -91,7 +91,7 @@ URL 抓取类工具经 `url_safety.validate_http_url` 校验。相关测试：`t
 
 ## CORS
 
-`CORSMiddleware`（[`main.py`](../../backend/app/main.py)）：`allow_origins=settings.cors_origins.split(",")`（默认 `http://localhost:5173,http://localhost:5174`）、`allow_credentials=True`、方法 `GET/POST/PUT/PATCH/DELETE/OPTIONS`、头 `Authorization/Content-Type/X-Request-ID`、暴露 `X-Request-ID`。
+`CORSMiddleware`（[`main.py`](../../backend/app/main.py)）：`allow_origins=settings.cors_origins.split(",")`（默认含 `localhost` 与 `127.0.0.1` 的 5173/5174）、`allow_credentials=True`、方法 `GET/POST/PUT/PATCH/DELETE/OPTIONS`、头 `Authorization/Content-Type/X-Request-ID`、暴露 `X-Request-ID`。
 
 ## 不在本仓库实现的安全特性
 

@@ -69,7 +69,7 @@ types.ts       ← 共享 TS 接口
 "/ws"  → http://${API_HOST}:${API_PORT}   (ws: true, changeOrigin: true)
 ```
 
-`API_HOST`/`API_PORT` 来自 `process.env.VITE_API_HOST`/`VITE_API_PORT`（默认 `localhost`/`8000`）。配置从**仓库根** `.env`（`envDir: rootDir`）读取——与后端 `AUTH_TOKEN` 同一个文件。
+`API_HOST`/`API_PORT` 来自 `process.env.VITE_API_HOST`/`VITE_API_PORT`（默认 `127.0.0.1`/`8000`）。配置从**仓库根** `.env`（`envDir: rootDir`）读取——与后端 `AUTH_TOKEN` 同一个文件。
 
 **生产模式** — `API_BASE = "/api"` 相对，要求同源部署同时服务静态前端与 API。
 

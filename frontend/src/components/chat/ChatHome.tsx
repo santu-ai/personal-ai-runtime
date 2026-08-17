@@ -10,6 +10,7 @@ import {
 import { listWorkItems } from "../../api/workItems";
 import { useQuickChat } from "../../hooks/useQuickChat";
 import { useApprovalsQuery } from "../../hooks/useApprovalsQuery";
+import { useProposedMemoryCountQuery } from "../../hooks/useMemoriesQuery";
 import { timeAgo, isStagnant } from "../../utils/timeUtils";
 import ProposedMemoryBanner from "./ProposedMemoryBanner";
 
@@ -30,6 +31,7 @@ export default function ChatHome() {
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const quickChat = useQuickChat();
   const { data: pendingApprovals = [] } = useApprovalsQuery();
+  const { data: proposedCount = 0, isPending: proposedPending } = useProposedMemoryCountQuery();
 
   const [memories, setMemories] = useState<{ content: string; category?: string }[]>([]);
   const [goals, setGoals] = useState<WorkItem[]>([]);
@@ -50,7 +52,7 @@ export default function ChatHome() {
   const loadInsights = async () => {
     try {
       const [memData, goalData, inboxData] = await Promise.all([
-        listMemoriesGrouped().catch(() => ({ memories: [] })),
+        listMemoriesGrouped({ claimStatus: "ratified" }).catch(() => ({ memories: [] })),
         listWorkItems("goal").catch(() => []),
         listInboxEmails().catch(() => []),
       ]);
@@ -121,7 +123,8 @@ export default function ChatHome() {
     approvalCount === 0 &&
     memories.length === 0 &&
     activeGoals.length === 0 &&
-    unreadInbox === 0
+    unreadInbox === 0 &&
+    proposedCount === 0
   ) {
     nudges.push({
       icon: "👋",
@@ -163,8 +166,10 @@ export default function ChatHome() {
     .filter((c) => c.updated_at)
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
 
-  const decisionCount = approvalCount + stagnantGoals.length + (unreadInbox > 0 ? 1 : 0);
-  const subtitle = loading
+  const decisionCount =
+    approvalCount + stagnantGoals.length + (unreadInbox > 0 ? 1 : 0) + (proposedCount > 0 ? 1 : 0);
+  const insightsReady = !loading && !proposedPending;
+  const subtitle = !insightsReady
     ? "正在了解你的近况…"
     : decisionCount > 0
       ? "这些事需要你决断或推进"
@@ -181,7 +186,7 @@ export default function ChatHome() {
 
         <ProposedMemoryBanner className="rounded-xl border border-insight/30" />
 
-        {!loading && (
+        {insightsReady && (
           <div className="space-y-2">
             {nudges.map((nudge, i) => {
               const toneClass =

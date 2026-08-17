@@ -38,7 +38,7 @@ protocol.registerSchemesAsPrivileged([
 // ── Configuration ────────────────────────────────────────────────────
 
 const WEB_URL = process.env.WEB_URL || "";
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
+const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
 const BACKEND_PORT = new URL(BACKEND_URL).port || "8000";
 const AUTH_TOKEN = process.env.AUTH_TOKEN || "";
 
@@ -46,7 +46,7 @@ const AUTH_TOKEN = process.env.AUTH_TOKEN || "";
 // In production we load the bundled frontend-dist/index.html via a custom
 // `app://` protocol (registered in registerAppProtocol) and proxy /api + /ws
 // to the local backend via session.webRequest. In dev we use the Vite dev
-// server (http://localhost:5173) which already proxies /api and /ws.
+// server (http://127.0.0.1:5173) which already proxies /api and /ws.
 const isPackaged = app.isPackaged;
 
 // Resolve the frontend entry: app:// protocol in production, dev server otherwise.
@@ -61,7 +61,7 @@ function resolveWebUrl() {
     }
     console.warn("[desktop] Packaged but frontend-dist/index.html missing, falling back to dev URL.");
   }
-  return "http://localhost:5173";
+  return "http://127.0.0.1:5173";
 }
 
 // Resolve backend working directory.
@@ -296,7 +296,7 @@ function startBackend() {
   // Check if backend is already running
   const net = require("net");
   const client = new net.Socket();
-  client.connect(parseInt(BACKEND_PORT), "localhost", () => {
+  client.connect(parseInt(BACKEND_PORT), "127.0.0.1", () => {
     client.destroy();
     console.log("Backend already running on port", BACKEND_PORT);
     backendStarting = false;

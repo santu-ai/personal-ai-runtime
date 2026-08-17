@@ -103,6 +103,12 @@ describe("Electron main process", () => {
     expect(source).toContain("DATA_DIR");
   });
 
+  it("defaults loopback URLs to IPv4 so Windows localhost IPv6 does not miss the backend", () => {
+    expect(source).toContain('process.env.BACKEND_URL || "http://127.0.0.1:8000"');
+    expect(source).toContain('return "http://127.0.0.1:5173"');
+    expect(source).toContain('client.connect(parseInt(BACKEND_PORT), "127.0.0.1"');
+  });
+
   it("guards resolveFrontendFile against path traversal", () => {
     // The function must reject "..", absolute paths, and backslash separators
     // so app:// requests cannot escape the frontend dist directory.

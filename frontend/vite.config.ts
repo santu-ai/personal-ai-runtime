@@ -5,7 +5,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const API_HOST = process.env.VITE_API_HOST || "localhost";
+const API_HOST = process.env.VITE_API_HOST || "127.0.0.1";
 const API_PORT = process.env.VITE_API_PORT || "8000";
 const isDesktopBuild = process.env.VITE_DESKTOP === "1";
 

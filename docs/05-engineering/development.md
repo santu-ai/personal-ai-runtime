@@ -69,7 +69,7 @@ make dev
 make desktop      # cd desktop && npm start  (electron .)
 ```
 
-Electron 默认加载 `http://localhost:5173`，探测 8000 端口已有后端则复用。详见 [03-subsystems/desktop.md](../03-subsystems/desktop.md)。
+Electron 默认加载 `http://127.0.0.1:5173`，探测 8000 端口已有后端则复用。详见 [03-subsystems/desktop.md](../03-subsystems/desktop.md)。
 
 ### 数据库初始化
 

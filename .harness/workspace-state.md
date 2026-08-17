@@ -5,10 +5,10 @@
 
 ## 当前状态
 
-- 当前分支：`main`（W34 `b539b45` 与 deny 持久化均本地提交，未推送）
-- 进行中任务 / WIP：自主推进下一刀（Context A/B / 简报未读口径 / Desktop）
-- 已知坏点 / 待办：Memory 2 条 proposed 未 ratify（不代用户确认）；Context live A/B 未测；Chroma 质量未测；审批续写仍 one-shot；max_retries=2 需重启日用后端
-- 最近审阅：2026-08-17 自主推进：W34 已提交；deny 写入会话说明
+- 当前分支：`main`（领先 origin：W34 + deny + 本轮首页/IPv4，均未推送）
+- 进行中任务 / WIP：自主推进
+- 已知坏点 / 待办：Memory 2 条 proposed 未 ratify（不代用户确认）；Context live A/B 未测；Chroma 质量未测；审批续写仍 one-shot；日用后端需重启才吃到 max_retries/deny 持久化
+- 最近审阅：2026-08-17 首页不再把 proposed 当成已记住；Desktop/Vite 默认 127.0.0.1
 
 ## 本机环境
 
@@ -35,7 +35,8 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
-| 2026-08-17 | 审批 deny 持久化 tool result + 会话说明（不调 LLM） | 本提交 |
+| 2026-08-17 | 首页只计 ratified；Desktop/Vite/CORS 默认 IPv4 回环 | 本提交 |
+| 2026-08-17 | 审批 deny 持久化 tool result + 会话说明（不调 LLM） | 已提交 `937a97e` 未推送 |
 | 2026-08-17 | Chat/Home 内联确认 proposed；ChatRequested max_retries=2；真 LLM Chat+write_file 审批 deny | 已提交 `b539b45` 未推送 |
 | 2026-08-17 | W34：email 应用 miss 记 CapabilityFailed；pending→completed 用户捷径；勾选子项重算父进度；soak 找对 SQLITE_PATH；Vite 绑 0.0.0.0 | 已并入 `b539b45` |
 | 2026-08-17 | 测试隔离：pin SQLITE_PATH + 重绑 runtime_config.settings；防止 app_settings 写入日用库 | 已推送 `315541f` |

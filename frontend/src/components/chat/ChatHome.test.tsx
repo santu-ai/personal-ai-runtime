@@ -110,13 +110,30 @@ describe("ChatHome", () => {
 
   it("shows proposed memory banner on the home screen", async () => {
     mockCount.mockResolvedValue({ count: 2 });
-    mockMemories.mockResolvedValue({
-      memories: [{ id: "m1", content: "喜欢早起跑步" }],
-      total: 2,
+    mockMemories.mockImplementation(async (opts = {}) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "proposed") {
+        return { memories: [{ id: "m1", content: "喜欢早起跑步" }], total: 2 };
+      }
+      return { memories: [], total: 0 };
     });
     renderWithRouter(<ChatHome />);
     expect(await screen.findByText(/2 条记忆待确认后才会进入对话/)).toBeInTheDocument();
     expect(screen.getByText("喜欢早起跑步")).toBeInTheDocument();
+    expect(screen.queryByText(/我已经记住了/)).not.toBeInTheDocument();
+    expect(await screen.findByText(/这些事需要你决断或推进/)).toBeInTheDocument();
+  });
+
+  it("counts only ratified memories in the remember-you nudge", async () => {
+    mockMemories.mockImplementation(async (opts = {}) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "ratified") {
+        return { memories: [{ id: "m1", content: "喜欢绿茶" }], total: 1 };
+      }
+      return { memories: [], total: 0 };
+    });
+    renderWithRouter(<ChatHome />);
+    expect(await screen.findByText(/我已经记住了 1 件关于你的事/)).toBeInTheDocument();
   });
 
   it("continues last conversation on click", async () => {
