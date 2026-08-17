@@ -10,6 +10,7 @@ import {
   Trash2,
   Clock,
   ListTodo,
+  Plus,
 } from "lucide-react";
 import { useApprovalsQuery } from "../../hooks/useApprovalsQuery";
 import { useInboxQuery } from "../../hooks/useInboxQuery";
@@ -134,13 +135,13 @@ export default function Sidebar({
 
       {onChatPage ? (
         <>
-          <div className="px-3 pt-3 pb-1 flex items-center justify-between gap-2">
-            <p className="text-[11px] text-fg-tertiary uppercase tracking-wide">最近对话</p>
+          <div className="px-2 pt-3 pb-1">
             <button
               type="button"
               onClick={onNewChat}
-              className="text-xs text-insight hover:text-insight/80 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-fg-secondary hover:bg-surface-overlay/50 hover:text-fg-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             >
+              <Plus size={16} className="shrink-0" />
               新对话
             </button>
           </div>
@@ -156,7 +157,7 @@ export default function Sidebar({
                 }`}
               >
                 <div className="min-w-0 flex-1">
-                  <span className="truncate text-sm block">{conv.title || "新对话"}</span>
+                  <span className="truncate text-sm block">{conv.title || "未命名"}</span>
                   {conv.summary && (
                     <span className="truncate text-xs text-fg-disabled block">{conv.summary}</span>
                   )}

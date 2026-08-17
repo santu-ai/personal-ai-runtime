@@ -65,12 +65,16 @@ export default function NotificationBell() {
 
   return (
     <>
-      <div className="relative px-3 pb-2">
+      <div className="relative px-3 pb-2" ref={dropdownRef}>
         <button
           type="button"
+          aria-expanded={open}
+          aria-haspopup="dialog"
           onClick={() => {
-            setOpen(!open);
-            if (!open) void refetch();
+            setOpen((wasOpen) => {
+              if (!wasOpen) void refetch();
+              return !wasOpen;
+            });
           }}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-fg-secondary hover:bg-surface-overlay/50 hover:text-fg-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
           aria-label="通知"
@@ -86,8 +90,9 @@ export default function NotificationBell() {
 
         {open && (
           <div
-            ref={dropdownRef}
             className="absolute bottom-full left-2 right-2 mb-1 bg-surface-raised border border-border-strong rounded-xl shadow-xl max-h-64 overflow-y-auto z-50"
+            role="dialog"
+            aria-label="最近通知"
           >
             <div className="flex items-center justify-between px-3 py-2 border-b border-border-subtle">
               <span className="text-xs text-fg-tertiary">最近通知</span>

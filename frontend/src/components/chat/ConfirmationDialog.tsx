@@ -114,15 +114,19 @@ export default function ConfirmationDialog({ toolCall, onConfirm, onDeny }: Prop
       variant="inline"
       title={suggestion?.title}
     >
-      <p className="text-xs text-fg-tertiary w-full mt-1">
-        {suggestion?.hint ?? "确认后将执行工具并自动续写一次回复"}
-      </p>
-      <Button size="sm" onClick={onConfirm}>
-        {suggestion?.confirm ?? "确认执行"}
-      </Button>
-      <Button size="sm" variant="secondary" onClick={onDeny}>
-        取消
-      </Button>
+      <div className="w-full space-y-2">
+        <p className="text-xs text-fg-tertiary">
+          {suggestion?.hint ?? "确认后将执行工具并自动续写一次回复"}
+        </p>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={onConfirm}>
+            {suggestion?.confirm ?? "确认执行"}
+          </Button>
+          <Button size="sm" variant="secondary" onClick={onDeny}>
+            取消
+          </Button>
+        </div>
+      </div>
     </RiskCard>
   );
 }

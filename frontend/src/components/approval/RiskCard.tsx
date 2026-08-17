@@ -155,15 +155,15 @@ export default function RiskCard({
   const RiskIcon = tone.Icon;
 
   return (
-    <div className={`${tone.container} rounded-lg ${variant === "panel" ? "p-5" : "p-4"}`}>
-      <div className="flex items-start gap-3">
+    <div className={`${tone.container} rounded-lg ${variant === "panel" ? "p-5" : "p-3"}`}>
+      <div className="flex items-start gap-2.5">
         <div className={`${tone.icon} mt-0.5 shrink-0`}>
-          <RiskIcon size={20} />
+          <RiskIcon size={variant === "panel" ? 20 : 16} />
         </div>
 
-        <div className="flex-1 min-w-0 space-y-2">
+        <div className="flex-1 min-w-0 space-y-1.5">
           <div className="flex items-center gap-2 flex-wrap">
-            <h4 className={`${tone.title} font-medium`}>{heading}</h4>
+            <h4 className={`${tone.title} font-medium text-sm`}>{heading}</h4>
             {riskLevel === "high" && <Badge tone="danger">高风险</Badge>}
             {expiringSoon && (
               <Badge tone="danger">
@@ -174,7 +174,9 @@ export default function RiskCard({
             {source?.flowLabel && <Badge tone="insight">{source.flowLabel}</Badge>}
           </div>
 
-          {riskExplanation && <p className={`text-xs ${tone.desc} italic`}>{riskExplanation}</p>}
+          {variant === "panel" && riskExplanation && (
+            <p className={`text-xs ${tone.desc} italic`}>{riskExplanation}</p>
+          )}
 
           {variant === "panel" && showBackendFields && (
             <div className="text-xs space-y-1">
@@ -196,11 +198,37 @@ export default function RiskCard({
           )}
 
           {description && (
-            <p className={`${tone.desc} text-sm whitespace-pre-wrap`}>{description}</p>
+            <p className={`${tone.desc} text-sm whitespace-pre-wrap truncate`} title={description}>
+              {description}
+            </p>
           )}
 
-          {isPatch && <PatchPreview args={parsedArgs} />}
-          {isWrite && <WriteFilePreview args={parsedArgs} />}
+          {isPatch &&
+            (variant === "inline" ? (
+              <details>
+                <summary className="text-xs text-fg-tertiary cursor-pointer hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded">
+                  查看变更
+                </summary>
+                <div className="mt-1">
+                  <PatchPreview args={parsedArgs} />
+                </div>
+              </details>
+            ) : (
+              <PatchPreview args={parsedArgs} />
+            ))}
+          {isWrite &&
+            (variant === "inline" ? (
+              <details>
+                <summary className="text-xs text-fg-tertiary cursor-pointer hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded">
+                  查看写入内容
+                </summary>
+                <div className="mt-1">
+                  <WriteFilePreview args={parsedArgs} />
+                </div>
+              </details>
+            ) : (
+              <WriteFilePreview args={parsedArgs} />
+            ))}
 
           <details>
             <summary className="text-xs text-fg-tertiary cursor-pointer hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded">
@@ -211,19 +239,23 @@ export default function RiskCard({
             </pre>
           </details>
 
-          <div className="flex items-center gap-4 text-xs text-fg-disabled flex-wrap">
-            {timing?.createdAt && (
-              <span title={formatTime(timing.createdAt)}>{timeAgo(timing.createdAt)}</span>
-            )}
-            {timing?.expiresAt && (
-              <span className={expiringSoon ? "text-danger" : ""}>
-                过期：{formatTime(timing.expiresAt)}
-              </span>
-            )}
-            {source?.proposedBy && <span>发起：{source.proposedBy}</span>}
-          </div>
+          {(timing?.createdAt || timing?.expiresAt || source?.proposedBy) && (
+            <div className="flex items-center gap-4 text-xs text-fg-disabled flex-wrap">
+              {timing?.createdAt && (
+                <span title={formatTime(timing.createdAt)}>{timeAgo(timing.createdAt)}</span>
+              )}
+              {timing?.expiresAt && (
+                <span className={expiringSoon ? "text-danger" : ""}>
+                  过期：{formatTime(timing.expiresAt)}
+                </span>
+              )}
+              {source?.proposedBy && <span>发起：{source.proposedBy}</span>}
+            </div>
+          )}
 
-          {children && <div className="flex gap-2 pt-1">{children}</div>}
+          {children && (
+            <div className="flex gap-2 pt-1 flex-wrap items-center w-full">{children}</div>
+          )}
         </div>
       </div>
     </div>

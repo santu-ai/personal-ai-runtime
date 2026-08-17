@@ -93,6 +93,7 @@ describe("Sidebar", () => {
     renderSidebar("/", { onNewChat });
     fireEvent.click(screen.getByText("新对话"));
     expect(onNewChat).toHaveBeenCalled();
+    expect(screen.queryByText("最近对话")).not.toBeInTheDocument();
   });
 
   it("calls onDeleteChat when delete button clicked", () => {
