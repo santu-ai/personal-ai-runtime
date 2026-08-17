@@ -142,9 +142,9 @@ describe("InboxPage", () => {
     expect(screen.getByLabelText("未读 请尽快回复 boss@corp.com")).toBeInTheDocument();
     expect(screen.getByLabelText("已读 促销活动 news@shop.com")).toBeInTheDocument();
     const unreadTitle = screen.getByLabelText("未读 请尽快回复 boss@corp.com")
-      .querySelector("div");
+      .querySelector("span");
     const readTitle = screen.getByLabelText("已读 促销活动 news@shop.com")
-      .querySelector("div");
+      .querySelector("span");
     expect(unreadTitle?.className).toContain("font-semibold");
     expect(readTitle?.className).toContain("font-normal");
   });

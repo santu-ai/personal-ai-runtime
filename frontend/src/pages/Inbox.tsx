@@ -189,19 +189,21 @@ export default function InboxPage() {
                         onClick={() => handleViewDetail(em)}
                         aria-label={`${unread ? "未读" : "已读"} ${em.subject || "（无主题）"} ${em.sender}`}
                       >
-                        <div
-                          className={`text-sm truncate ${
-                            unread ? "font-semibold text-fg-primary" : "font-normal text-fg-secondary"
-                          }`}
-                        >
-                          {em.subject || "（无主题）"}
-                        </div>
-                        <div
-                          className={`text-xs mt-0.5 truncate ${
-                            unread ? "text-fg-secondary" : "text-fg-tertiary"
-                          }`}
-                        >
-                          {em.sender}
+                        <div className="flex items-baseline gap-2 min-w-0">
+                          <span
+                            className={`text-sm truncate min-w-0 flex-1 ${
+                              unread ? "font-semibold text-fg-primary" : "font-normal text-fg-secondary"
+                            }`}
+                          >
+                            {em.subject || "（无主题）"}
+                          </span>
+                          <span
+                            className={`text-xs truncate shrink-0 max-w-[45%] ${
+                              unread ? "text-fg-secondary" : "text-fg-tertiary"
+                            }`}
+                          >
+                            {em.sender}
+                          </span>
                         </div>
                       </Card>
                     );
@@ -232,8 +234,10 @@ function TriageCard({
 }) {
   return (
     <div className="p-3 bg-surface-sunken rounded-lg border border-border-subtle">
-      <div className="text-sm font-medium text-fg-primary truncate">{email.subject}</div>
-      <div className="text-xs text-fg-tertiary mt-1 truncate">{email.sender}</div>
+      <div className="flex items-baseline gap-2 min-w-0">
+        <div className="text-sm font-medium text-fg-primary truncate min-w-0 flex-1">{email.subject}</div>
+        <div className="text-xs text-fg-tertiary truncate shrink-0 max-w-[45%]">{email.sender}</div>
+      </div>
       <div className="flex gap-3 mt-2">
         <button
           type="button"
