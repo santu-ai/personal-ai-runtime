@@ -12,8 +12,10 @@ vi.mock("../../hooks/useInboxQuery", () => ({
   useInboxQuery: () => ({ data: { emails: [], digest: {} } }),
 }));
 
+const proposedCountState = { data: 0 };
+
 vi.mock("../../hooks/useMemoriesQuery", () => ({
-  useProposedMemoryCountQuery: () => ({ data: 0 }),
+  useProposedMemoryCountQuery: () => proposedCountState,
 }));
 
 function renderSidebar(initialEntry = "/", overrides = {}) {
@@ -43,6 +45,7 @@ function renderSidebar(initialEntry = "/", overrides = {}) {
 describe("Sidebar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    proposedCountState.data = 0;
   });
 
   it("renders app title", () => {
@@ -98,5 +101,12 @@ describe("Sidebar", () => {
     const deleteButtons = screen.getAllByLabelText("删除对话");
     fireEvent.click(deleteButtons[0]);
     expect(onDeleteChat).toHaveBeenCalledWith("c1");
+  });
+
+  it("sends memories nav to the review tab when claims are pending", () => {
+    proposedCountState.data = 2;
+    renderSidebar();
+    const memoryLink = screen.getByRole("link", { name: /记忆/ });
+    expect(memoryLink).toHaveAttribute("href", "/memories?tab=review");
   });
 });

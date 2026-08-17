@@ -301,7 +301,7 @@ export default function ChatView({ conversationId }: Props) {
       <ProposedMemoryBanner />
       {memoryNotice && (
         <div className="px-4 py-2 bg-insight/10 border-b border-insight/30 flex items-center gap-2 text-xs text-insight animate-pulse">
-          <span>🧠</span>
+          <BrainCircuit size={14} className="shrink-0" />
           <span className="flex-1 truncate">{memoryNotice}</span>
           <button
             type="button"
@@ -310,6 +310,18 @@ export default function ChatView({ conversationId }: Props) {
             aria-label="关闭"
           >
             ×
+          </button>
+        </div>
+      )}
+      {!contextOpen && (
+        <div className="flex items-center justify-end px-3 py-1.5 border-b border-border-subtle shrink-0">
+          <button
+            type="button"
+            onClick={() => setContextOpen(true)}
+            className="px-2 py-1 text-xs bg-surface-overlay hover:bg-border-strong rounded-lg text-fg-secondary border border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+            title="展开上下文面板"
+          >
+            上下文
           </button>
         </div>
       )}

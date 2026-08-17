@@ -3,10 +3,9 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 type Variant = "primary" | "secondary" | "subtle" | "ghost" | "danger";
 
 const variantClasses: Record<Variant, string> = {
-  // Primary: neutral emphasis. "Approve/confirm" is a decision, not "safe".
-  // Green (success) is reserved for completed/safe states, not main actions.
+  // Primary: insight accent. Success green stays for completed / safe states.
   primary:
-    "bg-surface-overlay hover:bg-border-strong text-white disabled:bg-surface-overlay disabled:text-fg-disabled",
+    "bg-insight hover:bg-insight/90 text-white disabled:bg-surface-overlay disabled:text-fg-disabled",
   secondary:
     "bg-surface-raised hover:bg-surface-overlay text-fg-primary border border-border-subtle disabled:opacity-50",
   // Subtle: ghost, but with a faint background — for tertiary inline actions.

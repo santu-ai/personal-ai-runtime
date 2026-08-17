@@ -306,8 +306,6 @@ describe("ChatView", () => {
 
     const banner = await screen.findByText(/1 条记忆待确认后才会进入对话/);
     const contextBtn = await screen.findByRole("button", { name: "上下文" });
-    const positioningRoot = contextBtn.closest(".relative");
-    expect(positioningRoot).toBeTruthy();
-    expect(positioningRoot?.contains(banner)).toBe(false);
+    expect(banner.closest(".border-b")?.contains(contextBtn)).toBe(false);
   });
 });

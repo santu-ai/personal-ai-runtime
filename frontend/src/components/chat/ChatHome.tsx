@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Brain } from "lucide-react";
+import { Brain, Mail, ShieldCheck, Sparkles, Target } from "lucide-react";
 import { useChatStore } from "../../stores/chatStore";
 import {
   listMemoriesGrouped,
@@ -17,7 +17,7 @@ import ProposedMemoryBanner from "./ProposedMemoryBanner";
 import ChatComposer from "./ChatComposer";
 
 interface ProactiveNudge {
-  icon: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
   message: string;
   action: string;
   prompt?: string;
@@ -82,7 +82,7 @@ export default function ChatHome() {
 
   if (approvalCount > 0) {
     nudges.push({
-      icon: "🛡️",
+      icon: ShieldCheck,
       message:
         approvalCount === 1
           ? "有 1 项工具调用等待你批准"
@@ -100,7 +100,7 @@ export default function ChatHome() {
       .map((g) => g.title)
       .join("、");
     nudges.push({
-      icon: "🎯",
+      icon: Target,
       message:
         stagnantGoals.length === 1
           ? `「${names}」已经 ${Math.round((Date.now() - new Date(stagnantGoals[0].last_activity_at || stagnantGoals[0].created_at).getTime()) / 86400000)} 天没有进展了`
@@ -114,7 +114,7 @@ export default function ChatHome() {
 
   if (unreadInbox > 0) {
     nudges.push({
-      icon: "📬",
+      icon: Mail,
       message: `收件箱有 ${unreadInbox} 封邮件，可能有需要你处理的`,
       action: "帮我看看",
       prompt: "帮我看看收件箱里有什么重要的邮件，总结一下需要我处理的",
@@ -131,7 +131,7 @@ export default function ChatHome() {
     proposedCount === 0
   ) {
     nudges.push({
-      icon: "👋",
+      icon: Sparkles,
       message: "我还不太了解你。聊几句，让我记住对你重要的事",
       action: "开始对话",
       prompt: "我想让你记住一些关于我的事情：我的工作、兴趣和日常习惯",
@@ -140,7 +140,7 @@ export default function ChatHome() {
     });
   } else if (memories.length > 0 && activeGoals.length === 0 && approvalCount === 0) {
     nudges.push({
-      icon: "🎯",
+      icon: Target,
       message: `我已经记住了 ${memories.length} 件关于你的事。要不要设定一个目标？`,
       action: "规划目标",
       prompt: "根据你对我的了解，建议一个我这周可以完成的目标",
@@ -211,12 +211,19 @@ export default function ChatHome() {
                     : nudge.tone === "success"
                       ? "bg-success/20 hover:bg-success/30 text-success"
                       : "bg-insight/20 hover:bg-insight/30 text-insight";
+                const Icon = nudge.icon;
+                const iconClass =
+                  nudge.tone === "warning"
+                    ? "text-warning"
+                    : nudge.tone === "success"
+                      ? "text-success"
+                      : "text-insight";
                 return (
                   <div
                     key={i}
                     className={`flex items-center gap-3 p-4 rounded-xl border ${toneClass} transition-colors`}
                   >
-                    <span className="text-2xl shrink-0">{nudge.icon}</span>
+                    <Icon size={18} className={`shrink-0 ${iconClass}`} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-fg-primary">{nudge.message}</p>
                     </div>

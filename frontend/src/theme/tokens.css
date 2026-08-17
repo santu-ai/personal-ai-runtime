@@ -7,7 +7,7 @@
  *
  * Phase 1a keeps all values identical to the existing hard-coded grays,
  * so swapping gray-* → surface-* in components is visually a no-op.
- * Semantic re-coloring (primary button, focus rings) is deferred to Phase 1b.
+ * Phase 1b: primary actions use `--color-insight` (`bg-insight`).
  */
 
 @theme inline {

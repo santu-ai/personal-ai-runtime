@@ -67,7 +67,7 @@ describe("MessageItem", () => {
         }}
       />,
     );
-    expect(screen.getByText("🧠")).toBeInTheDocument();
+    expect(screen.getByLabelText("助手")).toBeInTheDocument();
   });
 
   it("shows thinking placeholder before first token", () => {

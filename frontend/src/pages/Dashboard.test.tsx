@@ -124,7 +124,7 @@ describe("DashboardPage", () => {
 
   it("renders today title", () => {
     renderDashboard();
-    expect(screen.getByRole("heading", { name: "Today" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "今天" })).toBeInTheDocument();
   });
 
   it("shows loading state", () => {

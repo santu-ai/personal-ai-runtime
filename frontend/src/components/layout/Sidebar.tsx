@@ -101,42 +101,6 @@ export default function Sidebar({
             </NavLink>
           );
         })}
-
-        {/* Always-visible decision shortcuts when something needs attention */}
-        {(approvalCount > 0 || inboxCount > 0 || proposedCount > 0) && (
-          <div className="mt-1 space-y-0.5">
-            {approvalCount > 0 && (
-              <NavLink
-                to="/approvals"
-                className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-warning hover:bg-warning/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-              >
-                <ShieldCheck size={14} className="shrink-0" />
-                <span>待审批</span>
-                <NavBadge count={approvalCount} />
-              </NavLink>
-            )}
-            {proposedCount > 0 && (
-              <NavLink
-                to="/memories?tab=review"
-                className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-insight hover:bg-insight/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-              >
-                <Brain size={14} className="shrink-0" />
-                <span>待确认记忆</span>
-                <NavBadge count={proposedCount} />
-              </NavLink>
-            )}
-            {inboxCount > 0 && (
-              <NavLink
-                to="/inbox"
-                className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-insight hover:bg-insight/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-              >
-                <Mail size={14} className="shrink-0" />
-                <span>待处理邮件</span>
-                <NavBadge count={inboxCount} />
-              </NavLink>
-            )}
-          </div>
-        )}
       </nav>
 
       <nav className="px-2 py-2 border-b border-border-subtle overflow-y-auto shrink-0">
@@ -144,10 +108,14 @@ export default function Sidebar({
         {DATA_NAV.map((item) => {
           const Icon = item.icon;
           const count = badgeFor(item.badgeKey);
+          const to =
+            item.badgeKey === "memories" && proposedCount > 0
+              ? "/memories?tab=review"
+              : item.path;
           return (
             <NavLink
               key={item.path}
-              to={item.path}
+              to={to}
               className={({ isActive }) =>
                 `w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm mb-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
                   isActive

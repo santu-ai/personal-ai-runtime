@@ -85,7 +85,7 @@ export default function DashboardPage() {
               onClick={() => setTab("today")}
               className="px-3 py-1.5 text-xs bg-surface-overlay hover:bg-border-strong text-fg-secondary rounded-lg transition-colors"
             >
-              ← 返回 Today
+              ← 返回今日
             </button>
           </div>
           <TrustReportPanel compact />
@@ -105,7 +105,7 @@ export default function DashboardPage() {
               onClick={() => setTab("today")}
               className="px-3 py-1.5 text-xs bg-surface-overlay hover:bg-border-strong text-fg-secondary rounded-lg transition-colors"
             >
-              ← 返回 Today
+              ← 返回今日
             </button>
           </div>
           <MonitorsPanel />
@@ -149,7 +149,7 @@ export default function DashboardPage() {
         {/* ── Header ── */}
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h2 className="text-xl font-semibold text-fg-primary">Today</h2>
+            <h2 className="text-xl font-semibold text-fg-primary">今天</h2>
             <p className="text-sm text-fg-tertiary mt-0.5">{getDateString()}</p>
           </div>
           <div className="flex items-center gap-2">

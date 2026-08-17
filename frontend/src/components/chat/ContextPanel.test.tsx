@@ -95,13 +95,13 @@ describe("ContextPanel", () => {
     ]);
   });
 
-  it("shows collapsed toggle when closed", () => {
-    render(
+  it("renders nothing when closed — ChatView owns the chrome toggle", () => {
+    const { container } = render(
       <MemoryRouter>
         <ContextPanel open={false} onToggle={vi.fn()} />
       </MemoryRouter>,
     );
-    expect(screen.getByText("上下文")).toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
   });
 
   it("loads and shows active goals sorted by last activity", async () => {

@@ -64,7 +64,7 @@ export default function ChatComposer({
         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
           disabled
             ? "bg-surface-overlay/50 text-fg-secondary cursor-not-allowed"
-            : "bg-surface-overlay hover:bg-border-strong disabled:bg-surface-overlay disabled:text-fg-disabled text-white"
+            : "bg-insight hover:bg-insight/90 disabled:bg-surface-overlay disabled:text-fg-disabled text-white"
         }`}
       >
         {disabled ? (

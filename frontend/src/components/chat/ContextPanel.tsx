@@ -66,24 +66,14 @@ export default function ContextPanel({ lastUserMessage, toolResults = [], open, 
 
   const recentTools = toolResults.slice(-3).reverse();
 
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={onToggle}
-        className="absolute top-3 right-3 z-10 px-2 py-1 text-xs bg-surface-overlay hover:bg-border-strong rounded-lg text-fg-secondary border border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-        title="展开上下文面板"
-      >
-        上下文
-      </button>
-    );
-  }
+  if (!open) return null;
 
   return (
     <aside className="w-72 border-l border-border-subtle bg-surface-raised/50 overflow-y-auto shrink-0 flex flex-col">
       <div className="p-3 border-b border-border-subtle flex items-center justify-between">
         <h3 className="text-sm font-medium text-fg-primary">上下文</h3>
         <button
+          type="button"
           onClick={onToggle}
           className="text-xs text-fg-tertiary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
         >

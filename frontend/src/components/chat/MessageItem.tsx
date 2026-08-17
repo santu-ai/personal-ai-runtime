@@ -158,8 +158,11 @@ export default function MessageItem({ message }: Props) {
   return (
     <div className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
       {isAssistant && (
-        <div className="w-8 h-8 rounded-full bg-surface-overlay flex items-center justify-center shrink-0 mt-0.5">
-          <span className="text-sm">🧠</span>
+        <div
+          className="w-8 h-8 rounded-full bg-surface-overlay flex items-center justify-center shrink-0 mt-0.5"
+          aria-label="助手"
+        >
+          <Brain size={16} className="text-insight" />
         </div>
       )}
 
