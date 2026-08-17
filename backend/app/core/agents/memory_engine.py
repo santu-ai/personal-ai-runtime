@@ -55,7 +55,11 @@ class MemoryEngine:
         return memory_id
 
     def search_relevant_memories(self, query: str, n_results: int = 5) -> list[dict]:
-        """Semantic search for memories relevant to the current context."""
+        """Unfiltered Chroma hits — extractor dedup only.
+
+        Chat / public search must use :meth:`recall_for_context` so proposed
+        claims are not injected before the user ratifies them.
+        """
         return kernel.recall_memory(query, k=n_results)
 
     def _enrich_recall_hits(self, hits: list[dict]) -> list[dict]:

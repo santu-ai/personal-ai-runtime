@@ -68,6 +68,25 @@ def test_bulk_ratify_and_reject(client):
     assert c not in proposed_ids
 
 
+def test_search_uses_claim_filtered_recall(client, monkeypatch):
+    """Public search is Chat recall, not raw Chroma (proposed must not leak)."""
+
+    def fake_recall(query, max_memories=5, overfetch_factor=4):
+        assert query == "who am i"
+        assert max_memories == 3
+        return [{"id": "ok", "content": "ratified only", "confidence": 0.9}]
+
+    def boom(*_a, **_k):
+        raise AssertionError("search must not return unfiltered chroma hits")
+
+    monkeypatch.setattr(memory_engine, "recall_for_context", fake_recall)
+    monkeypatch.setattr(memory_engine, "search_relevant_memories", boom)
+
+    r = client.get("/api/memory/memories/search", params={"q": "who am i", "n": 3})
+    assert r.status_code == 200
+    assert r.json() == [{"id": "ok", "content": "ratified only", "confidence": 0.9}]
+
+
 def test_bulk_skips_missing_and_manual(client):
     manual = client.post(
         "/api/memory/memories",

@@ -113,11 +113,16 @@ async def create_memory(body: CreateMemoryRequest):
 
 @router.get("/memories/search")
 async def search_memories(q: str, n: int = 5):
-    """Search memories semantically. **@public** SDK surface — external agents may call this to recall what the user knows."""
+    """Search memories semantically for recall (Chat / SDK).
+
+    **@public** SDK surface. Returns the same claim-filtered hits as Chat
+    injection: proposed / rejected / contested claims are excluded until
+    ratified. Extractor dedup still uses unfiltered ``search_relevant_memories``.
+    """
     if not q:
         raise HTTPException(status_code=400, detail="Query parameter 'q' is required")
     return await asyncio.to_thread(
-        memory_engine.search_relevant_memories, q, n,
+        memory_engine.recall_for_context, q, max_memories=n,
     )
 
 
