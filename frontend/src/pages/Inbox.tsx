@@ -9,7 +9,7 @@ import {
 } from "../api/client";
 import { useErrorStore } from "../stores/errorStore";
 import { useQuickChat } from "../hooks/useQuickChat";
-import { useInboxQuery, useInvalidateInbox } from "../hooks/useInboxQuery";
+import { useInboxQuery, useInvalidateInbox, RECENT_INBOX_LIMIT } from "../hooks/useInboxQuery";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import InboxEmailDetailModal from "../components/inbox/InboxEmailDetailModal";
@@ -168,7 +168,7 @@ export default function InboxPage() {
             <section>
               <div className="flex items-baseline justify-between mb-3">
                 <h3 className="text-sm font-semibold text-fg-primary">最近邮件</h3>
-                <span className="text-xs text-fg-tertiary">保留最近 20 封</span>
+                <span className="text-xs text-fg-tertiary">保留最近 {RECENT_INBOX_LIMIT} 封</span>
               </div>
               {allEmails.length === 0 ? (
                 <Card className="py-12 text-center">

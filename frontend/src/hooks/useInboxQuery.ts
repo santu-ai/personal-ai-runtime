@@ -9,7 +9,7 @@ import { listInboxEmails, getInboxDigest, type InboxEmail } from "../api/client"
 import { queryKeys } from "./useWsInvalidationBridge";
 
 /** How many recent mails the inbox list keeps on screen. */
-export const RECENT_INBOX_LIMIT = 20;
+export const RECENT_INBOX_LIMIT = 15;
 
 export interface InboxData {
   emails: InboxEmail[];

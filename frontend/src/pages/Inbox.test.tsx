@@ -3,6 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
 import InboxPage from "./Inbox";
 import { listInboxEmails, triggerInboxPoll } from "../api/client";
+import { RECENT_INBOX_LIMIT } from "../hooks/useInboxQuery";
 
 const { addError } = vi.hoisted(() => ({ addError: vi.fn() }));
 
@@ -75,11 +76,11 @@ describe("InboxPage", () => {
     expect(screen.getByText("billing@example.com")).toBeInTheDocument();
     expect(screen.queryByText("您的账单已出")).not.toBeInTheDocument();
     expect(screen.queryByText("暂无")).not.toBeInTheDocument();
-    expect(listInboxEmails).toHaveBeenCalledWith(undefined, "all", 20);
+    expect(listInboxEmails).toHaveBeenCalledWith(undefined, "all", RECENT_INBOX_LIMIT);
   });
 
-  it("keeps only the 20 most recent emails in the list", async () => {
-    const rows = Array.from({ length: 21 }, (_, i) => ({
+  it("keeps only the most recent emails in the list", async () => {
+    const rows = Array.from({ length: RECENT_INBOX_LIMIT + 1 }, (_, i) => ({
       id: `e${i}`,
       sender: "a@b.com",
       subject: `主题 ${i + 1}`,
@@ -98,8 +99,8 @@ describe("InboxPage", () => {
     );
     renderWithRouter(<InboxPage />);
     expect(await screen.findByText("主题 1")).toBeInTheDocument();
-    expect(screen.getByText("主题 20")).toBeInTheDocument();
-    expect(screen.queryByText("主题 21")).not.toBeInTheDocument();
+    expect(screen.getByText(`主题 ${RECENT_INBOX_LIMIT}`)).toBeInTheDocument();
+    expect(screen.queryByText(`主题 ${RECENT_INBOX_LIMIT + 1}`)).not.toBeInTheDocument();
   });
 
   it("labels actionable unread as 需跟进 and styles unread stronger than read", async () => {
