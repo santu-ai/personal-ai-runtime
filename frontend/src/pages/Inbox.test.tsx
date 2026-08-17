@@ -48,26 +48,54 @@ describe("InboxPage", () => {
   });
 
   it("lists synced emails below the digest", async () => {
-    vi.mocked(listInboxEmails).mockResolvedValue([
-      {
-        id: "e1",
-        sender: "billing@example.com",
-        subject: "八月账单",
-        preview: "您的账单已出",
-        received_at: "2026-08-17T00:00:00Z",
-        category: "important",
-        importance: 0.9,
-        reason: "账单",
-        notified: 0,
-        digested: 1,
-        status: "read",
-        created_at: "2026-08-17T00:00:00Z",
-      },
-    ]);
+    vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") => {
+      if (status === "pending") return [];
+      return [
+        {
+          id: "e1",
+          sender: "billing@example.com",
+          subject: "八月账单",
+          preview: "您的账单已出",
+          received_at: "2026-08-17T00:00:00Z",
+          category: "important",
+          importance: 0.9,
+          reason: "账单",
+          notified: 0,
+          digested: 1,
+          status: "read",
+          created_at: "2026-08-17T00:00:00Z",
+        },
+      ];
+    });
     renderWithRouter(<InboxPage />);
     expect(await screen.findByText("八月账单")).toBeInTheDocument();
     expect(screen.getByText("最近邮件")).toBeInTheDocument();
     expect(screen.getByText("billing@example.com")).toBeInTheDocument();
     expect(screen.queryByText("暂无")).not.toBeInTheDocument();
+    expect(listInboxEmails).toHaveBeenCalledWith(undefined, "all", 20);
+  });
+
+  it("keeps only the 20 most recent emails in the list", async () => {
+    const rows = Array.from({ length: 21 }, (_, i) => ({
+      id: `e${i}`,
+      sender: "a@b.com",
+      subject: `主题 ${i + 1}`,
+      preview: "",
+      received_at: `2026-08-17T00:00:${String(59 - i).padStart(2, "0")}Z`,
+      category: "ignorable",
+      importance: 0,
+      reason: "",
+      notified: 0,
+      digested: 1,
+      status: "read" as const,
+      created_at: `2026-08-17T00:00:${String(59 - i).padStart(2, "0")}Z`,
+    }));
+    vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") =>
+      status === "pending" ? [] : rows,
+    );
+    renderWithRouter(<InboxPage />);
+    expect(await screen.findByText("主题 1")).toBeInTheDocument();
+    expect(screen.getByText("主题 20")).toBeInTheDocument();
+    expect(screen.queryByText("主题 21")).not.toBeInTheDocument();
   });
 });

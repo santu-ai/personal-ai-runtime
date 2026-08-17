@@ -166,7 +166,7 @@ export default function InboxPage() {
             <section>
               <div className="flex items-baseline justify-between mb-3">
                 <h3 className="text-sm font-semibold text-fg-primary">最近邮件</h3>
-                <span className="text-xs text-fg-tertiary">{allEmails.length} 封</span>
+                <span className="text-xs text-fg-tertiary">保留最近 20 封</span>
               </div>
               {allEmails.length === 0 ? (
                 <Card className="py-12 text-center">

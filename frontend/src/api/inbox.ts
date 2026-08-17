@@ -6,10 +6,12 @@ import type { InboxEmail } from "./types";
 export async function listInboxEmails(
   category?: string,
   status = "pending",
+  limit?: number,
 ): Promise<InboxEmail[]> {
   const params = new URLSearchParams();
   if (category) params.set("category", category);
   if (status) params.set("status", status);
+  if (limit != null) params.set("limit", String(limit));
   const qs = params.toString();
   const url = qs ? `${API_BASE}/inbox/?${qs}` : `${API_BASE}/inbox/`;
   return request<InboxEmail[]>(url);
