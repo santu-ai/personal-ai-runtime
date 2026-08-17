@@ -25,12 +25,25 @@ logger = logging.getLogger(__name__)
 
 ExtractFn = Callable[[str], Awaitable[list[str]]]
 
+
+def l2_distance_to_cosine(distance: float) -> float:
+    """Convert Chroma L2 distance on unit vectors to cosine similarity.
+
+    Default MiniLM embeddings are L2-normalized and the memories collection
+    uses HNSW space L2. For unit vectors, cosine = 1 - ||a-b||^2 / 2.
+    """
+    d = max(float(distance), 0.0)
+    return max(0.0, min(1.0, 1.0 - (d * d) / 2.0))
+
+
 # Cap concurrent fire-and-forget extractions so chat storms cannot pile up
 # Ollama/cloud jobs indefinitely.
 _MAX_PENDING_TASKS = 3
 # Same turn (or identical text) scheduled twice within this window is dropped.
 _DEDUP_WINDOW_SEC = 120.0
 # Stricter than the historical 0.92 — near-paraphrases still flood proposed.
+# Compared as cosine. Chroma memories use L2 on unit MiniLM vectors, so raw
+# ``1 - distance`` would treat L2≈0.54 (cosine≈0.86) as "not similar".
 _DEDUP_SIMILARITY = 0.85
 _MIN_FACT_CHARS = 12
 _MAX_FACT_CHARS = 280
@@ -232,7 +245,12 @@ class MemoryExtractor:
 
     @staticmethod
     def _hit_similarity(hit: dict) -> float | None:
-        """Normalize recall hit scores; Chroma returns distance, not similarity."""
+        """Normalize recall hit scores to cosine similarity.
+
+        Prefer an explicit score/similarity. Chroma memory search returns L2
+        ``distance`` on unit MiniLM vectors — convert with
+        :func:`l2_distance_to_cosine`, not ``1 - distance``.
+        """
         score = hit.get("score")
         if isinstance(score, (int, float)):
             return float(score)
@@ -241,7 +259,7 @@ class MemoryExtractor:
             return float(similarity)
         distance = hit.get("distance")
         if isinstance(distance, (int, float)):
-            return 1.0 - float(distance)
+            return l2_distance_to_cosine(float(distance))
         return None
 
     @staticmethod

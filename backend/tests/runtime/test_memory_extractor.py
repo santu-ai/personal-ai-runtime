@@ -3,9 +3,19 @@
 import pytest
 
 from app.core.agents.memory_engine import memory_engine
-from app.core.agents.memory_extractor import MemoryExtractor
+from app.core.agents.memory_extractor import MemoryExtractor, l2_distance_to_cosine
 from app.core.runtime.kernel import Kernel
 from app.store.database import Database
+
+
+def test_l2_distance_to_cosine_unit_vector_formula():
+    assert l2_distance_to_cosine(0.0) == 1.0
+    assert l2_distance_to_cosine(0.1) == pytest.approx(0.995)
+    # Measured MiniLM L2 between the two dogfood travel paraphrases.
+    assert l2_distance_to_cosine(0.5356) == pytest.approx(0.8566, abs=1e-3)
+    assert l2_distance_to_cosine(0.5356) >= 0.85
+    assert MemoryExtractor._hit_similarity({"distance": 0.5356}) >= 0.85
+    assert MemoryExtractor._hit_similarity({"distance": 0.5356}) != pytest.approx(1.0 - 0.5356)
 
 
 async def stub_extract(_text: str) -> list[str]:
@@ -118,7 +128,7 @@ class TestMemoryExtractor:
                     {
                         "id": "m1",
                         "content": "user prefers python",
-                        "distance": 0.1,  # similarity 0.9 >= 0.85
+                        "distance": 0.1,  # L2 → cosine ≈ 0.995 >= 0.85
                     }
                 ]
 
@@ -140,6 +150,50 @@ class TestMemoryExtractor:
         extractor = MemoryExtractor(extract_fn=extract_new)
         stored = await extractor.extract_and_store("anything")
         assert stored == [], "distance-based similarity must suppress storage"
+
+    async def test_l2_near_paraphrase_dedupes_cjk_travel_facts(self, tmp_path, monkeypatch):
+        """Dogfood: subset/superset Chinese facts with MiniLM L2≈0.54 must dedupe.
+
+        ``1 - L2`` would score ~0.46 and leak a second proposed claim.
+        """
+        existing = "用户计划从北京飞往奥克兰，出行日期在9月20日之后。"
+        paraphrase = "用户计划在9月20日之后出行。"
+        db = Database(db_path=str(tmp_path / "extract_l2_cjk.db"))
+
+        class FakeIndex:
+            def __init__(self):
+                self.docs: list[str] = []
+
+            def search_memories(self, query, n_results=5):
+                if not self.docs:
+                    return []
+                return [
+                    {
+                        "id": "m1",
+                        "content": self.docs[0],
+                        "distance": 0.5356,
+                    }
+                ]
+
+            def index_memory(self, content, metadata=None, memory_id=None):
+                self.docs.append(content)
+                return f"emb_{memory_id}"
+
+            def delete_memory(self, memory_id):
+                return None
+
+            def list_memory_ids(self):
+                return []
+
+        k = Kernel(db=db, memory_index=FakeIndex())
+        monkeypatch.setattr("app.core.agents.memory_engine.kernel", k)
+
+        async def extract_pair(_t: str) -> list[str]:
+            return [existing, paraphrase]
+
+        extractor = MemoryExtractor(extract_fn=extract_pair)
+        stored = await extractor.extract_and_store("北京飞奥克兰9月20号以后")
+        assert stored == [existing]
 
     async def test_cjk_meta_noise_filtered(self, tmp_path, monkeypatch):
         db = Database(db_path=str(tmp_path / "extract_cjk.db"))
