@@ -67,6 +67,28 @@ def test_generate_dashboard_with_seeded_data(product_kernel):
     assert "generated_at" in dashboard
     assert "recent_memories" in dashboard
 
+
+def test_recent_memories_uses_claim_filtered_recall(product_kernel, monkeypatch):
+    """Dashboard must not surface proposed claims as known facts."""
+    from app.product import personal_dashboard as pd
+
+    def fake_recall(query, max_memories=5):
+        assert "recent" in query
+        assert max_memories == 5
+        return [{
+            "id": "ok",
+            "content": "I drink tea every morning",
+            "confidence": 0.9,
+            "category": "habit",
+        }]
+
+    monkeypatch.setattr(pd.read_ports, "recall_memories_for_context", fake_recall)
+    dashboard = pd.generate_dashboard()
+    items = dashboard["recent_memories"]["items"]
+    assert dashboard["recent_memories"]["count"] == 1
+    assert items[0]["content"] == "I drink tea every morning"
+    assert items[0]["category"] == "habit"
+
     sovereignty = dashboard["data_sovereignty"]
     for key in (
         "total_events",

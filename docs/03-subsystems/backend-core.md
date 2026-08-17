@@ -70,7 +70,7 @@ Failover 执行在 `brain_llm_ops` / `brain_llm_client`（[`brain_llm_client.py`
 
 [`backend/app/core/agents/memory_engine.py`](../../backend/app/core/agents/memory_engine.py) 管理完整记忆生命周期。记忆是**精炼洞察**（不是原始数据）。所有写经 Kernel（`MemoryDerived/Updated/Deleted`）；ChromaDB 是 Kernel 维护的派生搜索索引。
 
-方法：`store_memory`、`search_relevant_memories`（未过滤的 Chroma 命中，仅给抽取去重）、`recall_for_context`（over-fetch + 排除 proposed/rejected/contested）、`_enrich_recall_hits`（join Chroma 命中与治理投影拿 origin/confidence）、`format_memory_context`、`retrieve_context_string`、`list_memories`、`delete_memory`、`update_memory`。公开 `GET /api/memory/memories/search` 与 Chat 注入走 `recall_for_context`。
+方法：`store_memory`、`search_relevant_memories`（未过滤的 Chroma 命中，仅给抽取去重）、`recall_for_context`（over-fetch + 排除 proposed/rejected/contested）、`_enrich_recall_hits`（join Chroma 命中与治理投影拿 origin/confidence/category）、`format_memory_context`、`retrieve_context_string`、`list_memories`、`delete_memory`、`update_memory`。公开 `GET /api/memory/memories/search`、Chat 注入与仪表盘 `recent_memories` 走 `recall_for_context`（经 `read_ports.recall_memories_for_context`）。
 
 ### MemoryExtractor
 

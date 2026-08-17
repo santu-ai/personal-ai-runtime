@@ -2,7 +2,7 @@
 
 This product is the "一致性测试床" — it proves the Runtime can natively host
 a product feature without any boundary violations. Every data access goes
-through read_ports → Kernel ABI (query_state, read_events, recall_memory).
+through read_ports → Kernel ABI (query_state, read_events, recall).
 
 No SQL. No file system access. No direct ChromaDB access. Zero bypasses.
 
@@ -34,7 +34,7 @@ def generate_dashboard() -> dict:
     """Generate a Personal Dashboard using only Kernel ABI via read_ports.
 
     Widgets run sequentially: SQLite is fine with thread-local connections, but
-    Chroma/HNSW (``recall_memory``) is not safe under concurrent native access
+    Chroma/HNSW (semantic recall) is not safe under concurrent native access
     and has segfaulted CI under ThreadPoolExecutor + TestClient.
     """
     now = datetime.now(UTC)
@@ -158,9 +158,12 @@ def _widget_recent_events(since_ts: str) -> dict:
 
 
 def _widget_recent_memories() -> dict:
-    """Recent memories — what the system thinks it knows (recall_memory only)."""
+    """Approved memories the system may treat as known (claim-filtered recall)."""
     try:
-        memories = kernel.recall_memory("recent activities goals preferences", k=_MAX_RECENT_MEMORIES)
+        memories = read_ports.recall_memories_for_context(
+            "recent activities goals preferences",
+            max_memories=_MAX_RECENT_MEMORIES,
+        )
         return {
             "count": len(memories),
             "items": [

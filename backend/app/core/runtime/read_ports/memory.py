@@ -7,6 +7,13 @@ from typing import Any
 from app.core.runtime.read_ports._common import kernel
 
 
+def recall_memories_for_context(query: str, *, max_memories: int = 3) -> list[dict]:
+    """Claim-filtered semantic recall for Chat / dashboard / SDK surfaces."""
+    from app.core.agents.memory_engine import memory_engine
+
+    return memory_engine.recall_for_context(query, max_memories=max_memories)
+
+
 def retrieve_memory_context(query: str, *, max_memories: int = 3) -> str:
     from app.core.agents.memory_engine import memory_engine
 
@@ -17,7 +24,7 @@ def retrieve_memory_with_sources(query: str, *, max_memories: int = 3) -> tuple[
     """Retrieve memory context and return (context_str, sources)."""
     from app.core.agents.memory_engine import memory_engine
 
-    enriched = memory_engine.recall_for_context(query, max_memories=max_memories)
+    enriched = recall_memories_for_context(query, max_memories=max_memories)
     context_str = memory_engine.format_memory_context(enriched)
     sources = [
         {"id": mem["id"], "type": "memory", "title": mem.get("content", "")[:80]}

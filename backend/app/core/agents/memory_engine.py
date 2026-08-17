@@ -83,6 +83,7 @@ class MemoryEngine:
                 "id": memory_id,
                 "content": row.get("content") or hit.get("content", ""),
                 "confidence": float(row.get("confidence") or 0.5),
+                "category": row.get("category") or "",
             })
         return enriched
 

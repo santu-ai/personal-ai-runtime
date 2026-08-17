@@ -3,7 +3,7 @@
 This endpoint is the "一致性测试床" — it proves a product feature can be
 delivered using only Kernel ABI without bypassing Runtime boundaries.
 Every data read goes through read_ports → Kernel (query_state / read_events /
-recall_memory).
+claim-filtered recall).
 """
 
 import asyncio
@@ -22,7 +22,7 @@ async def get_dashboard():
     Runtime consistency proof:
       - query_state for goals (work_items alias), timer_events, policy_events
       - read_events for recent system events
-      - recall_memory for semantic belief recall
+      - recall_memories_for_context for semantic belief recall (excludes proposed)
       - Zero SQL / storage / filesystem access outside Kernel
     """
     # generate_dashboard does sync SQLite + Chroma — keep the event loop free.

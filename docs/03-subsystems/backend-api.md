@@ -113,7 +113,7 @@ connectors, timeline, work_items
 | [`inbox_monitors.py`](../../backend/app/product/inbox_monitors.py) / [`url_monitors.py`](../../backend/app/product/url_monitors.py) | 过滤器/URL 监控 CRUD + 求值 | 配置在 `app_settings.monitors`；匹配或正文 hash 变化时经 `dedup_key` 推通知；URL 抓取走 SSRF-safe `FetchServer` |
 | 数据主权（`Kernel.snapshot`/`restore`/`erase`） | Kernel 内置方法（[`kernel_sovereignty.py`](../../backend/app/core/runtime/kernel/kernel_sovereignty.py)） | 数据主权：`snapshot()`/`restore()`/`erase()`；删 SQLite + vector 目录并重建；export_all/import_all 由 `/api/system/*` 路由直接调用 Kernel |
 | [`encrypted_sync.py`](../../backend/app/product/encrypted_sync.py) | `encrypt_snapshot`/`decrypt_snapshot` + `EncryptedSyncError` | AES-GCM + Argon2id（V2）；blob 布局 `[4B magic 'PAES'][1B version=2][16B salt][12B nonce][zlib+AES-GCM ciphertext]` base64；`BLOB_FORMAT = "encrypted_snapshot_v2"`；最小密码 8 字符 |
-| [`personal_dashboard.py`](../../backend/app/product/personal_dashboard.py) | `generate_dashboard` + 5 个 `_widget_*` | 一致性测试床：每个 widget 仅用 Kernel ABI（`query_state`/`read_events`/`recall_memory`），零 SQL、零文件、零 ChromaDB 直访 |
+| [`personal_dashboard.py`](../../backend/app/product/personal_dashboard.py) | `generate_dashboard` + 5 个 `_widget_*` | 一致性测试床：每个 widget 仅用 Kernel ABI / `read_ports`（`query_state`/`read_events`/`recall_memories_for_context`），零 SQL、零文件、零 ChromaDB 直访；记忆 widget 排除 proposed/rejected/contested |
 
 ## 直接访问 DB 的端点
 

@@ -1,7 +1,8 @@
 """Personal Dashboard integration tests — widget shape beyond api smoke.
 
-Product data access is via Kernel ABI (query_state / read_events / recall_memory);
-boundary enforcement is covered by ``scripts.check_boundary``, not re-asserted here.
+Product data access is via Kernel ABI / read_ports (query_state / read_events /
+claim-filtered recall); boundary enforcement is covered by ``scripts.check_boundary``,
+not re-asserted here.
 """
 
 from fastapi.testclient import TestClient

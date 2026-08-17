@@ -139,6 +139,13 @@ def test_retrieve_memory_context_forwards_query(fake_memory_engine):
     assert "recalled" in result
 
 
+def test_recall_memories_for_context_forwards_query(fake_memory_engine):
+    fake_memory_engine._hits = [{"id": "m1", "content": "likes tea", "category": "habit"}]
+    hits = memory_port.recall_memories_for_context("tea", max_memories=3)
+    assert fake_memory_engine.recall_calls == [("tea", 3)]
+    assert hits == [{"id": "m1", "content": "likes tea", "category": "habit"}]
+
+
 def test_retrieve_memory_with_sources_returns_context_and_sources(fake_memory_engine):
     fake_memory_engine._hits = [
         {"id": "m1", "content": "likes tea" * 20},  # > 80 chars → truncated title
