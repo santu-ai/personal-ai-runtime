@@ -189,7 +189,7 @@ Layout 在根处挂三个副作用 hook：`useNotifications()`（持有 WS）、
 
 [`frontend/playwright.config.ts`](../../frontend/playwright.config.ts)：`testDir: "./e2e"`、60s 超时、headless、baseURL `http://localhost:5173`。`webServer.command: "npm run dev"`，复用已存在 server，120s 超时。
 
-e2e 文件：[`e2e/chat-approval.spec.ts`](../../frontend/e2e/chat-approval.spec.ts)、[`e2e/extra-flows.spec.ts`](../../frontend/e2e/extra-flows.spec.ts)、[`e2e/real-backend.spec.ts`](../../frontend/e2e/real-backend.spec.ts)，配合 [`e2e/helpers.ts`](../../frontend/e2e/helpers.ts) 的 `MockApiRouter`。mock 套件覆盖导航、聊天发送、审批确认/拒绝流、仪表盘错误态、时间线、仪表盘数据主权面板；`real-backend.spec.ts` 走真实后端 + fake LLM。
+e2e 文件：[`e2e/chat-approval.spec.ts`](../../frontend/e2e/chat-approval.spec.ts)、[`e2e/extra-flows.spec.ts`](../../frontend/e2e/extra-flows.spec.ts)、[`e2e/trust-loops.spec.ts`](../../frontend/e2e/trust-loops.spec.ts)、[`e2e/real-backend.spec.ts`](../../frontend/e2e/real-backend.spec.ts)，配合 [`e2e/helpers.ts`](../../frontend/e2e/helpers.ts) 的 `MockApiRouter`。mock 套件覆盖导航、聊天发送、审批确认/拒绝流、首页发送、审批重载恢复、收件箱重试同步、proposed 确认进上下文、仪表盘错误态、时间线、仪表盘数据主权面板；`real-backend.spec.ts` 走真实后端 + fake LLM。
 
 ### 单元测试
 

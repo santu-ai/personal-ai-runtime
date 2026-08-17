@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, RotateCcw, ShieldAlert } from "lucide-react";
 import type { ExecutionTrust } from "../../api/types";
 import { timeAgoShort } from "../../utils/timeUtils";
+import { STATUS_TONE } from "../ui/statusTone";
 
 function countOf(byStatus: Record<string, number>, status: string): number {
   return byStatus[status] ?? 0;
@@ -21,11 +22,10 @@ export default function ExecutionTrustPanel({ trust }: Props) {
   const deadCount = trust.dead_letter_count;
   const hasIssue = failedCount > 0 || retryingCount > 0 || deadCount > 0;
 
+  const surface = hasIssue ? STATUS_TONE.danger.surface : STATUS_TONE.neutral.surface;
   return (
     <section
-      className={`mb-6 rounded-xl border px-4 py-3 ${
-        hasIssue ? "border-danger/40 bg-danger/5" : "border-border-subtle bg-surface-raised"
-      }`}
+      className={`mb-6 rounded-xl border px-4 py-3 ${surface}`}
       data-testid="execution-trust"
     >
       <div className="flex items-center gap-2 mb-2">

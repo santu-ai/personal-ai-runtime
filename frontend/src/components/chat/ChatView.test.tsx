@@ -69,9 +69,14 @@ const memoriesState = {
   },
 };
 const proposedCountState = { data: 0 };
+const approvalsState = { data: [] as Array<Record<string, unknown>> };
 vi.mock("../../hooks/useMemoriesQuery", () => ({
   useMemoriesGroupedQuery: () => memoriesState,
   useProposedMemoryCountQuery: () => proposedCountState,
+}));
+
+vi.mock("../../hooks/useApprovalsQuery", () => ({
+  useApprovalsQuery: () => approvalsState,
 }));
 
 vi.mock("../../hooks/useSettingsQuery", () => ({
@@ -112,6 +117,7 @@ describe("ChatView", () => {
     memoriesState.data.memories = [];
     memoriesState.data.recent = [];
     proposedCountState.data = 0;
+    approvalsState.data = [];
     vi.mocked(getMessages).mockResolvedValue([]);
     chatStoreState.pendingPrompt = null;
   });
@@ -299,6 +305,50 @@ describe("ChatView", () => {
       );
     });
     expect(chatStoreState.pendingPrompt).toBeNull();
+  });
+
+  it("restores a pending confirmation from persisted tool_calls", async () => {
+    vi.mocked(getMessages).mockResolvedValue([
+      {
+        id: "u1",
+        conversation_id: "test-conv-1",
+        role: "user",
+        content: "请写入一个文件",
+        tool_calls: null,
+        tool_call_id: null,
+        created_at: "2026-08-17T00:00:00Z",
+      },
+      {
+        id: "a1",
+        conversation_id: "test-conv-1",
+        role: "assistant",
+        content: "",
+        tool_calls: JSON.stringify([
+          {
+            id: "tc-persist",
+            function: { name: "write_file", arguments: JSON.stringify({ path: "/tmp/x" }) },
+          },
+        ]),
+        tool_call_id: null,
+        created_at: "2026-08-17T00:00:01Z",
+      },
+    ]);
+    approvalsState.data = [
+      {
+        id: "ap-persist",
+        action: "write_file",
+        status: "pending",
+        flow_type: "对话",
+        flow_label: "测试对话",
+        correlation_id: "c1",
+        conversation_id: "test-conv-1",
+        tool_call_id: "tc-persist",
+        params: JSON.stringify({ path: "/tmp/x" }),
+      },
+    ];
+    renderChatView();
+    expect(await screen.findByText(/建议：写入文件/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认写入" })).toBeInTheDocument();
   });
 
   it("shows a review banner when proposed memories exist", () => {

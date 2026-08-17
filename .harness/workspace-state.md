@@ -5,10 +5,10 @@
 
 ## 当前状态
 
-- 当前分支：`main`（收件箱同步状态已上页；filesystem `..` 穿越已修）
-- 进行中任务 / WIP：第二阶段剩余 — 记忆确认闭环、执行可信度区域
+- 当前分支：`main`（第三阶段 UX 状态条统一 + 可信闭环 e2e 已落地）
+- 进行中任务 / WIP：无（P1–P3 本地提交，未推送）
 - 已知坏点 / 待办：Memory 2 条 proposed 未 ratify（不代用户确认）；审批续写仍 one-shot（ADR-R011，不推翻）
-- 最近审阅：2026-08-17 收件箱展示最近同步时间/结果/失败原因与重试；merge-gate 全绿
+- 最近审阅：2026-08-17 统一 NoticeBanner/ToastCard；Chat 重载恢复 pending 审批卡；e2e trust-loops 19 passed
 
 ## 本机环境
 
@@ -35,6 +35,8 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
+| 2026-08-17 | 统一 NoticeBanner/ToastCard；Chat 重载恢复审批卡；trust-loops e2e 覆盖首页发送/审批恢复/inbox 重试/proposed 确认 | 本提交未推送 |
+| 2026-08-17 | 记忆拒绝原因进 ClaimRejected payload，review 可恢复并看转化率；今天页展示执行失败/重试/死信 | 本提交未推送 |
 | 2026-08-17 | 收件箱页展示最近同步时间/结果/失败原因与重试；7 日轮询/重复/已读同步指标从事件重建 | 本提交未推送 |
 | 2026-08-17 | 词法折叠 `..` 堵住 filesystem 穿越；日志测试不再依赖顺序；新增 `merge-gate` | 已提交 `5775ac3` 未推送 |
 | 2026-08-17 | addError 同步打 console.error；收件箱轮询失败写 warning 且进页不再吞错 | 本提交 |

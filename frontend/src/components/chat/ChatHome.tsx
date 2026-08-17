@@ -15,6 +15,7 @@ import { useProposedMemoryCountQuery } from "../../hooks/useMemoriesQuery";
 import { timeAgo, isStagnant } from "../../utils/timeUtils";
 import ProposedMemoryBanner from "./ProposedMemoryBanner";
 import ChatComposer from "./ChatComposer";
+import { STATUS_TONE } from "../ui/statusTone";
 
 interface ProactiveNudge {
   icon: React.ComponentType<{ size?: number; className?: string }>;
@@ -199,12 +200,7 @@ export default function ChatHome() {
           {insightsReady && (
             <div className="space-y-2">
               {nudges.map((nudge, i) => {
-                const toneClass =
-                  nudge.tone === "warning"
-                    ? "border-warning/30 bg-warning/10"
-                    : nudge.tone === "success"
-                      ? "border-success/30 bg-success/10"
-                      : "border-insight/30 bg-insight/10";
+                const tone = STATUS_TONE[nudge.tone];
                 const actionClass =
                   nudge.tone === "warning"
                     ? "bg-warning/20 hover:bg-warning/30 text-warning"
@@ -212,18 +208,12 @@ export default function ChatHome() {
                       ? "bg-success/20 hover:bg-success/30 text-success"
                       : "bg-insight/20 hover:bg-insight/30 text-insight";
                 const Icon = nudge.icon;
-                const iconClass =
-                  nudge.tone === "warning"
-                    ? "text-warning"
-                    : nudge.tone === "success"
-                      ? "text-success"
-                      : "text-insight";
                 return (
                   <div
                     key={i}
-                    className={`flex items-center gap-3 p-4 rounded-xl border ${toneClass} transition-colors`}
+                    className={`flex items-center gap-3 p-4 rounded-xl border ${tone.surface} transition-colors`}
                   >
-                    <Icon size={18} className={`shrink-0 ${iconClass}`} />
+                    <Icon size={18} className={`shrink-0 ${tone.icon}`} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-fg-primary">{nudge.message}</p>
                     </div>

@@ -89,6 +89,30 @@ export function buildCommonMocks(): MockApiRouter {
     .json("/api/settings/llm", llmSettings)
     .json("/api/settings/email", emailSettings)
     .json("/api/inbox", [])
+    .json("/api/inbox/digest", {})
+    .json("/api/inbox/sync-status", {
+      status: "idle",
+      error: null,
+      error_kind: null,
+      new_count: 0,
+      synced_read: 0,
+      duplicate_count: 0,
+      classification_fallback: 0,
+      synced_at: null,
+      event_id: null,
+      metrics: {
+        days: 7,
+        poll_count: 0,
+        requested_count: 0,
+        error_count: 0,
+        errors_by_kind: {},
+        new_count: 0,
+        duplicate_count: 0,
+        synced_read: 0,
+        classification_fallback: 0,
+        rapid_repeat_polls: 0,
+      },
+    })
     .handler("/api/work-items", async (route) => {
       const url = new URL(route.request().url());
       const pathname = url.pathname.replace(/\/$/, "");
@@ -149,7 +173,6 @@ export function buildCommonMocks(): MockApiRouter {
     })
     .json("/api/approvals", [])
     .json("/api/notifications", [])
-    .json("/api/inbox/digest", {})
     .json("/api/settings/capability-policy", {
       auto_allow: ["read_file", "web_search", "check_inbox"],
       needs_user: ["write_file", "apply_patch", "send_email", "shell_exec", "telegram_send"],

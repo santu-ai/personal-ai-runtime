@@ -12,6 +12,8 @@ import NotificationBell from "./components/layout/NotificationBell";
 import NotificationDetailModal from "./components/notifications/NotificationDetailModal";
 import OnboardingWizard from "./components/onboarding/OnboardingWizard";
 import ErrorBoundary from "./components/ui/ErrorBoundary";
+import NoticeBanner from "./components/ui/NoticeBanner";
+import ToastCard from "./components/ui/ToastCard";
 import QuickCaptureDialog from "./components/quickcapture/QuickCaptureDialog";
 import { useNotifications } from "./hooks/useNotifications";
 import { useWsInvalidationBridge } from "./hooks/useWsInvalidationBridge";
@@ -89,76 +91,54 @@ export default function Layout() {
       />
 
       {authRequired && !isAuthConfigured() && (
-        <div className="fixed top-0 left-64 right-0 z-50 bg-warning/20 border-b border-warning/40 px-4 py-2 text-center">
-          <span className="text-warning text-sm">
-            后端已启用认证，请在 .env 中设置 VITE_AUTH_TOKEN（与 AUTH_TOKEN 保持一致）后重启前端
-          </span>
+        <div className="fixed top-0 left-64 right-0 z-50 px-4 py-2">
+          <NoticeBanner
+            tone="warning"
+            title="后端已启用认证，请在 .env 中设置 VITE_AUTH_TOKEN（与 AUTH_TOKEN 保持一致）后重启前端"
+            className="rounded-none border-x-0"
+            testId="auth-banner"
+          />
         </div>
       )}
 
       {backendUnavailable && (
-        <div className="fixed top-0 left-64 right-0 z-50 bg-danger/20 border-b border-danger/40 px-4 py-2 text-center">
-          <span className="text-danger text-sm">无法连接到后端服务，请确认后端已启动</span>
+        <div className="fixed top-0 left-64 right-0 z-50 px-4 py-2">
+          <NoticeBanner
+            tone="danger"
+            title="无法连接到后端服务，请确认后端已启动"
+            className="rounded-none border-x-0"
+            testId="backend-banner"
+          />
         </div>
       )}
 
-      <div className="fixed bottom-20 right-4 z-50 space-y-2 max-w-sm">
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            className="bg-surface-raised border border-border-strong rounded-lg p-3 shadow-lg group relative"
-          >
-            <div
-              className="cursor-pointer flex-1"
-              onClick={() =>
-                setToastDetail({
-                  id: t.id,
-                  type: t.type,
-                  title: t.title,
-                  content: t.content,
-                  created_at: t.created_at,
-                })
-              }
-            >
-              <div className="text-sm font-medium text-fg-primary">{t.title}</div>
-              <div className="text-xs text-fg-secondary mt-1 line-clamp-2">{t.content}</div>
-            </div>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                dismissToast(t.id);
-              }}
-              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-fg-tertiary hover:text-fg-primary transition-opacity"
-              aria-label="关闭"
-            >
-              &#x2715;
-            </button>
-          </div>
-        ))}
+      <div className="fixed bottom-20 right-4 z-50 space-y-2 max-w-sm" data-testid="notice-stack">
         {errors.map((err) => (
-          <div
+          <ToastCard
             key={err.id}
-            className="bg-surface-raised border border-danger/50 rounded-lg p-3 shadow-lg group relative"
-          >
-            <div className="cursor-pointer flex-1" onClick={() => dismissError(err.id)}>
-              <div className="text-sm font-medium text-danger">
-                {err.source ? `[${err.source}] ` : ""}错误
-              </div>
-              <div className="text-xs text-fg-secondary mt-1 line-clamp-2">{err.message}</div>
-            </div>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                dismissError(err.id);
-              }}
-              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-fg-tertiary hover:text-fg-primary transition-opacity"
-              aria-label="关闭"
-            >
-              &#x2715;
-            </button>
-          </div>
+            tone="danger"
+            title={err.source ? `[${err.source}] 错误` : "错误"}
+            body={err.message}
+            onDismiss={() => dismissError(err.id)}
+          />
+        ))}
+        {toasts.map((t) => (
+          <ToastCard
+            key={t.id}
+            tone="insight"
+            title={t.title}
+            body={t.content}
+            onClick={() =>
+              setToastDetail({
+                id: t.id,
+                type: t.type,
+                title: t.title,
+                content: t.content,
+                created_at: t.created_at,
+              })
+            }
+            onDismiss={() => dismissToast(t.id)}
+          />
         ))}
       </div>
 

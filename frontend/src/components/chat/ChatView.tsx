@@ -6,6 +6,8 @@ import { useErrorStore } from "../../stores/errorStore";
 import { useChatStore } from "../../stores/chatStore";
 import { useChatMessages } from "../../hooks/useChatMessages";
 import { useApprovalFlow } from "../../hooks/useApprovalFlow";
+import { matchPersistedConfirmation } from "../../hooks/matchPersistedConfirmation";
+import { useApprovalsQuery } from "../../hooks/useApprovalsQuery";
 import { useMemoriesGroupedQuery } from "../../hooks/useMemoriesQuery";
 import MessageItem from "./MessageItem";
 import ConfirmationDialog from "./ConfirmationDialog";
@@ -62,6 +64,21 @@ export default function ChatView({ conversationId }: Props) {
   } = useChatMessages(conversationId, addError);
 
   const { pendingConfirmation, setFromEvent, confirm, deny } = useApprovalFlow(conversationId);
+  const { data: pendingApprovals = [] } = useApprovalsQuery();
+
+  useEffect(() => {
+    if (!messagesHydrated || pendingConfirmation) return;
+    const matched = matchPersistedConfirmation(messages, pendingApprovals, conversationId);
+    if (!matched) return;
+    setFromEvent(matched.assistantMsgId, matched.event);
+  }, [
+    messagesHydrated,
+    messages,
+    pendingApprovals,
+    pendingConfirmation,
+    conversationId,
+    setFromEvent,
+  ]);
 
   useEffect(() => {
     pendingSentKeyRef.current = null;
