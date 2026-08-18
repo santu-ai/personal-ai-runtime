@@ -412,9 +412,10 @@ describe("ChatView", () => {
     vi.mocked(cancelChat).mockResolvedValue({ status: "ok", cancelled: 1 });
 
     renderChatView();
-    const input = screen.getAllByPlaceholderText(/输入消息/).at(-1)!;
-    fireEvent.change(input, { target: { value: "写一篇长文" } });
-    fireEvent.click(screen.getAllByRole("button", { name: "发送" }).at(-1)!);
+    const inputs = screen.getAllByPlaceholderText(/输入消息/);
+    fireEvent.change(inputs[inputs.length - 1], { target: { value: "写一篇长文" } });
+    const sendButtons = screen.getAllByRole("button", { name: "发送" });
+    fireEvent.click(sendButtons[sendButtons.length - 1]);
 
     const cancelBtn = await screen.findByRole("button", { name: "取消生成" });
     expect(cancelBtn).toBeEnabled();

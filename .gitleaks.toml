@@ -18,10 +18,17 @@ regexes = [
   '''your-email@gmail\.com''',
   '''sk-test-key''',
   '''demo-seed''',
+  '''placeholder-not-a-secret''',
 ]
 
 [[allowlists]]
 description = "Allow placeholder hashes in test fixtures"
 paths = [
   '''backend/tests/.*''',
+]
+
+[[allowlists]]
+description = "Historical egress-gate fixture; working tree rewrote the value in 78e7f26"
+fingerprints = [
+  '''b118877853bc01173016da0979234d568903323d:backend/tests/runtime/test_egress_gate.py:generic-api-key:41''',
 ]

@@ -98,9 +98,10 @@ make merge-gate
 
 ## 密钥扫描
 
-[`.gitleaks.toml`](../../.gitleaks.toml) 扩展默认规则集，两个 allowlist：
+[`.gitleaks.toml`](../../.gitleaks.toml) 扩展默认规则集，三个 allowlist：
 
-1. `.env.example`、`docs/*.md`、`README*.md`、`CONTRIBUTING.md` 中的示例/模板值，加已知占位符（`your-deepseek-api-key`、`your-gmail-app-password`、`your-email@gmail.com`、`sk-test-key`、`demo-seed`）。
+1. `.env.example`、`docs/*.md`、`README*.md`、`CONTRIBUTING.md` 中的示例/模板值，加已知占位符（`your-deepseek-api-key`、`your-gmail-app-password`、`your-email@gmail.com`、`sk-test-key`、`demo-seed`、`placeholder-not-a-secret`）。
 2. `backend/tests/` 下的占位符 hash。
+3. 历史提交 `b118877` 中 egress 测试假密钥的 fingerprint（工作树已改写；merge 扫描仍会看到旧 patch）。
 
 本地：`make secrets-scan`。

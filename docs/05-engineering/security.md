@@ -87,7 +87,7 @@ URL 抓取类工具经 `url_safety.validate_http_url` 校验。相关测试：`t
 
 ## 密钥扫描
 
-[`.gitleaks.toml`](../../.gitleaks.toml) 在 CI（`secrets-scan` job）与本地（`make secrets-scan`）扫描工作树。allowlist 覆盖 `.env.example`、`docs/*.md`、`README*.md`、`CONTRIBUTING.md` 与已知占位符（`your-deepseek-api-key`、`sk-test-key`、`demo-seed` 等）。
+[`.gitleaks.toml`](../../.gitleaks.toml) 在 CI（`secrets-scan` job）与本地（`make secrets-scan`）扫描工作树。allowlist 覆盖 `.env.example`、`docs/*.md`、`README*.md`、`CONTRIBUTING.md` 与已知占位符（`your-deepseek-api-key`、`sk-test-key`、`demo-seed`、`placeholder-not-a-secret` 等），以及历史 egress 测试假密钥的 fingerprint。
 
 ## CORS
 
