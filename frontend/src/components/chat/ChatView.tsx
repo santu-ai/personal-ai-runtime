@@ -86,20 +86,22 @@ export default function ChatView({ conversationId }: Props) {
 
   const dispatchSend = useCallback(
     async (trimmed: string) => {
-      if (!trimmed || isLoading || pendingConfirmation) return;
+      if (!trimmed || isLoading || pendingConfirmation) return false;
       hasSentRef.current = true;
       isAtBottomRef.current = true;
       setShowJumpToLatest(false);
       isProgrammaticScrollRef.current = false;
       prevMemoryTotalRef.current = memData?.memories.length ?? 0;
-      await sendMessageBase(
-        trimmed,
-        (assistantMsgId, event: StreamEvent) => {
-          setFromEvent(assistantMsgId, event, setMessages);
-        },
-        (error) => {
-          addError(error, "对话");
-        },
+      return (
+        (await sendMessageBase(
+          trimmed,
+          (assistantMsgId, event: StreamEvent) => {
+            setFromEvent(assistantMsgId, event, setMessages);
+          },
+          (error) => {
+            addError(error, "对话");
+          },
+        )) === true
       );
     },
     [isLoading, pendingConfirmation, sendMessageBase, setFromEvent, setMessages, addError, memData],
@@ -111,9 +113,11 @@ export default function ChatView({ conversationId }: Props) {
     if (pendingSentKeyRef.current === key) return;
     pendingSentKeyRef.current = key;
     const prompt = pendingPrompt;
-    setPendingPrompt(null);
     setInput("");
-    void dispatchSend(prompt);
+    void dispatchSend(prompt).then((sent) => {
+      if (sent) setPendingPrompt(null);
+      else pendingSentKeyRef.current = null;
+    });
   }, [
     pendingPrompt,
     messagesHydrated,

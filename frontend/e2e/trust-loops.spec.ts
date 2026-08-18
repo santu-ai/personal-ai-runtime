@@ -24,8 +24,14 @@ test.describe("Trust loops", () => {
       updated_at: "2026-06-10T00:00:00Z",
     };
     let didCreate = false;
+    const homeMessages: Array<Record<string, unknown>> = [];
     await installMocks(page, (router) => {
       router.handler("/api/chat/conversations", async (route) => {
+        const pathname = new URL(route.request().url()).pathname;
+        if (pathname.endsWith("/cancel") && route.request().method() === "POST") {
+          await route.fulfill({ json: { status: "ok", cancelled: 0 } });
+          return;
+        }
         if (route.request().method() === "POST") {
           didCreate = true;
           await route.fulfill({ json: created });
@@ -39,9 +45,29 @@ test.describe("Trust loops", () => {
       });
       router.handler(`/api/chat/conversations/${NEW_CONV}/messages`, async (route) => {
         if (route.request().method() === "GET") {
-          await route.fulfill({ json: [] });
+          await route.fulfill({ json: homeMessages });
           return;
         }
+        const posted = JSON.parse(route.request().postData() || "{}") as { content?: string };
+        const now = "2026-08-17T00:00:00Z";
+        homeMessages.push({
+          id: "u-home",
+          conversation_id: NEW_CONV,
+          role: "user",
+          content: posted.content || "帮我规划今天",
+          tool_calls: null,
+          tool_call_id: null,
+          created_at: now,
+        });
+        homeMessages.push({
+          id: "a-home",
+          conversation_id: NEW_CONV,
+          role: "assistant",
+          content: "好的，开始规划。",
+          tool_calls: null,
+          tool_call_id: null,
+          created_at: now,
+        });
         const sse =
           'data: {"type":"text_delta","content":"好的，开始规划。"}\n\n' +
           'data: {"type":"done"}\n\n';

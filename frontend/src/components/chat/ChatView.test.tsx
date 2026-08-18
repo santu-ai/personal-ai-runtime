@@ -304,7 +304,9 @@ describe("ChatView", () => {
         expect.any(AbortSignal),
       );
     });
-    expect(chatStoreState.pendingPrompt).toBeNull();
+    await waitFor(() => {
+      expect(chatStoreState.pendingPrompt).toBeNull();
+    });
   });
 
   it("restores a pending confirmation from persisted tool_calls", async () => {

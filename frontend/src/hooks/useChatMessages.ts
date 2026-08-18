@@ -201,6 +201,10 @@ export function useChatMessages(
     setMessagesHydrated(false);
     try {
       const msgs = await getMessages(conversationId);
+      if (abortRef.current) {
+        setMessagesHydrated(true);
+        return;
+      }
       setMessages(parseLoadedMessages(msgs));
     } catch (err) {
       const msg =
@@ -211,13 +215,17 @@ export function useChatMessages(
     setMessagesHydrated(true);
   }, [conversationId]);
 
+  const convIdForAbortRef = useRef(conversationId);
   useEffect(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
+    if (convIdForAbortRef.current !== conversationId) {
+      abortRef.current?.abort();
+      abortRef.current = null;
+      convIdForAbortRef.current = conversationId;
+    }
     setIsLoading(false);
     setStreamingContent("");
     void loadMessages();
-  }, [loadMessages]);
+  }, [loadMessages, conversationId]);
 
   useEffect(() => {
     return () => {
@@ -232,7 +240,7 @@ export function useChatMessages(
       onError?: (msg: string) => void,
     ) => {
       const trimmed = text.trim();
-      if (!trimmed || isLoading) return;
+      if (!trimmed || isLoading) return false;
 
       abortRef.current?.abort();
       const controller = new AbortController();
@@ -385,10 +393,11 @@ export function useChatMessages(
           },
           controller.signal,
         );
+        return !controller.signal.aborted;
       } catch (err: unknown) {
         if (controller.signal.aborted) {
           setIsLoading(false);
-          return;
+          return false;
         }
         setIsLoading(false);
         const errorMsg =
@@ -400,6 +409,7 @@ export function useChatMessages(
               : m,
           ),
         );
+        return false;
       }
     },
     [isLoading, conversationId, conversations, messages, queryClient],

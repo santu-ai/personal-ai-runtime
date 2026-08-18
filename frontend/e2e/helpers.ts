@@ -155,6 +155,11 @@ export function buildCommonMocks(): MockApiRouter {
       await route.continue();
     })
     .handler("/api/chat/conversations", async (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname.endsWith("/cancel") && route.request().method() === "POST") {
+        await route.fulfill({ json: { status: "ok", cancelled: 0 } });
+        return;
+      }
       if (route.request().method() === "GET") {
         await route.fulfill({
           json: [
