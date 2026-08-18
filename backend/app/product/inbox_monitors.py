@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -41,6 +42,19 @@ def _normalize_config(data: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _load_monitors_config_from_conn(conn) -> dict[str, Any]:
+    row = conn.execute(
+        "SELECT data_json FROM app_settings WHERE category = ?",
+        (SETTINGS_CATEGORY,),
+    ).fetchone()
+    if not row:
+        return _empty_config()
+    data = json.loads(row["data_json"])
+    if not isinstance(data, dict):
+        raise ValueError("monitors config is not a JSON object")
+    return _normalize_config(data)
+
+
 def _load_monitors_config_strict() -> dict[str, Any]:
     """Load monitors config; raises on DB/JSON errors (never invent empty).
 
@@ -48,16 +62,7 @@ def _load_monitors_config_strict() -> dict[str, Any]:
     sibling lists (inbox_filters ↔ url_monitors).
     """
     with db.get_db() as conn:
-        row = conn.execute(
-            "SELECT data_json FROM app_settings WHERE category = ?",
-            (SETTINGS_CATEGORY,),
-        ).fetchone()
-    if not row:
-        return _empty_config()
-    data = json.loads(row["data_json"])
-    if not isinstance(data, dict):
-        raise ValueError("monitors config is not a JSON object")
-    return _normalize_config(data)
+        return _load_monitors_config_from_conn(conn)
 
 
 def load_monitors_config() -> dict[str, Any]:
@@ -73,25 +78,57 @@ def save_monitors_config(data: dict[str, Any]) -> dict[str, Any]:
     """Persist monitors config. Partial updates merge with existing lists.
 
     Passing only ``inbox_filters`` preserves ``url_monitors`` (and vice versa).
-    Merge reads use the strict loader so DB/JSON errors abort the write instead
-    of replacing the sibling list with ``[]``.
+    Uses BEGIN IMMEDIATE so concurrent writers cannot clobber sibling lists.
     """
-    existing = _load_monitors_config_strict()
-    payload = {
-        "inbox_filters": (
-            list(data["inbox_filters"])
-            if "inbox_filters" in data
-            else list(existing.get("inbox_filters") or [])
-        ),
-        "url_monitors": (
-            list(data["url_monitors"])
-            if "url_monitors" in data
-            else list(existing.get("url_monitors") or [])
-        ),
-    }
-    payload = _normalize_config(payload)
+    _load_monitors_config_strict()
     now = _now_iso()
     with db.get_db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        existing = _load_monitors_config_from_conn(conn)
+        payload = {
+            "inbox_filters": (
+                list(data["inbox_filters"])
+                if "inbox_filters" in data
+                else list(existing.get("inbox_filters") or [])
+            ),
+            "url_monitors": (
+                list(data["url_monitors"])
+                if "url_monitors" in data
+                else list(existing.get("url_monitors") or [])
+            ),
+        }
+        payload = _normalize_config(payload)
+        conn.execute(
+            """INSERT INTO app_settings (category, data_json, updated_at)
+               VALUES (?, ?, ?)
+               ON CONFLICT(category) DO UPDATE SET
+                 data_json = excluded.data_json,
+                 updated_at = excluded.updated_at""",
+            (SETTINGS_CATEGORY, json.dumps(payload, ensure_ascii=False), now),
+        )
+    return payload
+
+
+def _mutate_monitors_config(
+    *,
+    inbox_filters: Callable[[list[dict[str, Any]]], list[dict[str, Any]]] | None = None,
+    url_monitors: Callable[[list[dict[str, Any]]], list[dict[str, Any]]] | None = None,
+) -> dict[str, Any]:
+    """Atomically read-modify-write monitors config under BEGIN IMMEDIATE."""
+    if inbox_filters is None and url_monitors is None:
+        raise ValueError("at least one mutator is required")
+    _load_monitors_config_strict()
+    now = _now_iso()
+    with db.get_db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        payload = _normalize_config(_load_monitors_config_from_conn(conn))
+        if inbox_filters is not None:
+            filters = [f for f in payload.get("inbox_filters", []) if isinstance(f, dict)]
+            payload["inbox_filters"] = inbox_filters(filters)
+        if url_monitors is not None:
+            monitors = [m for m in payload.get("url_monitors", []) if isinstance(m, dict)]
+            payload["url_monitors"] = url_monitors(monitors)
+        payload = _normalize_config(payload)
         conn.execute(
             """INSERT INTO app_settings (category, data_json, updated_at)
                VALUES (?, ?, ?)
@@ -148,11 +185,6 @@ def create_inbox_filter(
         sender_contains=sender_contains,
         subject_contains=subject_contains,
     )
-    cfg = load_monitors_config()
-    filters = [f for f in cfg.get("inbox_filters", []) if isinstance(f, dict)]
-    if enabled and count_enabled_filters(filters) >= MAX_ENABLED_FILTERS:
-        raise ValueError(f"at most {MAX_ENABLED_FILTERS} enabled inbox filters")
-
     row = {
         "id": f"if_{uuid.uuid4().hex[:12]}",
         "enabled": bool(enabled),
@@ -161,53 +193,64 @@ def create_inbox_filter(
         "subject_contains": subject,
         "created_at": _now_iso(),
     }
-    filters.append(row)
-    save_monitors_config({"inbox_filters": filters})
+
+    def mutate(filters: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if enabled and count_enabled_filters(filters) >= MAX_ENABLED_FILTERS:
+            raise ValueError(f"at most {MAX_ENABLED_FILTERS} enabled inbox filters")
+        filters.append(row)
+        return filters
+
+    _mutate_monitors_config(inbox_filters=mutate)
     return row
 
 
 def update_inbox_filter(filter_id: str, **updates: Any) -> dict[str, Any]:
-    cfg = load_monitors_config()
-    filters = [f for f in cfg.get("inbox_filters", []) if isinstance(f, dict)]
-    idx = next((i for i, f in enumerate(filters) if f.get("id") == filter_id), None)
-    if idx is None:
-        raise KeyError(filter_id)
+    updated_row: dict[str, Any] = {}
 
-    current = dict(filters[idx])
-    name = updates.get("name", current.get("name", ""))
-    sender = updates.get("sender_contains", current.get("sender_contains", ""))
-    subject = updates.get("subject_contains", current.get("subject_contains", ""))
-    cleaned_name, sender, subject = validate_filter_fields(
-        name=str(name or ""),
-        sender_contains=str(sender or ""),
-        subject_contains=str(subject or ""),
-    )
-    enabled = bool(updates["enabled"]) if "enabled" in updates else bool(current.get("enabled", True))
+    def mutate(filters: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        nonlocal updated_row
+        idx = next((i for i, f in enumerate(filters) if f.get("id") == filter_id), None)
+        if idx is None:
+            raise KeyError(filter_id)
 
-    if enabled and not current.get("enabled", True):
-        # Enabling: check cap excluding this row's previous disabled state
-        others = [f for f in filters if f.get("id") != filter_id]
-        if count_enabled_filters(others) >= MAX_ENABLED_FILTERS:
-            raise ValueError(f"at most {MAX_ENABLED_FILTERS} enabled inbox filters")
+        current = dict(filters[idx])
+        name = updates.get("name", current.get("name", ""))
+        sender = updates.get("sender_contains", current.get("sender_contains", ""))
+        subject = updates.get("subject_contains", current.get("subject_contains", ""))
+        cleaned_name, sender, subject = validate_filter_fields(
+            name=str(name or ""),
+            sender_contains=str(sender or ""),
+            subject_contains=str(subject or ""),
+        )
+        enabled = bool(updates["enabled"]) if "enabled" in updates else bool(current.get("enabled", True))
 
-    current.update({
-        "name": cleaned_name,
-        "sender_contains": sender,
-        "subject_contains": subject,
-        "enabled": enabled,
-    })
-    filters[idx] = current
-    save_monitors_config({"inbox_filters": filters})
-    return current
+        if enabled and not current.get("enabled", True):
+            others = [f for f in filters if f.get("id") != filter_id]
+            if count_enabled_filters(others) >= MAX_ENABLED_FILTERS:
+                raise ValueError(f"at most {MAX_ENABLED_FILTERS} enabled inbox filters")
+
+        current.update({
+            "name": cleaned_name,
+            "sender_contains": sender,
+            "subject_contains": subject,
+            "enabled": enabled,
+        })
+        filters[idx] = current
+        updated_row = current
+        return filters
+
+    _mutate_monitors_config(inbox_filters=mutate)
+    return updated_row
 
 
 def delete_inbox_filter(filter_id: str) -> None:
-    cfg = load_monitors_config()
-    filters = [f for f in cfg.get("inbox_filters", []) if isinstance(f, dict)]
-    new_filters = [f for f in filters if f.get("id") != filter_id]
-    if len(new_filters) == len(filters):
-        raise KeyError(filter_id)
-    save_monitors_config({"inbox_filters": new_filters})
+    def mutate(filters: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        new_filters = [f for f in filters if f.get("id") != filter_id]
+        if len(new_filters) == len(filters):
+            raise KeyError(filter_id)
+        return new_filters
+
+    _mutate_monitors_config(inbox_filters=mutate)
 
 
 def filter_matches_email(filt: dict[str, Any], email: dict[str, Any]) -> bool:

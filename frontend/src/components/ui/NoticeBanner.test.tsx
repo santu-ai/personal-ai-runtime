@@ -25,7 +25,12 @@ describe("ToastCard", () => {
   it("shows an always-visible dismiss control for errors", () => {
     const onDismiss = vi.fn();
     render(
-      <ToastCard tone="danger" title="[收件箱] 错误" body="invalid inbox JSON" onDismiss={onDismiss} />,
+      <ToastCard
+        tone="danger"
+        title="[收件箱] 错误"
+        body="invalid inbox JSON"
+        onDismiss={onDismiss}
+      />,
     );
     expect(screen.getByTestId("error-toast")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "关闭" }));

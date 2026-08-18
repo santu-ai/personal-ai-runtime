@@ -10,11 +10,15 @@ MEMORY_CATEGORIES = frozenset({
 
 
 class SendMessageRequest(BaseModel):
-    content: str
+    content: str = Field(..., min_length=1, max_length=32000)
 
 
 class CreateConversationRequest(BaseModel):
-    title: str | None = None
+    title: str | None = Field(default=None, max_length=200)
+
+
+class CancelChatRequest(BaseModel):
+    correlation_id: str | None = Field(default=None, max_length=128)
 
 
 class ResolveApprovalRequest(BaseModel):
@@ -95,8 +99,8 @@ class EncryptedImportRequest(BaseModel):
 
 
 class CreateMemoryRequest(BaseModel):
-    content: str
-    category: str | None = None
+    content: str = Field(..., max_length=32000)
+    category: str | None = Field(default=None, max_length=32)
 
     @field_validator("category")
     @classmethod
@@ -109,8 +113,8 @@ class CreateMemoryRequest(BaseModel):
 
 
 class UpdateMemoryRequest(BaseModel):
-    content: str | None = None
-    category: str | None = None
+    content: str | None = Field(default=None, max_length=32000)
+    category: str | None = Field(default=None, max_length=32)
 
     @field_validator("category")
     @classmethod
@@ -150,4 +154,3 @@ class CreateTriggerRequest(BaseModel):
 class InstallConnectorRequest(BaseModel):
     name: str
     config: dict = Field(default_factory=dict)
-

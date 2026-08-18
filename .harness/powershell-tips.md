@@ -58,7 +58,7 @@ Write-Output (Get-Location).Path
 ..\.venv\Scripts\python.exe -m scripts.check_doc_links
 ```
 
-⚠️ **必须用项目 `.venv` 的 python，不要用系统 python**。实测系统 python 的 `mcp==1.12.4` 与项目锁定 `mcp==2.0.0` 漂移，导致 `test_mcp_mesh.py`/`test_runtime_gateway_mcp.py` 收集失败（`No module named 'mcp.server.mcpserver'`）。用绝对路径最稳：
+⚠️ **必须用项目 `.venv` 的 python，不要用系统 python**。实测系统 python 的 `mcp==1.12.4` 与项目锁定 `mcp==2.0.0` 漂移，导致 `test_mcp_mesh.py`/`test_runtime_gateway_mcp.py` 收集失败（`No module named 'mcp.server.mcpserver'`）。桌面端 `resolvePythonCommand()` 开发模式也会优先仓库根 `.venv`。用绝对路径最稳：
 
 ```powershell
 C:\Users\zhouyao\PycharmProjects\personal-ai-runtime\.venv\Scripts\python.exe -m pytest tests/ -q

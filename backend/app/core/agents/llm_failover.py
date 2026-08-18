@@ -107,6 +107,7 @@ class LLMRouter:
             for p in self.providers:
                 if p.name == provider_name:
                     return self._client_for(p), p
+            raise RuntimeError(f"LLM provider not configured: {provider_name}")
 
         for p in self.providers:
             if p.is_default:

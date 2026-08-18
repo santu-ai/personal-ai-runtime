@@ -46,7 +46,7 @@ AUTH_TOKEN   = process.env.AUTH_TOKEN   || ""
 **Python 运行时**：
 
 - **Windows 打包版**：`prebuild.js` 通过 [`bundle-python.js`](../../desktop/bundle-python.js) 捆绑 embeddable CPython 3.12 + `requirements.txt` 到 `extraResources/python/`；`main.js` 优先使用捆绑的 `python.exe`。
-- **开发 / 非 Windows**：`resolvePythonCommand()` 依次尝试 `py -3.12`、`python`、`python3`；依赖系统已安装的后端包。
+- **开发 / 非 Windows**：`resolvePythonCommand()` 在非打包模式下**优先**仓库根 `.venv`（其次 `backend/.venv`），再回退 `py -3.12` / `python` / `python3`。必须使用 `make install` / `requirements.lock` 安装的依赖（`mcp==2.0.0`）；系统 Python 若仍是 1.x 会导致 MCP 测试收集失败。
 - **数据目录**：spawn 时注入 `DATA_DIR` / `VECTOR_DIR` / `SQLITE_PATH` 到 `%APPDATA%/Personal AI Runtime/data`（`app.getPath("userData")`），避免写入只读安装目录。
 - **依赖探测**：启动前执行 `import uvicorn, chromadb`；失败时弹出 `dialog.showErrorBox` 并指引运行 [`install.bat`](../../install.bat)（Windows）或 `install.sh`。
 

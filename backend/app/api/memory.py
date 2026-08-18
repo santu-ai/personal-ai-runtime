@@ -2,7 +2,7 @@
 
 import asyncio
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from app.api.models import (
     BulkClaimActionRequest,
@@ -54,7 +54,7 @@ def _apply_claim_action(memory_id: str, action: str, *, reason: str = "") -> dic
 async def list_memories(
     category: str | None = None,
     claim_status: str | None = None,
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=200),
 ):
     """List all memories, optionally filtered by category / claim_status."""
     rows = await asyncio.to_thread(
@@ -85,7 +85,7 @@ async def list_memories_grouped(
     claim_status: str | None = None,
     category: str | None = None,
     order: str = "created_at_desc",
-    limit: int = 100,
+    limit: int = Query(100, ge=1, le=500),
 ):
     """List memories for the Memory Explorer UI.
 
@@ -124,7 +124,7 @@ async def create_memory(body: CreateMemoryRequest):
 
 
 @router.get("/memories/search")
-async def search_memories(q: str, n: int = 5):
+async def search_memories(q: str, n: int = Query(5, ge=1, le=50)):
     """Search memories semantically for recall (Chat / SDK).
 
     **@public** SDK surface. Returns the same claim-filtered hits as Chat
@@ -343,7 +343,7 @@ _MAX_EDGE_QUERY_SOURCES = 20
 
 
 @router.get("/graph")
-async def get_memory_graph(limit: int = 50):
+async def get_memory_graph(limit: int = Query(50, ge=1, le=200)):
     """Get memory graph with relationships based on semantic similarity.
 
     Returns nodes (memories) and edges (relationships between similar memories).

@@ -778,6 +778,8 @@ class Scheduler:
         except Exception:
             logger.exception("Scheduler: failed to read scheduled execution counts")
             raise
+from app.core.runtime.kernel.execution_repository import cancel_by_correlation_id as _cancel_by_correlation_id  # noqa: E402, I001
+Scheduler.cancel_by_correlation_id = _cancel_by_correlation_id
 
 
 def get_scheduler(kernel: "Kernel") -> Scheduler:

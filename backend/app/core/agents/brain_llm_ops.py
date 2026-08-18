@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from app.core.agents.llm_failover import llm_router
 from app.core.agents.tool_markup import strip_tool_markup
-from app.core.runtime.egress.egress_gate import audit_llm_egress
+from app.core.runtime.egress.egress_gate import audit_llm_egress, provider_is_local
 from app.core.runtime.kernel_instance import kernel
 from app.core.runtime.runtime_config import runtime_config
 
@@ -87,7 +87,12 @@ async def continue_after_tool_result(
         messages.pop()
 
     egress_messages, _egress_audit = audit_llm_egress(
-        messages, purpose="chat_continue"
+        messages,
+        purpose="chat_continue",
+        provider_name=llm.provider.name,
+        provider_local=provider_is_local(
+            llm.provider.provider_type, llm.provider.base_url,
+        ),
     )
 
     content = ""
@@ -142,13 +147,20 @@ async def create_stream(llm, messages: list[dict]):
     ]
     errors: list[str] = []
     llm_start = time.time()
-    egress_messages, _egress_audit = audit_llm_egress(messages, purpose="chat_stream")
     for idx, (client, provider) in enumerate(candidates):
         is_primary = idx == 0
         max_attempts = MAX_PRIMARY_ATTEMPTS if is_primary else 1
 
         for attempt in range(max_attempts):
             try:
+                egress_messages, _egress_audit = audit_llm_egress(
+                    messages,
+                    purpose="chat_stream",
+                    provider_name=provider.name,
+                    provider_local=provider_is_local(
+                        provider.provider_type, provider.base_url,
+                    ),
+                )
                 response = await client.chat.completions.create(  # type: ignore[call-overload]
                     model=provider.model,
                     messages=egress_messages,
@@ -213,7 +225,12 @@ async def synthesize_from_tool_results(llm, messages: list[dict]) -> str:
         ),
     })
     egress_messages, _egress_audit = audit_llm_egress(
-        synth_messages, purpose="synthesize_tool_results",
+        synth_messages,
+        purpose="synthesize_tool_results",
+        provider_name=llm.provider.name,
+        provider_local=provider_is_local(
+            llm.provider.provider_type, llm.provider.base_url,
+        ),
     )
     try:
         content = await _complete_text(llm.client, llm.provider.model, egress_messages)
@@ -233,7 +250,12 @@ async def complete_text_only(llm, messages: list[dict], user_message: str) -> st
         ),
     })
     egress_messages, _egress_audit = audit_llm_egress(
-        retry_messages, purpose="complete_text_only",
+        retry_messages,
+        purpose="complete_text_only",
+        provider_name=llm.provider.name,
+        provider_local=provider_is_local(
+            llm.provider.provider_type, llm.provider.base_url,
+        ),
     )
     try:
         content = await _complete_text(llm.client, llm.provider.model, egress_messages)
@@ -247,28 +269,33 @@ async def complete_text_with_failover(
     messages: list[dict],
     *,
     purpose: str,
+    provider_name: str | None = None,
     temperature: float | None = None,
     max_tokens: int | None = None,
     actor: str = "api",
 ) -> tuple[str, str]:
     """Text-only completion routed through primary + fallback providers.
 
-    Centralizes the non-Brain LLM call paths (goal breakdown, inbox classify /
-    summary) so they get the same failover + egress audit as the Brain paths.
+    Centralizes non-Brain LLM call paths so they get the same failover + egress
+    audit as the Brain paths. ``provider_name`` pins local-only callers such as
+    memory extraction to one configured provider without bypassing this path.
     Returns ``(content, provider_name)``.
 
     Raises ``RuntimeError`` when every configured provider fails.
     """
     from openai import AsyncOpenAI
 
+    from app.core.agents.brain_telemetry import record_llm_outcome
     from app.core.agents.llm_failover import LLMProvider
+    from app.core.agents.token_counter import count_message_tokens, count_text_tokens
 
     try:
-        client, provider = llm_router.get_client()
-        candidates: list[tuple[AsyncOpenAI, LLMProvider]] = [
-            (client, provider),
-            *llm_router.get_fallback_clients(),
-        ]
+        client, provider = llm_router.get_client(provider_name)
+        candidates: list[tuple[AsyncOpenAI, LLMProvider]] = (
+            [(client, provider)]
+            if provider_name
+            else [(client, provider), *llm_router.get_fallback_clients()]
+        )
     except RuntimeError as exc:
         logger.warning("complete_text_with_failover: no provider configured: %s", exc)
         raise
@@ -278,22 +305,53 @@ async def complete_text_with_failover(
         temperature = temperature if temperature is not None else gen_temp
         max_tokens = max_tokens if max_tokens is not None else gen_max
 
-    audited_messages, _audit = audit_llm_egress(
-        messages, purpose=purpose, actor=actor,
-    )
-
     errors: list[str] = []
     for client, provider in candidates:
+        llm_start = time.time()
         try:
+            audited_messages, _audit = audit_llm_egress(
+                messages,
+                purpose=purpose,
+                actor=actor,
+                provider_name=provider.name,
+                provider_local=provider_is_local(
+                    provider.provider_type, provider.base_url,
+                ),
+            )
             content = (await _complete_text(
                 client, provider.model, audited_messages,
                 temperature=temperature, max_tokens=max_tokens,
             )).strip()
             if content:
+                record_llm_outcome(
+                    provider_name=provider.name,
+                    provider_model=provider.model,
+                    llm_start=llm_start,
+                    success=True,
+                    prompt_tokens=count_message_tokens(audited_messages, model=provider.model),
+                    completion_tokens=count_text_tokens(content, model=provider.model),
+                    price_per_prompt_token=getattr(provider, "price_per_prompt_token", 0.0),
+                    price_per_completion_token=getattr(provider, "price_per_completion_token", 0.0),
+                    purpose=purpose,
+                    actor=actor,
+                )
                 return content, provider.name
             errors.append(f"{provider.name}(empty response)")
         except Exception as exc:
             errors.append(f"{provider.name}({type(exc).__name__}: {exc})")
+            record_llm_outcome(
+                provider_name=provider.name,
+                provider_model=provider.model,
+                llm_start=llm_start,
+                success=False,
+                error_message=(
+                    "egress policy denied"
+                    if type(exc).__name__ == "EgressDeniedError"
+                    else f"{type(exc).__name__}: {exc}"
+                )[:500],
+                purpose=purpose,
+                actor=actor,
+            )
             logger.warning(
                 "complete_text_with_failover provider %s failed: %s",
                 provider.name, exc,

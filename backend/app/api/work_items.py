@@ -8,8 +8,8 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from app.core.runtime import read_ports
 from app.core.runtime.kernel_instance import kernel
@@ -26,14 +26,14 @@ VALID_GOAL_STATUSES = frozenset({"active", "completed", "paused"})
 
 
 class CreateWorkItemRequest(BaseModel):
-    title: str = ""
-    description: str = ""
-    work_type: str = "task"
-    parent_work_id: str | None = None
+    title: str = Field(default="", max_length=500)
+    description: str = Field(default="", max_length=20000)
+    work_type: str = Field(default="task", max_length=32)
+    parent_work_id: str | None = Field(default=None, max_length=128)
     priority: int = 0
-    dependencies: list[str] | None = None
-    executable_plan: str | None = None
-    status: str = "pending"
+    dependencies: list[str] | None = Field(default=None, max_length=100)
+    executable_plan: str | None = Field(default=None, max_length=50000)
+    status: str = Field(default="pending", max_length=32)
     progress: float | None = None
     importance: float | None = None
     urgency: float | None = None
@@ -45,16 +45,16 @@ class CreateWorkItemRequest(BaseModel):
 
 
 class UpdateWorkItemRequest(BaseModel):
-    title: str | None = None
-    description: str | None = None
-    status: str | None = None
+    title: str | None = Field(default=None, max_length=500)
+    description: str | None = Field(default=None, max_length=20000)
+    status: str | None = Field(default=None, max_length=32)
     priority: int | None = None
     progress: float | None = None
     importance: float | None = None
     urgency: float | None = None
     deadline: str | None = None
     last_activity_at: str | None = None
-    parent_work_id: str | None = None
+    parent_work_id: str | None = Field(default=None, max_length=128)
 
 
 def _validate_score(name: str, value: object) -> float:
@@ -120,7 +120,7 @@ async def list_work_items(
     work_type: str | None = None,
     status: str | None = None,
     parent_work_id: str | None = None,
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=200),
 ):
     """List work items, optionally filtered by work_type / status / parent."""
     return read_ports.list_work_items(
@@ -169,7 +169,7 @@ async def get_children(item_id: str):
 
 
 @router.get("/{item_id}/events")
-async def get_events(item_id: str, limit: int = 20):
+async def get_events(item_id: str, limit: int = Query(20, ge=1, le=200)):
     """Return recent UI-shaped events for a work item / goal."""
     if not read_ports.query_work_item(item_id):
         raise HTTPException(status_code=404, detail="Work item not found")

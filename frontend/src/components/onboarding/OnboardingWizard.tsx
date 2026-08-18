@@ -196,21 +196,21 @@ export default function OnboardingWizard({ onComplete }: Props) {
             {STARTER_PROMPTS.map((sp) => {
               const Icon = sp.icon;
               return (
-              <button
-                key={sp.label}
-                type="button"
-                onClick={() => launchConversation(sp.prompt, sp.title)}
-                disabled={launching}
-                className="w-full flex items-center gap-3 p-3 bg-surface-overlay/50 hover:bg-surface-overlay border border-border-subtle hover:border-border-strong rounded-lg text-left transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-              >
-                <Icon size={18} className="text-insight shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm text-fg-primary">{sp.label}</div>
-                  {sp.prompt && (
-                    <div className="text-xs text-fg-tertiary truncate mt-0.5">{sp.prompt}</div>
-                  )}
-                </div>
-              </button>
+                <button
+                  key={sp.label}
+                  type="button"
+                  onClick={() => launchConversation(sp.prompt, sp.title)}
+                  disabled={launching}
+                  className="w-full flex items-center gap-3 p-3 bg-surface-overlay/50 hover:bg-surface-overlay border border-border-subtle hover:border-border-strong rounded-lg text-left transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                >
+                  <Icon size={18} className="text-insight shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-fg-primary">{sp.label}</div>
+                    {sp.prompt && (
+                      <div className="text-xs text-fg-tertiary truncate mt-0.5">{sp.prompt}</div>
+                    )}
+                  </div>
+                </button>
               );
             })}
             {launching && (

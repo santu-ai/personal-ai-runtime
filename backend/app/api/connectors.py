@@ -5,11 +5,14 @@ Includes registry for discovering and installing community MCP servers.
 
 import json as _json
 import logging
+import os
+import threading
 from pathlib import Path as _Path
 
 from fastapi import APIRouter, HTTPException
 
 from app.api.models import InstallConnectorRequest
+from app.config import settings
 from app.core.harness.mcp_config import (
     ExternalMCPServerConfig,
     load_external_server_configs,
@@ -27,6 +30,49 @@ _SHELL_META_CHARS = frozenset(";&|`$<>\n\r")
 # "registry" / "install" as connector names.
 _REGISTRY_PATH = _Path(__file__).resolve().parent.parent.parent / "mcp_registry.json"
 MCP_CONFIG_PATH = _Path(__file__).resolve().parent.parent.parent / "mcp_config.json"
+_local_config_lock = threading.Lock()
+
+
+def _local_mcp_config_path() -> _Path:
+    return _Path(settings.mcp_local_config_path)
+
+
+def _empty_local_config() -> dict:
+    return {"servers": [], "external_servers": []}
+
+
+def _load_local_config(*, strict: bool = False) -> dict:
+    path = _local_mcp_config_path()
+    if not path.exists():
+        return _empty_local_config()
+    try:
+        data = _json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return _empty_local_config()
+        data.setdefault("servers", [])
+        data.setdefault("external_servers", [])
+        return data
+    except Exception:
+        logger.warning("Failed to load local MCP config from %s", path, exc_info=True)
+        if strict:
+            raise RuntimeError(f"Invalid local MCP config: {path}") from None
+        return _empty_local_config()
+
+
+def _atomic_write_local_config(data: dict) -> None:
+    path = _local_mcp_config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    payload = _json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    tmp.write_text(payload, encoding="utf-8")
+    try:
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            logger.debug("Failed to remove temporary MCP config %s", tmp, exc_info=True)
+        raise
 
 
 def _get_connector_status(config: ExternalMCPServerConfig) -> dict:
@@ -223,16 +269,10 @@ async def list_connectors():
 
 
 def _load_installed_names() -> set[str]:
-    """Return the set of server names already in mcp_config.json."""
-    if not MCP_CONFIG_PATH.exists():
-        return set()
-    try:
-        existing = _json.loads(MCP_CONFIG_PATH.read_text(encoding="utf-8"))
-        external = existing.get("external_servers", [])
-        return {s["name"] for s in external if isinstance(s, dict) and "name" in s}
-    except Exception:
-        logger.warning("Failed to load installed MCP servers from %s", MCP_CONFIG_PATH, exc_info=True)
-        return set()
+    """Return user-installed server names from the local MCP config."""
+    existing = _load_local_config()
+    external = existing.get("external_servers", [])
+    return {s["name"] for s in external if isinstance(s, dict) and "name" in s}
 
 
 @router.get("/registry")
@@ -257,17 +297,15 @@ async def install_new_connector(body: InstallConnectorRequest):
     entry = next((s for s in registry if s["name"] == server_name), None)
     if not entry:
         raise HTTPException(status_code=404, detail=f"Server '{server_name}' not found in registry")
-    if MCP_CONFIG_PATH.exists():
-        existing = _json.loads(MCP_CONFIG_PATH.read_text(encoding="utf-8"))
-    else:
-        existing = {"servers": [], "external_servers": []}
-    external = existing.get("external_servers", [])
-    if any(s.get("name") == server_name for s in external):
-        return {"ok": False, "message": f"'{server_name}' is already installed"}
-    new_entry = _runtime_entry_from_registry(entry)
-    external.append(new_entry)
-    existing["external_servers"] = external
-    MCP_CONFIG_PATH.write_text(_json.dumps(existing, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    with _local_config_lock:
+        existing = _load_local_config(strict=True)
+        external = existing.get("external_servers", [])
+        if any(s.get("name") == server_name for s in external):
+            return {"ok": False, "message": f"'{server_name}' is already installed"}
+        new_entry = _runtime_entry_from_registry(entry)
+        external.append(new_entry)
+        existing["external_servers"] = external
+        _atomic_write_local_config(existing)
     return {"ok": True, "message": f"'{server_name}' installed. Restart the backend to activate.", "server": new_entry}
 
 
@@ -276,15 +314,14 @@ async def uninstall_connector(body: dict):
     server_name = body.get("name", "").strip()
     if not server_name:
         raise HTTPException(status_code=400, detail="Server name is required")
-    if not MCP_CONFIG_PATH.exists():
-        raise HTTPException(status_code=404, detail="mcp_config.json not found")
-    existing = _json.loads(MCP_CONFIG_PATH.read_text(encoding="utf-8"))
-    external = existing.get("external_servers", [])
-    filtered = [s for s in external if s.get("name") != server_name]
-    if len(filtered) == len(external):
-        return {"ok": False, "message": f"'{server_name}' is not installed"}
-    existing["external_servers"] = filtered
-    MCP_CONFIG_PATH.write_text(_json.dumps(existing, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    with _local_config_lock:
+        existing = _load_local_config(strict=True)
+        external = existing.get("external_servers", [])
+        filtered = [s for s in external if s.get("name") != server_name]
+        if len(filtered) == len(external):
+            return {"ok": False, "message": f"'{server_name}' is not installed"}
+        existing["external_servers"] = filtered
+        _atomic_write_local_config(existing)
     return {"ok": True, "message": f"'{server_name}' uninstalled. Restart the backend to apply."}
 
 

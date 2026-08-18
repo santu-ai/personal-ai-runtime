@@ -28,6 +28,7 @@
 | DELETE | `/api/chat/conversations/{conv_id}` | auth | — | Delete Conversation |
 | GET | `/api/chat/conversations/{conv_id}` | auth | — | Get Conversation |
 | PATCH | `/api/chat/conversations/{conv_id}` | auth | — | Update Conversation |
+| POST | `/api/chat/conversations/{conv_id}/cancel` | auth | — | Cancel Conversation Chat |
 | GET | `/api/chat/conversations/{conv_id}/messages` | auth | — | Get Messages |
 | POST | `/api/chat/conversations/{conv_id}/messages` | auth | — | Send Message |
 

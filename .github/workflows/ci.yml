@@ -38,6 +38,12 @@ jobs:
           cd backend
           python -m pip install --require-hashes -r requirements.lock
 
+      - name: Import smoke (MCP v2)
+        run: |
+          cd backend
+          python -m pip check
+          python -c "from mcp.shared.exceptions import MCPError; from mcp.server.mcpserver.exceptions import ToolError; assert MCPError and ToolError"
+
       - name: Run canonical backend CI checks
         run: make backend-ci-core
 
@@ -68,7 +74,10 @@ jobs:
 
       - name: Import smoke (runtime packages)
         working-directory: backend
-        run: python -c "import uvicorn, chromadb; from chromadb.utils.embedding_functions import DefaultEmbeddingFunction; assert DefaultEmbeddingFunction is not None"
+        run: |
+          python -m pip check
+          python -c "import uvicorn, chromadb; from chromadb.utils.embedding_functions import DefaultEmbeddingFunction; assert DefaultEmbeddingFunction is not None"
+          python -c "from mcp.shared.exceptions import MCPError; from mcp.server.mcpserver.exceptions import ToolError; assert MCPError and ToolError"
 
   frontend:
     runs-on: ubuntu-latest

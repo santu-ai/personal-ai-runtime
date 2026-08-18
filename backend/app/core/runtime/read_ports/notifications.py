@@ -108,3 +108,29 @@ def unregister_sse_queue(correlation_id: str) -> None:
     from app.core.runtime.notification_bridge import unregister
 
     unregister(correlation_id)
+
+
+async def cancel_chat_execution(
+    conv_id: str,
+    *,
+    correlation_id: str | None = None,
+) -> int:
+    """Cancel in-flight ChatRequested executions for a conversation."""
+    from app.core.runtime.kernel_instance import ensure_runtime_scheduler, get_runtime_scheduler
+
+    await ensure_runtime_scheduler()
+    scheduler = get_runtime_scheduler()
+    await scheduler.start()
+    if correlation_id:
+        return scheduler.cancel_by_correlation_id(correlation_id)
+    k = kernel()
+    events = k.read_events(aggregate_id=conv_id, type="ChatRequested", limit=20)
+    cancelled = 0
+    seen: set[str] = set()
+    for event in reversed(events):
+        cid = event.correlation_id or ""
+        if not cid or cid in seen:
+            continue
+        seen.add(cid)
+        cancelled += scheduler.cancel_by_correlation_id(cid)
+    return cancelled

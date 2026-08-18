@@ -39,12 +39,7 @@ export async function triggerInboxPoll(): Promise<Record<string, unknown>> {
   return request(`${API_BASE}/inbox/poll`, { method: "POST" });
 }
 
-export type InboxPollErrorKind =
-  | "credentials"
-  | "json"
-  | "imap"
-  | "classification"
-  | "other";
+export type InboxPollErrorKind = "credentials" | "json" | "imap" | "classification" | "other";
 
 export interface InboxSyncMetrics {
   days: number;

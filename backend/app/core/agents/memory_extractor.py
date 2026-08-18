@@ -109,62 +109,23 @@ class MemoryExtractor:
         if settings.memory_extractor == "cloud":
             return await self._cloud_extract(conversation_text)
         facts = await local_llm.extract_memories(conversation_text)
-        if facts:
-            return facts
-        if settings.llm_api_key:
-            return await self._cloud_extract(conversation_text)
-        return []
+        return facts if facts else []
 
     async def _cloud_extract(self, conversation_text: str) -> list[str]:
-        from app.core.agents.brain_telemetry import record_llm_outcome
-        from app.core.agents.llm_failover import llm_router
-        from app.core.runtime.egress.egress_gate import audit_llm_egress
-
-        llm_start = time.time()
-        provider_name = "cloud"
-        provider_model = "unknown"
         try:
-            client, provider = llm_router.get_client()
-            provider_name = provider.name
-            provider_model = provider.model
             prompt = _EXTRACT_PROMPT + conversation_text[:3000]
-            msg = {"role": "user", "content": prompt}
-            egress_messages, _egress_audit = audit_llm_egress(
-                [msg], purpose="memory_extract",
-            )
-            response = await client.chat.completions.create(
-                model=provider.model,
-                messages=egress_messages,  # type: ignore[arg-type]
-                max_tokens=200,
-                temperature=0.3,
-            )
-            text = response.choices[0].message.content or ""
-            facts = parse_facts_from_text(text)
-            from app.core.agents.token_counter import count_text_tokens
+            from app.core.agents.brain_llm_ops import complete_text_with_failover
 
-            record_llm_outcome(
-                provider_name=provider_name,
-                provider_model=provider_model,
-                llm_start=llm_start,
-                success=True,
-                completion_tokens=count_text_tokens(text),
-                price_per_prompt_token=getattr(provider, "price_per_prompt_token", 0.0),
-                price_per_completion_token=getattr(provider, "price_per_completion_token", 0.0),
+            text, _provider_name = await complete_text_with_failover(
+                [{"role": "user", "content": prompt}],
                 purpose="memory_extract",
+                temperature=0.3,
+                max_tokens=200,
                 actor="extractor",
             )
-            return facts
-        except Exception as exc:
+            return parse_facts_from_text(text)
+        except Exception:
             logger.warning("Cloud memory extraction failed", exc_info=True)
-            record_llm_outcome(
-                provider_name=provider_name,
-                provider_model=provider_model,
-                llm_start=llm_start,
-                success=False,
-                error_message=str(exc)[:500],
-                purpose="memory_extract",
-                actor="extractor",
-            )
             return []
 
     async def extract_and_store(

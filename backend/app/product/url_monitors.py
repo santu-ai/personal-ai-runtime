@@ -17,7 +17,10 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlparse
 
-from app.product.inbox_monitors import load_monitors_config, save_monitors_config
+from app.product.inbox_monitors import (
+    _mutate_monitors_config,
+    load_monitors_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -88,10 +91,6 @@ def create_url_monitor(
 ) -> dict[str, Any]:
     cleaned_name, cleaned_url = validate_url_fields(name=name, url=url)
     interval = _clamp_interval(check_interval_minutes)
-    monitors = list_url_monitors()
-    if enabled and count_enabled(monitors) >= MAX_ENABLED:
-        raise ValueError(f"at most {MAX_ENABLED} enabled URL monitors")
-
     row = {
         "id": f"um_{uuid.uuid4().hex[:12]}",
         "enabled": bool(enabled),
@@ -104,55 +103,68 @@ def create_url_monitor(
         "last_checked_at": None,
         "last_error": None,
     }
-    monitors.append(row)
-    save_monitors_config({"url_monitors": monitors})
+
+    def mutate(monitors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if enabled and count_enabled(monitors) >= MAX_ENABLED:
+            raise ValueError(f"at most {MAX_ENABLED} enabled URL monitors")
+        monitors.append(row)
+        return monitors
+
+    _mutate_monitors_config(url_monitors=mutate)
     return row
 
 
 def update_url_monitor(monitor_id: str, **updates: Any) -> dict[str, Any]:
-    monitors = list_url_monitors()
-    idx = next((i for i, m in enumerate(monitors) if m.get("id") == monitor_id), None)
-    if idx is None:
-        raise KeyError(monitor_id)
+    updated_row: dict[str, Any] = {}
 
-    current = dict(monitors[idx])
-    name = updates.get("name", current.get("name", ""))
-    url = updates.get("url", current.get("url", ""))
-    cleaned_name, cleaned_url = validate_url_fields(name=str(name or ""), url=str(url or ""))
-    enabled = bool(updates["enabled"]) if "enabled" in updates else bool(current.get("enabled", True))
-    if "check_interval_minutes" in updates:
-        interval = _clamp_interval(updates["check_interval_minutes"])
-    else:
-        interval = _clamp_interval(current.get("check_interval_minutes"))
+    def mutate(monitors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        nonlocal updated_row
+        idx = next((i for i, m in enumerate(monitors) if m.get("id") == monitor_id), None)
+        if idx is None:
+            raise KeyError(monitor_id)
 
-    if enabled and not current.get("enabled", True):
-        others = [m for m in monitors if m.get("id") != monitor_id]
-        if count_enabled(others) >= MAX_ENABLED:
-            raise ValueError(f"at most {MAX_ENABLED} enabled URL monitors")
+        current = dict(monitors[idx])
+        name = updates.get("name", current.get("name", ""))
+        url = updates.get("url", current.get("url", ""))
+        cleaned_name, cleaned_url = validate_url_fields(name=str(name or ""), url=str(url or ""))
+        enabled = bool(updates["enabled"]) if "enabled" in updates else bool(current.get("enabled", True))
+        if "check_interval_minutes" in updates:
+            interval = _clamp_interval(updates["check_interval_minutes"])
+        else:
+            interval = _clamp_interval(current.get("check_interval_minutes"))
 
-    # URL change resets baseline so the next check does not false-notify.
-    if cleaned_url != current.get("url"):
-        current["last_hash"] = None
-        current["last_title"] = None
-        current["last_error"] = None
+        if enabled and not current.get("enabled", True):
+            others = [m for m in monitors if m.get("id") != monitor_id]
+            if count_enabled(others) >= MAX_ENABLED:
+                raise ValueError(f"at most {MAX_ENABLED} enabled URL monitors")
 
-    current.update({
-        "name": cleaned_name,
-        "url": cleaned_url,
-        "enabled": enabled,
-        "check_interval_minutes": interval,
-    })
-    monitors[idx] = current
-    save_monitors_config({"url_monitors": monitors})
-    return current
+        if cleaned_url != current.get("url"):
+            current["last_hash"] = None
+            current["last_title"] = None
+            current["last_error"] = None
+
+        current.update({
+            "name": cleaned_name,
+            "url": cleaned_url,
+            "enabled": enabled,
+            "check_interval_minutes": interval,
+        })
+        monitors[idx] = current
+        updated_row = current
+        return monitors
+
+    _mutate_monitors_config(url_monitors=mutate)
+    return updated_row
 
 
 def delete_url_monitor(monitor_id: str) -> None:
-    monitors = list_url_monitors()
-    new_rows = [m for m in monitors if m.get("id") != monitor_id]
-    if len(new_rows) == len(monitors):
-        raise KeyError(monitor_id)
-    save_monitors_config({"url_monitors": new_rows})
+    def mutate(monitors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        new_rows = [m for m in monitors if m.get("id") != monitor_id]
+        if len(new_rows) == len(monitors):
+            raise KeyError(monitor_id)
+        return new_rows
+
+    _mutate_monitors_config(url_monitors=mutate)
 
 
 def content_hash(text: str) -> str:
@@ -197,14 +209,16 @@ def _preview(text: str, limit: int = _CONTENT_PREVIEW_LEN) -> str:
 
 
 def _persist_monitor_row(monitor_id: str, patch: dict[str, Any]) -> None:
-    monitors = list_url_monitors()
-    for i, m in enumerate(monitors):
-        if m.get("id") == monitor_id:
-            updated = dict(m)
-            updated.update(patch)
-            monitors[i] = updated
-            save_monitors_config({"url_monitors": monitors})
-            return
+    def mutate(monitors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        for i, m in enumerate(monitors):
+            if m.get("id") == monitor_id:
+                updated = dict(m)
+                updated.update(patch)
+                monitors[i] = updated
+                return monitors
+        return monitors
+
+    _mutate_monitors_config(url_monitors=mutate)
 
 
 async def _fetch_page(url: str) -> dict[str, Any]:

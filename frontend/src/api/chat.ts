@@ -29,6 +29,19 @@ export async function getMessages(convId: string): Promise<Message[]> {
   return request<Message[]>(`${API_BASE}/chat/conversations/${convId}/messages`);
 }
 
+export async function cancelChat(
+  convId: string,
+  correlationId?: string,
+): Promise<{ status: string; cancelled: number }> {
+  return request<{ status: string; cancelled: number }>(
+    `${API_BASE}/chat/conversations/${convId}/cancel`,
+    {
+      method: "POST",
+      body: JSON.stringify({ correlation_id: correlationId ?? null }),
+    },
+  );
+}
+
 export async function sendMessage(
   convId: string,
   content: string,
@@ -54,6 +67,7 @@ export async function sendMessage(
     });
   } catch (err) {
     if (signal?.aborted || (err instanceof DOMException && err.name === "AbortError")) {
+      cancelChat(convId).catch(() => {});
       onDone();
       return;
     }
@@ -114,6 +128,7 @@ export async function sendMessage(
   try {
     while (true) {
       if (signal?.aborted) {
+        cancelChat(convId).catch(() => {});
         onDone();
         return;
       }
@@ -123,6 +138,7 @@ export async function sendMessage(
         chunk = await readWithIdleTimeout();
       } catch (err) {
         if (signal?.aborted || (err instanceof DOMException && err.name === "AbortError")) {
+          cancelChat(convId).catch(() => {});
           onDone();
           return;
         }
@@ -171,6 +187,7 @@ export async function sendMessage(
     }
   } catch (err) {
     if (signal?.aborted || (err instanceof DOMException && err.name === "AbortError")) {
+      cancelChat(convId).catch(() => {});
       onDone();
       return;
     }

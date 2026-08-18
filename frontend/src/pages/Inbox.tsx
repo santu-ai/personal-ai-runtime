@@ -83,9 +83,7 @@ function SyncStatusBar({
         </p>
       )}
       {sync.cursor_reset && (
-        <p className="text-xs text-warning mt-1">
-          同步游标已重建，本次执行了安全刷新
-        </p>
+        <p className="text-xs text-warning mt-1">同步游标已重建，本次执行了安全刷新</p>
       )}
       {metrics && (
         <p className="text-xs text-fg-disabled mt-1">
@@ -275,7 +273,9 @@ export default function InboxPage() {
                         <div className="flex items-baseline gap-2 min-w-0">
                           <span
                             className={`text-sm truncate min-w-0 flex-1 ${
-                              unread ? "font-semibold text-fg-primary" : "font-normal text-fg-secondary"
+                              unread
+                                ? "font-semibold text-fg-primary"
+                                : "font-normal text-fg-secondary"
                             }`}
                           >
                             {em.subject || "（无主题）"}
@@ -318,7 +318,9 @@ function TriageCard({
   return (
     <div className="p-3 bg-surface-sunken rounded-lg border border-border-subtle">
       <div className="flex items-baseline gap-2 min-w-0">
-        <div className="text-sm font-medium text-fg-primary truncate min-w-0 flex-1">{email.subject}</div>
+        <div className="text-sm font-medium text-fg-primary truncate min-w-0 flex-1">
+          {email.subject}
+        </div>
         <div className="text-xs text-fg-tertiary truncate shrink-0 max-w-[45%]">{email.sender}</div>
       </div>
       <div className="flex gap-3 mt-2">

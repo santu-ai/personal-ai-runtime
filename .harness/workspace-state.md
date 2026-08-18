@@ -5,10 +5,10 @@
 
 ## 当前状态
 
-- 当前分支：`main`（第三阶段 UX + 执行信任读端口收口）
-- 进行中任务 / WIP：无（P1–P3 本地提交，未推送）
+- 当前分支：`main`（运行环境一致性与链路闭环）
+- 进行中任务 / WIP：无（闭环 6 波已完成，待提交推送）
 - 已知坏点 / 待办：Memory 2 条 proposed 未 ratify（不代用户确认）；审批续写仍 one-shot（ADR-R011，不推翻）
-- 最近审阅：2026-08-17 执行信任并入 `read_ports/events.py`（不新增 runtime 文件）；审批恢复要求 conversation/tool-call 身份
+- 最近审阅：2026-08-18 闭环 Wave1–6：后端 1456 passed、前端 203、桌面 23；boundary/layer-deps/provenance/rebuild 通过
 
 ## 本机环境
 
@@ -35,6 +35,7 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
+| 2026-08-18 | 闭环：retrying→in_retry；CI/venv MCP smoke；LLM 遥测+egress 脱敏；监控 CAS/通知去重/连接器 DATA_DIR/SSE 取消；输入上限；lazy markdown 与桌面路径单测 | merge-gate 等价通过 |
 | 2026-08-17 | 执行信任汇总并入 `read_ports/events.py`（不新增 runtime 文件）；审批恢复要求会话/tool-call 身份 | 本提交未推送 |
 | 2026-08-17 | 记忆转化率按记忆 ID 的最新 Claim 决策去重；新增执行信任读端口测试和产品边界守卫 | 后端全量 1450 passed / 9 skipped / 5 deselected；lint、boundary 通过 |
 | 2026-08-17 | 修复审批恢复的会话/tool-call 身份误匹配；执行信任汇总下沉到 read_ports；修复前端 ES2020 类型错误 | merge-gate 全部通过：1447 backend / 203 frontend tests，build、boundary、layer-deps、projection-provenance、rebuild-verify OK |

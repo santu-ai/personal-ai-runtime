@@ -70,7 +70,7 @@ def test_generate_dashboard_with_seeded_data(product_kernel):
     assert isinstance(trust["by_status"], dict)
     assert isinstance(trust["pending_approvals"], int)
     assert isinstance(trust["failed"], list)
-    assert isinstance(trust["retrying"], list)
+    assert isinstance(trust["in_retry"], list)
     assert isinstance(trust["dead_letter"], list)
     assert isinstance(trust["dead_letter_count"], int)
 

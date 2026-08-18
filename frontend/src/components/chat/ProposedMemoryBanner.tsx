@@ -64,9 +64,7 @@ export default function ProposedMemoryBanner({ className = "" }: Props) {
       className={`px-4 py-2 bg-insight/10 border-b border-insight/30 text-xs text-insight ${className}`.trim()}
     >
       <div className="flex items-center gap-2">
-        <p className="flex-1 min-w-0">
-          {proposedCount} 条记忆待确认后才会进入对话
-        </p>
+        <p className="flex-1 min-w-0">{proposedCount} 条记忆待确认后才会进入对话</p>
         <Link
           to="/memories?tab=review"
           className="shrink-0 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"

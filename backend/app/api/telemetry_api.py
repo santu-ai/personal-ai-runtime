@@ -23,13 +23,13 @@ async def cost_by_model(days: int = Query(default=7, ge=1, le=90)):
 
 
 @router.get("/llm-calls")
-async def list_llm_calls(limit: int = 50, offset: int = 0):
+async def list_llm_calls(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)):
     """List recent LLM calls. **@internal** diagnostic surface — not consumed by the SPA."""
     return telemetry.get_llm_calls(limit=limit, offset=offset)
 
 
 @router.get("/tool-calls")
-async def list_tool_calls(limit: int = 50, tool_name: str | None = None):
+async def list_tool_calls(limit: int = Query(50, ge=1, le=200), tool_name: str | None = None):
     """List recent tool calls. **@internal** diagnostic surface — not consumed by the SPA."""
     return telemetry.get_tool_calls(limit=limit, tool_name=tool_name)
 

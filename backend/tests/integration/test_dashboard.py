@@ -39,6 +39,6 @@ def test_dashboard_widget_shapes(client: TestClient):
     assert isinstance(trust["by_status"], dict)
     assert isinstance(trust["pending_approvals"], int)
     assert isinstance(trust["failed"], list)
-    assert isinstance(trust["retrying"], list)
+    assert isinstance(trust["in_retry"], list)
     assert isinstance(trust["dead_letter"], list)
     assert isinstance(trust["dead_letter_count"], int)

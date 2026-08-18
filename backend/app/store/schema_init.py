@@ -44,6 +44,7 @@ def apply_raw_ddl(db: Database) -> None:
     with db.get_db() as conn:
         for schema in ALL_SCHEMAS:
             conn.executescript(schema)
+    apply_runtime_schema_patches(db)
 
 
 def ensure_schema(db: Database) -> None:
@@ -78,3 +79,21 @@ def ensure_schema(db: Database) -> None:
 
     # Alembic baseline 后再幂等确保 projector 拥有的表。
     apply_projection_ddl(db)
+    apply_runtime_schema_patches(db)
+
+
+def apply_runtime_schema_patches(db: "Database") -> None:
+    """Apply idempotent compatibility DDL for raw/custom databases.
+
+    Production databases are upgraded by Alembic.  Data cleanup belongs in a
+    migration, where it is versioned and auditable; keeping DML out of app
+    startup also preserves the Kernel boundary checks.
+    """
+    with db.get_db() as conn:
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_notifications_dedup_key
+            ON notifications (dedup_key)
+            WHERE dedup_key IS NOT NULL AND dedup_key != ''
+            """
+        )

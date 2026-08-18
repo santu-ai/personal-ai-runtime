@@ -1,6 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import ReactMarkdown from "react-markdown";
+import remarkBreaks from "remark-breaks";
+import remarkGfm from "remark-gfm";
 import MessageItem from "./MessageItem";
+
+vi.mock("./LazyMarkdown", () => ({
+  LazyMarkdown: ({
+    content,
+    components,
+  }: {
+    content: string;
+    components?: React.ComponentProps<typeof ReactMarkdown>["components"];
+  }) => (
+    <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={components}>
+      {content}
+    </ReactMarkdown>
+  ),
+}));
 
 describe("MessageItem", () => {
   it("renders user message with Chinese label", () => {

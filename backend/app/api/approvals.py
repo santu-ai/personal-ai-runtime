@@ -3,7 +3,7 @@
 import json
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from app.core.runtime import read_ports
 from app.core.runtime.kernel_instance import kernel
@@ -171,7 +171,11 @@ def _list_pending_enriched(kernel, limit: int | None = None) -> list[dict]:
 
 
 @router.get("/")
-async def list_approvals(limit: int = 50, pending_only: bool = False, enriched: bool = False):
+async def list_approvals(
+    limit: int = Query(50, ge=1, le=200),
+    pending_only: bool = False,
+    enriched: bool = False,
+):
     """List approvals, optionally enriched with flow context.
 
     **@public** SDK surface (read-only) — external agents may list pending

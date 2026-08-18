@@ -39,6 +39,7 @@ from app.core.runtime.read_ports.conversation import (
     query_message,
 )
 from app.core.runtime.read_ports.events import (
+    conversation_chat_in_flight,
     goal_events,
     query_execution_trust_summary,
     query_recent_events,
@@ -69,6 +70,7 @@ from app.core.runtime.read_ports.memory import (
     summarize_memory_stats,
 )
 from app.core.runtime.read_ports.notifications import (
+    cancel_chat_execution,
     create_notification,
     find_notification,
     push_notification,
@@ -199,6 +201,7 @@ __all__ = [
     "push_notification",
     "register_sse_queue",
     "unregister_sse_queue",
+    "cancel_chat_execution",
     "query_llm_calls",
     "query_tool_calls",
     "query_recent_tool_names",
@@ -233,5 +236,6 @@ __all__ = [
     "query_recent_events",
     "reconstruct_execution_trace",
     "query_execution_trust_summary",
+    "conversation_chat_in_flight",
     "build_memory_graph_edges",
 ]

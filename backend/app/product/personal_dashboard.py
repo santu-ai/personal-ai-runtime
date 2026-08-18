@@ -219,7 +219,7 @@ _EXECUTION_TRUST_EMPTY = {
     "by_status": {},
     "pending_approvals": 0,
     "failed": [],
-    "retrying": [],
+    "in_retry": [],
     "dead_letter": [],
     "dead_letter_count": 0,
     "last_completed": None,

@@ -2,11 +2,13 @@
 
 import asyncio
 import json
+import threading
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from app.api.models import (
+    CancelChatRequest,
     CreateConversationRequest,
     ResolveApprovalRequest,
     SendMessageRequest,
@@ -20,6 +22,12 @@ from app.core.runtime.kernel.constants import EVENT_CHAT_DONE
 from app.core.runtime.kernel_instance import kernel
 
 router = APIRouter(tags=["chat"])
+_chat_admission_lock = threading.Lock()
+
+
+def _conversation_chat_in_flight(conv_id: str) -> bool:
+    """True when a ChatRequested execution is still pending/running/retrying."""
+    return read_ports.conversation_chat_in_flight(conv_id)
 
 
 def _drain_sse_queue(queue: asyncio.Queue) -> list[dict]:
@@ -48,7 +56,7 @@ def _yield_completion_extras(result: dict, conv_id: str) -> list[str]:
 
 @router.post("/conversations")
 async def create_conversation(
-    title: str | None = None,
+    title: str | None = Query(default=None, max_length=200),
     body: CreateConversationRequest | None = None,
 ):
     """Create a new conversation.
@@ -61,7 +69,7 @@ async def create_conversation(
 
 
 @router.get("/conversations")
-async def list_conversations(limit: int = 50):
+async def list_conversations(limit: int = Query(50, ge=1, le=200)):
     """List all conversations."""
     return ConversationAPI.list_all(limit=limit)
 
@@ -88,7 +96,7 @@ async def delete_conversation(conv_id: str):
 @router.patch("/conversations/{conv_id}")
 async def update_conversation(
     conv_id: str,
-    title: str | None = None,
+    title: str | None = Query(default=None, max_length=200),
     body: CreateConversationRequest | None = None,
 ):
     """Update conversation title (query or JSON body)."""
@@ -101,7 +109,7 @@ async def update_conversation(
 
 
 @router.get("/conversations/{conv_id}/messages")
-async def get_messages(conv_id: str, limit: int = 100):
+async def get_messages(conv_id: str, limit: int = Query(100, ge=1, le=500)):
     """Get messages for a conversation."""
     conv = ConversationAPI.get(conv_id)
     if not conv:
@@ -135,29 +143,39 @@ async def send_message(conv_id: str, body: SendMessageRequest):
     if not content.strip():
         raise HTTPException(status_code=400, detail="Message content is required")
 
-    import uuid
-
-    correlation_id = f"chat_{uuid.uuid4().hex[:12]}"
-
     from app.core.runtime.kernel_instance import ensure_runtime_scheduler, get_runtime_scheduler
 
     await ensure_runtime_scheduler()
     scheduler = get_runtime_scheduler()
     await scheduler.start()
 
-    sse_queue = read_ports.register_sse_queue(correlation_id)
+    import uuid
 
-    kernel.emit_event(
-        "ChatRequested",
-        "chat",
-        conv_id,  # aggregate_id = conversation dimension, not per-message UUID
-        payload={
-            "user_message": content,
-            "conversation_id": conv_id,
-        },
-        actor="user",
-        correlation_id=correlation_id,
-    )
+    # Admission must be atomic with the ChatRequested emit; otherwise two
+    # concurrent requests can both pass the read-side in-flight check.
+    with _chat_admission_lock:
+        if _conversation_chat_in_flight(conv_id):
+            raise HTTPException(
+                status_code=429,
+                detail="A chat request is already in progress for this conversation",
+            )
+        correlation_id = f"chat_{uuid.uuid4().hex[:12]}"
+        sse_queue = read_ports.register_sse_queue(correlation_id)
+        try:
+            kernel.emit_event(
+                "ChatRequested",
+                "chat",
+                conv_id,  # aggregate_id = conversation dimension, not per-message UUID
+                payload={
+                    "user_message": content,
+                    "conversation_id": conv_id,
+                },
+                actor="user",
+                correlation_id=correlation_id,
+            )
+        except Exception:
+            read_ports.unregister_sse_queue(correlation_id)
+            raise
 
     async def sse_stream():
         try:
@@ -230,6 +248,17 @@ async def send_message(conv_id: str, body: SendMessageRequest):
             yield f"data: {json.dumps({'type': 'error', 'content': 'An internal error occurred. Please try again.'})}\n\n"
         finally:
             read_ports.unregister_sse_queue(correlation_id)
+            try:
+                await read_ports.cancel_chat_execution(
+                    conv_id, correlation_id=correlation_id,
+                )
+            except Exception:
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "Failed to cancel chat execution for %s",
+                    correlation_id,
+                    exc_info=True,
+                )
 
     return StreamingResponse(
         sse_stream(),
@@ -240,6 +269,19 @@ async def send_message(conv_id: str, body: SendMessageRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post("/conversations/{conv_id}/cancel")
+async def cancel_conversation_chat(conv_id: str, body: CancelChatRequest | None = None):
+    """Cancel in-flight ChatRequested execution(s) for a conversation."""
+    conv = ConversationAPI.get(conv_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    correlation_id = body.correlation_id if body else None
+    cancelled = await read_ports.cancel_chat_execution(
+        conv_id, correlation_id=correlation_id,
+    )
+    return {"status": "ok", "cancelled": cancelled}
 
 
 def _load_pending_approval(approval_id: str) -> tuple[str, dict]:

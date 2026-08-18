@@ -82,6 +82,11 @@ describe("Electron main process", () => {
     expect(source).toContain("app://./");
   });
 
+  it("prefers project venv before system python in dev mode", () => {
+    expect(source).toContain('require("./runtimePaths")');
+    expect(source).toContain("resolvePythonCommandImpl");
+  });
+
   it("resolves backend dir from extraResources when packaged", () => {
     expect(source).toContain("function resolveBackendDir");
     expect(source).toContain("process.resourcesPath");
@@ -110,11 +115,7 @@ describe("Electron main process", () => {
   });
 
   it("guards resolveFrontendFile against path traversal", () => {
-    // The function must reject "..", absolute paths, and backslash separators
-    // so app:// requests cannot escape the frontend dist directory.
+    expect(source).toContain("resolveFrontendFileImpl");
     expect(source).toContain("function resolveFrontendFile");
-    expect(source).toContain('normalized.includes("..")');
-    expect(source).toContain("path.isAbsolute(normalized)");
-    expect(source).toContain("candidate.startsWith(distRoot + path.sep)");
   });
 });

@@ -250,7 +250,7 @@ describe("DashboardPage", () => {
         },
         active_goals: { count: 0, top: [] },
         execution_trust: {
-          by_status: { failed: 1, completed: 2, retrying: 1 },
+          by_status: { failed: 1, completed: 2, in_retry: 1 },
           pending_approvals: 0,
           failed: [
             {
@@ -266,10 +266,10 @@ describe("DashboardPage", () => {
               correlation_id: "",
             },
           ],
-          retrying: [
+          in_retry: [
             {
               id: "ex2",
-              status: "retrying",
+              status: "in_retry",
               handler_name: "memory_decay",
               event_type: "TimerFired",
               error: "lock",

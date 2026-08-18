@@ -13,7 +13,9 @@ than reaching into this private Runtime module.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
+import threading
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, TypedDict, cast
@@ -33,6 +35,7 @@ logger = logging.getLogger(__name__)
 # paths) can schedule broadcasts without asyncio.run on a worker thread.
 _broadcast_loop: asyncio.AbstractEventLoop | None = None
 _PENDING_BROADCASTS: set[asyncio.Task] = set()
+_notification_create_lock = threading.Lock()
 
 # Pluggable transport sink — set by ``app.main`` at startup so this Runtime
 # module never imports the FastAPI entry point (avoids runtime → main edge).
@@ -92,6 +95,11 @@ def find_notification(
     return cast(NotificationPayload, rows[0])
 
 
+def _deterministic_notification_id(notif_type: str, dedup_key: str) -> str:
+    digest = hashlib.sha256(f"{notif_type}:{dedup_key}".encode("utf-8")).hexdigest()[:16]
+    return f"notif_{digest}"
+
+
 def create_notification(
     notif_type: str,
     title: str,
@@ -105,36 +113,57 @@ def create_notification(
 ) -> NotificationPayload:
     """Create a notification and return it (idempotent by dedup_key or type + title)."""
     k = _kernel(kernel)
-    existing = find_notification(
-        notif_type, title, dedup_key=dedup_key, kernel=k
-    )
-    if existing:
-        if related_id and not existing.get("related_id"):
-            k.emit_event(
-                EVENT_NOTIFICATION_UPDATED,
-                AGGREGATE_NOTIFICATION,
-                existing["id"],
-                payload={
-                    "content": existing.get("content", content),
+    # Runtime is single-process per database.  Serialize the read/emit pair
+    # so concurrent timer/product threads cannot both decide to create the
+    # same deduplicated notification before the projection is visible.
+    with _notification_create_lock:
+        existing = find_notification(
+            notif_type, title, dedup_key=dedup_key, kernel=k
+        )
+        if existing:
+            if related_id and not existing.get("related_id"):
+                k.emit_event(
+                    EVENT_NOTIFICATION_UPDATED,
+                    AGGREGATE_NOTIFICATION,
+                    existing["id"],
+                    payload={
+                        "content": existing.get("content", content),
+                        "related_id": related_id,
+                        "related_type": related_type,
+                    },
+                    actor=actor,
+                )
+                existing = {
+                    **existing,
                     "related_id": related_id,
                     "related_type": related_type,
-                },
-                actor=actor,
-            )
-            existing = {
-                **existing,
+                }
+            return existing
+
+        nid = (
+            _deterministic_notification_id(notif_type, dedup_key)
+            if dedup_key
+            else str(uuid.uuid4())
+        )
+        now = datetime.now(UTC).isoformat()
+        k.emit_event(
+            EVENT_NOTIFICATION_CREATED,
+            AGGREGATE_NOTIFICATION,
+            nid,
+            payload={
+                "type": notif_type,
+                "title": title,
+                "content": content,
                 "related_id": related_id,
                 "related_type": related_type,
-            }
-        return existing
-
-    nid = str(uuid.uuid4())
-    now = datetime.now(UTC).isoformat()
-    k.emit_event(
-        EVENT_NOTIFICATION_CREATED,
-        AGGREGATE_NOTIFICATION,
-        nid,
-        payload={
+                "notification_type": notif_type,
+                "dedup_key": dedup_key,
+                "created_at": now,
+            },
+            actor=actor,
+        )
+        return {
+            "id": nid,
             "type": notif_type,
             "title": title,
             "content": content,
@@ -143,20 +172,7 @@ def create_notification(
             "notification_type": notif_type,
             "dedup_key": dedup_key,
             "created_at": now,
-        },
-        actor=actor,
-    )
-    return {
-        "id": nid,
-        "type": notif_type,
-        "title": title,
-        "content": content,
-        "related_id": related_id,
-        "related_type": related_type,
-        "notification_type": notif_type,
-        "dedup_key": dedup_key,
-        "created_at": now,
-    }
+        }
 
 
 def set_broadcast_loop(loop: asyncio.AbstractEventLoop | None) -> None:
@@ -274,6 +290,7 @@ async def _broadcast(event: dict) -> None:
 
 # ── SSE queue registry (folded from sse_queue_registry.py) ────────────────
 
+SSE_QUEUE_MAX = 256
 _registry: dict[str, asyncio.Queue] = {}
 
 
@@ -282,7 +299,7 @@ def register(correlation_id: str) -> asyncio.Queue:
 
     Returns the queue so the SSE consumer can `async for` items.
     """
-    q: asyncio.Queue[dict] = asyncio.Queue()
+    q: asyncio.Queue[dict] = asyncio.Queue(maxsize=SSE_QUEUE_MAX)
     _registry[correlation_id] = q
     return q
 
@@ -296,14 +313,52 @@ async def push(correlation_id: str, payload: dict) -> None:
     """Push a text delta payload to the queue for the given correlation_id.
 
     If the queue doesn't exist (SSE consumer already disconnected), silently drop.
+    When full, drop oldest ``text_delta`` items to preserve terminal events.
     """
     q = _registry.get(correlation_id)
     if q is None:
         return
-    try:
-        q.put_nowait(payload)
-    except asyncio.QueueFull:
-        logger.warning("SSE queue full for %s, dropping delta", correlation_id)
+
+    terminal = payload.get("type") in ("done", "error")
+    if not terminal and q.qsize() >= SSE_QUEUE_MAX - 1:
+        # Reserve one slot for the terminal result.  A client that cannot
+        # consume deltas fast enough gets a compacted stream, never a stream
+        # that loses its final state.
+        logger.warning("SSE queue near capacity for %s, dropping delta", correlation_id)
+        return
+
+    def _enqueue(item: dict) -> None:
+        while True:
+            try:
+                q.put_nowait(item)
+                return
+            except asyncio.QueueFull:
+                if item.get("type") in ("done", "error"):
+                    dropped = False
+                    for _ in range(q.qsize()):
+                        try:
+                            old = q.get_nowait()
+                        except asyncio.QueueEmpty:
+                            break
+                        if old.get("type") == "text_delta":
+                            dropped = True
+                            continue
+                        q.put_nowait(old)
+                    if not dropped:
+                        logger.warning(
+                            "SSE queue full for %s, dropping terminal %s",
+                            correlation_id,
+                            item.get("type"),
+                        )
+                        return
+                else:
+                    logger.warning(
+                        "SSE queue full for %s, dropping delta",
+                        correlation_id,
+                    )
+                    return
+
+    _enqueue(payload)
 
 
 def reset_sse_queues() -> None:

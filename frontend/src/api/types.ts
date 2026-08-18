@@ -317,7 +317,7 @@ export interface ExecutionTrust {
   by_status: Record<string, number>;
   pending_approvals: number;
   failed: ExecutionTrustItem[];
-  retrying: ExecutionTrustItem[];
+  in_retry: ExecutionTrustItem[];
   dead_letter: ExecutionTrustItem[];
   dead_letter_count: number;
   last_completed: ExecutionTrustItem | null;

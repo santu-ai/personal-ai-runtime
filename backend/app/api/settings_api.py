@@ -188,13 +188,38 @@ async def test_llm_connection(body: TestLlmRequest | None = None):
         }
 
     start = time.perf_counter()
+    llm_start = time.time()
+    ping_messages = [{"role": "user", "content": "ping"}]
     try:
+        from app.core.agents.brain_telemetry import record_llm_outcome
+        from app.core.runtime.egress.egress_gate import (
+            audit_llm_egress,
+            provider_is_local,
+        )
+
+        egress_messages, _audit = audit_llm_egress(
+            ping_messages,
+            purpose="settings_ping",
+            actor="api",
+            provider_name=provider_meta.name,
+            provider_local=provider_is_local(
+                provider_meta.provider_type, provider_meta.base_url,
+            ),
+        )
         await client.chat.completions.create(
             model=provider_meta.model,
-            messages=[{"role": "user", "content": "ping"}],
+            messages=egress_messages,  # type: ignore[arg-type]
             max_tokens=5,
         )
         latency_ms = (time.perf_counter() - start) * 1000
+        record_llm_outcome(
+            provider_name=provider_meta.name,
+            provider_model=provider_meta.model,
+            llm_start=llm_start,
+            success=True,
+            purpose="settings_ping",
+            actor="api",
+        )
         return {
             "ok": True,
             "provider": provider_id,
@@ -204,6 +229,20 @@ async def test_llm_connection(body: TestLlmRequest | None = None):
     except Exception as exc:
         logger = logging.getLogger("app.api.settings_api")
         logger.warning("LLM connection test failed for provider=%s: %s", provider_id, exc)
+        try:
+            from app.core.agents.brain_telemetry import record_llm_outcome
+
+            record_llm_outcome(
+                provider_name=provider_meta.name if provider_meta else provider_id,
+                provider_model=provider_meta.model if provider_meta else "unknown",
+                llm_start=llm_start,
+                success=False,
+                error_message=str(exc)[:500],
+                purpose="settings_ping",
+                actor="api",
+            )
+        except Exception:
+            pass
         return {
             "ok": False,
             "provider": provider_id,

@@ -263,7 +263,7 @@ async def test_call_with_reconnect_does_not_retry_mcp_error():
     """
     from unittest.mock import AsyncMock, MagicMock
 
-    from mcp.shared.exceptions import MCPError
+    from app.core.harness.mcp_compat import MCPError
 
     mesh = MCPMesh()
     session = MagicMock()

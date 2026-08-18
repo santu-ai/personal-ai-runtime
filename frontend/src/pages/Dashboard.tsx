@@ -185,9 +185,7 @@ export default function DashboardPage() {
           inboxEmails={inboxData?.emails ?? []}
         />
 
-        {dashboard?.execution_trust && (
-          <ExecutionTrustPanel trust={dashboard.execution_trust} />
-        )}
+        {dashboard?.execution_trust && <ExecutionTrustPanel trust={dashboard.execution_trust} />}
 
         {/* ── AI 给你的提醒 ── */}
         <RemindersPanel

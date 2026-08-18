@@ -55,11 +55,10 @@ def test_audit_llm_egress_returns_messages_and_audit(tmp_path):
             original, purpose="inbox_classify", actor="inbox",
         )
 
-        # Audit-only contract: messages pass through unchanged.
-        assert returned_messages is original
+        # Redacted copy — same structure, not necessarily same object.
         assert returned_messages == original
-        # Audit metadata carries purpose, actor-agnostic fields.
         assert audit["purpose"] == "inbox_classify"
+        assert audit.get("allowed") is True
         assert "classification" in audit
         assert audit["classification"]["message_count"] == 2
 
@@ -91,8 +90,9 @@ def test_audit_llm_egress_goal_breakdown_audit(tmp_path):
             messages, purpose="goal_breakdown", actor="api",
         )
 
-        assert returned_messages is messages
+        assert returned_messages == messages
         assert audit["purpose"] == "goal_breakdown"
+        assert audit.get("allowed") is True
         events = k.read_events(type="EgressAudited")
         assert len(events) == 1
         assert events[0].actor == "api"

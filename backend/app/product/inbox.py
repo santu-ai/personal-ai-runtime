@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import json as _stdlib_json
 import logging
-import re
 from datetime import UTC, datetime
 from types import ModuleType
 from typing import Any
@@ -25,129 +24,14 @@ from app.config import settings
 from app.core.runtime import read_ports
 from app.core.runtime.kernel import constants
 from app.core.runtime.kernel_instance import bind_inbox_poll_applier, kernel
+from app.product.inbox_classifier import classify_emails as _classify_emails
 
 logger = logging.getLogger(__name__)
-
-
-def _json_dumps_str(data: dict[str, Any]) -> str:
-    """Serialize for LLM prompts; always return ``str`` (orjson yields bytes)."""
-    raw = _json.dumps(data)
-    if isinstance(raw, bytes):
-        return raw.decode("utf-8")
-    return raw
-
-CLASSIFY_SYSTEM_PROMPT = """你是一个邮件分类助手。将每封邮件分为以下类别之一：
-- important: 需要用户尽快关注（老板、客户、紧急事项、验证码、账单等）
-- actionable: 需要后续处理但非紧急（待办、会议邀请、项目更新等）
-- ignorable: 可忽略（营销、订阅、通知类群发等）
-
-输出严格 JSON：
-{
-  "emails": [
-    {
-      "message_id": "与输入一致",
-      "category": "important|actionable|ignorable",
-      "importance": 0.0-1.0,
-      "reason": "一句话中文理由"
-    }
-  ]
-}"""
 
 
 def _existing_message_ids() -> set[str]:
     rows = read_ports.query_inbox_emails(status="all", limit=5000)
     return {r["id"] for r in rows}
-
-
-def _format_emails_for_llm(emails: list[dict]) -> str:
-    lines = []
-    for em in emails:
-        # Truncate to save classification tokens.
-        subject = em.get("subject", "")
-        preview = em.get("preview", "")
-
-        if len(subject) > 100:
-            subject = subject[:97] + "..."
-        if len(preview) > 200:
-            preview = preview[:197] + "..."
-
-        data = {
-            "message_id": em.get("message_id", ""),
-            "from": em.get("from", ""),
-            "subject": subject,
-            "preview": preview,
-            "date": em.get("date", ""),
-        }
-
-        lines.append(_json_dumps_str(data))
-
-    return "\n".join(lines)
-
-
-async def _classify_emails(emails: list[dict]) -> list[dict]:
-    if not emails:
-        return []
-
-    from app.core.agents.brain_llm_ops import complete_text_with_failover
-
-    user_prompt = (
-        "请分类以下邮件：\n\n"
-        f"{_format_emails_for_llm(emails)}\n\n"
-        "请以 JSON 格式输出。"
-    )
-
-    messages = [
-        {"role": "system", "content": CLASSIFY_SYSTEM_PROMPT},
-        {"role": "user", "content": user_prompt},
-    ]
-
-    try:
-        raw, _provider = await complete_text_with_failover(
-            messages,
-            purpose="inbox_classify",
-            actor="inbox",
-            temperature=0.2,
-            max_tokens=settings.llm_max_tokens,
-        )
-    except Exception as exc:
-        logger.error("Inbox classification failed: %s", exc)
-        return [
-            {
-                "message_id": em.get("message_id", ""),
-                "category": "actionable",
-                "importance": 0.5,
-                "reason": "分类失败，默认需跟进",
-            }
-            for em in emails
-        ]
-
-    return _parse_classification(raw, emails)
-
-
-def _parse_classification(raw: str, fallback_emails: list[dict]) -> list[dict]:
-    try:
-        # Strip potential markdown code blocks that some local models might still add
-        cleaned = raw.strip()
-        if cleaned.startswith("```"):
-            cleaned = re.sub(r"^```(?:json)?\n?", "", cleaned)
-            cleaned = re.sub(r"\n?```$", "", cleaned).strip()
-
-        data = _json.loads(cleaned)
-        items = data.get("emails", data) if isinstance(data, dict) else data
-        if isinstance(items, list) and items:
-            return items
-    except Exception as e:
-        logger.error("Failed to parse classification JSON: %s. Raw: %s", e, raw)
-
-    return [
-        {
-            "message_id": em.get("message_id", ""),
-            "category": "actionable",
-            "importance": 0.5,
-            "reason": "无法解析分类结果",
-        }
-        for em in fallback_emails
-    ]
 
 
 def _classification_by_id(classified: list[dict]) -> dict[str, dict]:

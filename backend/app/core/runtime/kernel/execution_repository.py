@@ -245,3 +245,29 @@ def replay_dead_letters(kernel: Any, *, limit: int = 50) -> list[str]:
                 eid,
             )
     return live_queued
+
+
+def cancel_by_correlation_id(
+    scheduler: Any,
+    correlation_id: str,
+    *,
+    event_type: str = "ChatRequested",
+) -> int:
+    """Cancel live and durable executions matching a request correlation id."""
+    if not correlation_id:
+        return 0
+    targets = {
+        item.id
+        for item in [*scheduler._pending, *(item for item, _task in scheduler._active.values())]
+        if item.correlation_id == correlation_id and item.event_type == event_type
+    }
+    try:
+        targets.update(
+            item.id
+            for status in (STATUS_RUNNING, STATUS_PENDING, STATUS_RETRYING)
+            for item in scheduler._kernel.read_scheduled_executions(status=status)
+            if item.correlation_id == correlation_id and item.event_type == event_type
+        )
+    except Exception:
+        logger.debug("cancel_by_correlation_id durable scan failed", exc_info=True)
+    return sum(1 for execution_id in targets if scheduler.request_cancel(execution_id))

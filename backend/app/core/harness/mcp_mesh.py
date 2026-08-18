@@ -21,9 +21,9 @@ from typing import Any
 
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
-from mcp.shared.exceptions import MCPError  # type: ignore[attr-defined]
 from mcp.types import Tool as MCPTool
 
+from app.core.harness.mcp_compat import MCP_ERROR_TYPES
 from app.core.harness.mcp_config import (
     ExternalMCPServerConfig,
     external_tool_id,
@@ -360,7 +360,7 @@ class MCPMesh:
                 f"MCP tool timed out: {registered_name}",
                 tool_name=registered_name,
             ) from None
-        except MCPError as exc:
+        except MCP_ERROR_TYPES as exc:
             raise ToolInvokeError(
                 OUTCOME_TOOL_EXECUTION_FAILURE,
                 f"MCP tool error: {exc.message}",
@@ -411,7 +411,7 @@ class MCPMesh:
             )
         except asyncio.TimeoutError:
             raise
-        except MCPError:
+        except MCP_ERROR_TYPES:
             # v2 协议/应用错误——绝不重试（副作用可能已生效）。
             raise
         except Exception as first_exc:

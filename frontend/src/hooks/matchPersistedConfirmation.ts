@@ -34,8 +34,7 @@ export function matchPersistedConfirmation(
 ): PersistedConfirmation | null {
   const pending = approvals.filter(
     (a) =>
-      a.status === "pending" &&
-      a.conversation_id === conversationId && Boolean(a.tool_call_id),
+      a.status === "pending" && a.conversation_id === conversationId && Boolean(a.tool_call_id),
   );
   if (pending.length === 0) return null;
 

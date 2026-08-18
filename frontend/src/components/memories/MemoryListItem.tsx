@@ -93,9 +93,7 @@ export default function MemoryListItem({
           {m.created_at && (
             <span className="text-xs text-fg-disabled">{timeAgoShort(m.created_at)}</span>
           )}
-          {confidence && (
-            <span className="text-xs text-fg-tertiary">置信度 {confidence}</span>
-          )}
+          {confidence && <span className="text-xs text-fg-tertiary">置信度 {confidence}</span>}
           {m.category && (
             <span className="text-xs text-fg-tertiary">{getCategoryMeta(m.category).title}</span>
           )}

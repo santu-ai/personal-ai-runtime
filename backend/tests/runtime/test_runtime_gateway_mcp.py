@@ -4,8 +4,7 @@ import asyncio
 import json
 
 import pytest
-from mcp.server.mcpserver.exceptions import ToolError
-
+from app.core.harness.mcp_compat import ToolError
 from mcp_servers.runtime_gateway import server
 from mcp_servers.runtime_gateway.http_client import HttpResult, reset_base_url_cache
 from mcp_servers.runtime_gateway.tools import ToolOutput, resolve_enabled_tools

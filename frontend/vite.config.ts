@@ -47,21 +47,27 @@ export default defineConfig({
             ) {
               return "vendor-markdown";
             }
-            if (
-              id.includes("react-dom") ||
-              id.includes("react-router") ||
-              id.includes("/react/")
-            ) {
+            if (id.includes("react-dom") || id.includes("react-router") || id.includes("/react/")) {
               return "vendor-react";
             }
-            if (id.includes("react-syntax-highlighter") || id.includes("refractor")) {
+            if (
+              id.includes("react-syntax-highlighter") ||
+              id.includes("refractor") ||
+              id.includes("highlight.js") ||
+              id.includes("prismjs")
+            ) {
               // Leave syntax highlighter in async chunks (lazy-loaded via CodeBlock)
               return undefined;
             }
             if (id.includes("lucide-react")) {
               return "vendor-icons";
             }
-            return "vendor";
+            if (id.includes("@tanstack")) {
+              return "vendor-query";
+            }
+            if (id.includes("zustand")) {
+              return "vendor-state";
+            }
           }
           if (id.includes("/src/pages/")) {
             const page = id.split("/src/pages/")[1]?.split(".")[0];

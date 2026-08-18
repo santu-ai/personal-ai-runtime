@@ -107,12 +107,8 @@ export interface ClaimConversionStats {
   false_positive_rate: number | null;
 }
 
-export async function getClaimConversionStats(
-  days = 30,
-): Promise<ClaimConversionStats> {
-  return request<ClaimConversionStats>(
-    `${API_BASE}/memory/memories/claims/stats?days=${days}`,
-  );
+export async function getClaimConversionStats(days = 30): Promise<ClaimConversionStats> {
+  return request<ClaimConversionStats>(`${API_BASE}/memory/memories/claims/stats?days=${days}`);
 }
 
 export interface MemoryProvenanceEvent {

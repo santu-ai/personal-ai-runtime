@@ -228,10 +228,11 @@ def test_query_execution_trust_summary_shapes_and_limits(monkeypatch):
 
     result = events_port.query_execution_trust_summary(recent_limit=1)
 
-    assert result["by_status"] == {"failed": 2, "completed": 3, "retrying": 1}
+    assert result["by_status"] == {"failed": 2, "completed": 3, "in_retry": 1}
     assert result["pending_approvals"] == 4
     assert [row["id"] for row in result["failed"]] == ["f2"]
-    assert [row["id"] for row in result["retrying"]] == ["r1"]
+    assert [row["id"] for row in result["in_retry"]] == ["r1"]
+    assert result["in_retry"][0]["status"] == "in_retry"
     assert result["last_failed"]["id"] == "f2"
     assert result["last_completed"]["id"] == "c1"
     assert [row["id"] for row in result["dead_letter"]] == ["d1"]

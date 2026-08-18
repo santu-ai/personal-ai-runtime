@@ -148,9 +148,7 @@ describe("ChatHome", () => {
     const input = await screen.findByPlaceholderText(/输入消息/);
     fireEvent.change(input, { target: { value: "帮我规划今天" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
-    expect(quickChat).toHaveBeenCalledWith(
-      expect.objectContaining({ prompt: "帮我规划今天" }),
-    );
+    expect(quickChat).toHaveBeenCalledWith(expect.objectContaining({ prompt: "帮我规划今天" }));
   });
 
   it("handles proactive nudge click", async () => {

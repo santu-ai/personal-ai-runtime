@@ -244,19 +244,16 @@ export default function ChatHome() {
                   {lastConversation.summary}
                 </p>
               )}
-              <p className="text-xs text-fg-disabled mt-2">{timeAgo(lastConversation.updated_at)}</p>
+              <p className="text-xs text-fg-disabled mt-2">
+                {timeAgo(lastConversation.updated_at)}
+              </p>
             </div>
           )}
         </div>
       </div>
       <div className="border-t border-border-subtle p-4 shrink-0">
         <div className="max-w-2xl mx-auto">
-          <ChatComposer
-            value={input}
-            onChange={setInput}
-            onSend={handleSend}
-            inputRef={inputRef}
-          />
+          <ChatComposer value={input} onChange={setInput} onSend={handleSend} inputRef={inputRef} />
         </div>
       </div>
     </div>

@@ -17,6 +17,10 @@ const fs = require("fs");
 const path = require("path");
 const { pathToFileURL } = require("url");
 const net = require("net");
+const {
+  resolvePythonCommand: resolvePythonCommandImpl,
+  resolveFrontendFile: resolveFrontendFileImpl,
+} = require("./runtimePaths");
 
 // Declare the app:// scheme as privileged BEFORE app is ready.
 // This must happen synchronously at module load time so the renderer can use
@@ -79,29 +83,11 @@ function resolveBundledPythonExe() {
 }
 
 function resolvePythonCommand() {
-  const bundled = resolveBundledPythonExe();
-  if (bundled) {
-    return { executable: bundled, args: [] };
-  }
-  if (process.platform === "win32") {
-    const pyLauncher = spawnSync("py", ["-3.12", "--version"], { stdio: "ignore" });
-    if (pyLauncher.status === 0) {
-      return { executable: "py", args: ["-3.12"] };
-    }
-    const python = spawnSync("python", ["--version"], { stdio: "ignore" });
-    if (python.status === 0) {
-      return { executable: "python", args: [] };
-    }
-  }
-  const python3 = spawnSync("python3", ["--version"], { stdio: "ignore" });
-  if (python3.status === 0) {
-    return { executable: "python3", args: [] };
-  }
-  const python = spawnSync("python", ["--version"], { stdio: "ignore" });
-  if (python.status === 0) {
-    return { executable: "python", args: [] };
-  }
-  return { executable: process.platform === "win32" ? "py" : "python3", args: process.platform === "win32" ? ["-3.12"] : [] };
+  return resolvePythonCommandImpl({
+    isPackaged,
+    bundledPythonExe: resolveBundledPythonExe(),
+    repoRoot: path.join(__dirname, ".."),
+  });
 }
 
 function resolveDesktopDataEnv() {
@@ -179,39 +165,14 @@ function registerAppProtocol() {
       });
     }
 
-    const filePath = resolveFrontendFile(distRoot, relPath);
+    const filePath = resolveFrontendFileImpl(distRoot, relPath);
     return electronNet.fetch(pathToFileURL(filePath).href);
   });
   _appProtocolRegistered = true;
 }
 
 function resolveFrontendFile(distRoot, relPath) {
-  if (!relPath || relPath === ".") {
-    return path.join(distRoot, "index.html");
-  }
-  // Path traversal guard: reject "..", absolute paths, and Windows-style
-  // separators so app://./../../etc/passwd style requests stay inside distRoot.
-  const normalized = relPath.replace(/\\/g, "/");
-  if (
-    normalized.includes("..") ||
-    path.isAbsolute(normalized) ||
-    normalized.startsWith("/")
-  ) {
-    return path.join(distRoot, "index.html");
-  }
-  const candidate = path.normalize(path.join(distRoot, normalized));
-  // Defense in depth: ensure the resolved path did not escape distRoot.
-  if (candidate !== distRoot && !candidate.startsWith(distRoot + path.sep)) {
-    return path.join(distRoot, "index.html");
-  }
-  if (fs.existsSync(candidate) && !fs.statSync(candidate).isDirectory()) {
-    return candidate;
-  }
-  // SPA client routes (e.g. /chat/abc) fall back to index.html; static assets 404.
-  if (normalized.startsWith("assets/")) {
-    return candidate;
-  }
-  return path.join(distRoot, "index.html");
+  return resolveFrontendFileImpl(distRoot, relPath);
 }
 
 function installApiProxy() {

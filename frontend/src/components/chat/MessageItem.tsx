@@ -1,11 +1,9 @@
 import { useState, useCallback } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkBreaks from "remark-breaks";
 import { Copy, Check, Brain, Mail, Target, FileText } from "lucide-react";
 import ToolCallDisplay from "./ToolCallDisplay";
 import TaskTrack from "./TaskTrack";
 import { CodeBlock } from "./CodeBlock";
+import { LazyMarkdown } from "./LazyMarkdown";
 import { stripToolMarkup } from "../../utils/stripToolMarkup";
 import { timeAgo } from "../../utils/timeUtils";
 import { matchResultsByCallId } from "./matchToolResult";
@@ -115,6 +113,32 @@ function ThinkingPlaceholder() {
   );
 }
 
+const markdownComponents = {
+  code({ className, children, ...props }: { className?: string; children?: React.ReactNode }) {
+    const match = /language-(\w+)/.exec(className || "");
+    const codeStr = String(children).replace(/\n$/, "");
+
+    if (match) {
+      const nodeProps = props as Record<string, unknown>;
+      const inline = nodeProps.inline as boolean | undefined;
+      if (inline) {
+        return <InlineCode>{children}</InlineCode>;
+      }
+      return <CodeBlock language={match[1]} code={codeStr} />;
+    }
+
+    if (!className && String(children).length < 50) {
+      return <InlineCode>{children}</InlineCode>;
+    }
+
+    return (
+      <code className={className} {...props}>
+        {children}
+      </code>
+    );
+  },
+};
+
 export default function MessageItem({ message }: Props) {
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
@@ -198,36 +222,7 @@ export default function MessageItem({ message }: Props) {
               <p className="whitespace-pre-wrap text-sm leading-relaxed">{displayContent}</p>
             ) : (
               <div className="markdown-content text-sm leading-relaxed prose-p:my-0">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkBreaks]}
-                  components={{
-                    code({ className, children, ...props }) {
-                      const match = /language-(\w+)/.exec(className || "");
-                      const codeStr = String(children).replace(/\n$/, "");
-
-                      if (match) {
-                        const nodeProps = props as Record<string, unknown>;
-                        const inline = nodeProps.inline as boolean | undefined;
-                        if (inline) {
-                          return <InlineCode>{children}</InlineCode>;
-                        }
-                        return <CodeBlock language={match[1]} code={codeStr} />;
-                      }
-
-                      if (!className && String(children).length < 50) {
-                        return <InlineCode>{children}</InlineCode>;
-                      }
-
-                      return (
-                        <code className={className} {...props}>
-                          {children}
-                        </code>
-                      );
-                    },
-                  }}
-                >
-                  {displayContent}
-                </ReactMarkdown>
+                <LazyMarkdown content={displayContent} components={markdownComponents} />
                 {message.isStreaming && (
                   <span className="inline-flex gap-0.5 ml-1 align-middle">
                     <span

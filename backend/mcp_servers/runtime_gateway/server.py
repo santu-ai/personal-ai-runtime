@@ -34,8 +34,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from mcp.server.mcpserver import MCPServer
-
+from app.core.harness.mcp_compat import MCPServer
 from mcp_servers.runtime_gateway.http_client import (
     HttpResult,
     configure_base_url,

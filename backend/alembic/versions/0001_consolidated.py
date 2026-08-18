@@ -82,6 +82,11 @@ def upgrade() -> None:
         unique=False,
     )
     op.create_index("ix_notifications_dedup_key", "notifications", ["dedup_key"])
+    op.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_notifications_dedup_key "
+        "ON notifications (dedup_key) "
+        "WHERE dedup_key IS NOT NULL AND dedup_key != ''"
+    )
 
     op.create_table(
         "activity_log",
@@ -347,6 +352,7 @@ def downgrade() -> None:
     op.drop_index("idx_llm_calls_created_at", table_name="llm_calls")
     op.drop_table("llm_calls")
     op.drop_table("activity_log")
+    op.drop_index("ux_notifications_dedup_key", table_name="notifications")
     op.drop_index("ix_notifications_dedup_key", table_name="notifications")
     op.drop_index("ix_notifications_related_type", table_name="notifications")
     op.drop_table("notifications")

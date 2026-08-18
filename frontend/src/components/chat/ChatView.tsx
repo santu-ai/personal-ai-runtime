@@ -102,15 +102,7 @@ export default function ChatView({ conversationId }: Props) {
         },
       );
     },
-    [
-      isLoading,
-      pendingConfirmation,
-      sendMessageBase,
-      setFromEvent,
-      setMessages,
-      addError,
-      memData,
-    ],
+    [isLoading, pendingConfirmation, sendMessageBase, setFromEvent, setMessages, addError, memData],
   );
 
   useEffect(() => {

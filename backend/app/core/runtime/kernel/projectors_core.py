@@ -369,10 +369,11 @@ _OWNED_TABLES["notification"] = ["notifications"]
 def _on_notification_created(event: Event, conn) -> None:
     p = event.payload
     conn.execute(
-        """INSERT OR REPLACE INTO notifications
+        """INSERT INTO notifications
            (id, type, title, content, read,
             related_id, related_type, notification_type, dedup_key, created_at)
-           VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+           ON CONFLICT DO NOTHING""",
         (
             event.aggregate_id,
             p.get("type", ""),
@@ -383,7 +384,7 @@ def _on_notification_created(event: Event, conn) -> None:
             p.get("notification_type"),
             p.get("dedup_key"),
             p.get("created_at", event.ts),
-        ),
+        )
     )
 
 
@@ -419,4 +420,3 @@ def _on_notification_read(event: Event, conn) -> None:
         "UPDATE notifications SET read = 1 WHERE id = ?",
         (event.aggregate_id,),
     )
-

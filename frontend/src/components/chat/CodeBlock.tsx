@@ -1,16 +1,16 @@
 import { lazy, Suspense } from "react";
 
 const LazySyntaxBlock = lazy(async () => {
-  const [{ Prism }, { oneDark }] = await Promise.all([
+  const [{ PrismAsyncLight }, { oneDark }] = await Promise.all([
     import("react-syntax-highlighter"),
     import("react-syntax-highlighter/dist/esm/styles/prism"),
   ]);
   return {
     default: function SyntaxBlock({ language, code }: { language: string; code: string }) {
       return (
-        <Prism style={oneDark} language={language} PreTag="div">
+        <PrismAsyncLight style={oneDark} language={language} PreTag="div">
           {code}
-        </Prism>
+        </PrismAsyncLight>
       );
     },
   };

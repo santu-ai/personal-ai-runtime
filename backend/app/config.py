@@ -81,11 +81,9 @@ class Settings(BaseSettings):
     # --- MCP ---
     mcp_config_path: str = str(BASE_DIR / "backend" / "mcp_config.json")
     """Main MCP config (committed). Holds shared/builtin MCP server registrations."""
-    mcp_local_config_path: str = str(BASE_DIR / "backend" / "mcp_config.local.json")
-    """Optional personal MCP config (gitignored). ``external_servers`` entries here
-    are merged on top of mcp_config.json (by ``name``), letting you add private
-    MCPs (TAPD, Jira, internal tools) without touching the shared config.
-    File does not need to exist; absence is silently ignored."""
+    mcp_local_config_path: str = ""
+    """User-installed MCP servers (gitignored). Defaults to ``DATA_DIR/mcp_config.local.json``.
+    Merged on top of mcp_config.json by ``name``."""
     capability_policy_path: str = str(BASE_DIR / "backend" / "capability_policy.json")
     mcp_external_enabled: bool = True
     """Enable external MCP mesh. Set false to use builtin tools only."""
@@ -128,6 +126,12 @@ class Settings(BaseSettings):
     # --- Memory ---
     memory_extractor: str = "ollama"
     sensitive_ops_local: bool = True
+    allow_cloud_personal_data_egress: bool = False
+    """Allow memory/identity/trajectory prompts to be sent to cloud LLMs.
+
+    The default is local-only for classified personal context.  Set this
+    explicitly when the user accepts the privacy trade-off.
+    """
     execution_shadow_compare: bool = False
     """When True, Scheduler verifies handler_executions projection after each emit (debug)."""
 
@@ -222,8 +226,10 @@ class Settings(BaseSettings):
         else:
             self.vector_dir = str(Path(self.data_dir) / "vectors")
         self.mcp_config_path = resolve_project_path(self.mcp_config_path)
-        if self.mcp_local_config_path:
+        if self.mcp_local_config_path.strip():
             self.mcp_local_config_path = resolve_project_path(self.mcp_local_config_path)
+        else:
+            self.mcp_local_config_path = str(Path(self.data_dir) / "mcp_config.local.json")
         self.capability_policy_path = resolve_project_path(self.capability_policy_path)
 
 

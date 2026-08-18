@@ -110,9 +110,7 @@ export default function Sidebar({
           const Icon = item.icon;
           const count = badgeFor(item.badgeKey);
           const to =
-            item.badgeKey === "memories" && proposedCount > 0
-              ? "/memories?tab=review"
-              : item.path;
+            item.badgeKey === "memories" && proposedCount > 0 ? "/memories?tab=review" : item.path;
           return (
             <NavLink
               key={item.path}
