@@ -59,6 +59,7 @@ export default function ChatView({ conversationId }: Props) {
     messagesHydrated,
     streamingContent,
     handleSend: sendMessageBase,
+    cancelMessage,
     lastUserMessage,
     allToolResults,
   } = useChatMessages(conversationId, addError);
@@ -317,6 +318,7 @@ export default function ChatView({ conversationId }: Props) {
               value={input}
               onChange={setInput}
               onSend={handleSend}
+              onCancel={isLoading ? cancelMessage : undefined}
               disabled={isLoading || !!pendingConfirmation}
               inputRef={inputRef}
             />
@@ -426,6 +428,7 @@ export default function ChatView({ conversationId }: Props) {
             value={input}
             onChange={setInput}
             onSend={handleSend}
+            onCancel={isLoading ? cancelMessage : undefined}
             disabled={isLoading || !!pendingConfirmation}
             inputRef={inputRef}
           />

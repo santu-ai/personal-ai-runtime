@@ -5,6 +5,7 @@ interface ChatComposerProps {
   value: string;
   onChange: (value: string) => void;
   onSend: () => void;
+  onCancel?: () => void;
   disabled?: boolean;
   placeholder?: string;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -14,6 +15,7 @@ export default function ChatComposer({
   value,
   onChange,
   onSend,
+  onCancel,
   disabled,
   placeholder = "输入消息... (Enter 发送, Shift+Enter 换行)",
   inputRef,
@@ -37,10 +39,13 @@ export default function ChatComposer({
     [value, onChange, inputRef],
   );
 
+  const cancelling = Boolean(onCancel);
+  const actionDisabled = cancelling ? false : Boolean(disabled) || !value.trim();
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      onSend();
+      if (!cancelling && !disabled) onSend();
     }
   };
 
@@ -59,15 +64,20 @@ export default function ChatComposer({
         className="flex-1 bg-transparent border-none outline-none resize-none text-fg-primary placeholder:text-fg-tertiary min-h-[24px] max-h-[200px] py-1"
       />
       <button
-        onClick={onSend}
-        disabled={disabled || !value.trim()}
+        type="button"
+        onClick={cancelling ? onCancel : onSend}
+        disabled={actionDisabled}
         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
-          disabled
+          actionDisabled
             ? "bg-surface-overlay/50 text-fg-secondary cursor-not-allowed"
-            : "bg-insight hover:bg-insight/90 disabled:bg-surface-overlay disabled:text-fg-disabled text-white"
+            : cancelling
+              ? "bg-danger hover:bg-danger/90 text-white"
+              : "bg-insight hover:bg-insight/90 disabled:bg-surface-overlay disabled:text-fg-disabled text-white"
         }`}
       >
-        {disabled ? (
+        {cancelling ? (
+          "取消生成"
+        ) : disabled ? (
           <span className="flex items-center gap-2">
             <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
               <circle

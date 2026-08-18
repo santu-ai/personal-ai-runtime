@@ -50,6 +50,7 @@ export {
   deleteConversation,
   updateConversation,
   getMessages,
+  cancelChat,
   sendMessage,
 } from "./chat";
 

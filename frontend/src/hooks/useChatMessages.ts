@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { getMessages, sendMessage, updateConversation, ApiError } from "../api/client";
+import { cancelChat, getMessages, sendMessage, updateConversation, ApiError } from "../api/client";
 import type { Message, StreamEvent, SourceCitation } from "../api/client";
 import { useChatStore } from "../stores/chatStore";
 import { stripToolMarkup } from "../utils/stripToolMarkup";
@@ -415,6 +415,35 @@ export function useChatMessages(
     [isLoading, conversationId, conversations, messages, queryClient],
   );
 
+  const cancelMessage = useCallback(async () => {
+    const controller = abortRef.current;
+    if (!controller || controller.signal.aborted) return;
+    abortRef.current = null;
+    controller.abort();
+    // Consume the home-prompt handoff so abort does not look like a failed
+    // send and get retried after isLoading flips back to false.
+    useChatStore.getState().setPendingPrompt(null);
+    setMessages((prev) =>
+      prev.map((message) =>
+        message.isStreaming
+          ? {
+              ...message,
+              isStreaming: false,
+              content: message.content || "已取消生成。",
+            }
+          : message,
+      ),
+    );
+    setStreamingContent("");
+    setIsLoading(false);
+    try {
+      await cancelChat(conversationId);
+    } catch {
+      // The stream abort already stopped the local UI; the server-side
+      // cleanup is best effort and will also run from sendMessage's abort path.
+    }
+  }, [conversationId]);
+
   return {
     messages,
     setMessages,
@@ -424,6 +453,7 @@ export function useChatMessages(
     setStreamingContent,
     loadMessages,
     handleSend,
+    cancelMessage,
     lastUserMessage,
     allToolResults,
   };

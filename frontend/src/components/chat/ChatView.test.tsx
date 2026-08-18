@@ -3,11 +3,18 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import ChatView from "./ChatView";
-import { getMessages, resolveApproval, sendMessage, ratifyMemory } from "../../api/client";
+import {
+  cancelChat,
+  getMessages,
+  resolveApproval,
+  sendMessage,
+  ratifyMemory,
+} from "../../api/client";
 
 vi.mock("../../api/client", () => ({
   getMessages: vi.fn().mockResolvedValue([]),
   sendMessage: vi.fn(),
+  cancelChat: vi.fn().mockResolvedValue({ status: "ok", cancelled: 0 }),
   resolveApproval: vi.fn(),
   updateConversation: vi.fn().mockResolvedValue({ status: "ok" }),
   listPendingApprovals: vi.fn().mockResolvedValue([]),
@@ -387,5 +394,36 @@ describe("ChatView", () => {
     const banner = await screen.findByText(/1 条记忆待确认后才会进入对话/);
     const contextBtn = await screen.findByRole("button", { name: "上下文" });
     expect(banner.closest(".border-b")?.contains(contextBtn)).toBe(false);
+  });
+
+  it("shows a clickable cancel button while generating", async () => {
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, _onEvent, _onError, onDone, signal) => {
+        await new Promise<void>((resolve) => {
+          if (signal?.aborted) {
+            resolve();
+            return;
+          }
+          signal?.addEventListener("abort", () => resolve(), { once: true });
+        });
+        onDone();
+      },
+    );
+    vi.mocked(cancelChat).mockResolvedValue({ status: "ok", cancelled: 1 });
+
+    renderChatView();
+    const input = screen.getAllByPlaceholderText(/输入消息/).at(-1)!;
+    fireEvent.change(input, { target: { value: "写一篇长文" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "发送" }).at(-1)!);
+
+    const cancelBtn = await screen.findByRole("button", { name: "取消生成" });
+    expect(cancelBtn).toBeEnabled();
+    fireEvent.click(cancelBtn);
+
+    await waitFor(() => {
+      expect(cancelChat).toHaveBeenCalledWith("test-conv-1");
+    });
+    expect(await screen.findByText("已取消生成。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "发送" })).toBeInTheDocument();
   });
 });
