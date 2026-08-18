@@ -1,5 +1,9 @@
 import { useEffect, useId, useRef } from "react";
+import type { Components } from "react-markdown";
 import Button from "../ui/Button";
+import { LazyMarkdown } from "../chat/LazyMarkdown";
+
+const DIGEST_MARKDOWN_COMPONENTS: Components = {};
 
 interface Props {
   open: boolean;
@@ -59,10 +63,8 @@ export default function InboxDigestModal({ open, title, content, onClose }: Prop
             </button>
           </div>
         </div>
-        <div className="px-5 py-4 overflow-y-auto flex-1">
-          <pre className="text-sm text-fg-primary whitespace-pre-wrap font-sans leading-relaxed">
-            {content}
-          </pre>
+        <div className="px-5 py-4 overflow-y-auto flex-1 markdown-content text-sm leading-relaxed">
+          <LazyMarkdown content={content} components={DIGEST_MARKDOWN_COMPONENTS} />
         </div>
         <div className="px-5 py-4 border-t border-border-subtle flex justify-end">
           <Button variant="secondary" size="sm" onClick={onClose}>
