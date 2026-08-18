@@ -12,7 +12,7 @@ requires-python = ">=3.12"
 # Canonical pinned set: requirements.txt (used by make install / CI).
 dependencies = [
     "fastapi==0.141.1",
-    "uvicorn[standard]==0.52.1",
+    "uvicorn[standard]==0.52.3",
     "uvloop==0.22.1 ; sys_platform != 'win32' and implementation_name == 'cpython'",
     "colorama==0.4.6 ; sys_platform == 'win32'",
     "openai==3.0.0",
