@@ -341,7 +341,7 @@ def test_partial_completion_creates_goal_progress_notification(goal_with_actions
     assert len(rows) == 1
     assert "1/2" in rows[0]["content"]
 
-    assert any(s["source"] == f"action:{a1['id']}" for s in engine.stored)
+    assert engine.stored == []
     assert not _notification_rows(k, "goal_complete")
 
 
@@ -359,13 +359,13 @@ def test_all_actions_completed_creates_goal_complete_notification(goal_with_acti
     rows = _notification_rows(k, "goal_complete")
     assert len(rows) == 1
     assert "所有步骤已完成" in rows[0]["title"]
-    assert len(engine.stored) == 2
+    assert engine.stored == []
 
 
-def test_notify_without_children_skips_notification_but_stores_memory(
+def test_notify_without_children_skips_notification(
     isolated_kernel, monkeypatch,
 ):
-    """目标无子项（孤儿 action）时跳过进度/完成通知，但仍记录 memory。
+    """目标无子项（孤儿 action）时跳过进度/完成通知，也不写 proposed 记忆。
 
     锁定的真实行为：all_items 为空 → 不产生 "0/0 步已完成" 噪音通知。
     """
@@ -378,4 +378,4 @@ def test_notify_without_children_skips_notification_but_stores_memory(
 
     assert _notification_rows(k, "goal_progress") == []
     assert _notification_rows(k, "goal_complete") == []
-    assert engine.stored and engine.stored[0]["source"] == "action:orphan-action"
+    assert engine.stored == []

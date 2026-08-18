@@ -19,6 +19,10 @@ def test_generate_morning_brief_assembles_text(monkeypatch):
         lambda: 3,
     )
     monkeypatch.setattr(
+        "app.core.runtime.read_ports.count_inbox_emails",
+        lambda: 21,
+    )
+    monkeypatch.setattr(
         "app.core.runtime.read_ports.count_memories",
         lambda **kwargs: (
             2 if kwargs.get("claim_status") == "proposed" else 0
@@ -29,13 +33,14 @@ def test_generate_morning_brief_assembles_text(monkeypatch):
 
     assert "Ship dogfood" in result.brief
     assert "(进度 40%)" in result.brief
-    assert "未读邮件: 3 封" in result.brief
+    assert "收件箱: 21 封（未读 3）" in result.brief
     assert "今日日程: 2 个" in result.brief
     assert "待确认记忆: 2 条" in result.brief
     assert "dark mode" not in result.brief
     assert "/memories?tab=review" in result.brief
     assert result.goals_count == 1
     assert result.inbox_count == 3
+    assert result.mailbox_count == 21
     assert result.calendar_count == 2
     assert result.proposed_count == 2
     assert result.errors == []
@@ -62,6 +67,10 @@ def test_generate_morning_brief_degrades_on_source_failure(monkeypatch):
         lambda: 0,
     )
     monkeypatch.setattr(
+        "app.core.runtime.read_ports.count_inbox_emails",
+        lambda: 0,
+    )
+    monkeypatch.setattr(
         "app.core.runtime.read_ports.count_memories",
         lambda **kwargs: 0,
     )
@@ -73,4 +82,5 @@ def test_generate_morning_brief_degrades_on_source_failure(monkeypatch):
     assert result.proposed_count == 0
     assert any("calendar" in e for e in result.errors)
     assert "今日日程: 0 个" in result.brief
+    assert "收件箱: 0 封（未读 0）" in result.brief
     assert "待确认记忆: 0 条" in result.brief

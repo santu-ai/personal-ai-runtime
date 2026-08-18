@@ -310,9 +310,42 @@ class TestTriggersAPI:
 
 class TestInboxAPI:
     def test_list_default(self, client):
-        resp = client.get("/api/inbox/")
-        assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
+        """Default list is the mailbox (all statuses), not pending-only triage."""
+        from app.core.runtime.kernel import constants
+
+        k = _kernel()
+        k.emit_event(
+            constants.EVENT_INBOX_EMAIL_RECORDED,
+            constants.AGGREGATE_INBOX_EMAIL,
+            "mail-pending",
+            payload={"sender": "a@b.com", "subject": "pending"},
+            actor="inbox",
+        )
+        k.emit_event(
+            constants.EVENT_INBOX_EMAIL_RECORDED,
+            constants.AGGREGATE_INBOX_EMAIL,
+            "mail-read",
+            payload={"sender": "c@d.com", "subject": "read"},
+            actor="inbox",
+        )
+        k.emit_event(
+            constants.EVENT_INBOX_EMAIL_STATUS_CHANGED,
+            constants.AGGREGATE_INBOX_EMAIL,
+            "mail-read",
+            payload={"status": "read"},
+            actor="inbox",
+        )
+
+        default = client.get("/api/inbox/")
+        assert default.status_code == 200
+        default_ids = {row["id"] for row in default.json()}
+        assert default_ids >= {"mail-pending", "mail-read"}
+
+        pending = client.get("/api/inbox/?status=pending")
+        assert pending.status_code == 200
+        pending_ids = {row["id"] for row in pending.json()}
+        assert "mail-pending" in pending_ids
+        assert "mail-read" not in pending_ids
 
     def test_list_status_all(self, client):
         resp = client.get("/api/inbox/?status=all")

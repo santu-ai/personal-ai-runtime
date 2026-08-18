@@ -291,10 +291,14 @@ def notify_goal_action_completed(
     action_id: str,
     action_title: str,
 ) -> None:
-    """Notify + memory side-effects when a goal's child action completes.
+    """Notify when a goal's child action completes.
 
     Shared by the Work API status transitions and ExecuteRequested completion
     so plan execution does not skip product side-effects.
+
+    Does **not** write MemoryDerived: ``actor=system`` would land as
+    ``origin=claim`` / ``proposed``, and the extractor already treats
+    「完成了行动步骤」 as noise (dogfood W34-R2).
     """
     import logging
 
@@ -308,9 +312,6 @@ def notify_goal_action_completed(
             if item["id"] == action_id:
                 item["status"] = "completed"
 
-        goal_row = query_goal(goal_id)
-        goal_title = goal_row["title"] if goal_row else "目标"
-
         if all_items:
             # 目标有子项才统计进度；无子项（孤儿 action / 数据不一致）时
             # 跳过通知，避免产生 "0/0 步已完成" 的噪音。
@@ -321,6 +322,9 @@ def notify_goal_action_completed(
                 a.get("status") == "completed" for a in all_items
             )
             from app.core.runtime.read_ports.notifications import create_notification
+
+            goal_row = query_goal(goal_id)
+            goal_title = goal_row["title"] if goal_row else "目标"
 
             if all_done:
                 create_notification(
@@ -335,17 +339,9 @@ def notify_goal_action_completed(
                     f"目标「{goal_title}」进度：{completed}/{len(all_items)} 步已完成。",
                 )
 
-        from app.core.agents.memory_engine import memory_engine
-
-        memory_engine.store_memory(
-            category="event",
-            content=f"完成了行动步骤：{action_title}（目标：{goal_title}）",
-            source=f"action:{action_id}",
-            actor="system",
-        )
     except Exception:
         logger.warning(
-            "Failed to store audited action memory for action_id=%s",
+            "Failed to notify goal action completed for action_id=%s",
             action_id,
             exc_info=True,
         )

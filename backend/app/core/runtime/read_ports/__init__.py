@@ -48,6 +48,7 @@ from app.core.runtime.read_ports.events import (
     to_event_dict,
 )
 from app.core.runtime.read_ports.inbox import (
+    count_inbox_emails,
     count_pending_inbox_emails,
     query_inbox_email,
     query_inbox_emails,
@@ -184,6 +185,7 @@ __all__ = [
     "search_inbox_emails",
     "query_pending_inbox_emails",
     "count_pending_inbox_emails",
+    "count_inbox_emails",
     "query_inbox_email",
     "query_inbox_emails",
     "query_latest_inbox_poll",

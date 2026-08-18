@@ -36,8 +36,12 @@ class UpdateInboxStatusRequest(BaseModel):
 async def get_inbox(
     category: str | None = Query(None, pattern="^(important|actionable|ignorable)$"),
     limit: int = Query(50, ge=1, le=200),
-    status: str = Query("pending", pattern="^(pending|read|handled|all)$"),
+    status: str = Query("all", pattern="^(pending|read|handled|all)$"),
 ):
+    """List mailbox rows. Default ``status=all`` (includes read).
+
+    Pass ``status=pending`` for unread triage.
+    """
     if status == "all":
         return list_inbox_emails(category=category, limit=limit, status="all")
     return list_inbox_emails(category=category, limit=limit, status=status)

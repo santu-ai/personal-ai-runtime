@@ -7,8 +7,8 @@
 
 - 当前分支：`main`
 - 进行中任务 / WIP：无（11 个 Dependabot 分支已合并进 main）
-- 已知坏点 / 待办：Memory 2 条 proposed 未 ratify（不代用户确认）；审批续写仍 one-shot（ADR-R011，不推翻）
-- 最近审阅：2026-08-18 合并 Dependabot；后端 1457 passed、前端 210、桌面 23；已重生 requirements.lock
+- 已知坏点 / 待办：审批续写仍 one-shot（ADR-R011，不推翻）
+- 最近审阅：2026-08-18 按 W34-R2 dogfood 收口：标识符更新不被近义去重吞掉；完成步骤不再写 proposed；inbox 默认 all；简报同时报邮箱总数与未读
 
 ## 本机环境
 
@@ -35,6 +35,9 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
+| 2026-08-18 | 按 W34-R2 dogfood 收口：标识符更新不被近义去重吞掉；完成步骤不再写 proposed；inbox 默认 all；简报同时报邮箱总数与未读 | 本提交 |
+| 2026-08-18 | W34-R2 dogfood：冷启动后再跑；Chat/Work/Desktop/Inbox pass，Memory fail（HENGSHAN 被 TIANSHAN 近义去重吞掉） | 记录在 `.harness/dogfood/2026-W34.md`，进程仍在跑 |
+| 2026-08-18 | W34-R1 dogfood：冷启动后端/Vite/Electron；Chat/Memory/Work/Desktop/Inbox 全 pass（暗号 TIANSHAN-DF-W34-0818） | 记录在 `.harness/dogfood/2026-W34.md`，无代码改动 |
 | 2026-08-18 | 闭环：retrying→in_retry；CI/venv MCP smoke；LLM 遥测+egress 脱敏；监控 CAS/通知去重/连接器 DATA_DIR/SSE 取消；输入上限；lazy markdown 与桌面路径单测 | merge-gate 等价通过 |
 | 2026-08-17 | 执行信任汇总并入 `read_ports/events.py`（不新增 runtime 文件）；审批恢复要求会话/tool-call 身份 | 本提交未推送 |
 | 2026-08-17 | 记忆转化率按记忆 ID 的最新 Claim 决策去重；新增执行信任读端口测试和产品边界守卫 | 后端全量 1450 passed / 9 skipped / 5 deselected；lint、boundary 通过 |

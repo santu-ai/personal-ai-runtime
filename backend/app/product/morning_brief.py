@@ -25,6 +25,7 @@ class MorningBriefResult:
     brief: str
     goals_count: int = 0
     inbox_count: int = 0
+    mailbox_count: int = 0
     calendar_count: int = 0
     proposed_count: int = 0
     steps_ms: dict[str, float] = field(default_factory=dict)
@@ -129,14 +130,20 @@ def generate_morning_brief() -> MorningBriefResult:
         )
     result.steps_ms["goals"] = round((time.perf_counter() - t0) * 1000, 1)
 
-    # Unread inbox — product status is ``pending`` (not ``new``/``unread``).
+    # Inbox: pending = 未读; mailbox_count = 已同步封数（含已读）。
     t0 = time.perf_counter()
     try:
         result.inbox_count = int(read_ports.count_pending_inbox_emails() or 0)
+        result.mailbox_count = int(read_ports.count_inbox_emails() or 0)
         logger.info(
-            "morning_brief: inbox ok count=%d",
+            "morning_brief: inbox ok pending=%d mailbox=%d",
             result.inbox_count,
-            extra={"step": "inbox", "count": result.inbox_count},
+            result.mailbox_count,
+            extra={
+                "step": "inbox",
+                "count": result.inbox_count,
+                "mailbox": result.mailbox_count,
+            },
         )
     except Exception as exc:
         result.errors.append(f"inbox: {type(exc).__name__}: {exc}")
@@ -174,16 +181,17 @@ def generate_morning_brief() -> MorningBriefResult:
     result.brief = (
         f"早安！{now_local.strftime('%Y年%m月%d日')} 简报\n\n"
         f"📋 进行中的目标:\n{goal_lines}\n\n"
-        f"📧 未读邮件: {result.inbox_count} 封\n\n"
+        f"📧 收件箱: {result.mailbox_count} 封（未读 {result.inbox_count}）\n\n"
         f"📅 今日日程: {result.calendar_count} 个\n\n"
         f"🧠 待确认记忆: {result.proposed_count} 条\n{proposed_lines}\n\n"
         f"祝你今天一切顺利！"
     )
 
     logger.info(
-        "morning_brief: assembled goals=%d inbox=%d calendar=%d proposed=%d errors=%d",
+        "morning_brief: assembled goals=%d inbox=%d mailbox=%d calendar=%d proposed=%d errors=%d",
         result.goals_count,
         result.inbox_count,
+        result.mailbox_count,
         result.calendar_count,
         result.proposed_count,
         len(result.errors),

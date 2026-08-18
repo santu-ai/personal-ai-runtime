@@ -54,7 +54,7 @@ connectors, timeline, work_items
 | memory | `/api/memory` | memories CRUD、search、ratify/reject/contest、portrait、graph | Kernel 事件 + Chroma |
 | work_items | `/api/work-items` | 统一 goal/task/action CRUD、`include=`、`decompose` | Kernel 事件 + LLM |
 | approvals | `/api/approvals` | 列表、`/{id}/approve`、`/{id}/reject` | `submit_command("ApproveRequested")` + 工具执行 |
-| inbox | `/api/inbox` | 列表、`/poll`（IMAP）、`/digest`、状态更新 | 网络出口 + Kernel 事件 |
+| inbox | `/api/inbox` | 列表默认 `status=all`（邮箱全量）；`status=pending` 为未读分拣；`/poll`（IMAP）、`/digest`、状态更新 | 网络出口 + Kernel 事件 |
 | monitors | `/api/monitors` | 收件箱过滤器 CRUD、URL 变化监控 CRUD、`POST /url-monitors/check` | APP_STORAGE + 出站抓取 |
 | triggers | `/api/triggers` | CRUD | Kernel 事件 |
 | notifications | `/api/notifications` | 列表、`/{id}/read`、`/read-all` | Kernel 事件 |

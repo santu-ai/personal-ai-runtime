@@ -87,6 +87,14 @@ _NOISE_CJK_MARKERS = (
 _PATHISH_RE = re.compile(
     r"(?i)(/tmp/|/home/|/users/|C:\\Users|\\\\|[A-Za-z]:\\|\bwrite_file\b)",
 )
+# Passcodes / issue ids / ISO-week tags. Semantic near-dups that introduce a
+# *new* identifier are standing-decision updates, not copies (dogfood W34-R2).
+_CODE_RE = re.compile(r"(?i)(?<![A-Za-z0-9])[A-Za-z0-9]+(?:[-_][A-Za-z0-9]{2,})+")
+
+
+def distinctive_codes(text: str) -> frozenset[str]:
+    """Return hyphen/underscore identifier tokens, uppercased."""
+    return frozenset(m.group(0).upper() for m in _CODE_RE.finditer(text))
 
 
 class MemoryExtractor:
@@ -224,6 +232,14 @@ class MemoryExtractor:
         return None
 
     @staticmethod
+    def _is_identifier_update(fact: str, existing: str) -> bool:
+        """True when ``fact`` adds identifier tokens that ``existing`` lacks."""
+        new_codes = distinctive_codes(fact)
+        if not new_codes:
+            return False
+        return not new_codes <= distinctive_codes(existing)
+
+    @staticmethod
     def _is_duplicate(fact: str, *, threshold: float = _DEDUP_SIMILARITY) -> bool:
         """Return True if a near-duplicate memory already exists.
 
@@ -231,6 +247,10 @@ class MemoryExtractor:
         unavailable (cold start, Ollama down) the check degrades to a
         substring match against recent memories so we still catch verbatim
         duplicates.
+
+        High cosine similarity does **not** suppress a fact that introduces a
+        new identifier (``HENGSHAN-DF-…`` vs ``TIANSHAN-DF-…``): that is an
+        updated standing decision, not a paraphrase.
         """
         try:
             hits = memory_engine.search_relevant_memories(fact, n_results=3)
@@ -242,6 +262,8 @@ class MemoryExtractor:
                 continue
             sim = MemoryExtractor._hit_similarity(hit)
             if sim is not None and sim >= threshold:
+                if MemoryExtractor._is_identifier_update(fact, existing):
+                    continue
                 return True
             if existing == fact or existing in fact or fact in existing:
                 return True

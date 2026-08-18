@@ -148,6 +148,7 @@ def test_pending_inbox_count_exact(kernel):
     listed = read_ports.query_pending_inbox_emails(limit=5)
     assert len(listed) == 5
     assert read_ports.count_pending_inbox_emails() == 12
+    assert read_ports.count_inbox_emails() == 12
 
 def test_count_active_timers_and_policies(kernel):
     kernel.emit_event(

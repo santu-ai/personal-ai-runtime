@@ -48,6 +48,15 @@ def count_pending_inbox_emails() -> int:
         raise
 
 
+def count_inbox_emails() -> int:
+    """Exact inbox_emails COUNT across all statuses (mailbox size)."""
+    try:
+        return kernel().count_state("inbox_emails")
+    except Exception:
+        logger.exception("count_inbox_emails failed")
+        raise
+
+
 def query_inbox_email(email_id: str) -> dict[str, Any] | None:
     rows = kernel().query_state("inbox_emails", id=email_id, limit=1)
     return rows[0] if rows else None

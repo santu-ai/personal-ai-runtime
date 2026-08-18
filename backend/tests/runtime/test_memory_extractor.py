@@ -3,9 +3,21 @@
 import pytest
 
 from app.core.agents.memory_engine import memory_engine
-from app.core.agents.memory_extractor import MemoryExtractor, l2_distance_to_cosine
+from app.core.agents.memory_extractor import (
+    MemoryExtractor,
+    distinctive_codes,
+    l2_distance_to_cosine,
+)
 from app.core.runtime.kernel import Kernel
 from app.store.database import Database
+
+
+def test_distinctive_codes_extracts_passcode_and_week_tags():
+    text = "2026-W34-R2 dogfood code is HENGSHAN-DF-W34-R2-0818"
+    codes = distinctive_codes(text)
+    assert "HENGSHAN-DF-W34-R2-0818" in codes
+    assert "2026-W34-R2" in codes
+    assert distinctive_codes("User prefers Python") == frozenset()
 
 
 def test_l2_distance_to_cosine_unit_vector_formula():
@@ -117,6 +129,54 @@ class TestMemoryExtractor:
         extractor = MemoryExtractor(extract_fn=extract_new)
         stored = await extractor.extract_and_store("anything")
         assert stored == [], "high-similarity hit should suppress storage"
+
+    async def test_identifier_update_not_swallowed_by_similarity(self, tmp_path, monkeypatch):
+        """Dogfood W34-R2: a new passcode must not be dropped as a near-dup."""
+        existing = "The user's dogfood code for 2026-W34 is TIANSHAN-DF-W34-0818."
+        updated = (
+            "The user's dogfood code for 2026-W34-R2 is HENGSHAN-DF-W34-R2-0818."
+        )
+        db = Database(db_path=str(tmp_path / "extract_code_update.db"))
+
+        class FakeIndex:
+            def search_memories(self, query, n_results=5):
+                return [
+                    {
+                        "id": "m1",
+                        "content": existing,
+                        "score": 0.95,
+                        "distance": 0.05,
+                    }
+                ]
+
+            def index_memory(self, content, metadata=None, memory_id=None):
+                return f"emb_{memory_id}"
+
+            def delete_memory(self, memory_id):
+                return None
+
+            def list_memory_ids(self):
+                return []
+
+        k = Kernel(db=db, memory_index=FakeIndex())
+        monkeypatch.setattr("app.core.agents.memory_engine.kernel", k)
+
+        async def extract_new(_t: str) -> list[str]:
+            return [updated]
+
+        extractor = MemoryExtractor(extract_fn=extract_new)
+        stored = await extractor.extract_and_store("anything")
+        assert stored == [updated]
+
+        same_code = (
+            "The user's 2026-W34 dogfood passcode remains TIANSHAN-DF-W34-0818."
+        )
+
+        async def extract_same(_t: str) -> list[str]:
+            return [same_code]
+
+        extractor = MemoryExtractor(extract_fn=extract_same)
+        assert await extractor.extract_and_store("anything") == []
 
     async def test_chroma_distance_dedup(self, tmp_path, monkeypatch):
         """Chroma hits expose distance (not score); near-duplicates must still drop."""
