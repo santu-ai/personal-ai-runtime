@@ -149,7 +149,7 @@ async def on_approve_requested(ctx: "ExecutionContext", event: "Event") -> None:
             "error": cap_result.get("error", "unknown"),
         })
 
-    assistant_message = None
+    assistant_message = ""
     if conv_id and tool_call_id:
         from app.core.agents.brain import Brain
         from app.core.agents.conversation import ConversationManager

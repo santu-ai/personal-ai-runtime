@@ -38,7 +38,7 @@ def test_audit_llm_egress_redacts_secrets(monkeypatch):
         "app.core.runtime.egress.egress_gate.kernel_instance.kernel",
         k,
     )
-    messages = [{"role": "user", "content": "api_key=sk-abcdefghijklmnopqrstuvwxyz123456"}]
+    messages = [{"role": "user", "content": "password=placeholder-not-a-secret"}]
     out, audit = audit_llm_egress(messages, purpose="chat")
     assert "[REDACTED]" in out[0]["content"]
     assert audit["content_redacted"] is True

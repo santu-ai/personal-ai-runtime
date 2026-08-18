@@ -1,12 +1,9 @@
 """Lane A Scheduler — runs handlers as ScheduledExecution units.
 
-Distinct from cron_registry: this module is the state machine that drives
-each ScheduledExecution (pending → running → completed), persisted in
-handler_executions for crash recovery.
+Distinct from cron_registry: state machine for ScheduledExecution
+(pending → running → completed), persisted in handler_executions.
 
     Event → fan-out handlers → enqueue(ScheduledExecution) → Handler
-
-One event may produce N ScheduledExecutions (one per registered handler).
 """
 
 from __future__ import annotations
@@ -619,6 +616,10 @@ class Scheduler:
                 task.cancel()
         return found
 
+    def cancel_by_correlation_id(self, correlation_id: str, *, event_type: str = "ChatRequested") -> int:
+        from app.core.runtime.kernel import execution_repository as exec_repo
+        return exec_repo.cancel_by_correlation_id(self, correlation_id, event_type=event_type)
+
     def reclaim_stale_leases(self, ttl_seconds: float) -> int:
         """Fail ``running`` executions whose lease (started_at) exceeded TTL (E-4).
 
@@ -778,8 +779,6 @@ class Scheduler:
         except Exception:
             logger.exception("Scheduler: failed to read scheduled execution counts")
             raise
-from app.core.runtime.kernel.execution_repository import cancel_by_correlation_id as _cancel_by_correlation_id  # noqa: E402, I001
-Scheduler.cancel_by_correlation_id = _cancel_by_correlation_id
 
 
 def get_scheduler(kernel: "Kernel") -> Scheduler:

@@ -14,6 +14,7 @@ from datetime import timezone
 from email.header import decode_header
 from email.mime.text import MIMEText
 from email.utils import parsedate_to_datetime
+from typing import NoReturn
 
 from app.core.harness.mcp_hub import (
     OUTCOME_TOOL_EXECUTION_FAILURE,
@@ -23,7 +24,7 @@ from app.core.harness.mcp_hub import (
 logger = logging.getLogger(__name__)
 
 
-def _application_miss(message: str) -> None:
+def _application_miss(message: str) -> NoReturn:
     """IMAP succeeded but the requested mail does not exist.
 
     Must raise ToolInvokeError so Kernel records CapabilityFailed instead of
@@ -478,6 +479,7 @@ class EmailServer:
                 # even when listing recent mail (unread_only=false).
                 all_unread_emails = self._fetch_unread_emails_connected(mail)
                 if can_increment:
+                    assert requested_after_uid is not None
                     emails, next_uid = self._fetch_sorted_emails_since_uid_connected(
                         mail, limit, unread_only, requested_after_uid,
                     )
