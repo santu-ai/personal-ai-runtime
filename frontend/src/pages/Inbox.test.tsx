@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
 import InboxPage from "./Inbox";
 import { listInboxEmails, triggerInboxPoll, getInboxSyncStatus } from "../api/client";
@@ -69,11 +69,18 @@ describe("InboxPage", () => {
     vi.mocked(listInboxEmails).mockResolvedValue([]);
   });
 
-  it("renders inbox title and poll button", async () => {
+  it("keeps recent emails visible and opens the digest in a dialog", async () => {
     renderWithRouter(<InboxPage />);
     expect(screen.getByText("收件箱")).toBeInTheDocument();
     expect(screen.getByText("立即轮询")).toBeInTheDocument();
-    expect(await screen.findByText("今日摘要")).toBeInTheDocument();
+    const openDigest = await screen.findByRole("button", { name: "查看摘要" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText("无新邮件")).not.toBeInTheDocument();
+
+    fireEvent.click(openDigest);
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveAccessibleName("今日摘要");
+    expect(screen.getByText("无新邮件")).toBeInTheDocument();
   });
 
   it("lists synced emails below the digest", async () => {
@@ -100,6 +107,8 @@ describe("InboxPage", () => {
     expect(await screen.findByText("八月账单")).toBeInTheDocument();
     expect(screen.getByText("最近邮件")).toBeInTheDocument();
     expect(screen.getByText("billing@example.com")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText("无新邮件")).not.toBeInTheDocument();
     expect(screen.queryByText("您的账单已出")).not.toBeInTheDocument();
     expect(screen.queryByText("暂无")).not.toBeInTheDocument();
     expect(listInboxEmails).toHaveBeenCalledWith(undefined, "all", RECENT_INBOX_LIMIT);

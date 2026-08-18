@@ -15,6 +15,7 @@ import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import NoticeBanner from "../components/ui/NoticeBanner";
 import InboxEmailDetailModal from "../components/inbox/InboxEmailDetailModal";
+import InboxDigestModal from "../components/inbox/InboxDigestModal";
 
 const COLUMNS: { key: string; label: string; color: string }[] = [
   { key: "important", label: "重要", color: "text-danger" },
@@ -108,6 +109,7 @@ export default function InboxPage() {
   const [polling, setPolling] = useState(false);
   const [initialPollDone, setInitialPollDone] = useState(false);
   const [selectedEmail, setSelectedEmail] = useState<InboxEmail | null>(null);
+  const [digestOpen, setDigestOpen] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const addError = useErrorStore((s) => s.addError);
   const quickChat = useQuickChat();
@@ -199,21 +201,19 @@ export default function InboxPage() {
             <h2 className="text-2xl font-semibold text-fg-primary">收件箱</h2>
             <p className="text-sm text-fg-tertiary mt-1">未读分拣，以及同步到的全部邮件</p>
           </div>
-          <Button onClick={handlePoll} disabled={polling}>
-            {polling ? "轮询中..." : "立即轮询"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {digest?.content ? (
+              <Button variant="secondary" onClick={() => setDigestOpen(true)}>
+                查看摘要
+              </Button>
+            ) : null}
+            <Button onClick={handlePoll} disabled={polling}>
+              {polling ? "轮询中..." : "立即轮询"}
+            </Button>
+          </div>
         </div>
 
         <SyncStatusBar sync={sync} polling={polling} onRetry={() => void handlePoll()} />
-
-        {digest && digest.content && (
-          <Card className="mb-6">
-            <h3 className="text-sm font-medium text-insight mb-2">{digest.title || "今日摘要"}</h3>
-            <pre className="text-xs text-fg-secondary whitespace-pre-wrap font-sans">
-              {digest.content}
-            </pre>
-          </Card>
-        )}
 
         {loading && allEmails.length === 0 && emails.length === 0 ? (
           <p className="text-fg-tertiary text-center py-12">加载中...</p>
@@ -297,6 +297,12 @@ export default function InboxPage() {
           </>
         )}
       </div>
+      <InboxDigestModal
+        open={digestOpen && Boolean(digest?.content)}
+        title={digest?.title || "今日摘要"}
+        content={digest?.content || ""}
+        onClose={() => setDigestOpen(false)}
+      />
       <InboxEmailDetailModal email={selectedEmail} onClose={() => setSelectedEmail(null)} />
     </div>
   );
