@@ -6,9 +6,9 @@
 ## 当前状态
 
 - 当前分支：`main`
-- 进行中任务 / WIP：无（收件箱摘要改弹窗）
+- 进行中任务 / WIP：无（11 个 Dependabot 分支已合并进 main）
 - 已知坏点 / 待办：Memory 2 条 proposed 未 ratify（不代用户确认）；审批续写仍 one-shot（ADR-R011，不推翻）
-- 最近审阅：2026-08-18 收件箱摘要弹窗按 Markdown 渲染，不再露出 `##`
+- 最近审阅：2026-08-18 合并 Dependabot；后端 1457 passed、前端 210、桌面 23；已重生 requirements.lock
 
 ## 本机环境
 
