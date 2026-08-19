@@ -12,6 +12,7 @@ export function notificationTargetPath(type: string): string | null {
 }
 
 export function notificationTypeLabel(type: string): string {
+  if (type === "goal_deadline") return "截止预警";
   if (type === "url_monitor") return "网页监控";
   if (type === "inbox_monitor") return "邮件监控";
   if (type.includes("inbox_digest")) return "收件箱摘要";

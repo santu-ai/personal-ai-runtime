@@ -120,7 +120,7 @@ cron 表达式解析 `_next_cron_fire(cron_expr, from_ts)`（[`runtime_loop.py`]
 | 名称 | Cron | 触发 |
 |---|---|---|
 | morning_brief | 每天 08:00 | `TimerFired` → `handler_name=morning_brief`。应用内通知按本地日期分桶（title `早安简报 - YYYY-MM-DD` + `dedup_key=morning_brief:{date}`），避免 `create_notification` 的 type+title 幂等把次日简报折叠进昨日同一行 |
-| deadline_alert | 每天 09:00 | deadline_alert |
+| deadline_alert | 每天 09:00 | `TimerFired` → `handler_name=deadline_alert`。对 1/3 天后到期的目标发 `goal_deadline` 通知；`dedup_key=deadline_alert:{goal_id}:{date}`，避免固定 title「Deadline 预警」把跨目标/跨天折叠进同一行 |
 | trigger_evaluation | 每 30 分钟 | trigger_evaluation |
 | memory_decay | 每天 03:00 | memory_decay |
 | world_model_snapshot | 每周日 06:00 | world_model_snapshot |

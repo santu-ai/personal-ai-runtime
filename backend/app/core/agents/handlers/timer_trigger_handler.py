@@ -22,6 +22,16 @@ logger = logging.getLogger(__name__)
 TimerHandler = Callable[[dict, str | None], Awaitable[None] | None]
 
 
+def deadline_alert_title(goal_title: str) -> str:
+    """Visible title. Goal-scoped so type+title idempotency does not collapse peers."""
+    return f"Deadline 预警: {goal_title}"
+
+
+def deadline_alert_dedup_key(goal_id: str, date_local: str) -> str:
+    """Same goal + same local day collapses; a new day or goal creates a new row."""
+    return f"deadline_alert:{goal_id}:{date_local}"
+
+
 def _local_tz() -> tzinfo:
     try:
         return ZoneInfo(settings.timezone)
@@ -37,9 +47,11 @@ def _handle_deadline_alert(payload: dict, timer_id: str | None) -> None:
     candidates = read_ports.query_goals_with_deadline(limit=500)
     now_local = datetime.now(tz)
     today = now_local.date()
+    date_local = today.isoformat()
     target_dates = {today + timedelta(days=offset) for offset in (1, 3)}
     for goal in candidates:
-        if not goal.get("deadline"):
+        goal_id = goal.get("id")
+        if not goal_id or not goal.get("deadline"):
             continue
         try:
             deadline_dt = datetime.fromisoformat(goal["deadline"])
@@ -50,11 +62,15 @@ def _handle_deadline_alert(payload: dict, timer_id: str | None) -> None:
         except ValueError:
             continue
         if deadline_date in target_dates:
-            days_left = (deadline_local.date() - today).days
+            days_left = (deadline_date - today).days
+            goal_title = str(goal.get("title") or "目标")
             read_ports.create_notification(
-                "alert",
-                "Deadline 预警",
-                f"目标「{goal['title']}」还有 {days_left} 天截止",
+                "goal_deadline",
+                deadline_alert_title(goal_title),
+                f"目标「{goal_title}」还有 {days_left} 天截止",
+                related_id=str(goal_id),
+                related_type="goal",
+                dedup_key=deadline_alert_dedup_key(str(goal_id), date_local),
             )
 
 

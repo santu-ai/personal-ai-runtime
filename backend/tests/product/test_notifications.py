@@ -92,3 +92,54 @@ def test_morning_brief_persist_does_not_collapse_across_days(product_kernel):
     assert same_day["content"] == "早安！2026年08月19日 简报"
     rows = k.query_state("notifications", type="morning_brief")
     assert len(rows) == 2
+
+
+def test_deadline_alert_persist_does_not_collapse_across_goals_or_days(product_kernel):
+    """Fixed title 'Deadline 预警' used to fold every goal/day into the first row."""
+    from app.core.agents.handlers.timer_trigger_handler import (
+        deadline_alert_dedup_key,
+        deadline_alert_title,
+    )
+
+    k = product_kernel
+    g1_d18 = read_ports.create_notification(
+        "goal_deadline",
+        deadline_alert_title("Same Title"),
+        "目标「Same Title」还有 3 天截止",
+        related_id="g1",
+        related_type="goal",
+        dedup_key=deadline_alert_dedup_key("g1", "2026-08-18"),
+        kernel=k,
+    )
+    g2_d18 = read_ports.create_notification(
+        "goal_deadline",
+        deadline_alert_title("Same Title"),
+        "目标「Same Title」还有 1 天截止",
+        related_id="g2",
+        related_type="goal",
+        dedup_key=deadline_alert_dedup_key("g2", "2026-08-18"),
+        kernel=k,
+    )
+    g1_d19 = read_ports.create_notification(
+        "goal_deadline",
+        deadline_alert_title("Same Title"),
+        "目标「Same Title」还有 1 天截止",
+        related_id="g1",
+        related_type="goal",
+        dedup_key=deadline_alert_dedup_key("g1", "2026-08-19"),
+        kernel=k,
+    )
+    retry = read_ports.create_notification(
+        "goal_deadline",
+        deadline_alert_title("Same Title"),
+        "retry should collapse",
+        related_id="g1",
+        related_type="goal",
+        dedup_key=deadline_alert_dedup_key("g1", "2026-08-19"),
+        kernel=k,
+    )
+    assert len({g1_d18["id"], g2_d18["id"], g1_d19["id"]}) == 3
+    assert retry["id"] == g1_d19["id"]
+    assert retry["content"] == "目标「Same Title」还有 1 天截止"
+    rows = k.query_state("notifications", type="goal_deadline")
+    assert len(rows) == 3
