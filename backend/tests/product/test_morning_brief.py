@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from app.product.morning_brief import generate_morning_brief
+from app.product.morning_brief import (
+    generate_morning_brief,
+    notification_dedup_key,
+    notification_title,
+)
 
 
 def test_generate_morning_brief_assembles_text(monkeypatch):
@@ -84,3 +88,9 @@ def test_generate_morning_brief_degrades_on_source_failure(monkeypatch):
     assert "今日日程: 0 个" in result.brief
     assert "收件箱: 0 封（未读 0）" in result.brief
     assert "待确认记忆: 0 条" in result.brief
+
+
+def test_morning_brief_notification_identity_is_date_scoped():
+    assert notification_title("2026-08-19") == "早安简报 - 2026-08-19"
+    assert notification_dedup_key("2026-08-19") == "morning_brief:2026-08-19"
+    assert notification_dedup_key("2026-08-18") != notification_dedup_key("2026-08-19")

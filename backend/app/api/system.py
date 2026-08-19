@@ -141,14 +141,23 @@ async def morning_brief_test(persist: bool = False):
     Defaults to ``persist=False`` to avoid spamming the notification center
     during diagnosis; pass ``?persist=true`` to also push a real notification.
     """
-    from app.product.morning_brief import generate_morning_brief
+    from app.product.morning_brief import (
+        generate_morning_brief,
+        notification_dedup_key,
+        notification_title,
+    )
 
     try:
         result = generate_morning_brief()
         if persist:
             from app.core.runtime import read_ports
 
-            read_ports.push_notification("morning_brief", "早安简报", result.brief)
+            read_ports.push_notification(
+                "morning_brief",
+                notification_title(result.date_local),
+                result.brief,
+                dedup_key=notification_dedup_key(result.date_local),
+            )
         return {
             "ok": True,
             "persisted": persist,

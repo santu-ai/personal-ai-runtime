@@ -154,11 +154,14 @@ class NotificationRouter:
         *,
         persist: bool = False,
         kernel: "Kernel | None" = None,
+        dedup_key: str | None = None,
     ) -> dict:
         """投递给桌面 / webhook / ntfy。
 
         ``persist=True`` 时，还经 ``notification_bridge.push_notification``
         写应用内通知（并跳过额外桌面 WS 提示——持久化路径已广播）。
+        ``dedup_key`` 只作用于持久化路径，用来按日/实体分桶，避免
+        ``create_notification`` 的 type+title 幂等把后续通知折叠掉。
         """
         payload = NotificationPayload(
             title=title, content=content, type=type_, priority=priority
@@ -168,7 +171,9 @@ class NotificationRouter:
         if persist:
             from app.core.runtime.notification_bridge import push_notification
 
-            push_notification(type_, title, content, kernel=kernel)
+            push_notification(
+                type_, title, content, kernel=kernel, dedup_key=dedup_key,
+            )
             results["persisted"] = True
         else:
             results["desktop"] = await self.desktop.send(payload)

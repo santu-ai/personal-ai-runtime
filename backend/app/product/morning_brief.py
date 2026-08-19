@@ -36,6 +36,16 @@ class MorningBriefResult:
         return asdict(self)
 
 
+def notification_title(date_local: str) -> str:
+    """In-app title. Date-scoped so type+title idempotency does not collapse days."""
+    return f"早安简报 - {date_local}"
+
+
+def notification_dedup_key(date_local: str) -> str:
+    """Same-day retries collapse; a new local date creates a new notification."""
+    return f"morning_brief:{date_local}"
+
+
 def _resolve_tz() -> tzinfo:
     try:
         return ZoneInfo(settings.timezone)

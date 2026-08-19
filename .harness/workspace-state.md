@@ -7,8 +7,8 @@
 
 - 当前分支：`main`
 - 进行中任务 / WIP：无（11 个 Dependabot 分支已合并进 main）
-- 已知坏点 / 待办：审批续写仍 one-shot（ADR-R011，不推翻）
-- 最近审阅：2026-08-18 按 W34-R2 dogfood 收口：标识符更新不被近义去重吞掉；完成步骤不再写 proposed；inbox 默认 all；简报同时报邮箱总数与未读
+- 已知坏点 / 待办：审批续写仍 one-shot（ADR-R011，不推翻）；deadline_alert 通知 title 固定为「Deadline 预警」，跨天/跨目标可能被 type+title 幂等折叠（同 morning_brief 根因，未修）
+- 最近审阅：2026-08-19 早安简报缺失：08:00 TimerFired 已完成，但 `create_notification` 按 type+title 幂等把今日折叠进 8/18「早安简报」行；已改为按本地日期分桶
 
 ## 本机环境
 
@@ -35,6 +35,7 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
+| 2026-08-19 | 早安简报按本地日期分桶（title + dedup_key），避免次日 persist 被 type+title 幂等吞掉 | 8/19 08:00 TimerFired 已跑、无新通知行 |
 | 2026-08-18 | 按 W34-R2 dogfood 收口：标识符更新不被近义去重吞掉；完成步骤不再写 proposed；inbox 默认 all；简报同时报邮箱总数与未读 | 本提交 |
 | 2026-08-18 | W34-R2 dogfood：冷启动后再跑；Chat/Work/Desktop/Inbox pass，Memory fail（HENGSHAN 被 TIANSHAN 近义去重吞掉） | 记录在 `.harness/dogfood/2026-W34.md`，进程仍在跑 |
 | 2026-08-18 | W34-R1 dogfood：冷启动后端/Vite/Electron；Chat/Memory/Work/Desktop/Inbox 全 pass（暗号 TIANSHAN-DF-W34-0818） | 记录在 `.harness/dogfood/2026-W34.md`，无代码改动 |

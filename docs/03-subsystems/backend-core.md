@@ -119,7 +119,7 @@ cron 表达式解析 `_next_cron_fire(cron_expr, from_ts)`（[`runtime_loop.py`]
 
 | 名称 | Cron | 触发 |
 |---|---|---|
-| morning_brief | 每天 08:00 | `TimerFired` → `handler_name=morning_brief` |
+| morning_brief | 每天 08:00 | `TimerFired` → `handler_name=morning_brief`。应用内通知按本地日期分桶（title `早安简报 - YYYY-MM-DD` + `dedup_key=morning_brief:{date}`），避免 `create_notification` 的 type+title 幂等把次日简报折叠进昨日同一行 |
 | deadline_alert | 每天 09:00 | deadline_alert |
 | trigger_evaluation | 每 30 分钟 | trigger_evaluation |
 | memory_decay | 每天 03:00 | memory_decay |

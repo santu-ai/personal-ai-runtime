@@ -114,8 +114,8 @@ class TestNotificationRouterNotify:
     def test_notify_persist_skips_desktop_tip(self, monkeypatch):
         pushed: list[tuple] = []
 
-        def _fake_push(notif_type, title, content, *, kernel=None):
-            pushed.append((notif_type, title, content))
+        def _fake_push(notif_type, title, content, **kwargs):
+            pushed.append((notif_type, title, content, kwargs.get("dedup_key")))
             return {"type": notif_type, "title": title, "content": content}
 
         monkeypatch.setattr(
@@ -131,7 +131,40 @@ class TestNotificationRouterNotify:
         result = asyncio.run(run())
         assert result.get("persisted") is True
         assert "desktop" not in result
-        assert pushed == [("reminder", "T", "C")]
+        assert pushed == [("reminder", "T", "C", None)]
+
+    def test_notify_persist_forwards_dedup_key(self, monkeypatch):
+        pushed: list[tuple] = []
+
+        def _fake_push(notif_type, title, content, **kwargs):
+            pushed.append((notif_type, title, content, kwargs.get("dedup_key")))
+            return {"type": notif_type, "title": title, "content": content}
+
+        monkeypatch.setattr(
+            "app.core.runtime.notification_bridge.push_notification",
+            _fake_push,
+        )
+
+        async def run():
+            router = NotificationRouter()
+            return await router.notify(
+                "早安简报 - 2026-08-19",
+                "body",
+                type_="morning_brief",
+                persist=True,
+                dedup_key="morning_brief:2026-08-19",
+            )
+
+        result = asyncio.run(run())
+        assert result.get("persisted") is True
+        assert pushed == [
+            (
+                "morning_brief",
+                "早安简报 - 2026-08-19",
+                "body",
+                "morning_brief:2026-08-19",
+            )
+        ]
 
     def test_notify_with_webhook_url_only(self):
         async def run():

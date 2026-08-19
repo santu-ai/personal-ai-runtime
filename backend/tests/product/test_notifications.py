@@ -59,3 +59,36 @@ def test_notification_rebuild(product_kernel):
     k.rebuild("notification")
     read_rows = k.query_state("notifications")
     assert read_rows[0]["read"] == 1
+
+
+def test_morning_brief_persist_does_not_collapse_across_days(product_kernel):
+    """Fixed title '早安简报' used to fold every day's persist into the first row."""
+    from app.product.morning_brief import notification_dedup_key, notification_title
+
+    k = product_kernel
+    day_18 = read_ports.create_notification(
+        "morning_brief",
+        notification_title("2026-08-18"),
+        "早安！2026年08月18日 简报",
+        dedup_key=notification_dedup_key("2026-08-18"),
+        kernel=k,
+    )
+    day_19 = read_ports.create_notification(
+        "morning_brief",
+        notification_title("2026-08-19"),
+        "早安！2026年08月19日 简报",
+        dedup_key=notification_dedup_key("2026-08-19"),
+        kernel=k,
+    )
+    same_day = read_ports.create_notification(
+        "morning_brief",
+        notification_title("2026-08-19"),
+        "retry should collapse",
+        dedup_key=notification_dedup_key("2026-08-19"),
+        kernel=k,
+    )
+    assert day_18["id"] != day_19["id"]
+    assert same_day["id"] == day_19["id"]
+    assert same_day["content"] == "早安！2026年08月19日 简报"
+    rows = k.query_state("notifications", type="morning_brief")
+    assert len(rows) == 2

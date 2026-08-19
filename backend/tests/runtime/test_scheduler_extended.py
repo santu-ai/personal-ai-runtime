@@ -66,3 +66,27 @@ async def test_call_product_unknown_handler():
     result = await _call_product("nonexistent_handler")
     # Unknown handler path logs warning and returns None (no-op)
     assert result is None
+
+
+@pytest.mark.asyncio
+@patch("app.core.runtime.notification_channel.notification_router.notify")
+@patch("app.product.morning_brief.generate_morning_brief")
+async def test_run_morning_brief_uses_dated_title_and_dedup(mock_gen, mock_notify):
+    from app.core.agents.handlers.timer_trigger_handler import _call_product
+    from app.product.morning_brief import MorningBriefResult
+
+    mock_gen.return_value = MorningBriefResult(
+        brief="早安！2026年08月19日 简报",
+        date_local="2026-08-19",
+    )
+    mock_notify.return_value = {"persisted": True}
+
+    await _call_product("morning_brief")
+
+    mock_notify.assert_awaited_once()
+    args, kwargs = mock_notify.call_args
+    assert args[0] == "早安简报 - 2026-08-19"
+    assert args[1] == "早安！2026年08月19日 简报"
+    assert kwargs["type_"] == "morning_brief"
+    assert kwargs["persist"] is True
+    assert kwargs["dedup_key"] == "morning_brief:2026-08-19"

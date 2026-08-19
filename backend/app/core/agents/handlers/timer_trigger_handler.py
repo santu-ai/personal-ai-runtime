@@ -105,7 +105,11 @@ async def _handle_inbox_digest(payload: dict, timer_id: str | None) -> None:
 async def _handle_morning_brief(payload: dict, timer_id: str | None) -> None:
     del payload
     from app.core.runtime.notification_channel import notification_router
-    from app.product.morning_brief import generate_morning_brief
+    from app.product.morning_brief import (
+        generate_morning_brief,
+        notification_dedup_key,
+        notification_title,
+    )
 
     logger.info(
         "morning_brief: timer fired timer_id=%s",
@@ -114,16 +118,19 @@ async def _handle_morning_brief(payload: dict, timer_id: str | None) -> None:
     )
     result = generate_morning_brief()
     t0 = time.perf_counter()
+    title = notification_title(result.date_local)
     logger.info(
-        "morning_brief: notify start persist=True",
-        extra={"step": "notify_start", "persist": True},
+        "morning_brief: notify start persist=True title=%s",
+        title,
+        extra={"step": "notify_start", "persist": True, "title": title},
     )
     await notification_router.notify(
-        "早安简报",
+        title,
         result.brief,
         type_="morning_brief",
         priority="normal",
         persist=True,
+        dedup_key=notification_dedup_key(result.date_local),
     )
     logger.info(
         "morning_brief: notify done ms=%.1f",

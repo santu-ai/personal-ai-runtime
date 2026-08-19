@@ -194,6 +194,44 @@ def test_morning_brief_test_endpoint(client: TestClient, monkeypatch):
     assert "goals" in data["steps_ms"]
 
 
+def test_morning_brief_test_persist_uses_dated_title(client: TestClient, monkeypatch):
+    monkeypatch.setattr(
+        "app.core.runtime.read_ports.query_calendar_today_events",
+        lambda: {"count": 0, "events": []},
+    )
+    monkeypatch.setattr(
+        "app.core.runtime.read_ports.query_active_goals",
+        lambda limit=10: [],
+    )
+    monkeypatch.setattr(
+        "app.core.runtime.read_ports.query_inbox_emails",
+        lambda **kwargs: [],
+    )
+    pushed: list[tuple] = []
+
+    def _fake_push(notif_type, title, content, **kwargs):
+        pushed.append((notif_type, title, content, kwargs.get("dedup_key")))
+        return {"id": "n1", "title": title}
+
+    monkeypatch.setattr(
+        "app.core.runtime.read_ports.push_notification",
+        _fake_push,
+    )
+    r = client.post("/api/system/morning-brief/test?persist=true")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["persisted"] is True
+    date_local = data["date_local"]
+    assert pushed == [
+        (
+            "morning_brief",
+            f"早安简报 - {date_local}",
+            data["brief"],
+            f"morning_brief:{date_local}",
+        )
+    ]
+
+
 def test_health_full_startup_with_auth(authed_client: TestClient):
     r = authed_client.get(
         "/api/system/health",
