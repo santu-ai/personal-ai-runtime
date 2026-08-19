@@ -167,6 +167,33 @@ def test_mcp_config_mtime_cache(monkeypatch, tmp_path):
     assert third["external_servers"][0]["name"] == "b"
 
 
+def test_load_mcp_config_merges_local_overlay(monkeypatch, tmp_path):
+    """Personal overlay at mcp_local_config_path must join the mesh list."""
+    import json
+
+    from app.core.harness.mcp_config import clear_mcp_config_cache, load_mcp_config
+
+    clear_mcp_config_cache()
+    main = tmp_path / "mcp_config.json"
+    local = tmp_path / "mcp_config.local.json"
+    main.write_text(
+        json.dumps({
+            "external_servers": [{"name": "tavily", "command": "npx", "args": []}],
+        }),
+        encoding="utf-8",
+    )
+    local.write_text(
+        json.dumps({
+            "external_servers": [{"name": "tapd", "command": "npx", "args": ["-y", "tapd"]}],
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config_module.settings, "mcp_config_path", str(main))
+    monkeypatch.setattr(config_module.settings, "mcp_local_config_path", str(local))
+    data = load_mcp_config()
+    assert [s["name"] for s in data["external_servers"]] == ["tavily", "tapd"]
+
+
 def test_has_required_credentials_skips_resolve_env(monkeypatch):
     """Credential check must not depend on building a full subprocess env."""
     from app.core.harness.mcp_config import ExternalMCPServerConfig

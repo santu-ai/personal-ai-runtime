@@ -23,6 +23,28 @@ def resolve_project_path(value: str) -> str:
     return str(p)
 
 
+def default_mcp_local_config_path(
+    data_dir: str,
+    *,
+    backend_local: Path | None = None,
+    data_local: Path | None = None,
+) -> str:
+    """Resolve the gitignored personal MCP overlay.
+
+    Docs, ``.gitignore`` and ``mcp_config.local.json.example`` all point at
+    ``backend/mcp_config.local.json``. An older default wrote marketplace
+    installs under ``DATA_DIR``; keep that file as fallback so existing
+    installs still load.
+    """
+    backend_path = (backend_local or (BASE_DIR / "backend" / "mcp_config.local.json")).resolve()
+    data_path = (data_local or (Path(data_dir) / "mcp_config.local.json")).resolve()
+    if backend_path.is_file():
+        return str(backend_path)
+    if data_path.is_file():
+        return str(data_path)
+    return str(backend_path)
+
+
 def validate_storage_paths(
     data_dir: str,
     sqlite_path: str,
@@ -82,7 +104,9 @@ class Settings(BaseSettings):
     mcp_config_path: str = str(BASE_DIR / "backend" / "mcp_config.json")
     """Main MCP config (committed). Holds shared/builtin MCP server registrations."""
     mcp_local_config_path: str = ""
-    """User-installed MCP servers (gitignored). Defaults to ``DATA_DIR/mcp_config.local.json``.
+    """User-installed MCP servers (gitignored). Defaults to
+    ``backend/mcp_config.local.json``, falling back to
+    ``DATA_DIR/mcp_config.local.json`` if only that file exists.
     Merged on top of mcp_config.json by ``name``."""
     capability_policy_path: str = str(BASE_DIR / "backend" / "capability_policy.json")
     mcp_external_enabled: bool = True
@@ -229,7 +253,7 @@ class Settings(BaseSettings):
         if self.mcp_local_config_path.strip():
             self.mcp_local_config_path = resolve_project_path(self.mcp_local_config_path)
         else:
-            self.mcp_local_config_path = str(Path(self.data_dir) / "mcp_config.local.json")
+            self.mcp_local_config_path = default_mcp_local_config_path(self.data_dir)
         self.capability_policy_path = resolve_project_path(self.capability_policy_path)
 
 

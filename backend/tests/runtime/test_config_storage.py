@@ -2,7 +2,13 @@
 
 from pathlib import Path
 
-from app.config import BASE_DIR, Settings, resolve_project_path, validate_storage_paths
+from app.config import (
+    BASE_DIR,
+    Settings,
+    default_mcp_local_config_path,
+    resolve_project_path,
+    validate_storage_paths,
+)
 
 
 def test_resolve_project_path_from_relative_backend_cwd(tmp_path, monkeypatch):
@@ -44,3 +50,33 @@ def test_settings_resolves_relative_data_dir(monkeypatch, tmp_path):
     s = Settings()
     assert Path(s.data_dir) == (BASE_DIR / "backend" / "data").resolve()
     assert "backend/backend" not in s.data_dir
+
+
+def test_default_mcp_local_prefers_backend_file(tmp_path):
+    backend_local = tmp_path / "backend-local.json"
+    data_local = tmp_path / "data-local.json"
+    backend_local.write_text("{}", encoding="utf-8")
+    data_local.write_text("{}", encoding="utf-8")
+    resolved = default_mcp_local_config_path(
+        str(tmp_path), backend_local=backend_local, data_local=data_local,
+    )
+    assert Path(resolved) == backend_local.resolve()
+
+
+def test_default_mcp_local_falls_back_to_data_dir(tmp_path):
+    backend_local = tmp_path / "missing-backend.json"
+    data_local = tmp_path / "data-local.json"
+    data_local.write_text("{}", encoding="utf-8")
+    resolved = default_mcp_local_config_path(
+        str(tmp_path), backend_local=backend_local, data_local=data_local,
+    )
+    assert Path(resolved) == data_local.resolve()
+
+
+def test_default_mcp_local_without_files_uses_backend_path(tmp_path):
+    backend_local = tmp_path / "backend-local.json"
+    data_local = tmp_path / "data-local.json"
+    resolved = default_mcp_local_config_path(
+        str(tmp_path), backend_local=backend_local, data_local=data_local,
+    )
+    assert Path(resolved) == backend_local.resolve()

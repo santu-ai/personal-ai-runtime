@@ -8,7 +8,7 @@
 - 当前分支：`main`
 - 进行中任务 / WIP：无（11 个 Dependabot 分支已合并进 main）
 - 已知坏点 / 待办：审批续写仍 one-shot（ADR-R011，不推翻）
-- 最近审阅：2026-08-19 W34-R3 dogfood：Chat/Work/Desktop/Inbox pass，Memory fail（抽取 HUASHAN 已落库，新会话仍答 TIANSHAN）
+- 最近审阅：2026-08-19 本地 MCP 覆盖文件路径与 example/gitignore 对齐，TAPD/Tushare 已进 mesh
 
 ## 本机环境
 
@@ -35,7 +35,7 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
-| 2026-08-19 | W34-R3 dogfood：Chat/Work/Desktop/Inbox pass，Memory fail（召回仍答旧暗号） | 记录在 `.harness/dogfood/2026-W34.md`，进程仍在跑 |
+| 2026-08-19 | 本地 MCP 默认读 `backend/mcp_config.local.json`（不再只看 DATA_DIR），TAPD/Tushare 重新进 mesh | 本机文件一直在 backend/，运行时读错路径 |
 | 2026-08-19 | deadline_alert 按目标+本地日期分桶（`goal_deadline` + dedup_key），避免固定 title 折叠 | 接 morning-brief 同根因 |
 | 2026-08-19 | 早安简报按本地日期分桶（title + dedup_key），避免次日 persist 被 type+title 幂等吞掉 | 8/19 08:00 TimerFired 已跑、无新通知行 |
 | 2026-08-18 | 按 W34-R2 dogfood 收口：标识符更新不被近义去重吞掉；完成步骤不再写 proposed；inbox 默认 all；简报同时报邮箱总数与未读 | 本提交 |
