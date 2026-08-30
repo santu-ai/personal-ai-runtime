@@ -104,7 +104,7 @@
 
 ### `mcp_config.local.json`（个人 opt-in，gitignored）
 
-`_merge_external_servers` 按 `name` 把 local 条目叠加在 main 之上，让个人/团队专属 MCP 不进仓库。模板见 [`mcp_config.local.json.example`](../../backend/mcp_config.local.json.example)：copy 为同目录的 `backend/mcp_config.local.json`（gitignore）。运行时默认读这个路径；若该文件不存在但 `DATA_DIR/mcp_config.local.json` 存在，则回退到后者（兼容曾写到数据目录的 marketplace 安装）。凭据统一来自 `.env`（经 [`mcp_config.py`](../../backend/app/core/harness/mcp_config.py) 的 `resolve_env` 注入子进程），未填 `required_env` 的服务器保持 dormant（`is_available()` 返 `False`，不报错）。
+`_merge_external_servers` 按 `name` 把 local 条目叠加在 main 之上，让个人/团队专属 MCP 不进仓库。模板见 [`mcp_config.local.json.example`](../../backend/mcp_config.local.json.example)：copy 为同目录下的 `mcp_config.local.json`（gitignored，仓库与 CI 检出中不存在）。运行时默认读 `backend/` 下的该文件；若它不存在但 `DATA_DIR` 下的同名文件存在，则回退到后者（兼容曾写到数据目录的 marketplace 安装）。凭据统一来自 `.env`（经 [`mcp_config.py`](../../backend/app/core/harness/mcp_config.py) 的 `resolve_env` 注入子进程），未填 `required_env` 的服务器保持 dormant（`is_available()` 返 `False`，不报错）。
 
 | Server | 用途 | 环境变量 |
 |---|---|---|
