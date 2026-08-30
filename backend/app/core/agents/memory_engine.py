@@ -9,6 +9,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from app.core.runtime import read_ports
+from app.core.runtime.egress.egress_gate import MEMORY_CONTEXT_MARKER
 from app.core.runtime.kernel_instance import kernel
 from app.core.runtime.runtime_container import _LazyProxy, runtime
 
@@ -121,7 +122,7 @@ class MemoryEngine:
         if not memories:
             return ""
 
-        lines = ["## 相关记忆", "（按记录时间倒序；同一事项有多条时以最新的为准）"]
+        lines = [MEMORY_CONTEXT_MARKER, "（按记录时间倒序；同一事项有多条时以最新的为准）"]
         for i, mem in enumerate(memories, 1):
             conf = mem.get("confidence", 0.5)
             recorded = str(mem.get("created_at") or "")[:10]

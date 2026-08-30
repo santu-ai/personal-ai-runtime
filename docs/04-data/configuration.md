@@ -94,11 +94,14 @@ flowchart LR
 |---|---|---|
 | `memory_extractor` | `ollama` | `MEMORY_EXTRACTOR`（`ollama` 本地 或 `cloud`） |
 | `sensitive_ops_local` | `True` | `SENSITIVE_OPS_LOCAL`（家目录路径启发式；**项目根内路径不升级**） |
+| `allow_cloud_personal_data_egress` | `False` | `ALLOW_CLOUD_PERSONAL_DATA_EGRESS`（见下方说明） |
 | `execution_shadow_compare` | `False` | `EXECUTION_SHADOW_COMPARE` |
 | `scheduler_max_concurrent` | `8` | `SCHEDULER_MAX_CONCURRENT` |
 | `scheduler_max_pending` | `256` | `SCHEDULER_MAX_PENDING` |
 | `running_lease_ttl_seconds` | `600` | `RUNNING_LEASE_TTL_SECONDS`（`0` 禁用 lease 回收） |
 | `handler_executions_retention_days` | `30` | `HANDLER_EXECUTIONS_RETENTION_DAYS`（`0` 禁用软清理） |
+
+`allow_cloud_personal_data_egress` 决定召回的记忆与身份上下文能否发往**云端** LLM。保持默认 `False` 时，个人上下文只能配合本地 provider（`ollama` 类型，或 base_url 指向 `localhost`/`127.0.0.1`/`::1`）使用；若 provider 是 DeepSeek / OpenAI 这类云服务，注入了记忆的那一轮会以 `EgressDeniedError` 失败而非静默外发。想用云模型 + 长期记忆，须显式设 `ALLOW_CLOUD_PERSONAL_DATA_EGRESS=true` 接受该隐私取舍。机制见 [security.md §出口审计](../05-engineering/security.md#出口审计)。
 
 ### 文件系统（agent coding）
 

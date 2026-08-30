@@ -25,6 +25,12 @@ _AUDIT_CLASSIFIERS = (
     re.compile(r"claim_status"),
 )
 
+# Header emitted by MemoryEngine.format_memory_context when recalled memories are
+# actually injected. Classification must key off rendered personal content, not
+# vocabulary: `prompts/identity.md` explains *how to use* memories on every turn,
+# so matching the bare word denied even "hello" once cloud egress was enforced.
+MEMORY_CONTEXT_MARKER = "## 相关记忆"
+
 # Heuristic redaction — field names and inline secret patterns.
 _SENSITIVE_FIELD = re.compile(
     r"(api[_-]?key|password|secret|token|authorization|bearer)",
@@ -107,7 +113,7 @@ def classify_llm_payload(messages: list[dict[str, Any]]) -> dict[str, Any]:
     categories: list[str] = []
     if any(p.search(combined) for p in _AUDIT_CLASSIFIERS):
         categories.append("identity_surface")
-    if "memory_id:" in combined or "memories" in combined.lower():
+    if "memory_id:" in combined or MEMORY_CONTEXT_MARKER in combined:
         categories.append("memory_context")
     if "event_seq" in combined or "trajectory" in combined.lower():
         categories.append("trajectory_context")
@@ -186,6 +192,7 @@ def audit_llm_egress(
 
 
 __all__ = [
+    "MEMORY_CONTEXT_MARKER",
     "EgressDeniedError",
     "audit_llm_egress",
     "classify_llm_payload",

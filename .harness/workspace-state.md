@@ -6,9 +6,13 @@
 ## 当前状态
 
 - 当前分支：`main`
-- 进行中任务 / WIP：无（11 个 Dependabot 分支已合并进 main）
-- 已知坏点 / 待办：审批续写仍 one-shot（ADR-R011，不推翻）
-- 最近审阅：2026-08-19 本地 MCP 覆盖文件路径与 example/gitignore 对齐，TAPD/Tushare 已进 mesh
+- 进行中任务 / WIP：无
+- 已知坏点 / 待办：审批续写仍 one-shot（ADR-R011，不推翻）；Chat 召回时序+接地已提交，待下轮 dogfood 验证
+- 最近审阅：2026-08-30 提交记忆接地/召回与出口分类器修复
+- **本机 git**：`/usr/bin/git` 2.21 / `/usr/local/bin/git` 2.23；Cursor 提交包装会传 `--trailer`，需走 `/usr/local/bin/git commit -F`
+- **P0（2026-08-30 已修）**：云端聊天曾被出口门一律拒绝（提示词里的 `Memories` 被当成个人上下文）。现只认 `memory_id:` 与 `MEMORY_CONTEXT_MARKER`
+- **本机 DeepSeek key 已失效**：`.env` 的 `LLM_API_KEY` 现在返回 401（`****-key is invalid`）。8/17 常驻旧进程用的是自身环境里的有效 key，已随进程终止丢失。换有效 key 前无法做真 LLM dogfood
+- **本机后端**：8/17 起常驻的 pid 75317 已停；现由 `backend/.venv` 起新进程跑当前代码（127.0.0.1:8000）
 
 ## 本机环境
 
@@ -35,6 +39,9 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
+| 2026-08-30 | 出口分类器只认渲染出的个人内容（`memory_id:` / `MEMORY_CONTEXT_MARKER`），不再匹配提示词里的 `memories`；补 `ALLOW_CLOUD_PERSONAL_DATA_EGRESS` 到 `.env.example` / configuration.md / security.md | 本提交 |
+| 2026-08-30 | 记忆：抽取按用户原话接地；召回带 `created_at` 并按时间倒序 | `de8421d` |
+| 2026-08-30 | macOS 快进拉取 origin/main（`21918cb` → `fe72d31`，37 commits）；本机 8/17 dogfood 并回周记 | 工作区干净对齐远程 |
 | 2026-08-19 | 本地 MCP 默认读 `backend/mcp_config.local.json`（不再只看 DATA_DIR），TAPD/Tushare 重新进 mesh | 本机文件一直在 backend/，运行时读错路径 |
 | 2026-08-19 | deadline_alert 按目标+本地日期分桶（`goal_deadline` + dedup_key），避免固定 title 折叠 | 接 morning-brief 同根因 |
 | 2026-08-19 | 早安简报按本地日期分桶（title + dedup_key），避免次日 persist 被 type+title 幂等吞掉 | 8/19 08:00 TimerFired 已跑、无新通知行 |

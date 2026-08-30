@@ -51,7 +51,11 @@
 
 ## 出口审计
 
-[`backend/app/core/runtime/egress/egress_gate.py`](../../backend/app/core/runtime/egress/egress_gate.py) 的 `audit_llm_egress(messages, purpose, actor)` 在每次 LLM 调用前审计——**messages 原样通过，不做脱敏**——发出 `EgressAudited` 事件，分类为 `identity_surface`/`memory_context`/`trajectory_context`/`general`。
+[`backend/app/core/runtime/egress/egress_gate.py`](../../backend/app/core/runtime/egress/egress_gate.py) 的 `audit_llm_egress(messages, purpose, actor)` 在每次 LLM 调用前审计，发出 `EgressAudited` 事件，分类为 `identity_surface`/`memory_context`/`trajectory_context`/`general`，并对内联密钥（`sk-…`、`Bearer …`、`password=…`）与敏感字段名做脱敏后再返回给调用方。
+
+**云端拒绝**：当分类命中上述三类个人上下文之一、`provider_local is False` 且 `ALLOW_CLOUD_PERSONAL_DATA_EGRESS` 未开启时，抛 `EgressDeniedError`，调用不发出。provider 归属由 `provider_is_local`（`ollama` 类型或 `localhost`/`127.0.0.1`/`::1`）判定；locality 未知时退化为纯审计。默认值与本地优先取舍见 [configuration.md](../04-data/configuration.md#记忆)。
+
+分类必须以**渲染出的个人内容**为准，不能匹配提示词里的词汇：`prompts/identity.md` 每轮都在讲「如何使用记忆」，因此 `memory_context` 只认 `memory_id:` 与召回渲染器实际输出的 `MEMORY_CONTEXT_MARKER`，由 `test_identity_artifact_alone_is_not_personal_context` 守住。
 
 Brain 与 BrainCompletionMixin 在每次 LLM 调用前调用。MemoryExtractor 云路径用 `purpose="memory_extract"`。验证：[`scripts/verify_egress.py`](../../backend/scripts/verify_egress.py)。
 

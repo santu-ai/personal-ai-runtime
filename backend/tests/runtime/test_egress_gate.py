@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.core.runtime.egress.egress_gate import (
+    MEMORY_CONTEXT_MARKER,
     EgressDeniedError,
     audit_llm_egress,
     classify_llm_payload,
@@ -16,6 +17,37 @@ from app.core.runtime.egress.egress_gate import (
 def test_classify_general():
     out = classify_llm_payload([{"role": "user", "content": "hello"}])
     assert out["categories"] == ["general"]
+
+
+def test_identity_artifact_alone_is_not_personal_context():
+    """The system prompt explains how to use memories on every single turn.
+
+    Classifying on that vocabulary denied every cloud chat — including a bare
+    "hello" — the moment egress enforcement landed. Only rendered personal
+    content may count.
+    """
+    from app.chat.prompt_artifact import IDENTITY_ARTIFACT
+
+    assert "Memories" in IDENTITY_ARTIFACT, "guard assumes identity.md mentions memories"
+    out = classify_llm_payload(
+        [
+            {"role": "system", "content": IDENTITY_ARTIFACT},
+            {"role": "user", "content": "你好"},
+        ],
+    )
+    assert out["categories"] == ["general"]
+
+
+def test_rendered_memory_block_is_personal_context():
+    """The marker the recall renderer actually emits must still be caught."""
+    from app.core.agents.memory_engine import MemoryEngine
+
+    rendered = MemoryEngine().format_memory_context(
+        [{"id": "m1", "content": "用户住在杭州", "confidence": 0.9}],
+    )
+    assert MEMORY_CONTEXT_MARKER in rendered, "renderer must keep emitting the marker"
+    out = classify_llm_payload([{"role": "system", "content": rendered}])
+    assert "memory_context" in out["categories"]
 
 
 def test_audit_llm_egress_swallows_emit_failure(monkeypatch):
