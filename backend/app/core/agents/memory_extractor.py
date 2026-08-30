@@ -90,11 +90,23 @@ _PATHISH_RE = re.compile(
 # Passcodes / issue ids / ISO-week tags. Semantic near-dups that introduce a
 # *new* identifier are standing-decision updates, not copies (dogfood W34-R2).
 _CODE_RE = re.compile(r"(?i)(?<![A-Za-z0-9])[A-Za-z0-9]+(?:[-_][A-Za-z0-9]{2,})+")
+_HAS_DIGIT_RE = re.compile(r"\d")
 
 
 def distinctive_codes(text: str) -> frozenset[str]:
-    """Return hyphen/underscore identifier tokens, uppercased."""
-    return frozenset(m.group(0).upper() for m in _CODE_RE.finditer(text))
+    """Return hyphen/underscore identifier tokens, uppercased.
+
+    A digit is required: passcodes, week tags and issue ids all carry one
+    (``HUASHAN-DF-W34-R3-0819``, ``2026-W34``), while ordinary hyphenated
+    prose does not. Without this, ``daily-use`` / ``file-writing`` / ``e-mail``
+    count as identifiers and let any paraphrase claim to be a standing-decision
+    update, defeating dedup.
+    """
+    return frozenset(
+        m.group(0).upper()
+        for m in _CODE_RE.finditer(text)
+        if _HAS_DIGIT_RE.search(m.group(0))
+    )
 
 
 class MemoryExtractor:
@@ -143,6 +155,7 @@ class MemoryExtractor:
         *,
         source_document_id: str | None = None,
         source_document_name: str | None = None,
+        grounding_text: str | None = None,
     ) -> list[str]:
         """Extract facts and store each as MemoryDerived with category=fact.
 
@@ -152,6 +165,10 @@ class MemoryExtractor:
 
         Low-quality / ephemeral lines are dropped before store so they never
         enter ``proposed`` triage.
+
+        ``grounding_text`` carries the user's own words for this turn. Facts
+        whose identifiers appear nowhere in it are dropped as assistant
+        restatement — see :meth:`_is_ungrounded_identifier`.
 
         When source_document_id is provided, every extracted memory is linked
         back to that document. (Knowledge Base was removed; the field remains
@@ -177,6 +194,9 @@ class MemoryExtractor:
                 continue
             if self._is_low_quality(fact):
                 logger.debug("Skipping low-quality memory: %s", fact[:80])
+                continue
+            if self._is_ungrounded_identifier(fact, grounding_text):
+                logger.debug("Skipping ungrounded memory: %s", fact[:80])
                 continue
             if self._is_duplicate(fact):
                 logger.debug("Skipping duplicate memory: %s", fact[:80])
@@ -230,6 +250,23 @@ class MemoryExtractor:
         if isinstance(distance, (int, float)):
             return l2_distance_to_cosine(float(distance))
         return None
+
+    @staticmethod
+    def _is_ungrounded_identifier(fact: str, grounding: str | None) -> bool:
+        """True when every identifier in ``fact`` is absent from the user's words.
+
+        The assistant restating a stale value must not become a new fact:
+        dogfood W34-R3 answered the previous week's passcode and that answer
+        was extracted back into ``proposed``, letting the model poison its own
+        memory. Identifiers have to originate from the user turn; facts with no
+        identifier at all are unaffected and still go through dedup.
+        """
+        if grounding is None:
+            return False
+        codes = distinctive_codes(fact)
+        if not codes:
+            return False
+        return codes.isdisjoint(distinctive_codes(grounding))
 
     @staticmethod
     def _is_identifier_update(fact: str, existing: str) -> bool:
@@ -289,6 +326,7 @@ class MemoryExtractor:
         source_document_id: str | None = None,
         source_document_name: str | None = None,
         dedup_key: str | None = None,
+        grounding_text: str | None = None,
     ) -> bool:
         """Schedule extraction without blocking the caller (fire-and-forget).
 
@@ -326,6 +364,7 @@ class MemoryExtractor:
                     source=source,
                     source_document_id=source_document_id,
                     source_document_name=source_document_name,
+                    grounding_text=grounding_text,
                 )
             except Exception:
                 logger.exception("Memory extraction failed")

@@ -84,6 +84,7 @@ class MemoryEngine:
                 "content": row.get("content") or hit.get("content", ""),
                 "confidence": float(row.get("confidence") or 0.5),
                 "category": row.get("category") or "",
+                "created_at": str(row.get("created_at") or ""),
             })
         return enriched
 
@@ -94,22 +95,38 @@ class MemoryEngine:
         max_memories: int = 3,
         overfetch_factor: int = 4,
     ) -> list[dict]:
-        """Semantic recall with claim filtering; over-fetch so approved facts survive."""
+        """Semantic recall with claim filtering; over-fetch so approved facts survive.
+
+        Selection stays relevance-ranked, but the surviving set is ordered
+        newest-first: when two ratified memories state different values for the
+        same thing, the reader needs the recency signal to pick the current one.
+        Ties keep relevance order (stable sort).
+        """
         if max_memories <= 0:
             return []
         n_results = max(max_memories * max(1, overfetch_factor), max_memories)
         hits = self.search_relevant_memories(query, n_results=n_results)
-        return self._enrich_recall_hits(hits)[:max_memories]
+        selected = self._enrich_recall_hits(hits)[:max_memories]
+        return sorted(
+            selected, key=lambda m: str(m.get("created_at") or ""), reverse=True,
+        )
 
     def format_memory_context(self, memories: list[dict]) -> str:
-        """Render memories for LLM context injection."""
+        """Render memories for LLM context injection.
+
+        Each line carries the date it was recorded. Without it the model sees
+        two contradicting standing decisions at identical confidence and has no
+        basis to prefer the current one (dogfood W34-R3).
+        """
         if not memories:
             return ""
 
-        lines = ["## 相关记忆"]
+        lines = ["## 相关记忆", "（按记录时间倒序；同一事项有多条时以最新的为准）"]
         for i, mem in enumerate(memories, 1):
             conf = mem.get("confidence", 0.5)
-            lines.append(f"{i}. [置信度 {conf:.2f}] {mem['content']}")
+            recorded = str(mem.get("created_at") or "")[:10]
+            stamp = f"{recorded} · 置信度 {conf:.2f}" if recorded else f"置信度 {conf:.2f}"
+            lines.append(f"{i}. [{stamp}] {mem['content']}")
         return "\n".join(lines)
 
     def retrieve_context_string(self, query: str, max_memories: int = 3) -> str:

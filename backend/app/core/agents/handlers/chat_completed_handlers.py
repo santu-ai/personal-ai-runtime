@@ -86,4 +86,5 @@ async def on_chat_completed_extract_memories(_ctx, event):
             f"User: {user_message}\nAssistant: {assistant_content}",
             source=f"conv:{conv_id}",
             dedup_key=str(dedup_key),
+            grounding_text=user_message,
         )

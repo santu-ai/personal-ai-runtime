@@ -20,6 +20,16 @@ def test_distinctive_codes_extracts_passcode_and_week_tags():
     assert distinctive_codes("User prefers Python") == frozenset()
 
 
+def test_distinctive_codes_ignores_plain_hyphenated_prose():
+    """Hyphenated words are not identifiers — they must not bypass dedup."""
+    assert distinctive_codes("User's daily-use code for e-mail follow-up") == frozenset()
+    assert distinctive_codes("a file-writing tool, state-of-the-art") == frozenset()
+    # A real identifier alongside prose still registers.
+    assert distinctive_codes("daily-use code is ALTYN-DF-W34R2-0817") == frozenset(
+        {"ALTYN-DF-W34R2-0817"},
+    )
+
+
 def test_l2_distance_to_cosine_unit_vector_formula():
     assert l2_distance_to_cosine(0.0) == 1.0
     assert l2_distance_to_cosine(0.1) == pytest.approx(0.995)
@@ -270,6 +280,65 @@ class TestMemoryExtractor:
         extractor = MemoryExtractor(extract_fn=extract_noise)
         stored = await extractor.extract_and_store("anything")
         assert stored == ["User prefers TypeScript for frontend work"]
+
+    async def test_assistant_restated_identifier_not_extracted(self, tmp_path, monkeypatch):
+        """Dogfood W34-R3: the model must not extract its own wrong answer.
+
+        The user asked which passcode was current; the assistant answered with
+        the previous week's value and that answer came back as a new proposed
+        claim. Identifiers absent from the user's turn are assistant
+        restatement, not user facts.
+        """
+        db = Database(db_path=str(tmp_path / "extract_grounding.db"))
+        k = Kernel(db=db, memory_index=None)
+        monkeypatch.setattr("app.core.agents.memory_engine.kernel", k)
+        monkeypatch.setattr(memory_engine, "search_relevant_memories", lambda *_a, **_k: [])
+
+        async def extract_stale(_t: str) -> list[str]:
+            return ["2026-W34-R3 dogfood passcode is TIANSHAN-DF-W34-0818"]
+
+        extractor = MemoryExtractor(extract_fn=extract_stale)
+        stored = await extractor.extract_and_store(
+            "User: W34-R3 的暗号是什么\nAssistant: TIANSHAN-DF-W34-0818",
+            grounding_text="W34-R3 的暗号是什么",
+        )
+        assert stored == []
+
+        with db.get_db() as conn:
+            rows = conn.execute("SELECT * FROM memories").fetchall()
+        assert rows == [], "assistant restatement must not reach proposed triage"
+
+    async def test_user_stated_identifier_still_extracted(self, tmp_path, monkeypatch):
+        """Grounding must not block the passcode the user actually supplied."""
+        db = Database(db_path=str(tmp_path / "extract_grounded_ok.db"))
+        k = Kernel(db=db, memory_index=None)
+        monkeypatch.setattr("app.core.agents.memory_engine.kernel", k)
+        monkeypatch.setattr(memory_engine, "search_relevant_memories", lambda *_a, **_k: [])
+
+        fact = "The user's 2026-W34-R3 dogfood passcode is HUASHAN-DF-W34-R3-0819"
+
+        async def extract_fresh(_t: str) -> list[str]:
+            return [fact]
+
+        extractor = MemoryExtractor(extract_fn=extract_fresh)
+        stored = await extractor.extract_and_store(
+            "User: 记住 2026-W34-R3 的暗号是 HUASHAN-DF-W34-R3-0819\nAssistant: 好的",
+            grounding_text="记住 2026-W34-R3 的暗号是 HUASHAN-DF-W34-R3-0819",
+        )
+        assert stored == [fact]
+
+    async def test_grounding_ignores_facts_without_identifiers(self, tmp_path, monkeypatch):
+        """Ordinary facts carry no identifier and must pass through unchanged."""
+        db = Database(db_path=str(tmp_path / "extract_no_codes.db"))
+        k = Kernel(db=db, memory_index=None)
+        monkeypatch.setattr("app.core.agents.memory_engine.kernel", k)
+        monkeypatch.setattr(memory_engine, "search_relevant_memories", lambda *_a, **_k: [])
+
+        extractor = MemoryExtractor(extract_fn=stub_extract)
+        stored = await extractor.extract_and_store(
+            "whatever", grounding_text="tell me about myself",
+        )
+        assert stored == ["User prefers Python", "User lives in Shanghai"]
 
     async def test_schedule_holds_strong_task_reference(self):
         """schedule() must retain the task so CPython does not GC it."""
