@@ -89,7 +89,7 @@ make merge-gate
 # Windows: powershell -File Makefile.ps1 -Task merge-gate
 ```
 
-覆盖后端 **coverage 门**测试（`test-backend-coverage`：runtime≥75、api≥50、harness≥66、product≥80）、前端测试与构建、`boundary`、`layer-deps`、`projection-provenance`、`rebuild-verify`。
+覆盖后端 **coverage 门**测试（`test-backend-coverage`：runtime≥75、api≥50、harness≥66、product≥79）、前端测试与构建、`boundary`、`layer-deps`、`projection-provenance`、`rebuild-verify`。
 
 ## Windows 支持
 

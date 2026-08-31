@@ -43,7 +43,7 @@ describe("ProposedMemoryBanner", () => {
     mockReject.mockResolvedValue({ status: "ok", claim_status: "rejected" });
   });
 
-    it("renders nothing when count is zero", async () => {
+  it("renders nothing when count is zero", async () => {
     mockCount.mockResolvedValue({ count: 0 });
     renderWithRouter(<ProposedMemoryBanner />);
     await waitFor(() => expect(mockCount).toHaveBeenCalled());

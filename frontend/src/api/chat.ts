@@ -25,10 +25,7 @@ export async function updateConversation(id: string, title: string): Promise<{ s
   });
 }
 
-export async function getMessages(
-  convId: string,
-  signal?: AbortSignal,
-): Promise<Message[]> {
+export async function getMessages(convId: string, signal?: AbortSignal): Promise<Message[]> {
   return request<Message[]>(`${API_BASE}/chat/conversations/${convId}/messages`, {
     signal,
   });

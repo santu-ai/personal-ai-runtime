@@ -7,7 +7,10 @@ import { describe, expect, it, vi } from "vitest";
 const swPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../public/sw.js");
 
 function loadServiceWorker(fetchImpl: typeof fetch, cachesImpl: CacheStorage) {
-  const listeners = new Map<string, (event: { request: Request; respondWith: (p: Promise<Response>) => void }) => void>();
+  const listeners = new Map<
+    string,
+    (event: { request: Request; respondWith: (p: Promise<Response>) => void }) => void
+  >();
   const sandbox = {
     self: {
       addEventListener(type: string, handler: (event: unknown) => void) {
@@ -28,7 +31,9 @@ function loadServiceWorker(fetchImpl: typeof fetch, cachesImpl: CacheStorage) {
 
 describe("service worker API caching", () => {
   it("does not read or write Cache Storage for successful GET /api", async () => {
-    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const fetchImpl = vi.fn(
+      async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    );
     const put = vi.fn();
     const match = vi.fn();
     const cachesImpl = {

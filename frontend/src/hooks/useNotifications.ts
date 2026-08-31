@@ -101,10 +101,7 @@ export function useNotifications() {
     const connect = () => {
       if (stopped) return;
       clearTimer();
-      if (
-        ws &&
-        (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)
-      ) {
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
         return;
       }
 
@@ -169,10 +166,7 @@ export function useNotifications() {
     const reconnectNow = () => {
       if (stopped) return;
       clearTimer();
-      if (
-        ws &&
-        (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)
-      ) {
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
         return;
       }
       connect();
