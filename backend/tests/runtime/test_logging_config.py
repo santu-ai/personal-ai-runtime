@@ -78,6 +78,24 @@ def test_configure_logging_preserves_foreign_handlers():
         foreign.close()
 
 
+def test_json_logs_are_parseable_and_include_request_id(capsys):
+    import json
+
+    configure_logging(json_logs=True)
+    token = request_id_var.set("rid-json-42")
+    try:
+        logging.getLogger("app.test.json").info("json-log-line")
+    finally:
+        request_id_var.reset(token)
+
+    err = capsys.readouterr().err
+    matching = [line for line in err.splitlines() if "json-log-line" in line]
+    assert matching, f"expected JSON log line in stderr, got: {err!r}"
+    payload = json.loads(matching[-1])
+    assert payload.get("event") == "json-log-line" or payload.get("message") == "json-log-line" or "json-log-line" in payload.values()
+    assert payload.get("request_id") == "rid-json-42"
+
+
 def test_request_id_processor_reads_context_module():
     configure_logging()
     import structlog

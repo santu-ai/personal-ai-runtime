@@ -50,7 +50,7 @@ from app.core.startup_health import (
 )
 from app.version import VERSION
 
-configure_logging()
+configure_logging(json_logs=settings.log_json)
 logger = logging.getLogger(__name__)
 
 # WebSocket connection manager for real-time notifications

@@ -53,6 +53,7 @@ flowchart LR
 | `host` | `127.0.0.1` | `HOST` |
 | `port` | `8000` | `PORT` |
 | `cors_origins` | `http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174` | `CORS_ORIGINS` |
+| `log_json` | `False` | `LOG_JSON` |
 
 ### 认证
 

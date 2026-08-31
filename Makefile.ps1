@@ -82,10 +82,11 @@ Available tasks:
   dependency-sync      Verify requirements / pyproject / lock stamps
   install-hooks        Install git hooks (or run: .\install-hooks.cmd)
   test-backend         Run backend pytest
+  test-backend-coverage Backend pytest with coverage gates
   test-live            Run opt-in live LLM smoke (needs RUN_LIVE_LLM=1 + LLM_API_KEY)
   test-frontend        Run frontend unit tests
   frontend-build       Frontend production build
-  merge-gate           Backend tests + frontend test/build + boundary/layer-deps/provenance/rebuild
+  merge-gate           Coverage tests + frontend test/build + boundary/layer-deps/provenance/rebuild
   lint                 Run ruff on backend
   typecheck            Run mypy on backend
   boundary             Kernel boundary guard
@@ -131,6 +132,17 @@ PowerShell runs modules sequentially for reliable exit codes; use make/WSL for p
     "test-backend" {
         Invoke-Backend -PyArgs @("-m", "pytest", "tests/", "-q", "-m", "not live_llm")
     }
+    "test-backend-coverage" {
+        Invoke-Backend -PyArgs @(
+            "-m", "pytest", "tests/", "-q", "-m", "not live_llm",
+            "--cov=app/core/runtime", "--cov=app/core/harness", "--cov=app/api", "--cov=app/product",
+            "--cov-report=term-missing"
+        )
+        Invoke-Backend -PyArgs @("-m", "coverage", "report", "--include=app/core/runtime/*", "--fail-under=75")
+        Invoke-Backend -PyArgs @("-m", "coverage", "report", "--include=app/api/*", "--fail-under=50")
+        Invoke-Backend -PyArgs @("-m", "coverage", "report", "--include=app/core/harness/*", "--fail-under=68")
+        Invoke-Backend -PyArgs @("-m", "coverage", "report", "--include=app/product/*", "--fail-under=80")
+    }
     "test-live" {
         $env:RUN_LIVE_LLM = "1"
         Invoke-Backend -PyArgs @("-m", "pytest", "tests/e2e_live/", "-v", "-m", "live_llm")
@@ -150,7 +162,7 @@ PowerShell runs modules sequentially for reliable exit codes; use make/WSL for p
         Pop-Location
     }
     "merge-gate" {
-        & $PSCommandPath "test-backend"
+        & $PSCommandPath "test-backend-coverage"
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         & $PSCommandPath "test-frontend"
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -236,10 +248,8 @@ PowerShell runs modules sequentially for reliable exit codes; use make/WSL for p
     }
     "backend-ci-runtime" {
         Write-Host "Running runtime verifies..."
-        Push-Location $Backend
-        python -m pytest tests/ -q -m "not live_llm"
-        if ($LASTEXITCODE -ne 0) { Pop-Location; exit $LASTEXITCODE }
-        Pop-Location
+        & $PSCommandPath "test-backend-coverage"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         Invoke-ModuleList $RuntimeModules
         Write-Host "backend-ci-runtime checks passed"
     }

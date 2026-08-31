@@ -18,7 +18,7 @@ push/PR 到 `main` 时触发，六个 job：
 
 **`dependency-platforms` job**：在 `ubuntu-latest` / `macos-latest` / `windows-latest` 上执行依赖同步检查与 `--require-hashes` 安装，确保同一份 lock 可在三大平台安装（含 Windows 条件依赖与 Chroma 二进制包）。
 
-**`frontend` job**（Node 20）：
+**`frontend` job**（Node 22）：
 
 1. `npm install`。
 2. `tsc --noEmit`。
@@ -28,12 +28,12 @@ push/PR 到 `main` 时触发，六个 job：
 6. `npx playwright install chromium`。
 7. `npm run test:e2e`。
 
-**`desktop` job**（Node 20）：
+**`desktop` job**（Node 22）：
 
 1. `npm ci --ignore-scripts`，跳过 Electron binary 下载等 smoke 不需要的安装脚本。
 2. `make desktop-test`，运行现有 vitest Electron main-process smoke；测试只解析和检查源码，不打包 Electron，因此无需执行重量级 desktop build。
 
-**`real-backend-e2e` job**（Python 3.12 + Node 20）：安装 backend lock 与 frontend 依赖后，跑 `npm run test:e2e:real`（真后端 Playwright）；失败时上传 `frontend/test-results/` traces。
+**`real-backend-e2e` job**（Python 3.12 + Node 22）：安装 backend lock 与 frontend 依赖后，跑 `npm run test:e2e:real`（真后端 Playwright）；失败时上传 `frontend/test-results/` traces。
 
 ### `workflows/release.yml`
 
@@ -50,8 +50,9 @@ tag `v*.*.*` 触发：
 
 [`.github/dependabot.yml`](../../.github/dependabot.yml)：
 
-- **每周一**：`pip`（backend，label `deps(backend)`）、`npm`（frontend，label `deps(frontend)`）、`npm`（desktop，label `deps(desktop)`）。
-- **每月**：`github-actions`（label `deps(ci)`）。
+- **每周一**：`pip`（backend，labels `dependencies` + `backend`）、`npm`（frontend，labels `dependencies` + `frontend`）、`npm`（desktop，labels `dependencies` + `desktop`）。
+- **每月**：`github-actions`（labels `dependencies` + `ci`）。
+- commit-message prefix 分别为 `deps(backend)` / `deps(frontend)` / `deps(desktop)` / `deps(ci)`。
 
 ## Git Hooks
 
@@ -88,20 +89,21 @@ make merge-gate
 # Windows: powershell -File Makefile.ps1 -Task merge-gate
 ```
 
-覆盖后端全量测试、前端测试与构建、`boundary`、`layer-deps`、`projection-provenance`、`rebuild-verify`。
+覆盖后端 **coverage 门**测试（`test-backend-coverage`：runtime≥75、api≥50、harness≥68、product≥80）、前端测试与构建、`boundary`、`layer-deps`、`projection-provenance`、`rebuild-verify`。
 
 ## Windows 支持
 
 [`Makefile.ps1`](../../Makefile.ps1) 是 PowerShell 等价，`switch` on `$Task`。提供：`help`、`install`、`install-hooks`、`test-backend`、`test-frontend`、`lint`、`typecheck`、`boundary`、`layer-deps`、`architecture-check`、`event-schema`、`backend-ci-static`、`backend-ci-runtime`、`backend-ci-core`、`projection-provenance`、`rebuild-verify`、`alembic-verify`、`docs-gen` / `docs-gen-check`、以及与 Unix `Makefile` 对齐的单进程/动态导入/except 卫生守卫。**不提供** Unix 的 `dev` 聚合任务（需手动开两个终端跑前后端）。
 
-注意：typecheck 的 agents 文件列表与 Unix Makefile 略有差异（`planner.py`/`critic.py`/`llm_router.py` vs `llm_failover.py`/`conversation.py`/`memory_engine.py`/`memory_extractor.py`），且包含 `app/product/`、`app/api/`、`app/main.py`。未知任务报错。
+注意：Windows `typecheck` 与 Unix Makefile 一致（`mypy app/ scripts/ --ignore-missing-imports`）。未知任务报错。
 
 ## 密钥扫描
 
-[`.gitleaks.toml`](../../.gitleaks.toml) 扩展默认规则集，三个 allowlist：
+[`.gitleaks.toml`](../../.gitleaks.toml) 扩展默认规则集，两个 allowlist：
 
-1. `.env.example`、`docs/*.md`、`README*.md`、`CONTRIBUTING.md` 中的示例/模板值，加已知占位符（`your-deepseek-api-key`、`your-gmail-app-password`、`your-email@gmail.com`、`sk-test-key`、`demo-seed`、`placeholder-not-a-secret`）。
-2. `backend/tests/` 下的占位符 hash。
-3. 历史提交 `b118877` 中 egress 测试假密钥的 fingerprint（工作树已改写；merge 扫描仍会看到旧 patch）。
+1. `.env.example`、`docs/*.md`、`.harness/*.md`、`README*.md`、`CONTRIBUTING.md` 中的示例/模板值，加已知占位符（`your-deepseek-api-key`、`your-gmail-app-password`、`your-email@gmail.com`、`sk-test-key`、`demo-seed`、`placeholder-not-a-secret`）。
+2. 历史提交 `b118877` 中 egress 测试假密钥的 fingerprint（工作树已改写；merge 扫描仍会看到旧 patch）。
+
+不放行整个 `backend/tests/` 目录。
 
 本地：`make secrets-scan`。

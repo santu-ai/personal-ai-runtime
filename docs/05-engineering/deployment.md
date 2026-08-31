@@ -15,6 +15,7 @@ env_file: [.env]
 environment:
   - HOST=0.0.0.0                          # 覆盖默认 localhost-only
   - AUTH_TOKEN=${AUTH_TOKEN:-}             # 生产必需
+  - LOG_JSON=${LOG_JSON:-false}            # 结构化 JSON 日志
 volumes: [backend-data:/app/backend/data]  # 命名卷
 working_dir: /app/backend
 command: python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000

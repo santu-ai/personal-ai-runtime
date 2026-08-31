@@ -8,7 +8,7 @@
 - 当前分支：`main`（本地领先 origin；Dependabot 合入尚未推远程）
 - 进行中任务 / WIP：无
 - 已知坏点 / 待办：审批续写仍 one-shot（ADR-R011，不推翻）；Chat 召回时序+接地已提交，待下轮 dogfood 验证
-- 最近审阅：2026-08-31 落地首批高风险修复（桌面打包/导航、Vite loopback + Caddy 同源入口、cron 同 ID 重调度与周日计算）
+- 最近审阅：2026-08-31 剩余问题收口已落地（会话竞态/SW、WS 退避与桌面健康身份、lifespan/Future、衰减召回与 WAL、coverage/gitleaks/LOG_JSON/文档）
 - **本机 git**：`/usr/bin/git` 2.21 / `/usr/local/bin/git` 2.23；Cursor 提交包装会传 `--trailer`，需走 `git commit -F`。完整方法见 [`macos-git-commit.md`](macos-git-commit.md)
 - **本机 typecheck 假阳性**：本机 `mcp` 是 1.12.4，lock 钉 2.0.0；`mcp_compat.py:16` 的 `MCPError` 报错只在本机出现，CI 按 lock 装依赖不受影响
 - **P0（2026-08-30 已修）**：云端聊天曾被出口门一律拒绝（提示词里的 `Memories` 被当成个人上下文）。现只认 `memory_id:` 与 `MEMORY_CONTEXT_MARKER`

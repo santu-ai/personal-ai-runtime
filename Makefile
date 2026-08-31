@@ -44,9 +44,11 @@ test-backend:
 	cd $(BACKEND_DIR) && python3 -m pytest tests/ -q -m "not live_llm"
 
 test-backend-coverage:
-	cd $(BACKEND_DIR) && python3 -m pytest tests/ -v --cov=app/core/runtime --cov=app/core/harness --cov=app/api --cov-report=term-missing -m "not live_llm"
+	cd $(BACKEND_DIR) && python3 -m pytest tests/ -v --cov=app/core/runtime --cov=app/core/harness --cov=app/api --cov=app/product --cov-report=term-missing -m "not live_llm"
 	cd $(BACKEND_DIR) && python3 -m coverage report --include='app/core/runtime/*' --fail-under=75
 	cd $(BACKEND_DIR) && python3 -m coverage report --include='app/api/*' --fail-under=50
+	cd $(BACKEND_DIR) && python3 -m coverage report --include='app/core/harness/*' --fail-under=68
+	cd $(BACKEND_DIR) && python3 -m coverage report --include='app/product/*' --fail-under=80
 
 # Opt-in live LLM smoke (requires RUN_LIVE_LLM=1 and a real LLM_API_KEY).
 test-live:
@@ -60,7 +62,7 @@ frontend-build:
 
 # PR merge gate: full backend tests, frontend test+build, and the four
 # architecture guards that must not regress on every merge.
-merge-gate: test-backend test-frontend frontend-build boundary layer-deps projection-provenance rebuild-verify
+merge-gate: test-backend-coverage test-frontend frontend-build boundary layer-deps projection-provenance rebuild-verify
 	@echo "merge-gate checks passed"
 
 test-e2e:

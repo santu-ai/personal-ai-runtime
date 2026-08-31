@@ -7,7 +7,7 @@
 [`install.sh`](../../install.sh) 检查并要求：
 
 - **Python ≥ 3.12**（[`backend/pyproject.toml`](../../backend/pyproject.toml) 的 `requires-python = ">=3.12"`）
-- **Node ≥ 20**（CI 用 Node 20，见 [ci-cd.md](ci-cd.md)）
+- **Node ≥ 20**（CI 用 Node 22，见 [ci-cd.md](ci-cd.md)）
 - **npm**
 
 可选：

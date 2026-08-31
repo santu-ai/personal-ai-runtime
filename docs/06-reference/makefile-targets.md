@@ -16,7 +16,7 @@ Windows 子集见 [`Makefile.ps1`](../../Makefile.ps1)。
 | `screenshots` | `cd docs/assets && npm install && npx playwright install chromium && npm run screenshots` |
 | `test` | `(no recipe / meta target)` |
 | `test-backend` | `python3 -m pytest tests/ -q -m "not live_llm"` |
-| `test-backend-coverage` | `python3 -m pytest tests/ -v --cov=app/core/runtime --cov=app/core/harness --cov=app/api --cov-rep...` |
+| `test-backend-coverage` | `python3 -m pytest tests/ -v --cov=app/core/runtime --cov=app/core/harness --cov=app/api --cov=app...` |
 | `test-live` | `RUN_LIVE_LLM=1 python3 -m pytest tests/e2e_live/ -v -m live_llm` |
 | `test-frontend` | `frontend: npx tsc --noEmit && npm test` |
 | `frontend-build` | `frontend: npm run build` |

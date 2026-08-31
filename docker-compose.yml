@@ -10,6 +10,7 @@ services:
     environment:
       - HOST=0.0.0.0
       - AUTH_TOKEN=${AUTH_TOKEN:-}  # REQUIRED for production: set in .env or pass via AUTH_TOKEN=... docker compose up
+      - LOG_JSON=${LOG_JSON:-false}
     volumes:
       - backend-data:/app/backend/data
     working_dir: /app/backend

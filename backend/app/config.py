@@ -88,6 +88,8 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174"
     timezone: str = "Asia/Shanghai"
     """System timezone for cron schedules and time-sensitive product logic."""
+    log_json: bool = False
+    """Emit JSON logs when true (``LOG_JSON``). Default is the console renderer."""
 
     # --- Auth ---
     auth_token: str = ""

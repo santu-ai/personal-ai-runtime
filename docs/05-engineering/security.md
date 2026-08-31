@@ -11,7 +11,7 @@
 - `settings.auth_token` 为空时直接放行（认证关闭）。
 - 启用时，从 `Authorization: Bearer <token>` 提取，`secrets.compare_digest` 比对；失败返回 401 JSON。
 - 跳过路径（[`main.py`](../../backend/app/main.py)）：精确匹配 `SKIP_AUTH_EXACT`（`/`、`/api/system/health`、`/api/system/live`、`/docs`、`/redoc`、`/openapi.json`）；前缀仅 `/docs/`、`/redoc/`（Swagger 静态资源，避免 `/docsanything` 绕过）。
-- 启用时同时触发限流。
+- 受保护路径始终限流，与 `AUTH_TOKEN` 是否设置无关。
 
 ### 启动安全策略
 
@@ -25,7 +25,7 @@ Vite 开发服务器默认绑 `127.0.0.1`。`host: true` 会经同源 `/api` 代
 
 ## 限流
 
-[`backend/app/core/rate_limit.py`](../../backend/app/core/rate_limit.py) 内存令牌桶（按端点前缀），仅在 `AuthMiddleware` 启用认证时检查（[`main.py`](../../backend/app/main.py)）：
+[`backend/app/core/rate_limit.py`](../../backend/app/core/rate_limit.py) 内存令牌桶（按端点前缀），在 `AuthMiddleware` 里对受保护路径**始终**检查（[`main.py`](../../backend/app/main.py)），不依赖 `AUTH_TOKEN` 是否已配置。未设 token 时按客户端 IP 限流；无效 token 走独立 `bad-auth:` 桶，避免打满合法配额。
 
 | 端点前缀 | 限额 |
 |---|---|

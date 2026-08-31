@@ -315,33 +315,39 @@ def test_drain_repairs_marks_permanent_after_max_retries(tmp_path):
         "expected MemoryIndexRepairFailed event in event_log"
 
 
-def test_persist_repair_logs_debug_for_missing_table(caplog):
+def test_persist_repair_logs_debug_for_missing_table(monkeypatch):
     import sqlite3
 
-    from app.core.runtime.kernel.memory_index_sync import persist_memory_index_repair
+    from app.core.runtime.kernel import memory_index_sync as mis
+
+    debugs: list[object] = []
+    warnings: list[object] = []
+    monkeypatch.setattr(mis.logger, "debug", lambda *a, **k: debugs.append(a))
+    monkeypatch.setattr(mis.logger, "warning", lambda *a, **k: warnings.append(a))
 
     class _MissingTable:
         def get_db(self):
             raise sqlite3.OperationalError("no such table: memory_index_repairs")
 
-    with caplog.at_level("DEBUG"):
-        persist_memory_index_repair(_MissingTable(), "m1", "MemoryDerived", 1, "x")
-    assert any("table unavailable" in rec.message for rec in caplog.records)
-    assert not any(rec.levelname == "WARNING" and "persist memory index" in rec.message for rec in caplog.records)
+    mis.persist_memory_index_repair(_MissingTable(), "m1", "MemoryDerived", 1, "x")
+    assert debugs
+    assert not warnings
 
 
-def test_persist_repair_logs_warning_for_disk_full(caplog):
+def test_persist_repair_logs_warning_for_disk_full(monkeypatch):
     import sqlite3
 
-    from app.core.runtime.kernel.memory_index_sync import persist_memory_index_repair
+    from app.core.runtime.kernel import memory_index_sync as mis
+
+    debugs: list[object] = []
+    warnings: list[object] = []
+    monkeypatch.setattr(mis.logger, "debug", lambda *a, **k: debugs.append(a))
+    monkeypatch.setattr(mis.logger, "warning", lambda *a, **k: warnings.append(a))
 
     class _DiskFull:
         def get_db(self):
             raise sqlite3.OperationalError("database or disk is full")
 
-    with caplog.at_level("DEBUG"):
-        persist_memory_index_repair(_DiskFull(), "m1", "MemoryDerived", 1, "x")
-    assert any(
-        rec.levelname == "WARNING" and "Could not persist memory index repair" in rec.message
-        for rec in caplog.records
-    )
+    mis.persist_memory_index_repair(_DiskFull(), "m1", "MemoryDerived", 1, "x")
+    assert warnings
+    assert not debugs

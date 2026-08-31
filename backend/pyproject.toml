@@ -46,6 +46,5 @@ check_untyped_defs = true
 follow_imports = "normal"
 
 [tool.coverage.run]
-source = ["app/api", "app/product"]
-# Runtime modules are covered via make test-backend-coverage (--cov=app/core/runtime).
-# Do not omit critical governance / loop modules.
+source = ["app/core/runtime", "app/core/harness", "app/api", "app/product"]
+# Coverage gates live in make test-backend-coverage (runtime≥75, api≥50, harness≥68, product≥80).
