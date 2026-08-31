@@ -74,17 +74,29 @@ async def on_chat_completed_record_turn(_ctx, event):
 
 @subscribe("ChatCompleted")
 async def on_chat_completed_extract_memories(_ctx, event):
-    """Fire-and-forget memory extraction after every completed chat turn."""
+    """Fire-and-forget memory extraction after every completed chat turn.
+
+    Only user statements are durable-fact sources. The assistant reply is
+    passed as context so the extractor can disambiguate, never as a fact.
+    """
     payload = event.payload if isinstance(event.payload, dict) else {}
     conv_id = payload.get("conversation_id", "")
     user_message = payload.get("user_message", "")
     assistant_content = payload.get("content", "")
-    if conv_id and (user_message or assistant_content):
-        # Prefer event id so ChatCompleted retries do not double-schedule.
-        dedup_key = getattr(event, "id", None) or f"{conv_id}:{user_message[:80]}"
-        memory_extractor.schedule(
-            f"User: {user_message}\nAssistant: {assistant_content}",
-            source=f"conv:{conv_id}",
-            dedup_key=str(dedup_key),
-            grounding_text=user_message,
+    if not conv_id or not str(user_message).strip():
+        return
+    # Prefer event id so ChatCompleted retries do not double-schedule.
+    dedup_key = getattr(event, "id", None) or f"{conv_id}:{user_message[:80]}"
+    assistant_note = ""
+    if str(assistant_content).strip():
+        assistant_note = (
+            "\n\nAssistant reply (context only; do not extract facts from it):\n"
+            + str(assistant_content)[:240]
         )
+    memory_extractor.schedule(
+        f"User: {user_message}{assistant_note}",
+        source=f"conv:{conv_id}",
+        dedup_key=str(dedup_key),
+        grounding_text=str(user_message),
+        assistant_text=str(assistant_content) if assistant_content else None,
+    )

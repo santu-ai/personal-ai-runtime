@@ -53,6 +53,8 @@ _EXTRACT_PROMPT = (
     "Extract durable, specific facts about the user as a person "
     "(identity, preferences, relationships, places, standing decisions). "
     "One fact per line, no bullets. Max 3 facts. "
+    "Only extract from USER statements. The assistant reply is context "
+    "for disambiguation — never store a fact that appears only there. "
     "Skip ephemeral chatter, questions, greetings, vague statements, "
     "tool/file operations, file paths, debug tokens, work-item status, "
     "the language the user spoke, and meta comments about missing facts "
@@ -156,6 +158,7 @@ class MemoryExtractor:
         source_document_id: str | None = None,
         source_document_name: str | None = None,
         grounding_text: str | None = None,
+        assistant_text: str | None = None,
     ) -> list[str]:
         """Extract facts and store each as MemoryDerived with category=fact.
 
@@ -169,6 +172,13 @@ class MemoryExtractor:
         ``grounding_text`` carries the user's own words for this turn. Facts
         whose identifiers appear nowhere in it are dropped as assistant
         restatement — see :meth:`_is_ungrounded_identifier`.
+
+        ``assistant_text`` is context only. Facts that appear only in the
+        assistant reply (and not in the user statement) are dropped.
+
+        When an identifier-bearing fact updates an existing memory, the new
+        ``MemoryDerived`` payload records ``supersedes_memory_id`` so ratify
+        can reject the old claim without deleting history.
 
         When source_document_id is provided, every extracted memory is linked
         back to that document. (Knowledge Base was removed; the field remains
@@ -198,7 +208,11 @@ class MemoryExtractor:
             if self._is_ungrounded_identifier(fact, grounding_text):
                 logger.debug("Skipping ungrounded memory: %s", fact[:80])
                 continue
-            if self._is_duplicate(fact):
+            if self._is_assistant_only_claim(fact, grounding_text, assistant_text):
+                logger.debug("Skipping assistant-only memory: %s", fact[:80])
+                continue
+            skip, superseded_id = self._dedup_decision(fact)
+            if skip:
                 logger.debug("Skipping duplicate memory: %s", fact[:80])
                 continue
             memory_engine.store_memory(
@@ -208,6 +222,7 @@ class MemoryExtractor:
                 actor="extractor",
                 source_document_id=source_document_id,
                 source_document_name=source_document_name,
+                supersedes_memory_id=superseded_id,
             )
             stored.append(fact)
         return stored
@@ -269,6 +284,22 @@ class MemoryExtractor:
         return codes.isdisjoint(distinctive_codes(grounding))
 
     @staticmethod
+    def _is_assistant_only_claim(
+        fact: str, grounding: str | None, assistant_text: str | None,
+    ) -> bool:
+        """True when the fact appears only in the assistant reply, not the user."""
+        if not grounding or not assistant_text:
+            return False
+        fact_norm = re.sub(r"\s+", "", fact).lower()
+        if not fact_norm:
+            return False
+        user_norm = re.sub(r"\s+", "", grounding).lower()
+        if fact_norm in user_norm:
+            return False
+        asst_norm = re.sub(r"\s+", "", assistant_text).lower()
+        return fact_norm in asst_norm
+
+    @staticmethod
     def _is_identifier_update(fact: str, existing: str) -> bool:
         """True when ``fact`` adds identifier tokens that ``existing`` lacks."""
         new_codes = distinctive_codes(fact)
@@ -277,8 +308,10 @@ class MemoryExtractor:
         return not new_codes <= distinctive_codes(existing)
 
     @staticmethod
-    def _is_duplicate(fact: str, *, threshold: float = _DEDUP_SIMILARITY) -> bool:
-        """Return True if a near-duplicate memory already exists.
+    def _dedup_decision(
+        fact: str, *, threshold: float = _DEDUP_SIMILARITY,
+    ) -> tuple[bool, str | None]:
+        """Return ``(should_skip, supersedes_memory_id)``.
 
         Uses semantic recall via the Kernel; when the vector store is
         unavailable (cold start, Ollama down) the check degrades to a
@@ -287,24 +320,34 @@ class MemoryExtractor:
 
         High cosine similarity does **not** suppress a fact that introduces a
         new identifier (``HENGSHAN-DF-…`` vs ``TIANSHAN-DF-…``): that is an
-        updated standing decision, not a paraphrase.
+        updated standing decision, not a paraphrase. The existing memory id
+        is returned so ratify can reject the old claim.
         """
         try:
             hits = memory_engine.search_relevant_memories(fact, n_results=3)
         except Exception:
             hits = []
+        superseded: str | None = None
         for hit in hits:
             existing = (hit.get("content") or "").strip()
             if not existing:
                 continue
+            if MemoryExtractor._is_identifier_update(fact, existing):
+                hid = hit.get("id")
+                if hid and superseded is None:
+                    superseded = str(hid)
+                continue
             sim = MemoryExtractor._hit_similarity(hit)
             if sim is not None and sim >= threshold:
-                if MemoryExtractor._is_identifier_update(fact, existing):
-                    continue
-                return True
+                return True, None
             if existing == fact or existing in fact or fact in existing:
-                return True
-        return False
+                return True, None
+        return False, superseded
+
+    @staticmethod
+    def _is_duplicate(fact: str, *, threshold: float = _DEDUP_SIMILARITY) -> bool:
+        skip, _superseded = MemoryExtractor._dedup_decision(fact, threshold=threshold)
+        return skip
 
     def _fingerprint(self, conversation_text: str, *, dedup_key: str | None) -> str:
         if dedup_key:
@@ -327,6 +370,7 @@ class MemoryExtractor:
         source_document_name: str | None = None,
         dedup_key: str | None = None,
         grounding_text: str | None = None,
+        assistant_text: str | None = None,
     ) -> bool:
         """Schedule extraction without blocking the caller (fire-and-forget).
 
@@ -365,6 +409,7 @@ class MemoryExtractor:
                     source_document_id=source_document_id,
                     source_document_name=source_document_name,
                     grounding_text=grounding_text,
+                    assistant_text=assistant_text,
                 )
             except Exception:
                 logger.exception("Memory extraction failed")

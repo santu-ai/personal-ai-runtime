@@ -177,6 +177,8 @@ class TestMemoryExtractor:
         extractor = MemoryExtractor(extract_fn=extract_new)
         stored = await extractor.extract_and_store("anything")
         assert stored == [updated]
+        events = k.read_events(aggregate_type="memory", type="MemoryDerived")
+        assert events[-1].payload.get("supersedes_memory_id") == "m1"
 
         same_code = (
             "The user's 2026-W34 dogfood passcode remains TIANSHAN-DF-W34-0818."
@@ -326,6 +328,26 @@ class TestMemoryExtractor:
             grounding_text="记住 2026-W34-R3 的暗号是 HUASHAN-DF-W34-R3-0819",
         )
         assert stored == [fact]
+
+    async def test_assistant_only_claim_not_extracted(self, tmp_path, monkeypatch):
+        """A preference that only appears in the assistant reply must not land."""
+        db = Database(db_path=str(tmp_path / "extract_asst_only.db"))
+        k = Kernel(db=db, memory_index=None)
+        monkeypatch.setattr("app.core.agents.memory_engine.kernel", k)
+        monkeypatch.setattr(memory_engine, "search_relevant_memories", lambda *_a, **_k: [])
+
+        fact = "用户喜欢喝绿茶"
+
+        async def extract_asst(_t: str) -> list[str]:
+            return [fact]
+
+        extractor = MemoryExtractor(extract_fn=extract_asst)
+        stored = await extractor.extract_and_store(
+            "User: 我喜欢什么\nAssistant: 用户喜欢喝绿茶",
+            grounding_text="我喜欢什么",
+            assistant_text="用户喜欢喝绿茶",
+        )
+        assert stored == []
 
     async def test_grounding_ignores_facts_without_identifiers(self, tmp_path, monkeypatch):
         """Ordinary facts carry no identifier and must pass through unchanged."""

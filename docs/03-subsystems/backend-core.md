@@ -70,7 +70,7 @@ Failover 执行在 `brain_llm_ops` / `brain_llm_client`（[`brain_llm_client.py`
 
 [`backend/app/core/agents/memory_engine.py`](../../backend/app/core/agents/memory_engine.py) 管理完整记忆生命周期。记忆是**精炼洞察**（不是原始数据）。所有写经 Kernel（`MemoryDerived/Updated/Deleted`）；ChromaDB 是 Kernel 维护的派生搜索索引。
 
-方法：`store_memory`、`search_relevant_memories`（未过滤的 Chroma 命中，仅给抽取去重）、`recall_for_context`（over-fetch + 排除 proposed/rejected/contested）、`_enrich_recall_hits`（join Chroma 命中与治理投影拿 origin/confidence/category）、`format_memory_context`、`retrieve_context_string`、`list_memories`、`delete_memory`、`update_memory`。公开 `GET /api/memory/memories/search`、Chat 注入与仪表盘 `recent_memories` 走 `recall_for_context`（经 `read_ports.recall_memories_for_context`）。
+方法：`store_memory`（可选 `supersedes_memory_id` 写入 MemoryDerived payload，不扩投影表）、`search_relevant_memories`（未过滤的 Chroma 命中，仅给抽取去重）、`recall_for_context`（over-fetch + 排除 proposed/rejected/contested + 同一 supersedes 链只留最新）、`_enrich_recall_hits`（join Chroma 命中与治理投影拿 origin/confidence/category）、`format_memory_context`、`retrieve_context_string`、`list_memories`、`delete_memory`、`update_memory`。公开 `GET /api/memory/memories/search`、Chat 注入与仪表盘 `recent_memories` 走 `recall_for_context`（经 `read_ports.recall_memories_for_context`）。`GET /api/memory/memories` / `count` / `grouped` 可用已有 `source` 或 `conversation_id`（映射为 `source=conv:{id}`）过滤。Claim ratify/reject/contest 后广播既有 `memory_changed`；确认新 claim 时若 payload 含 `supersedes_memory_id`，对旧记忆发 `ClaimRejected`（历史保留）。
 
 ### MemoryExtractor
 
@@ -79,7 +79,7 @@ Failover 执行在 `brain_llm_ops` / `brain_llm_client`（[`brain_llm_client.py`
 流程：
 1. `schedule(text, source)` — 创建 asyncio task（无运行 loop 则 no-op）。
 2. `_default_extract` — 若 `settings.memory_extractor == "cloud"` 走云；否则试 `local_llm.extract_memories`（Ollama），失败且有 `llm_api_key` 则回退云。
-3. `extract_and_store` — 每条事实经 `_is_duplicate`（语义召回阈值 0.92 + 词法回退）去重后 `memory_engine.store_memory(category="fact", actor="extractor")`。
+3. `extract_and_store` — 只从用户陈述提取可持久事实（助手回复仅作上下文）；每条事实经 identifier grounding、`<0.3` 置信度过滤与 `_dedup_decision`（语义召回阈值 0.85；标识符更新写入 `supersedes_memory_id` 而非丢弃）后 `memory_engine.store_memory(category="fact", actor="extractor")`。`ChatCompleted` 无用户消息时不调度抽取。
 
 云路径用 `audit_llm_egress(messages, purpose="memory_extract")` 审计。
 

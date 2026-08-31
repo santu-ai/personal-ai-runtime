@@ -282,4 +282,179 @@ test.describe("Trust loops", () => {
     await page.getByRole("button", { name: "上下文" }).click();
     await expect(page.getByText("喜欢早起跑步")).toBeVisible({ timeout: 10000 });
   });
+
+  test("session A confirm, B recalls; update then C uses the new fact", async ({ page }) => {
+    const convA = "e2e-mem-a";
+    const convB = "e2e-mem-b";
+    const convC = "e2e-mem-c";
+    let phase: "old" | "new" = "old";
+    let oldRatified = false;
+    let newRatified = false;
+    const conv = (id: string, title: string) => ({
+      id,
+      title,
+      summary: null,
+      created_at: "2026-08-31T00:00:00Z",
+      updated_at: "2026-08-31T00:00:00Z",
+    });
+    const userMsg = (id: string, convId: string, content: string) => ({
+      id,
+      conversation_id: convId,
+      role: "user",
+      content,
+      tool_calls: null,
+      tool_call_id: null,
+      created_at: "2026-08-31T00:00:00Z",
+    });
+
+    await installMocks(page, (router) => {
+      router.handler("/api/chat/conversations", async (route) => {
+        const pathname = new URL(route.request().url()).pathname;
+        if (pathname.endsWith("/cancel") && route.request().method() === "POST") {
+          await route.fulfill({ json: { status: "ok", cancelled: 0 } });
+          return;
+        }
+        if (route.request().method() === "GET") {
+          await route.fulfill({
+            json: [conv(convA, "会话A"), conv(convB, "会话B"), conv(convC, "会话C")],
+          });
+          return;
+        }
+        await route.continue();
+      });
+      router.handler("/api/memory/memories/count", async (route) => {
+        const url = new URL(route.request().url());
+        const cid = url.searchParams.get("conversation_id");
+        if (cid === convA && phase === "old") {
+          await route.fulfill({ json: { count: oldRatified ? 0 : 1 } });
+          return;
+        }
+        if (cid === convA && phase === "new") {
+          await route.fulfill({ json: { count: newRatified ? 0 : 1 } });
+          return;
+        }
+        await route.fulfill({ json: { count: 0 } });
+      });
+      router.handler("/api/memory/memories/grouped", async (route) => {
+        const url = new URL(route.request().url());
+        if (url.searchParams.get("claim_status") === "proposed") {
+          const cid = url.searchParams.get("conversation_id");
+          if (cid === convA && phase === "old" && !oldRatified) {
+            await route.fulfill({
+              json: { memories: [{ id: "mem-old", content: "暗号是 TIANSHAN", confidence: 0.8 }], total: 1 },
+            });
+            return;
+          }
+          if (cid === convA && phase === "new" && !newRatified) {
+            await route.fulfill({
+              json: { memories: [{ id: "mem-new", content: "暗号是 HUASHAN", confidence: 0.8 }], total: 1 },
+            });
+            return;
+          }
+          await route.fulfill({ json: { memories: [], total: 0 } });
+          return;
+        }
+        await route.fulfill({ json: { memories: [], total: 0 } });
+      });
+      router.handler("/api/memory/memories/mem-old/ratify", async (route) => {
+        oldRatified = true;
+        await route.fulfill({ json: { status: "ok", claim_status: "ratified" } });
+      });
+      router.handler("/api/memory/memories/mem-new/ratify", async (route) => {
+        newRatified = true;
+        await route.fulfill({ json: { status: "ok", claim_status: "ratified" } });
+      });
+      router.handler("/api/memory/memories/search", async (route) => {
+        if (phase === "new" && newRatified) {
+          await route.fulfill({ json: [{ id: "mem-new", content: "暗号是 HUASHAN" }] });
+          return;
+        }
+        if (oldRatified) {
+          await route.fulfill({ json: [{ id: "mem-old", content: "暗号是 TIANSHAN" }] });
+          return;
+        }
+        await route.fulfill({ json: [] });
+      });
+      router.handler(`/api/chat/conversations/${convA}/messages`, async (route) => {
+        if (route.request().method() === "GET") {
+          await route.fulfill({
+            json: [userMsg("u-a", convA, "记住这周暗号是 TIANSHAN")],
+          });
+          return;
+        }
+        await route.continue();
+      });
+      router.handler(`/api/chat/conversations/${convB}/messages`, async (route) => {
+        if (route.request().method() === "GET") {
+          await route.fulfill({
+            json: [userMsg("u-b", convB, "这周的暗号是什么")],
+          });
+          return;
+        }
+        await route.continue();
+      });
+      router.handler(`/api/chat/conversations/${convC}/messages`, async (route) => {
+        if (route.request().method() === "GET") {
+          await route.fulfill({
+            json: [userMsg("u-c", convC, "这周的暗号是什么")],
+          });
+          return;
+        }
+        await route.continue();
+      });
+    });
+
+    await page.goto(`/chat/${convA}`);
+    await expect(page.getByText(/本对话记忆待确认后才会进入对话/)).toBeVisible({ timeout: 10000 });
+    await page.getByRole("button", { name: "确认" }).click();
+    await expect(page.getByText(/待确认后才会进入对话/)).toHaveCount(0, { timeout: 10000 });
+
+    await page.goto(`/chat/${convB}`);
+    await page.getByRole("button", { name: "上下文" }).click();
+    await expect(page.getByText("暗号是 TIANSHAN")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("暗号是 HUASHAN")).toHaveCount(0);
+
+    phase = "new";
+    await page.goto(`/chat/${convA}`);
+    await expect(page.getByText("暗号是 HUASHAN")).toBeVisible({ timeout: 10000 });
+    await page.getByRole("button", { name: "确认" }).click();
+    await expect(page.getByText(/待确认后才会进入对话/)).toHaveCount(0, { timeout: 10000 });
+
+    await page.goto(`/chat/${convC}`);
+    await page.getByRole("button", { name: "上下文" }).click();
+    await expect(page.getByText("暗号是 HUASHAN")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("暗号是 TIANSHAN")).toHaveCount(0);
+  });
+
+  test("dashboard three columns do not repeat reminder entities", async ({ page }) => {
+    await installMocks(page, (router) => {
+      router.json("/api/approvals", [
+        { id: "ap-1", action: "write_file", status: "pending", created_at: "2026-08-31T00:00:00Z" },
+      ]);
+      router.json("/api/notifications", [
+        {
+          id: "n-brief",
+          type: "morning_brief",
+          title: "早安简报 - 2026-08-31",
+          content: "今日摘要",
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: "n-rem",
+          type: "reminder",
+          title: "独立提醒",
+          content: "不能进三栏",
+          created_at: new Date().toISOString(),
+        },
+      ]);
+    });
+    await page.goto("/dashboard", { waitUntil: "networkidle" });
+    await expect(page.getByText("需要你决定")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("write_file")).toBeVisible();
+    await expect(page.getByText("早安简报 - 2026-08-31")).toBeVisible();
+    const reminder = page.getByRole("heading", { name: "AI 给你的提醒" }).locator("xpath=../..");
+    await expect(reminder.getByText("独立提醒")).toBeVisible();
+    await expect(reminder.getByText("write_file")).toHaveCount(0);
+    await expect(reminder.getByText("早安简报 - 2026-08-31")).toHaveCount(0);
+  });
 });

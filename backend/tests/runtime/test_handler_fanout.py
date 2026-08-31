@@ -150,3 +150,50 @@ def test_subscribe_fanout_appends_handlers():
     assert len(handlers) == 2
     assert {h.__name__ for h in handlers} == {"handler_a", "handler_b"}
     _registry.pop(key, None)
+
+
+@pytest.mark.asyncio
+async def test_extract_skips_assistant_only_turn(monkeypatch):
+    from app.core.agents.handlers.chat_completed_handlers import (
+        on_chat_completed_extract_memories,
+    )
+    from app.core.runtime.kernel.event import Event
+
+    scheduled: list[dict] = []
+
+    def fake_schedule(*_a, **kwargs):
+        scheduled.append(kwargs)
+        return True
+
+    monkeypatch.setattr(
+        "app.core.agents.handlers.chat_completed_handlers.memory_extractor.schedule",
+        fake_schedule,
+    )
+    event = Event(
+        type="ChatCompleted",
+        aggregate_type="conversation",
+        aggregate_id="c-asst",
+        payload={
+            "conversation_id": "c-asst",
+            "user_message": "",
+            "content": "你喜欢喝绿茶",
+        },
+    )
+    await on_chat_completed_extract_memories(None, event)
+    assert scheduled == []
+
+    event2 = Event(
+        type="ChatCompleted",
+        aggregate_type="conversation",
+        aggregate_id="c-user",
+        payload={
+            "conversation_id": "c-user",
+            "user_message": "记住我喜欢跑步",
+            "content": "好的",
+        },
+    )
+    await on_chat_completed_extract_memories(None, event2)
+    assert len(scheduled) == 1
+    assert scheduled[0]["grounding_text"] == "记住我喜欢跑步"
+    assert scheduled[0]["source"] == "conv:c-user"
+    assert scheduled[0]["assistant_text"] == "好的"
