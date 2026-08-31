@@ -95,3 +95,77 @@ def test_dispatch_worker_thread_without_bound_loop_does_not_raise():
 
     assert not t.is_alive()
     assert errors == []
+
+
+def test_worker_thread_resolves_pending_command_future_on_main_loop():
+    """Completion events emitted from a worker thread must resolve the Future."""
+    loop = asyncio.new_event_loop()
+    set_dispatch_loop(loop)
+    loop_thread = threading.Thread(target=loop.run_forever, daemon=True)
+    loop_thread.start()
+    try:
+        future: asyncio.Future = asyncio.Future(loop=loop)
+        kernel = _StubKernel()
+        key = ("cmd_worker", "MemoryUpdated")
+        kernel._pending_commands[key] = future
+
+        evt = Event(
+            type="MemoryUpdated",
+            aggregate_type="memory",
+            aggregate_id="m1",
+            payload={"content": "done"},
+            correlation_id="cmd_worker",
+        )
+
+        t = threading.Thread(target=lambda: dispatch(kernel, evt))
+        t.start()
+        t.join(timeout=5)
+        assert not t.is_alive()
+
+        async def _await_future() -> Event:
+            return await asyncio.wait_for(future, timeout=2)
+
+        result = asyncio.run_coroutine_threadsafe(_await_future(), loop).result(timeout=3)
+        assert result is evt
+        assert key not in kernel._pending_commands
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+        loop_thread.join(timeout=2)
+        set_dispatch_loop(None)
+        loop.close()
+
+
+def test_pending_command_kept_when_no_loop_available():
+    """If Future resolution cannot be scheduled, the pending key stays."""
+    set_dispatch_loop(None)
+    loop = asyncio.new_event_loop()
+    future: asyncio.Future = asyncio.Future(loop=loop)
+    kernel = _StubKernel()
+    key = ("cmd_keep", "FooCompleted")
+    kernel._pending_commands[key] = future
+
+    evt = Event(
+        type="FooCompleted",
+        aggregate_type="command",
+        aggregate_id="c1",
+        payload={"status": "ok"},
+        correlation_id="cmd_keep",
+    )
+
+    errors: list[BaseException] = []
+
+    def run() -> None:
+        try:
+            dispatch(kernel, evt)
+        except BaseException as exc:
+            errors.append(exc)
+
+    t = threading.Thread(target=run)
+    t.start()
+    t.join(timeout=5)
+
+    assert not t.is_alive()
+    assert errors == []
+    assert kernel._pending_commands.get(key) is future
+    assert not future.done()
+    loop.close()

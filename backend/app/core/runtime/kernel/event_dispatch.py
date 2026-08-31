@@ -165,16 +165,31 @@ def _resolve_future_threadsafe(
     无循环运行时返回 False（调用方应让 future 自行超时——不要 cancel，
     那会给 wait_for 注入 CancelledError）。
     """
+    loop: asyncio.AbstractEventLoop | None = None
     try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
+        candidate = future.get_loop()
+        if candidate.is_running():
+            loop = candidate
+    except Exception:
+        loop = None
+
+    if loop is None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = _dispatch_loop
+
+    if loop is None or not loop.is_running():
         return False
 
     def _resolve(f: "asyncio.Future", e: "Event") -> None:
         if not f.done():
             f.set_result(e)
 
-    loop.call_soon_threadsafe(_resolve, future, event)
+    try:
+        loop.call_soon_threadsafe(_resolve, future, event)
+    except RuntimeError:
+        return False
     return True
 
 
@@ -234,9 +249,16 @@ def dispatch(kernel: Any, event: "Event") -> None:
                 )
 
     # 在匹配的完成事件上解析 pending submit_command Future。
+    # 仅在成功安排解析后才移除 pending key；安排失败则保留，
+    # 交给后续事件或 submit_command 超时清理。
     key = (event.correlation_id or "", event.type)
     with kernel._commands_lock:
-        future = kernel._pending_commands.pop(key, None)
-    if future is not None and not future.done():
-        if not _resolve_future_threadsafe(future, event):
-            return
+        future = kernel._pending_commands.get(key)
+    if future is None or future.done():
+        return
+    if not _resolve_future_threadsafe(future, event):
+        return
+    with kernel._commands_lock:
+        current = kernel._pending_commands.get(key)
+        if current is future:
+            kernel._pending_commands.pop(key, None)

@@ -377,6 +377,75 @@ async def _run_startup_step(
         return None
 
 
+async def _best_effort_cleanup(name: str, action) -> None:
+    """Run one shutdown step; never raise to the caller."""
+    try:
+        result = action()
+        if asyncio.iscoroutine(result):
+            await result
+    except Exception:
+        logger.warning("Lifespan cleanup failed: %s", name, exc_info=True)
+
+
+async def shutdown_runtime_resources(*, auth_warn_task=None) -> None:
+    """Best-effort MCP / loop / cron / WS cleanup; each step is isolated."""
+    async def _stop_mcp() -> None:
+        from app.core.harness.mcp_lifecycle import stop_mcp_mesh
+
+        await stop_mcp_mesh()
+
+    await _best_effort_cleanup("mcp_mesh", _stop_mcp)
+
+    async def _stop_auth_warning() -> None:
+        if auth_warn_task is None:
+            return
+        auth_warn_task.cancel()
+        try:
+            await auth_warn_task
+        except asyncio.CancelledError:
+            pass
+
+    await _best_effort_cleanup("auth_warning", _stop_auth_warning)
+    await _best_effort_cleanup("runtime_loop", runtime_loop.stop)
+
+    def _stop_cron() -> None:
+        from app.core.runtime.cron_registry import shutdown_scheduler
+
+        shutdown_scheduler()
+
+    await _best_effort_cleanup("cron", _stop_cron)
+
+    async def _close_websockets() -> None:
+        global _ws_reserved_slots
+        async with _ws_lock:
+            for ws in list(_ws_connections):
+                try:
+                    await ws.close()
+                except Exception:
+                    logger.warning("Error during WebSocket shutdown", exc_info=True)
+            _ws_connections.clear()
+            _ws_reserved_slots = 0
+
+    await _best_effort_cleanup("websocket", _close_websockets)
+
+
+async def finalize_lifespan(*, auth_warn_task=None) -> None:
+    """Release every lifespan resource, then the instance lock.
+
+    The lock is always released even when an earlier cleanup step raises.
+    """
+    try:
+        await shutdown_runtime_resources(auth_warn_task=auth_warn_task)
+    except Exception:
+        logger.warning("Lifespan resource cleanup raised", exc_info=True)
+    try:
+        from app.store.database import release_instance_lock
+
+        release_instance_lock()
+    except Exception:
+        logger.warning("Failed to release instance lock", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
@@ -386,6 +455,29 @@ async def lifespan(app: FastAPI):
     from app.store.database import acquire_instance_lock
 
     acquire_instance_lock()
+    _auth_warn_task = None
+    try:
+        await _lifespan_startup(app)
+
+        if getattr(app.state, "_auth_exposed_no_token", False):
+            async def _auth_warning_loop():
+                while True:
+                    await asyncio.sleep(app.state._auth_warning_interval)
+                    logger.warning(
+                        "SECURITY: API running on %s with no AUTH_TOKEN "
+                        "(ALLOW_NO_AUTH_ON_EXPOSED=true). "
+                        "All data is accessible without authentication.",
+                        settings.host,
+                    )
+            _auth_warn_task = asyncio.create_task(_auth_warning_loop())
+
+        yield
+    finally:
+        await finalize_lifespan(auth_warn_task=_auth_warn_task)
+
+
+async def _lifespan_startup(app: FastAPI) -> None:
+    """Startup steps after the instance lock is held."""
 
     # Wire the WebSocket transport sink into Runtime before any broadcast is
     # issued. Breaks the runtime → main edge (notification_bridge no longer
@@ -494,55 +586,6 @@ async def lifespan(app: FastAPI):
     )
 
     app.state.startup_health = enrich_with_mcp_status(app.state.startup_health)
-
-    # Start periodic auth warning if exposed without token
-    _auth_warn_task = None
-    if getattr(app.state, "_auth_exposed_no_token", False):
-        async def _auth_warning_loop():
-            while True:
-                await asyncio.sleep(app.state._auth_warning_interval)
-                logger.warning(
-                    "SECURITY: API running on %s with no AUTH_TOKEN (ALLOW_NO_AUTH_ON_EXPOSED=true). "
-                    "All data is accessible without authentication.",
-                    settings.host,
-                )
-        _auth_warn_task = asyncio.create_task(_auth_warning_loop())
-
-    yield
-
-    from app.core.harness.mcp_lifecycle import stop_mcp_mesh
-
-    await stop_mcp_mesh()
-
-    if _auth_warn_task is not None:
-        _auth_warn_task.cancel()
-        try:
-            await _auth_warn_task
-        except asyncio.CancelledError:
-            pass
-
-    await runtime_loop.stop()
-    try:
-        from app.core.runtime.cron_registry import shutdown_scheduler
-
-        shutdown_scheduler()
-    except Exception:
-        logging.getLogger(__name__).debug("cron shutdown_scheduler failed", exc_info=True)
-
-    global _ws_reserved_slots
-    async with _ws_lock:
-        for ws in _ws_connections:
-            try:
-                await ws.close()
-            except Exception:
-                logging.getLogger(__name__).warning("Error during WebSocket shutdown", exc_info=True)
-        _ws_connections.clear()
-        _ws_reserved_slots = 0
-
-    # 关闭段末尾释放单实例锁，保证 TestClient 反复进出 lifespan 可重新获取。
-    from app.store.database import release_instance_lock
-
-    release_instance_lock()
 
 
 # ── App ──────────────────────────────────────────────────────────────────────
