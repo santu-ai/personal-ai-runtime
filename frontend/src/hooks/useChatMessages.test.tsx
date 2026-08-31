@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState, type ReactElement } from "react";
 import { getMessages, sendMessage } from "../api/client";
+import type { Message } from "../api/types";
 import { useChatMessages } from "./useChatMessages";
 
 vi.mock("../api/client", () => ({
@@ -34,8 +35,16 @@ vi.mock("../stores/chatStore", () => {
   return { useChatStore };
 });
 
-function msg(id: string, content: string, role = "user") {
-  return { id, role, content };
+function msg(id: string, content: string, role = "user"): Message {
+  return {
+    id,
+    conversation_id: "conv-test",
+    role,
+    content,
+    tool_calls: null,
+    tool_call_id: null,
+    created_at: "2026-08-31T00:00:00Z",
+  };
 }
 
 function Harness({ conversationId }: { conversationId: string }) {
@@ -95,10 +104,10 @@ describe("useChatMessages conversation switch", () => {
   });
 
   it("clears A and shows only B after a delayed B load", async () => {
-    const bLoad = deferred<ReturnType<typeof msg>[]>();
+    const bLoad = deferred<Message[]>();
     vi.mocked(getMessages).mockImplementation(async (id: string) => {
       if (id === "conv-a") return [msg("a1", "from-a")];
-      return bLoad.promise as Promise<ReturnType<typeof msg>[]>;
+      return bLoad.promise;
     });
 
     renderHarness(<Switcher />);
@@ -116,9 +125,9 @@ describe("useChatMessages conversation switch", () => {
   });
 
   it("ignores a stale A response that arrives after switching to B", async () => {
-    const aLoad = deferred<ReturnType<typeof msg>[]>();
+    const aLoad = deferred<Message[]>();
     vi.mocked(getMessages).mockImplementation(async (id: string) => {
-      if (id === "conv-a") return aLoad.promise as Promise<ReturnType<typeof msg>[]>;
+      if (id === "conv-a") return aLoad.promise;
       return [msg("b1", "from-b-history")];
     });
 
@@ -134,16 +143,14 @@ describe("useChatMessages conversation switch", () => {
   });
 
   it("keeps the in-flight B send instead of letting delayed hydrate overwrite it", async () => {
-    const bLoad = deferred<ReturnType<typeof msg>[]>();
+    const bLoad = deferred<Message[]>();
     vi.mocked(getMessages).mockImplementation(async (id: string) => {
       if (id === "conv-a") return [msg("a1", "from-a")];
-      return bLoad.promise as Promise<ReturnType<typeof msg>[]>;
+      return bLoad.promise;
     });
-    vi.mocked(sendMessage).mockImplementation(
-      async (_id, _text, _onEvent, _onError, onDone) => {
-        onDone();
-      },
-    );
+    vi.mocked(sendMessage).mockImplementation(async (_id, _text, _onEvent, _onError, onDone) => {
+      onDone();
+    });
 
     renderHarness(<Switcher />);
     await waitFor(() => expect(screen.getByText("from-a")).toBeInTheDocument());
@@ -162,8 +169,8 @@ describe("useChatMessages conversation switch", () => {
   });
 
   it("does not apply history after unmount", async () => {
-    const load = deferred<ReturnType<typeof msg>[]>();
-    vi.mocked(getMessages).mockReturnValue(load.promise as Promise<ReturnType<typeof msg>[]>);
+    const load = deferred<Message[]>();
+    vi.mocked(getMessages).mockReturnValue(load.promise);
 
     const { unmount } = renderHarness(<Harness conversationId="conv-a" />);
     unmount();

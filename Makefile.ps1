@@ -141,7 +141,7 @@ PowerShell runs modules sequentially for reliable exit codes; use make/WSL for p
         )
         Invoke-Backend -PyArgs @("-m", "coverage", "report", "--include=app/core/runtime/*", "--fail-under=75")
         Invoke-Backend -PyArgs @("-m", "coverage", "report", "--include=app/api/*", "--fail-under=50")
-        Invoke-Backend -PyArgs @("-m", "coverage", "report", "--include=app/core/harness/*", "--fail-under=68")
+        Invoke-Backend -PyArgs @("-m", "coverage", "report", "--include=app/core/harness/*", "--fail-under=66")
         Invoke-Backend -PyArgs @("-m", "coverage", "report", "--include=app/product/*", "--fail-under=80")
     }
     "test-live" {

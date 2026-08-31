@@ -20,3 +20,6 @@ def test_gitleaks_does_not_allowlist_entire_backend_tests_tree():
         "keep placeholder regexes and fingerprints instead"
     )
     assert "backend/tests/.*" not in text
+    assert "dGhlIHNhbXBsZSBub25jZQ==" in text
+    assert "scripts/.*" not in text
+    assert "ec5184f77a3b16d179d151bb4bcf16f751bb5f98:scripts/verify_compose_smoke.py:generic-api-key:45" in text

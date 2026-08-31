@@ -8,7 +8,7 @@
 - 当前分支：`main`（本地领先 origin）
 - 进行中任务 / WIP：无
 - 已知坏点 / 待办：审批续写仍 one-shot（ADR-R011，不推翻）；Memory 连续两周 pass / 工作台 30 秒有效操作待 dogfood
-- 最近审阅：2026-08-31 核心产品闭环已落地（会话级待确认记忆、Claim 替代链、抽取只信用户陈述、「今天」三栏去重）
+- 最近审阅：2026-08-31 剩余问题收口已落地；CI 跟进：gitleaks RFC WebSocket 样例 fingerprint、harness 覆盖率门 66、前端 tsc 排除 Node 测试
 - **本机 git**：`/usr/bin/git` 2.21 / `/usr/local/bin/git` 2.23；Cursor 提交包装会传 `--trailer`，需走 `git commit -F`。完整方法见 [`macos-git-commit.md`](macos-git-commit.md)
 - **本机 typecheck 假阳性**：本机 `mcp` 是 1.12.4，lock 钉 2.0.0；`mcp_compat.py:16` 的 `MCPError` 报错只在本机出现，CI 按 lock 装依赖不受影响
 - **P0（2026-08-30 已修）**：云端聊天曾被出口门一律拒绝（提示词里的 `Memories` 被当成个人上下文）。现只认 `memory_id:` 与 `MEMORY_CONTEXT_MARKER`
@@ -42,6 +42,7 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
+| 2026-08-31 | CI：gitleaks 放行 RFC WebSocket 样例、harness 门 66、tsc 排除 Node 测试 | 跟进剩余问题收口 |
 | 2026-08-31 | 核心产品闭环：会话级待确认、Claim 替代链、抽取只信用户、「今天」三栏去重 | 本会话，待推远程 |
 | 2026-08-31 | 合入 12 个 Dependabot：backend mypy/pypdf/ruff/tiktoken/uvicorn；desktop electron/vitest；frontend eslint/lucide/vite/plugin-react/vitest；重生 backend+desktop lock | 本地 `fc62cc2`，待推远程 |
 | 2026-08-31 | Windows 快进拉取 origin/main（`fe72d31` → `e05452f`，3 commits） | 工作区干净对齐远程 |

@@ -11,7 +11,9 @@ Checks:
 
 from __future__ import annotations
 
+import base64
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -42,7 +44,7 @@ def _ws_upgrade() -> tuple[int, str]:
                 "Connection": "Upgrade",
                 "Upgrade": "websocket",
                 "Sec-WebSocket-Version": "13",
-                "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
+                "Sec-WebSocket-Key": base64.b64encode(os.urandom(16)).decode("ascii"),
             },
         )
         resp = conn.getresponse()

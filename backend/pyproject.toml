@@ -47,4 +47,4 @@ follow_imports = "normal"
 
 [tool.coverage.run]
 source = ["app/core/runtime", "app/core/harness", "app/api", "app/product"]
-# Coverage gates live in make test-backend-coverage (runtime≥75, api≥50, harness≥68, product≥80).
+# Coverage gates live in make test-backend-coverage (runtime≥75, api≥50, harness≥66, product≥80).

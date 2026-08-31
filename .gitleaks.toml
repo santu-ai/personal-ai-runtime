@@ -19,10 +19,12 @@ regexes = [
   '''sk-test-key''',
   '''demo-seed''',
   '''placeholder-not-a-secret''',
+  '''dGhlIHNhbXBsZSBub25jZQ==''',
 ]
 
 [[allowlists]]
-description = "Historical egress-gate fixture; working tree rewrote the value in 78e7f26"
+description = "Historical fixtures rewritten in the working tree; merge scans still see old patches"
 fingerprints = [
   '''b118877853bc01173016da0979234d568903323d:backend/tests/runtime/test_egress_gate.py:generic-api-key:41''',
+  '''ec5184f77a3b16d179d151bb4bcf16f751bb5f98:scripts/verify_compose_smoke.py:generic-api-key:45''',
 ]

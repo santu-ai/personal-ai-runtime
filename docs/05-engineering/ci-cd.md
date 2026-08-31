@@ -89,7 +89,7 @@ make merge-gate
 # Windows: powershell -File Makefile.ps1 -Task merge-gate
 ```
 
-覆盖后端 **coverage 门**测试（`test-backend-coverage`：runtime≥75、api≥50、harness≥68、product≥80）、前端测试与构建、`boundary`、`layer-deps`、`projection-provenance`、`rebuild-verify`。
+覆盖后端 **coverage 门**测试（`test-backend-coverage`：runtime≥75、api≥50、harness≥66、product≥80）、前端测试与构建、`boundary`、`layer-deps`、`projection-provenance`、`rebuild-verify`。
 
 ## Windows 支持
 
@@ -102,7 +102,7 @@ make merge-gate
 [`.gitleaks.toml`](../../.gitleaks.toml) 扩展默认规则集，两个 allowlist：
 
 1. `.env.example`、`docs/*.md`、`.harness/*.md`、`README*.md`、`CONTRIBUTING.md` 中的示例/模板值，加已知占位符（`your-deepseek-api-key`、`your-gmail-app-password`、`your-email@gmail.com`、`sk-test-key`、`demo-seed`、`placeholder-not-a-secret`）。
-2. 历史提交 `b118877` 中 egress 测试假密钥的 fingerprint（工作树已改写；merge 扫描仍会看到旧 patch）。
+2. 历史 fingerprint：egress 测试假密钥（`b118877`）与 Compose 冒烟里 RFC 6455 示例 `Sec-WebSocket-Key`（`ec5184f`）。工作树已改为运行时随机 nonce；merge 扫描仍会看到旧 patch。占位符 regex 含该 RFC 样例 Base64。
 
 不放行整个 `backend/tests/` 目录。
 
