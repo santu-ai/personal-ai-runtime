@@ -59,7 +59,7 @@ make dev
 3. 健康后启 `cd frontend && npm run dev`（Vite 5173）。
 4. `wait` 阻塞，Ctrl+C 同时停两者。
 
-前端经 Vite proxy 把 `/api` 与 `/ws` 转发到后端（[`frontend/vite.config.ts:11-28`](../../frontend/vite.config.ts)）。
+前端经 Vite proxy 把 `/api` 与 `/ws` 转发到后端（[`frontend/vite.config.ts`](../../frontend/vite.config.ts)）。Vite 默认只绑 `127.0.0.1`。
 
 ### 桌面端
 

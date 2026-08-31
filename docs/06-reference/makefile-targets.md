@@ -82,6 +82,7 @@ Windows 子集见 [`Makefile.ps1`](../../Makefile.ps1)。
 | `alembic-verify` | `python3 -m scripts.verify_alembic` |
 | `docker-up` | `docker compose up --build` |
 | `docker-down` | `docker compose down` |
+| `compose-smoke` | `python3 scripts/verify_compose_smoke.py` |
 | `lockfile` | `python3 -c "import piptools" 2>/dev/null \|\| python3 -m pip install --user pip-tools==7.5.3` |
 | `secrets-scan` | `@gitleaks detect --config .gitleaks.toml --source . --no-banner --redact \|\| \` |
 

@@ -17,6 +17,8 @@
 
 `lifespan`（[`main.py`](../../backend/app/main.py)）：未设 `AUTH_TOKEN` 且非 localhost bind（`_is_localhost_bind` 判定 `127.0.0.1`/`::1`/`localhost`/`127.*`）且未开 `ALLOW_NO_AUTH_ON_EXPOSED` → `sys.exit(1)` 拒绝启动。裸奔运行时启动周期性 600s 安全告警协程。
 
+Vite 开发服务器默认绑 `127.0.0.1`。`host: true` 会经同源 `/api` 代理绕过后端 loopback 绑定，把无认证 API 暴露到局域网；仅 `VITE_DEV_LAN=1` 且 `VITE_AUTH_TOKEN` 非空时才允许。Docker Compose 前端入口同样只映射 `127.0.0.1:5173`。
+
 ### WebSocket 认证
 
 `WS /ws`（[`main.py`](../../backend/app/main.py)）经 `Sec-WebSocket-Protocol: auth.<token>` 子协议携带 token（[`main.py`](../../backend/app/main.py)），失败关闭码 4401，成功回 `auth.ok` 子协议。

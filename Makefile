@@ -1,4 +1,4 @@
-.PHONY: install setup init-db dev demo screenshots test test-backend test-backend-coverage test-live test-frontend test-e2e test-e2e-real ci-local backend-ci-core backend-ci-static backend-ci-runtime backend-compileall backend-smoke lint typecheck dependency-sync desktop desktop-test desktop-build boundary layer-deps layer-deps-inventory layer-deps-strict docs-links docs-table-sync docs-line-refs docs-numbers docs-gen docs-gen-check policy-consistency rebuild-verify export-roundtrip-verify snapshot-verify egress-verify alembic-verify vector-consistency-verify memory-repair-verify tool-calls-audit-verify architecture-check architecture-check-strict architecture-snapshot architecture-record event-schema event-schema-snapshot event-schema-record non-sovereign-attachments single-process-control-plane dynamic-imports except-hygiene dashboard dashboard-write docker-up docker-down projection-provenance conversation-rebuild goal-rebuild work-items-goal-rebuild memory-lifecycle-verify inbox-audit-verify lockfile secrets-scan merge-gate frontend-build
+.PHONY: install setup init-db dev demo screenshots test test-backend test-backend-coverage test-live test-frontend test-e2e test-e2e-real ci-local backend-ci-core backend-ci-static backend-ci-runtime backend-compileall backend-smoke lint typecheck dependency-sync desktop desktop-test desktop-build boundary layer-deps layer-deps-inventory layer-deps-strict docs-links docs-table-sync docs-line-refs docs-numbers docs-gen docs-gen-check policy-consistency rebuild-verify export-roundtrip-verify snapshot-verify egress-verify alembic-verify vector-consistency-verify memory-repair-verify tool-calls-audit-verify architecture-check architecture-check-strict architecture-snapshot architecture-record event-schema event-schema-snapshot event-schema-record non-sovereign-attachments single-process-control-plane dynamic-imports except-hygiene dashboard dashboard-write docker-up docker-down compose-smoke projection-provenance conversation-rebuild goal-rebuild work-items-goal-rebuild memory-lifecycle-verify inbox-audit-verify lockfile secrets-scan merge-gate frontend-build
 
 # Backend
 BACKEND_DIR := backend
@@ -271,6 +271,9 @@ docker-up:
 
 docker-down:
 	docker compose down
+
+compose-smoke:
+	python3 scripts/verify_compose_smoke.py
 
 lockfile:
 	cd $(BACKEND_DIR) && python3 -c "import piptools" 2>/dev/null || python3 -m pip install --user pip-tools==7.5.3

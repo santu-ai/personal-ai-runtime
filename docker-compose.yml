@@ -9,7 +9,7 @@ services:
       - .env
     environment:
       - HOST=0.0.0.0
-      - AUTH_TOKEN=${AUTH_TOKEN:-}  # REQUIRED for production: set in .env or pass via AUTH_TOKEN=... docker-compose up
+      - AUTH_TOKEN=${AUTH_TOKEN:-}  # REQUIRED for production: set in .env or pass via AUTH_TOKEN=... docker compose up
     volumes:
       - backend-data:/app/backend/data
     working_dir: /app/backend
@@ -28,13 +28,9 @@ services:
       args:
         VITE_API_HOST: backend
         VITE_API_PORT: "8000"
+        VITE_AUTH_TOKEN: ${VITE_AUTH_TOKEN:-}
     ports:
-      - "5173:5173"
-    environment:
-      - VITE_API_HOST=backend
-      - VITE_API_PORT=8000
-    working_dir: /app/frontend
-    command: npx serve dist -l 5173 --no-clipboard
+      - "127.0.0.1:5173:5173"
     depends_on:
       backend:
         condition: service_healthy

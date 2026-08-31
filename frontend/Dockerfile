@@ -2,8 +2,10 @@ FROM node:20-slim AS builder
 
 ARG VITE_API_HOST=localhost
 ARG VITE_API_PORT=8000
+ARG VITE_AUTH_TOKEN=
 ENV VITE_API_HOST=${VITE_API_HOST}
 ENV VITE_API_PORT=${VITE_API_PORT}
+ENV VITE_AUTH_TOKEN=${VITE_AUTH_TOKEN}
 
 WORKDIR /app/frontend
 
@@ -13,16 +15,9 @@ RUN npm ci
 COPY frontend/ .
 RUN npm run build
 
-FROM node:20-slim
+FROM caddy:2-alpine
 
-WORKDIR /app/frontend
-
-# Only the built artifacts are needed at runtime. node_modules is intentionally
-# omitted — `npx serve` fetches its own tiny runtime, and devDependencies
-# (eslint, vitest, playwright, testing-library, …) must not ship in the image.
-COPY --from=builder /app/frontend/dist ./dist
-COPY --from=builder /app/frontend/package.json ./
+COPY frontend/Caddyfile /etc/caddy/Caddyfile
+COPY --from=builder /app/frontend/dist /usr/share/caddy
 
 EXPOSE 5173
-
-CMD ["npx", "serve", "dist", "-l", "5173", "--no-clipboard"]

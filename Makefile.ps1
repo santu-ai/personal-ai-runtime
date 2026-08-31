@@ -104,6 +104,7 @@ Available tasks:
   backend-ci-core      Static then runtime
   docker-up            docker compose up --build
   docker-down          docker compose down
+  compose-smoke        Verify Caddy same-origin / , /api/system/live, /ws
 
 Note: Unix ``make backend-ci-core`` runs static/runtime waves with -j parallel.
 PowerShell runs modules sequentially for reliable exit codes; use make/WSL for parallel CI.
@@ -254,6 +255,12 @@ PowerShell runs modules sequentially for reliable exit codes; use make/WSL for p
     }
     "docker-down" {
         docker compose down
+    }
+    "compose-smoke" {
+        $python = Join-Path $Root ".venv\Scripts\python.exe"
+        if (-not (Test-Path $python)) { $python = "python" }
+        & $python (Join-Path $Root "scripts\verify_compose_smoke.py")
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
     default {
         Write-Error "Unknown task: $Task. Run: .\Makefile.ps1 help"

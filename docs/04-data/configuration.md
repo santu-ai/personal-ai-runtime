@@ -145,6 +145,7 @@ Host/port 默认值在 `runtime_config.GMAIL_DEFAULTS`（非 Settings 字段）�
 | `VITE_API_HOST` | 前端 dev proxy 目标主机（默认 `127.0.0.1`） |
 | `VITE_API_PORT` | 前端 dev proxy 目标端口（默认 `8000`） |
 | `VITE_AUTH_TOKEN` | 前端 Bearer token（启用认证时必须与 `AUTH_TOKEN` 一致） |
+| `VITE_DEV_LAN` | 设为 `1` 且 `VITE_AUTH_TOKEN` 非空时，Vite dev server 才绑所有网卡；默认 `127.0.0.1` |
 
 ## 运行时 DB 配置（runtime_config）
 
@@ -206,7 +207,7 @@ agent 在本代码库工作时注入的短 prompt 片段。固定项目根、要
 
 Backend 镜像（[`backend/Dockerfile`](../../backend/Dockerfile)）为多阶段构建：venv 安装 `requirements.lock` 后卸载 pytest/ruff/mypy 及其主要传递依赖；运行阶段含 `nodejs`/`npm`，以便 stdio MCP 通过 `npx` 启动。Playwright 仍需浏览器二进制与系统库（镜像未预装），故 `playwright` 默认 `startup_connect: false`，避免容器启动时强连失败。
 
-frontend service 设 `VITE_API_HOST=backend`、`VITE_API_PORT=8000`。
+frontend service 经 Caddy 同源入口服务 `dist`，并把 `/api`、`/ws` 反代到 backend。端口绑 `127.0.0.1:5173`。`VITE_AUTH_TOKEN` 会在镜像构建时写入静态 bundle，因此该部署形态必须保持 loopback-only。
 
 ## 测试环境覆盖
 

@@ -27,19 +27,21 @@ healthcheck:
 
 ### frontend
 
+Caddy 同源入口（[`frontend/Caddyfile`](../../frontend/Caddyfile)）：静态 SPA + `/api/*`、`/ws` 反代到 `backend:8000`。
+
 ```yaml
 build:
   context: .
   dockerfile: frontend/Dockerfile
-  args: { VITE_API_HOST: backend, VITE_API_PORT: "8000" }
-ports: ["5173:5173"]
-environment: [VITE_API_HOST=backend, VITE_API_PORT=8000]
-working_dir: /app/frontend
-command: npx serve dist -l 5173 --no-clipboard
+  args:
+    VITE_API_HOST: backend
+    VITE_API_PORT: "8000"
+    VITE_AUTH_TOKEN: ${VITE_AUTH_TOKEN:-}
+ports: ["127.0.0.1:5173:5173"]
 depends_on: { backend: { condition: service_healthy } }
 ```
 
-构建时注入 `VITE_API_HOST=backend`（Docker 内部网络主机名）。等 backend 健康后才启动。
+`VITE_AUTH_TOKEN` 会打进前端静态 bundle，因此 Compose 端口必须只绑 loopback。浏览器始终请求同源 `/api` 与 `/ws`，不再依赖 Docker DNS 名 `backend`。
 
 ### 卷
 
@@ -49,6 +51,7 @@ depends_on: { backend: { condition: service_healthy } }
 
 ```bash
 make docker-up      # docker compose up --build
+make compose-smoke  # GET / 、 /api/system/live 、 /ws 同源入口
 make docker-down    # docker compose down
 ```
 
@@ -69,8 +72,8 @@ make docker-down    # docker compose down
 
 两阶段：
 
-- **builder**：接受构建参数 `VITE_API_HOST`/`VITE_API_PORT`，`npm ci` + `npm run build`。
-- **runtime**：复制 `dist`、`package.json`、`vite.config.ts`、`node_modules`，`npx vite preview` 服务于 5173。
+- **builder**：接受构建参数 `VITE_API_HOST` / `VITE_API_PORT` / `VITE_AUTH_TOKEN`，`npm ci` + `npm run build`。
+- **runtime**：`caddy:2-alpine`，复制 [`frontend/Caddyfile`](../../frontend/Caddyfile) 与 `dist` 到 `/usr/share/caddy`，监听 5173；`/api/*` 与 `/ws` 反代到 `backend:8000`。
 
 ## 桌面端打包
 
@@ -81,7 +84,7 @@ make desktop-build   # cd desktop && npm run build  (electron-builder)
 [`desktop/package.json`](../../desktop/package.json) 的 electron-builder 配置：
 
 - `appId: com.personalairuntime.desktop`、`productName: Personal AI Runtime`。
-- `files`：`main.js`、`preload.js`、`icon.png`、`generate_icon.py`。
+- `files`：`main.js`、`preload.js`、`runtimePaths.js`、`run-backend.py`、`icon.png`、`generate_icon.py`、`frontend-dist/**/*`。
 - `extraResources`：把整个 `../backend` bundle 为 `backend`（排除 `__pycache__`、`*.pyc`、`data/**`）。**打包发行版包含 Python 源码，但运行时仍需系统 Python 3**（`main.js` spawn `python3`）。
 - Targets：
   - macOS：`dmg`、`zip`（category `public.app-category.productivity`）

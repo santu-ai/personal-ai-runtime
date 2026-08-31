@@ -8,6 +8,8 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const API_HOST = process.env.VITE_API_HOST || "127.0.0.1";
 const API_PORT = process.env.VITE_API_PORT || "8000";
 const isDesktopBuild = process.env.VITE_DESKTOP === "1";
+const lanDevEnabled =
+  process.env.VITE_DEV_LAN === "1" && Boolean(process.env.VITE_AUTH_TOKEN?.trim());
 
 export default defineConfig({
   // Read VITE_* from repo-root .env (same file as backend AUTH_TOKEN)
@@ -15,7 +17,7 @@ export default defineConfig({
   base: isDesktopBuild ? "./" : "/",
   plugins: [react(), tailwindcss()],
   server: {
-    host: true,
+    host: lanDevEnabled ? true : "127.0.0.1",
     port: 5173,
     proxy: {
       "/api": {

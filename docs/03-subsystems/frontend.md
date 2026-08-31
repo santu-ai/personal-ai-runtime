@@ -62,16 +62,16 @@ types.ts       ← 共享 TS 接口
 
 ### 前端如何到达后端
 
-**开发模式** — Vite proxy（[`frontend/vite.config.ts:11-28`](../../frontend/vite.config.ts)）：
+**开发模式** — Vite proxy（[`frontend/vite.config.ts`](../../frontend/vite.config.ts)）：
 
 ```
 "/api" → http://${API_HOST}:${API_PORT}   (changeOrigin: true)
 "/ws"  → http://${API_HOST}:${API_PORT}   (ws: true, changeOrigin: true)
 ```
 
-`API_HOST`/`API_PORT` 来自 `process.env.VITE_API_HOST`/`VITE_API_PORT`（默认 `127.0.0.1`/`8000`）。配置从**仓库根** `.env`（`envDir: rootDir`）读取——与后端 `AUTH_TOKEN` 同一个文件。
+`API_HOST`/`API_PORT` 来自 `process.env.VITE_API_HOST`/`VITE_API_PORT`（默认 `127.0.0.1`/`8000`）。配置从**仓库根** `.env`（`envDir: rootDir`）读取——与后端 `AUTH_TOKEN` 同一个文件。Dev server 默认绑 `127.0.0.1`（避免 Vite 同源代理把无认证 API 暴露到局域网）。仅当同时设置 `VITE_DEV_LAN=1` 与非空 `VITE_AUTH_TOKEN` 时才监听所有网卡。
 
-**生产模式** — `API_BASE = "/api"` 相对，要求同源部署同时服务静态前端与 API。
+**生产模式** — `API_BASE = "/api"` 相对，要求同源部署同时服务静态前端与 API。Docker Compose 用 Caddy 把 `/`、`/api/*`、`/ws` 挂在同一入口（见 [deployment.md](../05-engineering/deployment.md)）。
 
 ### SSE 聊天流
 
@@ -169,7 +169,7 @@ Layout 在根处挂三个副作用 hook：`useNotifications()`（持有 WS）、
 
 - 插件：`@vitejs/plugin-react`、`@tailwindcss/vite`。
 - `envDir: rootDir` — 仓库根 `.env` 是 `VITE_API_HOST`/`VITE_API_PORT`/`VITE_AUTH_TOKEN` 源。
-- Dev server 端口 5173；proxy `/api` 与 `/ws`（`ws: true`）。
+- Dev server 默认绑 `127.0.0.1:5173`；`VITE_DEV_LAN=1` 且 `VITE_AUTH_TOKEN` 非空时才 `host: true`。proxy `/api` 与 `/ws`（`ws: true`）。
 - `define`：`__API_HOST__`、`__API_PORT__`（声明于 [`vite-env.d.ts:11-12`](../../frontend/src/vite-env.d.ts)）。
 - 生产 `manualChunks`：分离 `vendor-markdown`、`vendor-react`、`vendor-icons`、通用 `vendor`、每页 chunk（`page-{name}`）。
 
