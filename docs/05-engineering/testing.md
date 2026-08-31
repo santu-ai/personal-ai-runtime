@@ -163,6 +163,8 @@ vitest，**不需要 Electron 已安装**。读 `main.js` 源码，字符串 `to
 - 常量 `WEB_URL`/`BACKEND_URL`/`AUTH_TOKEN` 存在。
 - 函数 `createMainWindow`/`createTray`/`connectWebSocket` 存在。
 - 调用 `globalShortcut.register`、`setLoginItemSettings`。
+- `package.json` `build.files` 覆盖 `main.js` 的每一个 `require("./…")`（含 `runtimePaths.js`）。
+- 安装 `will-navigate` / `setWindowOpenHandler` 导航守卫。
 
 运行：`make desktop-test`（`make ci-local` 与 GitHub Actions 的 desktop job 均执行）。
 

@@ -30,6 +30,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "runtimePaths.js",
       "run-backend.py",
       "icon.png",
       "generate_icon.py",

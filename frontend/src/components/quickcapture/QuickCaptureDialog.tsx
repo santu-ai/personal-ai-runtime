@@ -22,6 +22,7 @@ export default function QuickCaptureDialog() {
 
   useEffect(() => {
     const handler = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
       if (e.data && e.data.type === "quick-capture") {
         setOpen(true);
         setText("");

@@ -105,6 +105,8 @@ stdio = ["ignore", "pipe", "pipe"]
 - 常量 `WEB_URL`、`BACKEND_URL`、`AUTH_TOKEN` 存在。
 - 函数 `createMainWindow`、`createTray`、`connectWebSocket` 存在。
 - 调用 `globalShortcut.register`、`setLoginItemSettings`。
+- `build.files` 覆盖 `main.js` 的本地 `require("./…")`（含 `runtimePaths.js`）。
+- 安装导航守卫，并把 quick-capture `postMessage` 限制在窗口 origin。
 
 ## 构建配置
 
@@ -123,7 +125,9 @@ stdio = ["ignore", "pipe", "pipe"]
 electron-builder 配置：
 
 - `appId: com.personalairuntime.desktop`、`productName: Personal AI Runtime`。
-- `files`：`main.js`、`preload.js`、`icon.png`、`generate_icon.py`、`frontend-dist/**/*`。
+- `files`：`main.js`、`preload.js`、`runtimePaths.js`、`run-backend.py`、`icon.png`、`generate_icon.py`、`frontend-dist/**/*`。
+- 主窗口与迷你窗口经 `installNavigationGuards`：仅允许 `app://` 与开发态 `http://127.0.0.1:5173` 内部导航；其他 `http(s)` 交给系统浏览器，危险 scheme 直接拦截。
+- `quickCapture()` 的 `postMessage` 目标 origin 为 `window.location.origin`（不再用 `'*'`）。
 - `extraResources`：把整个 `../backend` 目录 bundle 为 `backend`（排除 `__pycache__`、`*.pyc`、`data/**`）。所以打包发行版**包含 Python 源码 + 前端构建产物**，但运行时仍需系统 Python 3。
 - Targets：macOS（`dmg`、`zip`）、Windows（`nsis`、`portable`）、Linux（`AppImage`、`deb`）。
 - `desktop/vitest.config.js` — `globals: true`，包含 `**/*.test.js`。

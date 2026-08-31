@@ -11,7 +11,7 @@
  * - Loads the web app in a frameless window
  */
 
-const { app, BrowserWindow, Tray, Menu, globalShortcut, Notification, dialog, nativeImage, protocol, session, net: electronNet } = require("electron");
+const { app, BrowserWindow, Tray, Menu, globalShortcut, Notification, dialog, nativeImage, protocol, session, shell, net: electronNet } = require("electron");
 const { spawn, spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -20,6 +20,8 @@ const net = require("net");
 const {
   resolvePythonCommand: resolvePythonCommandImpl,
   resolveFrontendFile: resolveFrontendFileImpl,
+  isInternalNavigationUrl,
+  isSafeExternalUrl,
 } = require("./runtimePaths");
 
 // Declare the app:// scheme as privileged BEFORE app is ready.
@@ -173,6 +175,26 @@ function registerAppProtocol() {
 
 function resolveFrontendFile(distRoot, relPath) {
   return resolveFrontendFileImpl(distRoot, relPath);
+}
+
+function installNavigationGuards(win) {
+  const opts = { isPackaged, devOrigin: "http://127.0.0.1:5173" };
+  win.webContents.on("will-navigate", (event, url) => {
+    if (isInternalNavigationUrl(url, opts)) return;
+    event.preventDefault();
+    if (isSafeExternalUrl(url)) {
+      shell.openExternal(url);
+    }
+  });
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isInternalNavigationUrl(url, opts)) {
+      return { action: "allow" };
+    }
+    if (isSafeExternalUrl(url)) {
+      shell.openExternal(url);
+    }
+    return { action: "deny" };
+  });
 }
 
 function installApiProxy() {
@@ -388,6 +410,7 @@ function createMainWindow() {
   }
 
   mainWindow = new BrowserWindow(winOpts);
+  installNavigationGuards(mainWindow);
   mainWindow.loadURL(RESOLVED_WEB_URL);
 
   mainWindow.on("ready-to-show", () => {
@@ -425,7 +448,7 @@ function createMiniWindow() {
       preload: path.join(__dirname, "preload.js"),
     },
   });
-
+  installNavigationGuards(miniWindow);
   miniWindow.loadURL(RESOLVED_WEB_URL);
 
   miniWindow.on("blur", () => {
@@ -542,7 +565,7 @@ async function quickCapture() {
   }
   if (mainWindow) {
     mainWindow.webContents.executeJavaScript(`
-      window.postMessage({ type: 'quick-capture' }, '*');
+      window.postMessage({ type: 'quick-capture' }, window.location.origin);
     `);
   }
 }

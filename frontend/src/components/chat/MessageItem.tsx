@@ -26,6 +26,38 @@ interface Props {
   message: DisplayMessage;
 }
 
+const BLOCKED_LINK_PROTOCOLS = new Set(["javascript:", "data:", "vbscript:", "file:"]);
+
+export function MarkdownLink({ href, children }: { href?: string; children?: React.ReactNode }) {
+  if (!href) {
+    return <span>{children}</span>;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(href, window.location.href);
+  } catch {
+    return <span>{children}</span>;
+  }
+  if (BLOCKED_LINK_PROTOCOLS.has(parsed.protocol)) {
+    return <span>{children}</span>;
+  }
+  if (parsed.origin === window.location.origin) {
+    return <a href={href}>{children}</a>;
+  }
+  if (
+    parsed.protocol === "http:" ||
+    parsed.protocol === "https:" ||
+    parsed.protocol === "mailto:"
+  ) {
+    return (
+      <a href={parsed.href} target="_blank" rel="noopener noreferrer">
+        {children}
+      </a>
+    );
+  }
+  return <span>{children}</span>;
+}
+
 function InlineCode({ children }: { children: React.ReactNode }) {
   const [copied, setCopied] = useState(false);
   const text = String(children);
@@ -114,6 +146,7 @@ function ThinkingPlaceholder() {
 }
 
 const markdownComponents = {
+  a: MarkdownLink,
   code({ className, children, ...props }: { className?: string; children?: React.ReactNode }) {
     const match = /language-(\w+)/.exec(className || "");
     const codeStr = String(children).replace(/\n$/, "");

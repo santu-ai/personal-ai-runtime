@@ -7,6 +7,8 @@ import {
   projectVenvPython,
   resolveFrontendFile,
   resolvePythonCommand,
+  isInternalNavigationUrl,
+  isSafeExternalUrl,
 } from "./runtimePaths.js";
 
 describe("runtimePaths", () => {
@@ -39,5 +41,32 @@ describe("runtimePaths", () => {
 
     const resolved = resolveFrontendFile(distRoot, "assets/app.js");
     expect(resolved).toBe(assetPath);
+  });
+});
+
+describe("navigation policy", () => {
+  it("allows app:// and the Vite loopback origin in dev", () => {
+    expect(isInternalNavigationUrl("app://./chat", { isPackaged: true })).toBe(true);
+    expect(
+      isInternalNavigationUrl("http://127.0.0.1:5173/chat", {
+        isPackaged: false,
+        devOrigin: "http://127.0.0.1:5173",
+      }),
+    ).toBe(true);
+    expect(
+      isInternalNavigationUrl("https://example.com/", {
+        isPackaged: false,
+        devOrigin: "http://127.0.0.1:5173",
+      }),
+    ).toBe(false);
+    expect(isInternalNavigationUrl("https://example.com/", { isPackaged: true })).toBe(false);
+  });
+
+  it("only treats http(s) as safe external URLs", () => {
+    expect(isSafeExternalUrl("https://example.com/docs")).toBe(true);
+    expect(isSafeExternalUrl("http://127.0.0.1:9999")).toBe(true);
+    expect(isSafeExternalUrl("javascript:alert(1)")).toBe(false);
+    expect(isSafeExternalUrl("file:///etc/passwd")).toBe(false);
+    expect(isSafeExternalUrl("not a url")).toBe(false);
   });
 });

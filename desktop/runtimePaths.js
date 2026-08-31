@@ -71,8 +71,32 @@ function resolveFrontendFile(distRoot, relPath) {
   return path.join(distRoot, "index.html");
 }
 
+function isInternalNavigationUrl(url, { isPackaged, devOrigin = "http://127.0.0.1:5173" } = {}) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol === "app:") return true;
+  if (isPackaged) return false;
+  return parsed.origin === devOrigin;
+}
+
+function isSafeExternalUrl(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  return parsed.protocol === "http:" || parsed.protocol === "https:";
+}
+
 module.exports = {
   projectVenvPython,
   resolvePythonCommand,
   resolveFrontendFile,
+  isInternalNavigationUrl,
+  isSafeExternalUrl,
 };

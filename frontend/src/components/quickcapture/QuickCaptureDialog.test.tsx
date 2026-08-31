@@ -23,7 +23,12 @@ const mockCreateMemory = vi.mocked(createMemory);
 
 function openDialog() {
   act(() => {
-    window.dispatchEvent(new MessageEvent("message", { data: { type: "quick-capture" } }));
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: { type: "quick-capture" },
+        origin: window.location.origin,
+      }),
+    );
   });
 }
 
@@ -43,6 +48,19 @@ describe("QuickCaptureDialog", () => {
     await waitFor(() => {
       expect(screen.getByText("快速捕获")).toBeInTheDocument();
     });
+  });
+
+  it("ignores quick-capture postMessage from another origin", () => {
+    renderWithRouter(<QuickCaptureDialog />);
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { type: "quick-capture" },
+          origin: "https://evil.example",
+        }),
+      );
+    });
+    expect(screen.queryByText("快速捕获")).not.toBeInTheDocument();
   });
 
   it("opens on Ctrl+Shift+M", async () => {

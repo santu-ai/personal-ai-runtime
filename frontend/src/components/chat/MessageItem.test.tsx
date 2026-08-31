@@ -130,4 +130,34 @@ describe("MessageItem", () => {
     );
     expect(screen.queryByText("思考中…")).not.toBeInTheDocument();
   });
+
+  it("opens http(s) markdown links in a new tab with noopener", () => {
+    render(
+      <MessageItem
+        message={{
+          id: "m9",
+          role: "assistant",
+          content: "[文档](https://example.com/docs)",
+        }}
+      />,
+    );
+    const link = screen.getByRole("link", { name: "文档" });
+    expect(link).toHaveAttribute("href", "https://example.com/docs");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("does not render javascript: markdown links as anchors", () => {
+    render(
+      <MessageItem
+        message={{
+          id: "m10",
+          role: "assistant",
+          content: "[坏](javascript:alert(1))",
+        }}
+      />,
+    );
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.getByText("坏")).toBeInTheDocument();
+  });
 });

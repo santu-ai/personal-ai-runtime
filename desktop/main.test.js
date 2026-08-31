@@ -118,4 +118,32 @@ describe("Electron main process", () => {
     expect(source).toContain("resolveFrontendFileImpl");
     expect(source).toContain("function resolveFrontendFile");
   });
+
+  it("installs navigation guards that open external links in the system browser", () => {
+    expect(source).toContain("function installNavigationGuards");
+    expect(source).toContain("will-navigate");
+    expect(source).toContain("setWindowOpenHandler");
+    expect(source).toContain("shell.openExternal");
+    expect(source).toContain("installNavigationGuards(mainWindow)");
+    expect(source).toContain("installNavigationGuards(miniWindow)");
+  });
+
+  it("scopes quick-capture postMessage to the window origin", () => {
+    expect(source).toContain("window.postMessage({ type: 'quick-capture' }, window.location.origin)");
+    expect(source).not.toContain("postMessage({ type: 'quick-capture' }, '*')");
+  });
+
+  it("packs every local require() from main.js in electron-builder files", () => {
+    const pkg = JSON.parse(readFileSync(join(__dirname, "package.json"), "utf-8"));
+    const files = pkg.build.files;
+    const requires = [...source.matchAll(/require\("\.\/([^"]+)"\)/g)].map((m) => m[1]);
+    expect(requires.length).toBeGreaterThan(0);
+    for (const rel of requires) {
+      const packed = rel.endsWith(".js") ? rel : `${rel}.js`;
+      const covered = files.some(
+        (entry) => entry === packed || entry === rel || entry === `${rel}/**/*`,
+      );
+      expect(covered, `${packed} must be listed in package.json build.files`).toBe(true);
+    }
+  });
 });
