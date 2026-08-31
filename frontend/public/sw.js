@@ -4,7 +4,7 @@
 // Cache versioning: bump CACHE_VERSION on each deployment to invalidate old caches.
 // Old-version caches are automatically purged during the activate event.
 
-const CACHE_VERSION = "paios-v1";
+const CACHE_VERSION = "paios-v2";
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `runtime-${CACHE_VERSION}`;
 
@@ -44,9 +44,9 @@ self.addEventListener("fetch", (event) => {
   // Skip non-GET requests
   if (request.method !== "GET") return;
 
-  // API / WebSocket → network-first (never cache API responses)
+  // API / WebSocket → network-only (never read or write Cache Storage)
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/ws")) {
-    event.respondWith(networkFirst(request));
+    event.respondWith(networkOnly(request));
     return;
   }
 
@@ -85,6 +85,10 @@ async function evictStaticCache(cache) {
   // Remove oldest entries (first in list) until under limit
   const toRemove = keys.slice(0, keys.length - MAX_STATIC_CACHE_ENTRIES);
   await Promise.all(toRemove.map((req) => cache.delete(req)));
+}
+
+async function networkOnly(request) {
+  return fetch(request);
 }
 
 async function networkFirst(request) {

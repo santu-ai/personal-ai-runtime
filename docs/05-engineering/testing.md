@@ -170,7 +170,7 @@ vitest，**不需要 Electron 已安装**。读 `main.js` 源码，字符串 `to
 
 ### 前端单元（vitest）
 
-`auth.test.ts`、`api/client.test.ts`，组件测试（`Button/Input/Dialog/Sidebar/MessageItem/ToolCallDisplay/ContextPanel/ConfirmationDialog/ChatView/ui.snapshots`），页面测试（`Dashboard/Inbox/Memories/Goals/Settings/Portrait/TrustReport`）。运行：`make test-frontend`（含 `tsc --noEmit`）。
+`auth.test.ts`、`api/client.test.ts`，hook 测试（`useChatMessages` 切会话竞态、`sw.test.ts` API 不进 Cache Storage），组件测试（`Button/Input/Dialog/Sidebar/MessageItem/ToolCallDisplay/ContextPanel/ConfirmationDialog/ChatView/ui.snapshots`），页面测试（`Dashboard/Inbox/Memories/Goals/Settings/Portrait/TrustReport`）。运行：`make test-frontend`（含 `tsc --noEmit`）。
 
 ## Soak 测试（Execution 契约 §3）
 

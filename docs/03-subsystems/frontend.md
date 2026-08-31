@@ -9,7 +9,7 @@
 - 挂载 `<RouterProvider router={router} />` 包在 `QueryClientProvider` 内。
 - `QueryClient` 默认：`staleTime 30s`、`refetchOnWindowFocus: false`、`retry: 1`。
 - `import "./auth"` 在模块加载时跑 `initAuth()`。
-- 生产模式注册 Service Worker `/sw.js`。
+- 生产模式注册 Service Worker `/sw.js`（桌面构建跳过）。API 与 WebSocket 为 network-only，不读写 Cache Storage；静态资源 cache-first，HTML network-first。`CACHE_VERSION` 变更会在 activate 时清掉旧缓存。
 
 ## 路由
 

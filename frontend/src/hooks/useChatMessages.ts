@@ -188,7 +188,11 @@ export function useChatMessages(
 
   const onLoadErrorRef = useRef(onLoadError);
   onLoadErrorRef.current = onLoadError;
-  const abortRef = useRef<AbortController | null>(null);
+  const loadAbortRef = useRef<AbortController | null>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
+  const loadGenRef = useRef(0);
+  const conversationIdRef = useRef(conversationId);
+  conversationIdRef.current = conversationId;
 
   const lastUserMessage = useMemo(() => {
     const userMsgs = messages.filter((m) => m.role === "user");
@@ -198,38 +202,55 @@ export function useChatMessages(
   const allToolResults = useMemo(() => messages.flatMap((m) => m.toolResults || []), [messages]);
 
   const loadMessages = useCallback(async () => {
+    loadAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
+    const gen = ++loadGenRef.current;
+    const convId = conversationId;
     setMessagesHydrated(false);
     try {
-      const msgs = await getMessages(conversationId);
-      if (abortRef.current) {
+      const msgs = await getMessages(convId, controller.signal);
+      if (gen !== loadGenRef.current || convId !== conversationIdRef.current) {
+        return;
+      }
+      const stream = streamAbortRef.current;
+      if (stream && !stream.signal.aborted) {
+        // An in-flight send already owns the visible transcript; applying
+        // history now would wipe the optimistic user/assistant bubbles.
         setMessagesHydrated(true);
         return;
       }
       setMessages(parseLoadedMessages(msgs));
+      setStreamingContent("");
+      setMessagesHydrated(true);
     } catch (err) {
+      if (controller.signal.aborted || gen !== loadGenRef.current) {
+        return;
+      }
       const msg =
         err instanceof ApiError ? err.message : err instanceof Error ? err.message : "加载消息失败";
       onLoadErrorRef.current?.(msg, "对话");
+      setStreamingContent("");
+      setMessagesHydrated(true);
     }
-    setStreamingContent("");
-    setMessagesHydrated(true);
   }, [conversationId]);
 
-  const convIdForAbortRef = useRef(conversationId);
   useEffect(() => {
-    if (convIdForAbortRef.current !== conversationId) {
-      abortRef.current?.abort();
-      abortRef.current = null;
-      convIdForAbortRef.current = conversationId;
-    }
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
+    setMessages([]);
     setIsLoading(false);
     setStreamingContent("");
     void loadMessages();
+    return () => {
+      loadAbortRef.current?.abort();
+    };
   }, [loadMessages, conversationId]);
 
   useEffect(() => {
     return () => {
-      abortRef.current?.abort();
+      loadAbortRef.current?.abort();
+      streamAbortRef.current?.abort();
     };
   }, []);
 
@@ -242,9 +263,11 @@ export function useChatMessages(
       const trimmed = text.trim();
       if (!trimmed || isLoading) return false;
 
-      abortRef.current?.abort();
+      loadAbortRef.current?.abort();
+      loadGenRef.current += 1;
+      streamAbortRef.current?.abort();
       const controller = new AbortController();
-      abortRef.current = controller;
+      streamAbortRef.current = controller;
 
       const userMsg: DisplayMessage = {
         id: `user-${Date.now()}`,
@@ -386,8 +409,8 @@ export function useChatMessages(
             );
           },
           () => {
-            if (abortRef.current === controller) {
-              abortRef.current = null;
+            if (streamAbortRef.current === controller) {
+              streamAbortRef.current = null;
             }
             setIsLoading(false);
           },
@@ -416,9 +439,9 @@ export function useChatMessages(
   );
 
   const cancelMessage = useCallback(async () => {
-    const controller = abortRef.current;
+    const controller = streamAbortRef.current;
     if (!controller || controller.signal.aborted) return;
-    abortRef.current = null;
+    streamAbortRef.current = null;
     controller.abort();
     // Consume the home-prompt handoff so abort does not look like a failed
     // send and get retried after isLoading flips back to false.
