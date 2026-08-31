@@ -25,7 +25,7 @@
 | `/tasks/:taskId` | `pages/Tasks.tsx` | 任务详情（plan / 进度 / 最近一步输出 / 执行前确认） |
 | `/inbox` | `pages/Inbox.tsx` | 未读分拣三列（重要 / 需跟进 / 可忽略）+ 最近 15 封（仅标题与发件人，未读加粗）+ 最近同步时间/结果/失败原因与重试 |
 | `/memories` | `pages/Memories.tsx` | 记忆列表 + 图谱（含 `?tab=portrait` 画像、`?tab=review` 待确认 triage：筛选/批量确认拒绝） |
-| `/dashboard` | `pages/Dashboard.tsx` | 总览仪表盘（含 `?tab=trust` 信任报告、`?tab=monitors` 收件箱/网页监控） |
+| `/dashboard` | `pages/Dashboard.tsx` | 「今天」工作台：三栏「需要你决定 / 今天要做 / AI 已处理」+ 无法进栏的导流提醒（`?tab=trust` 信任报告、`?tab=monitors` 收件箱/网页监控） |
 | `/settings` | `pages/Settings.tsx` | LLM/邮件/MCP/数据设置 |
 | `/approvals` | `pages/Approvals.tsx` | 审批队列 |
 | `/timeline` | `pages/Timeline.tsx` | 人生事件时间线 |
@@ -94,7 +94,7 @@ types.ts       ← 共享 TS 接口
 主要用于 server cache：
 
 - `useDashboard`（[`hooks/useDashboard.ts:30-139`](../../frontend/src/hooks/useDashboard.ts)）— 7 个并行查询（`costSummary`/`costByModel`/`toolSummary`/`memoryStats`/`health`/`notifications`/`dashboard`），全部 `refetchInterval: 60_000`、`staleTime: 30_000`、`retry: 1`。
-- `useMemoriesGroupedQuery`（[`hooks/useMemoriesQuery.ts:19-35`](../../frontend/src/hooks/useMemoriesQuery.ts)）— query key `["memories","grouped"]`、`staleTime: 10s`。
+- `useMemoriesGroupedQuery`（[`hooks/useMemoriesQuery.ts`](../../frontend/src/hooks/useMemoriesQuery.ts)）— query key `["memories","grouped", filters]`，支持 `conversationId` / `source` 过滤当前会话 proposed；`staleTime: 10s`。
 - 共享 query key 集中在 [`hooks/useWsInvalidationBridge.ts:13-19`](../../frontend/src/hooks/useWsInvalidationBridge.ts)：`memories`、`memoriesGrouped`、`goals`、`inbox`、`dashboard`。
 
 ### WebSocket 失效桥
@@ -125,7 +125,8 @@ types.ts       ← 共享 TS 接口
 
 - **`ui/`** — 原语：`Button`、`Badge`、`Card`、`Dialog`、`EmptyState`、`ErrorBoundary`、`Input`（含 `PasswordInput`）、`Spinner`。每个有 co-located `.test.tsx`。
 - **`layout/`** — `Sidebar.tsx`（聊天列表 + 导航，[`Sidebar.tsx:22-37`](../../frontend/src/components/layout/Sidebar.tsx)）、`NotificationBell.tsx`。
-- **`chat/`** — `ChatView.tsx`（活跃会话）、`ChatHome.tsx`（落地）、`MessageItem.tsx`、`ToolCallDisplay.tsx`、`ContextPanel.tsx`、`ConfirmationDialog.tsx`（审批模态；`needs_user` 写工具用「建议」话术）、`VoiceInput.tsx`、`CodeBlock.tsx`（懒加载 `react-syntax-highlighter`）。
+- **`chat/`** — `ChatView.tsx`（活跃会话；`ProposedMemoryBanner` 只展示当前会话 `source=conv:{id}` 的待确认记忆，toast 文案为「待确认」）、`ChatHome.tsx`（落地，横幅仍用全局 proposed 计数）、`MessageItem.tsx`、`ToolCallDisplay.tsx`、`ContextPanel.tsx`、`ConfirmationDialog.tsx`（审批模态；`needs_user` 写工具用「建议」话术）、`VoiceInput.tsx`、`CodeBlock.tsx`（懒加载 `react-syntax-highlighter`）。
+- **`dashboard/`** — `todayBuckets.ts` 纯前端分桶：需要你决定（待审批 / 待确认记忆 / important·actionable 邮件）、今天要做（3 日内截止或停滞目标）、AI 已处理（当日晨报 / 收件箱摘要 / 目标进展 / 可忽略邮件计数）。`RemindersPanel` 只保留 `reminder` / `url_monitor` / `morning_brief_failed`，先按 `related_id` 去重再截断。`morning_brief` 通知路由到 `/dashboard`。
 - **`notifications/`** — `NotificationDetailModal.tsx`。
 - **`onboarding/`** — `OnboardingWizard.tsx`（首次运行，`localStorage.onboarding_done` 门控）。
 

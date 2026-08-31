@@ -29,8 +29,8 @@ test.describe("Navigation and pages", () => {
 
   test("dashboard page loads with overview", async ({ page }) => {
     await page.goto("/dashboard", { waitUntil: "networkidle" });
-    await expect(page.getByRole("heading", { name: "今天" })).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText("进行中")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "今天", exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("今天要做")).toBeVisible();
   });
 
   test("settings page shows export button", async ({ page }) => {
@@ -259,7 +259,7 @@ test.describe("New pages", () => {
     await router.install(page);
 
     await page.goto("/dashboard", { waitUntil: "networkidle" });
-    await expect(page.getByRole("heading", { name: "今天" })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole("heading", { name: "今天", exact: true })).toBeVisible({ timeout: 10000 });
     // 数据主权面板折叠在"运行状况"中，需先展开
     await page.getByText("运行状况").click();
     await expect(page.getByRole("heading", { name: "我的数据" })).toBeVisible({ timeout: 5000 });

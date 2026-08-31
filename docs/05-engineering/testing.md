@@ -144,10 +144,10 @@ CI 报告用 `--cov-report=term-missing` 让缺失部分可见，开发者按需
 
 用 [`e2e/helpers.ts`](../../frontend/e2e/helpers.ts) 的 `MockApiRouter` 全 stub 后端。覆盖：
 
-- **导航/页面**：侧栏+导航、goals 渲染 `学习 Rust`、memories 渲染 `用户喜欢喝咖啡`、dashboard 显示 `AI 概览`/`AI 记住了`、settings 显示 `导出全部数据`+`数据主权`、approvals 空 state `暂无待审批`。
+- **导航/页面**：侧栏+导航、goals 渲染 `学习 Rust`、memories 渲染 `用户喜欢喝咖啡`、dashboard 显示「今天」三栏（含停滞目标进「今天要做」）、settings 显示 `导出全部数据`+`数据主权`、approvals 空 state `暂无待审批`。
 - **聊天流**：`/chat/:id` 输入框 placeholder `输入消息`、`发送` 按钮。
 - **聊天审批流**（headline）：mock SSE 流返回 `confirmation_required`（工具 `write_file`、`approval_id=ap-e2e-1`），断言 `确认写入文件` 对话框出现，点 `确认执行`，断言对话框在 `/api/chat/approvals/ap-e2e-1/resolve` 返回 approved 后消失；另一测试点 `取消` 验证 deny。
-- **可信闭环**（[`e2e/trust-loops.spec.ts`](../../frontend/e2e/trust-loops.spec.ts)）：首页发送进对话、重载后恢复待审批卡、收件箱失败后重试同步、确认 proposed 记忆后出现在聊天上下文。
+- **可信闭环**（[`e2e/trust-loops.spec.ts`](../../frontend/e2e/trust-loops.spec.ts)）：首页发送进对话、重载后恢复待审批卡、收件箱失败后重试同步、确认 proposed 记忆后出现在聊天上下文、会话 A 确认→会话 B 召回→更新后会话 C 只用新事实、工作台三栏与提醒区不重复同一实体。
 - **错误处理**：telemetry 端点 500 时 dashboard 显示 `重试`。
 - **新页面**：timeline（`人生时间线`、含 `BeliefFormed` 事件）、dashboard 数据主权面板（`1,250` events、`121` memories、`全部本地存储`、`导出我的数据`）。
 
@@ -171,7 +171,7 @@ vitest，**不需要 Electron 已安装**。读 `main.js` 源码，字符串 `to
 
 ### 前端单元（vitest）
 
-`auth.test.ts`、`api/client.test.ts`，hook 测试（`useChatMessages` 切会话竞态、`useNotifications` 指数退避重连、`sw.test.ts` API 不进 Cache Storage），组件测试（`Button/Input/Dialog/Sidebar/MessageItem/ToolCallDisplay/ContextPanel/ConfirmationDialog/ChatView/ui.snapshots`），页面测试（`Dashboard/Inbox/Memories/Goals/Settings/Portrait/TrustReport`）。运行：`make test-frontend`（含 `tsc --noEmit`）。
+`auth.test.ts`、`api/client.test.ts`，hook 测试（`useChatMessages` 切会话竞态、`useNotifications` 指数退避重连、`sw.test.ts` API 不进 Cache Storage），组件测试（`Button/Input/Dialog/Sidebar/MessageItem/ToolCallDisplay/ContextPanel/ConfirmationDialog/ChatView/ProposedMemoryBanner/todayBuckets/ui.snapshots`），页面测试（`Dashboard/Inbox/Memories/Goals/Settings/Portrait/TrustReport`）。运行：`make test-frontend`（含 `tsc --noEmit`）。
 
 ## Soak 测试（Execution 契约 §3）
 

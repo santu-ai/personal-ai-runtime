@@ -33,15 +33,21 @@ vi.mock("../hooks/useGoalsQuery", () => ({
   useGoalsQuery: vi.fn(() => ({ data: [] })),
 }));
 
+vi.mock("../hooks/useMemoriesQuery", () => ({
+  useProposedMemoryCountQuery: vi.fn(() => ({ data: 0 })),
+}));
+
 import { useDashboard } from "../hooks/useDashboard";
 import { useApprovalsQuery } from "../hooks/useApprovalsQuery";
 import { useInboxQuery } from "../hooks/useInboxQuery";
 import { useGoalsQuery } from "../hooks/useGoalsQuery";
+import { useProposedMemoryCountQuery } from "../hooks/useMemoriesQuery";
 
 const mockUseDashboard = vi.mocked(useDashboard);
 const mockUseApprovalsQuery = vi.mocked(useApprovalsQuery);
 const mockUseInboxQuery = vi.mocked(useInboxQuery);
 const mockUseGoalsQuery = vi.mocked(useGoalsQuery);
+const mockUseProposedMemoryCountQuery = vi.mocked(useProposedMemoryCountQuery);
 
 function mockDashboardData(overrides: Partial<ReturnType<typeof useDashboard>> = {}) {
   mockUseDashboard.mockReturnValue({
@@ -83,9 +89,9 @@ function mockDashboardData(overrides: Partial<ReturnType<typeof useDashboard>> =
     notifications: [
       {
         id: "n1",
-        type: "trigger",
-        title: "目标提醒",
-        content: "你的目标本周无进展",
+        type: "reminder",
+        title: "喝水提醒",
+        content: "该喝水了",
         created_at: "2026-06-10T08:00:00Z",
       },
     ],
@@ -107,6 +113,9 @@ describe("DashboardPage", () => {
       data: { emails: [], digest: {} },
     } as unknown as ReturnType<typeof useInboxQuery>);
     mockUseGoalsQuery.mockReturnValue({ data: [] } as unknown as ReturnType<typeof useGoalsQuery>);
+    mockUseProposedMemoryCountQuery.mockReturnValue({ data: 0 } as unknown as ReturnType<
+      typeof useProposedMemoryCountQuery
+    >);
     mockDashboardData();
   });
 
@@ -134,7 +143,7 @@ describe("DashboardPage", () => {
   it("renders proactive reminders section", () => {
     renderDashboard();
     expect(screen.getAllByText("AI 给你的提醒")[0]).toBeInTheDocument();
-    expect(screen.getAllByText("目标提醒")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("喝水提醒")[0]).toBeInTheDocument();
   });
 
   it("shows empty reminder message when none present", () => {
@@ -187,21 +196,31 @@ describe("DashboardPage", () => {
       ],
     } as unknown as ReturnType<typeof useApprovalsQuery>);
     renderDashboard();
-    expect(screen.getByText("待你决断")).toBeInTheDocument();
-    expect(screen.getByText("去处理")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("去处理"));
+    expect(screen.getByText("需要你决定")).toBeInTheDocument();
+    expect(screen.getByText("write_file")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("write_file"));
     expect(mockNavigate).toHaveBeenCalledWith("/approvals");
   });
 
   it("shows inbox card when pending emails exist", () => {
     mockUseInboxQuery.mockReturnValue({
       data: {
-        emails: [{ id: "e1", subject: "Hello", from: "a@b.com", date: "", preview: "" }],
+        emails: [
+          {
+            id: "e1",
+            subject: "Hello",
+            category: "important",
+            from: "a@b.com",
+            date: "",
+            preview: "",
+          },
+        ],
         digest: {},
       },
     } as unknown as ReturnType<typeof useInboxQuery>);
     renderDashboard();
-    expect(screen.getByText("待处理邮件")).toBeInTheDocument();
+    expect(screen.getByText("需要你决定")).toBeInTheDocument();
+    expect(screen.getByText("Hello")).toBeInTheDocument();
   });
 
   it("calls refresh on button click", () => {
@@ -285,5 +304,36 @@ describe("DashboardPage", () => {
     expect(screen.getByTestId("execution-trust")).toBeInTheDocument();
     expect(screen.getByText(/imap timeout/)).toBeInTheDocument();
     expect(screen.getByText(/重试中 memory_decay/)).toBeInTheDocument();
+  });
+
+  it("does not repeat an approval or morning brief in reminders", () => {
+    mockUseApprovalsQuery.mockReturnValue({
+      data: [{ id: "ap-1", action: "write_file", status: "pending" }],
+    } as unknown as ReturnType<typeof useApprovalsQuery>);
+    mockDashboardData({
+      notifications: [
+        {
+          id: "n-brief",
+          type: "morning_brief",
+          title: "早安简报 - 2026-08-31",
+          content: "今日摘要",
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: "n-rem",
+          type: "reminder",
+          title: "独立提醒",
+          content: "不能进三栏",
+          created_at: new Date().toISOString(),
+        },
+      ],
+    });
+    renderDashboard();
+    expect(screen.getByText("write_file")).toBeInTheDocument();
+    expect(screen.getByText("早安简报 - 2026-08-31")).toBeInTheDocument();
+    expect(screen.getByText("独立提醒")).toBeInTheDocument();
+    const reminderSection = screen.getByText("AI 给你的提醒").closest("div")?.parentElement;
+    expect(reminderSection?.textContent).not.toContain("write_file");
+    expect(reminderSection?.textContent).not.toContain("早安简报");
   });
 });

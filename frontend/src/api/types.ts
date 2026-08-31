@@ -75,6 +75,9 @@ export interface Notification {
   read?: number;
   /** server = HTTP pull; live = optimistic WebSocket push */
   source?: "server" | "live";
+  related_id?: string | null;
+  related_type?: string | null;
+  dedup_key?: string | null;
 }
 
 export interface CostSummary {
