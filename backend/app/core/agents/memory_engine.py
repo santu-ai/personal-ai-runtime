@@ -68,6 +68,8 @@ class MemoryEngine:
 
         Claim authority filter (Wave A): rejected / proposed / contested claims
         are excluded from prompt injection until the user ratifies them.
+        Decayed memories below the 0.3 confidence threshold are also dropped so
+        MemoryDecayed actually changes chat context.
         """
         enriched: list[dict] = []
         for hit in hits:
@@ -80,10 +82,13 @@ class MemoryEngine:
             claim = row.get("claim_status")
             if claim in ("proposed", "rejected", "contested"):
                 continue
+            confidence = float(row.get("confidence") or 0.5)
+            if confidence < 0.3:
+                continue
             enriched.append({
                 "id": memory_id,
                 "content": row.get("content") or hit.get("content", ""),
-                "confidence": float(row.get("confidence") or 0.5),
+                "confidence": confidence,
                 "category": row.get("category") or "",
                 "created_at": str(row.get("created_at") or ""),
             })

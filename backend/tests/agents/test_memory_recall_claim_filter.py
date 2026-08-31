@@ -84,6 +84,76 @@ def test_recall_orders_superseding_memory_first(monkeypatch):
     assert rendered.index("HUASHAN") < rendered.index("TIANSHAN")
 
 
+def test_recall_excludes_decayed_low_confidence(monkeypatch):
+    engine = MemoryEngine()
+    monkeypatch.setattr(
+        engine,
+        "search_relevant_memories",
+        lambda query, n_results=5: [
+            {"id": "low", "content": "stale preference"},
+            {"id": "high", "content": "current preference"},
+        ][:n_results],
+    )
+    rows = {
+        "low": {
+            "content": "stale preference",
+            "confidence": 0.2,
+            "claim_status": "ratified",
+            "category": "preference",
+            "created_at": "2026-08-01",
+        },
+        "high": {
+            "content": "current preference",
+            "confidence": 0.8,
+            "claim_status": "ratified",
+            "category": "preference",
+            "created_at": "2026-08-02",
+        },
+    }
+    monkeypatch.setattr(
+        "app.core.agents.memory_engine.read_ports.query_memory",
+        lambda memory_id: rows.get(memory_id),
+    )
+    enriched = engine.recall_for_context("preference", max_memories=3)
+    assert [m["id"] for m in enriched] == ["high"]
+
+
+def test_recall_keeps_relevance_order_for_high_confidence(monkeypatch):
+    engine = MemoryEngine()
+    monkeypatch.setattr(
+        engine,
+        "search_relevant_memories",
+        lambda query, n_results=5: [
+            {"id": "first", "content": "more relevant"},
+            {"id": "second", "content": "less relevant"},
+        ][:n_results],
+    )
+    rows = {
+        "first": {
+            "content": "more relevant",
+            "confidence": 0.9,
+            "claim_status": "ratified",
+            "category": "fact",
+            "created_at": "",
+        },
+        "second": {
+            "content": "less relevant",
+            "confidence": 0.85,
+            "claim_status": "ratified",
+            "category": "fact",
+            "created_at": "",
+        },
+    }
+    monkeypatch.setattr(
+        "app.core.agents.memory_engine.read_ports.query_memory",
+        lambda memory_id: rows.get(memory_id),
+    )
+    assert [m["id"] for m in engine._enrich_recall_hits([
+        {"id": "first"},
+        {"id": "second"},
+    ])] == ["first", "second"]
+
+
 def test_format_memory_context_without_timestamp_keeps_confidence():
     engine = MemoryEngine()
     rendered = engine.format_memory_context(

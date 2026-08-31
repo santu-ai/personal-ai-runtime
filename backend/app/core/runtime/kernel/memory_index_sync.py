@@ -82,13 +82,22 @@ def persist_memory_index_repair(
                 "VALUES (?, ?, ?, ?, 'pending', ?)",
                 (aggregate_id, event_type, event_seq, error[:500], now_iso),
             )
-    except Exception:
+    except Exception as exc:
         # 迁移前表尚不存在时无法持久化；退回仅内存，保证 emit_event 不被阻塞。
-        logger.debug(
-            "Could not persist memory index repair for %s — table unavailable",
-            aggregate_id,
-            exc_info=True,
-        )
+        message = str(exc).lower()
+        if "no such table" in message:
+            logger.debug(
+                "Could not persist memory index repair for %s — table unavailable",
+                aggregate_id,
+                exc_info=True,
+            )
+        else:
+            logger.warning(
+                "Could not persist memory index repair for %s: %s",
+                aggregate_id,
+                exc,
+                exc_info=True,
+            )
 
 
 def sync_memory_index(kernel: Any, event: "Event") -> None:

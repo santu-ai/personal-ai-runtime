@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from typing import Any, Coroutine
 
 from app.config import settings
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
 _TICK_SECONDS = 0.1        # main tick interval
 _TIMER_EVERY = 10          # timer scan every N ticks (~1s)
 _MAINT_EVERY = 100         # maintenance every N ticks (~10s)
+_WAL_CHECKPOINT_EVERY_SECONDS = 60.0
 
 
 class RuntimeLoop:
@@ -50,6 +52,7 @@ class RuntimeLoop:
         # Fire-and-forget background tasks. Held to prevent GC and to allow
         # graceful cancellation on stop(). See _spawn_background_task.
         self._bg_tasks: set[asyncio.Task] = set()
+        self._last_wal_checkpoint_at = 0.0
 
     # ── lifecycle ──────────────────────────────────────────────────────
 
@@ -338,6 +341,24 @@ class RuntimeLoop:
             await self._reclaim_stale_leases()
         except Exception:
             logger.exception("Running lease expiry failed")
+
+        try:
+            await self._maybe_wal_checkpoint()
+        except Exception:
+            logger.exception("WAL checkpoint failed")
+
+    async def _maybe_wal_checkpoint(self) -> None:
+        """PASSIVE WAL checkpoint about once a minute, off the event loop."""
+        now = time.monotonic()
+        if now - self._last_wal_checkpoint_at < _WAL_CHECKPOINT_EVERY_SECONDS:
+            return
+        self._last_wal_checkpoint_at = now
+        await asyncio.to_thread(self._wal_checkpoint)
+
+    def _wal_checkpoint(self) -> None:
+        from app.store.database import db
+
+        db.wal_checkpoint("PASSIVE")
 
     def _drain_memory_index_repairs(self) -> None:
         """Delegate durable repair drain to Kernel ABI (no private ``_db``)."""

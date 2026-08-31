@@ -274,3 +274,85 @@ async def test_scan_skips_future_timer(isolated_kernel):
             "AND aggregate_id='timer_future' LIMIT 1"
         ).fetchone()
     assert fired is None
+
+
+def _stub_maintenance_neighbors(loop, monkeypatch):
+    monkeypatch.setattr(loop, "_drain_memory_index_repairs", lambda: None)
+    monkeypatch.setattr(loop, "_prune_handler_executions", lambda: None)
+
+    async def noop() -> None:
+        await asyncio.sleep(0)
+
+    monkeypatch.setattr(loop, "_check_reactions", noop)
+    monkeypatch.setattr(loop, "_process_background_tasks", noop)
+    monkeypatch.setattr(loop, "_reclaim_stale_leases", noop)
+
+
+def test_wal_checkpoint_offloaded_and_throttled(kernel, monkeypatch):
+    """WAL checkpoint uses to_thread, runs about once a minute, and failures do not crash."""
+    from app.core.runtime import runtime_loop as rl_mod
+
+    loop = rl_mod.RuntimeLoop()
+    _stub_maintenance_neighbors(loop, monkeypatch)
+    calls: list[str] = []
+
+    def record_checkpoint() -> None:
+        calls.append("wal")
+
+    monkeypatch.setattr(loop, "_wal_checkpoint", record_checkpoint)
+
+    async def run() -> None:
+        await loop._maintenance()
+        await loop._maintenance()
+        # Force the interval to elapse without patching the stdlib clock
+        # (asyncio.Runner.close also calls time.monotonic).
+        loop._last_wal_checkpoint_at = __import__("time").monotonic() - 60.0
+        await loop._maintenance()
+
+    asyncio.run(run())
+    assert calls == ["wal", "wal"]
+
+
+def test_wal_checkpoint_does_not_block_event_loop(kernel, monkeypatch):
+    from app.core.runtime import runtime_loop as rl_mod
+
+    loop = rl_mod.RuntimeLoop()
+    _stub_maintenance_neighbors(loop, monkeypatch)
+
+    def slow_checkpoint() -> None:
+        import time as time_mod
+
+        time_mod.sleep(0.3)
+
+    monkeypatch.setattr(loop, "_wal_checkpoint", slow_checkpoint)
+    timer_fired: list[str] = []
+
+    async def mock_check_timers() -> None:
+        timer_fired.append("tick")
+
+    async def run() -> None:
+        maint_task = asyncio.create_task(loop._maintenance())
+        for _ in range(5):
+            await mock_check_timers()
+            await asyncio.sleep(0.05)
+        await maint_task
+        assert len(timer_fired) >= 5
+
+    asyncio.run(run())
+
+
+def test_maintenance_tolerates_wal_checkpoint_failure(kernel, monkeypatch):
+    from app.core.runtime import runtime_loop as rl_mod
+
+    loop = rl_mod.RuntimeLoop()
+    _stub_maintenance_neighbors(loop, monkeypatch)
+
+    def boom() -> None:
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(loop, "_wal_checkpoint", boom)
+
+    async def run() -> None:
+        await loop._maintenance()
+
+    asyncio.run(run())
