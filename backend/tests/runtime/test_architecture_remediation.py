@@ -104,7 +104,7 @@ async def test_inflight_cancel_projects_failed_before_task_cancel(kernel):
 
 
 def test_chat_continue_after_tool_is_one_shot_without_tools():
-    """ADR-R011 / C2: continue_after_tool_result must not reopen the tool loop."""
+    """Fallback path stays tools-free; loop resume lives in chat_stream."""
     import ast
     from pathlib import Path
 

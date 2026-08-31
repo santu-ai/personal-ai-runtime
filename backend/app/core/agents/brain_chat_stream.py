@@ -20,7 +20,7 @@ from app.core.agents.brain_stream_assemble import AssembledStream, iter_assemble
 from app.core.agents.brain_telemetry import record_llm_call
 from app.core.agents.conversation import ConversationManager
 from app.core.agents.tool_dispatcher import ToolDispatcher
-from app.core.agents.tool_postprocess import canned_summary
+from app.core.agents.tool_postprocess import canned_summary, compact_for_llm
 from app.core.runtime.governance.context_pipeline import get_sources
 from app.core.runtime.kernel_instance import kernel
 from app.core.runtime.plan_resume import (
@@ -67,6 +67,7 @@ async def chat_stream(
 
     restored = bool(ckpt and isinstance(ckpt.get("messages"), list) and ckpt["messages"])
     taint_registry.clear(correlation_id)
+    resume_after_approval = False
     if restored:
         assert ckpt is not None
         if ckpt.get("tainted"):
@@ -81,6 +82,10 @@ async def chat_stream(
         if saved_user:
             user_message = saved_user
         all_tc_for_msg = list(ckpt.get("tool_calls") or [])
+        resume_after_approval = bool(ckpt.get("resume_after_approval"))
+        if resume_after_approval:
+            # Prior assistant+tool_calls already persisted; only save new turns.
+            all_tc_for_msg = []
     else:
         messages = brain.build_messages(conversation, user_message, system_prompt=system_prompt)
         tool_iterations = 0
@@ -88,6 +93,16 @@ async def chat_stream(
     # E-8: save_user_message is idempotent per correlation_id so scheduler
     # retries of ChatRequested do not duplicate the user turn.
     conversation.save_user_message(user_message)
+
+    still_waiting = bool(
+        restored
+        and ckpt is not None
+        and ckpt.get("status") == "awaiting_approval"
+        and ckpt.get("pending_tool_call_ids")
+    )
+    if still_waiting:
+        yield {"type": "done"}
+        return
 
     def _persist_checkpoint() -> None:
         try:
@@ -116,11 +131,17 @@ async def chat_stream(
     full_content = ""
     cumulative_prompt_tokens = 0
     loop_start = time.time()
+    at_iteration_cap = (
+        resume_after_approval and tool_iterations >= settings.max_tool_iterations
+    )
 
     while tool_iterations < settings.max_tool_iterations:
         if time.time() - loop_start > settings.total_tool_loop_timeout:
             yield {"type": "error", "content": "Tool call loop timed out."}
-            _drop_checkpoint()
+            if resume_after_approval:
+                _persist_checkpoint()
+            else:
+                _drop_checkpoint()
             return
         if cumulative_prompt_tokens >= settings.max_tool_loop_prompt_tokens:
             yield {"type": "text_delta", "content": _TOKEN_CAP_NOTE}
@@ -132,7 +153,10 @@ async def chat_stream(
             response, client, used_provider = await brain.llm.create_stream(messages)
         except Exception as e:
             yield {"type": "error", "content": f"LLM API error: {str(e)}"}
-            _drop_checkpoint()
+            if resume_after_approval:
+                _persist_checkpoint()
+            else:
+                _drop_checkpoint()
             return
         if used_provider.name != brain.llm.provider.name:
             brain.llm.replace_provider(client, used_provider)
@@ -146,7 +170,10 @@ async def chat_stream(
 
         if assembled is None:
             yield {"type": "error", "content": "LLM stream ended without a result."}
-            _drop_checkpoint()
+            if resume_after_approval:
+                _persist_checkpoint()
+            else:
+                _drop_checkpoint()
             return
 
         assistant_content = assembled.visible_text
@@ -183,7 +210,7 @@ async def chat_stream(
 
         dispatcher = ToolDispatcher(kernel=kernel, conversation=conversation)
         iteration_tool_results: list[dict] = []
-        pending_approval = False
+        pending_ids: list[str] = []
         _tool_messages: list[dict] = []
 
         async for evt in dispatcher.dispatch(
@@ -196,16 +223,16 @@ async def chat_stream(
                 iteration_tool_results = evt.get("results", [])
                 _tool_messages = evt.get("tool_messages", [])
             elif evt_type == "confirmation_required":
-                pending_approval = True
+                tool_call_id = str(evt.get("tool_call_id") or "")
+                if tool_call_id:
+                    pending_ids.append(tool_call_id)
                 yield evt
             elif evt_type not in _DISPATCHER_INTERNAL:
                 yield evt
 
-        if pending_approval:
-            # Persist the assistant tool_calls turn before suspending.
-            # Otherwise approve → save_tool_result leaves an orphaned tool
-            # message, history-builder strips it, and continue_after_tool_result
-            # resumes as if the tool never ran.
+        if pending_ids:
+            # Persist assistant tool_calls and keep the checkpoint so approve
+            # can resume this same tool loop (ADR-R011).
             tc_for_msg = [{
                 "id": tc["id"], "type": "function",
                 "function": {"name": tc["function_name"], "arguments": tc["arguments"]},
@@ -214,7 +241,25 @@ async def chat_stream(
                 assistant_content or "",
                 tool_calls=tc_for_msg,
             )
-            _drop_checkpoint()
+            messages.extend(dispatcher.build_tool_call_messages(assistant_content, tool_calls_data))
+            messages.extend(_tool_messages)
+            try:
+                record_chat_checkpoint(
+                    correlation_id,
+                    {
+                        "conversation_id": conversation.conversation_id,
+                        "user_message": user_message,
+                        "messages": messages,
+                        "iteration": tool_iterations,
+                        "status": "awaiting_approval",
+                        "tainted": taint_registry.is_tainted(correlation_id),
+                        "tool_calls": all_tc_for_msg + tc_for_msg,
+                        "pending_tool_call_ids": pending_ids,
+                    },
+                    kernel=kernel,
+                )
+            except Exception:
+                logger.debug("chat checkpoint save failed", exc_info=True)
             return
 
         tc_for_msg = [{
@@ -254,6 +299,20 @@ async def chat_stream(
                 }
             break
 
+    if at_iteration_cap and not full_content:
+        synthesized = await brain.llm.synthesize_from_tool_results(messages)
+        if synthesized:
+            full_content = synthesized + _ITER_CAP_NOTE
+            yield {"type": "text_delta", "content": synthesized}
+            yield {"type": "text_delta", "content": _ITER_CAP_NOTE}
+        else:
+            yield {
+                "type": "error",
+                "content": "达到了最大工具调用次数，且无法根据已有结果生成回复。",
+            }
+            _persist_checkpoint()
+            return
+
     if full_content or all_tc_for_msg:
         try:
             sources = get_sources(conversation.conversation_id)
@@ -267,3 +326,143 @@ async def chat_stream(
 
     _drop_checkpoint()
     yield {"type": "done"}
+
+
+def chat_correlation_for_approval(approval_id: str) -> str:
+    """Return the originating Chat correlation_id for an ApprovalRequested event."""
+    if not approval_id:
+        return ""
+    try:
+        events = kernel.read_events(
+            type="ApprovalRequested",
+            aggregate_id=approval_id,
+            limit=5,
+        )
+    except Exception:
+        logger.debug("approval correlation lookup failed", exc_info=True)
+        return ""
+    for ev in events:
+        cid = getattr(ev, "correlation_id", None) or ""
+        if cid:
+            return str(cid)
+    return ""
+
+
+def append_approved_tool_to_checkpoint(
+    correlation_id: str,
+    *,
+    tool_call_id: str,
+    tool_name: str,
+    result_str: str,
+) -> dict | None:
+    """Attach an approved tool result to the waiting chat checkpoint.
+
+    Returns the updated payload, or None when no checkpoint exists (caller
+    should fall back to one-shot text continuation).
+    """
+    if not correlation_id:
+        return None
+    try:
+        ckpt = load_chat_checkpoint(correlation_id, kernel=kernel)
+    except Exception:
+        logger.debug("chat checkpoint load failed", exc_info=True)
+        return None
+    if not ckpt:
+        return None
+    messages = list(ckpt.get("messages") or [])
+    messages.append({
+        "role": "tool",
+        "tool_call_id": tool_call_id,
+        "content": compact_for_llm(tool_name, result_str),
+    })
+    pending = [
+        pid for pid in list(ckpt.get("pending_tool_call_ids") or [])
+        if pid != tool_call_id
+    ]
+    ckpt["messages"] = messages
+    ckpt["pending_tool_call_ids"] = pending
+    if pending:
+        ckpt["status"] = "awaiting_approval"
+        ckpt["resume_after_approval"] = False
+    else:
+        ckpt["status"] = "in_progress"
+        ckpt["resume_after_approval"] = True
+        ckpt["iteration"] = int(ckpt.get("iteration") or 0) + 1
+        ckpt["tool_calls"] = []
+    try:
+        record_chat_checkpoint(correlation_id, ckpt, kernel=kernel)
+    except Exception:
+        logger.debug("chat checkpoint save failed", exc_info=True)
+        return None
+    return ckpt
+
+
+async def resume_after_approved_tool(
+    brain,
+    conversation: ConversationManager,
+    *,
+    correlation_id: str,
+    execution_id: str = "",
+) -> dict:
+    """Resume the Chat tool loop after an approved tool result is persisted."""
+    user_message = ""
+    try:
+        ckpt = load_chat_checkpoint(correlation_id, kernel=kernel)
+    except Exception:
+        ckpt = None
+    if ckpt:
+        user_message = str(ckpt.get("user_message") or "")
+
+    from app.chat.prompt_compiler import CompileContext, prompt_compiler
+
+    system_prompt = await prompt_compiler.compile(
+        CompileContext(
+            conversation_id=conversation.conversation_id,
+            execution_id=execution_id or None,
+            user_message=user_message,
+            stage="post_tool",
+        ),
+    )
+
+    content = ""
+    pending_data: dict = {}
+    tool_results: list[dict] = []
+    error_content = ""
+    async for evt in chat_stream(
+        brain,
+        conversation,
+        user_message,
+        system_prompt=system_prompt,
+        execution_id=execution_id,
+        correlation_id=correlation_id,
+    ):
+        evt_type = evt.get("type")
+        if evt_type == "text_delta" and evt.get("content"):
+            content += evt["content"]
+        elif evt_type == "tool_result":
+            tool_results.append({
+                "tool_name": evt.get("tool_name", ""),
+                "tool_call_id": evt.get("tool_call_id", ""),
+                "content": evt.get("content", ""),
+            })
+        elif evt_type == "confirmation_required":
+            pending_data = {
+                "tool_name": evt.get("tool_name", ""),
+                "tool_args": evt.get("tool_args") or {},
+                "tool_call_id": evt.get("tool_call_id", ""),
+                "approval_id": evt.get("approval_id", ""),
+            }
+        elif evt_type == "error":
+            error_content = evt.get("content", "Error")
+            break
+
+    return {
+        "assistant_message": content,
+        "pending": bool(pending_data.get("approval_id")),
+        "tool_name": pending_data.get("tool_name", ""),
+        "tool_args": pending_data.get("tool_args") or {},
+        "approval_id": pending_data.get("approval_id", ""),
+        "tool_call_id": pending_data.get("tool_call_id", ""),
+        "tool_results": tool_results,
+        "error": error_content,
+    }

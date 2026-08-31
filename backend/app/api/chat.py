@@ -348,4 +348,12 @@ async def resolve_approval(approval_id: str, body: ResolveApprovalRequest):
     if result.get("assistant_message"):
         from app.core.agents.tool_markup import strip_tool_markup
         payload["assistant_message"] = strip_tool_markup(result["assistant_message"])
+    if result.get("pending"):
+        payload["pending"] = True
+        payload["tool_name"] = result.get("next_tool_name") or result.get("tool_name") or ""
+        payload["tool_args"] = result.get("next_tool_args") or result.get("tool_args") or {}
+        payload["approval_id"] = result.get("next_approval_id") or ""
+        payload["tool_call_id"] = result.get("next_tool_call_id") or ""
+    if result.get("tool_results"):
+        payload["tool_results"] = result["tool_results"]
     return payload

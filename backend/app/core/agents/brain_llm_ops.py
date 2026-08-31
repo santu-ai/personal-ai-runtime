@@ -52,11 +52,11 @@ async def _complete_text(
 async def continue_after_tool_result(
     llm, conversation: "ConversationManager", *, depth: int = 0,
 ) -> str:
-    """One-shot LLM completion after approval resolution closes the tool loop.
+    """One-shot text completion when no chat checkpoint exists to resume.
 
-    ``depth`` bounds recursive re-entry: each approval resolution may
-    trigger another tool call that again needs approval, and without a
-    cap the loop could recurse indefinitely.
+    Approval continuation normally resumes ``chat_stream`` (tools allowed,
+    bounded by ``max_tool_iterations``). This helper remains tools-free for
+    legacy turns and tests that never recorded ``chat_ckpt``.
     """
     if depth >= llm.MAX_CONTINUE_DEPTH:
         logger.warning(

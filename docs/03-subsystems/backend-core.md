@@ -52,7 +52,7 @@ Failover 执行在 `brain_llm_ops` / `brain_llm_client`（[`brain_llm_client.py`
 
 ### 非流式续接
 
-`BrainLLMClient.continue_after_tool_result(conversation, depth)`（[`brain_llm_client.py`](../../backend/app/core/agents/brain_llm_client.py)）在审批解决后做一次性补全，递归深度上限 3。
+`BrainLLMClient.continue_after_tool_result(conversation, depth)`（[`brain_llm_client.py`](../../backend/app/core/agents/brain_llm_client.py)）是无 checkpoint 时的 tools-free 回退。有 `chat_ckpt` 时审批后续写走 [`brain_chat_stream.py`](../../backend/app/core/agents/brain_chat_stream.py) 的 `resume_after_approved_tool`，受 `max_tool_iterations` 约束。
 
 ## ToolDispatcher — 工具派发
 
@@ -150,7 +150,7 @@ Handlers（[`handlers/`](../../backend/app/core/agents/handlers/)）：
 | Handler | 订阅事件 | 行为 |
 |---|---|---|
 | `chat_handler.py` | `ChatRequested` | 编译 prompt（`prompt_compiler`），跑 `Brain.chat_stream`，把 `text_delta`/`tool_call_start`/`tool_result` 推到 SSE 队列（不进 event_log——频率太高），emit `ChatCompleted` + `ChatDone` |
-| `approve_handlers.py`（`runtime/handlers/`） | `ApproveRequested` | 解决审批，可能经 `brain.continue_after_tool_result` 续接对话 |
+| `approve_handlers.py`（`runtime/handlers/`） | `ApproveRequested` | 解决审批；有 checkpoint 时恢复 Chat 工具环，否则 `continue_after_tool_result` |
 | `execute_handlers.py`（`runtime/handlers/`） | `ExecuteRequested` | 执行 work item 的 `executable_plan`（含 `work_type=background`） |
 | `inbox_poll_handlers.py`（`runtime/handlers/`） | `InboxPollRequested` | 经 capability 拉未读邮件 |
 | `timer_trigger_handler.py` | `TimerFired` | 按 `handler_name` 分派到 product 函数：`deadline_alert`/`memory_decay`/`world_model_snapshot`/`projection_snapshots`/`inbox_poll`/`inbox_digest`/`morning_brief`/`url_monitor`（`url_monitor` 与 `inbox_poll` 一样 fire-and-forget，避免 30s ExecutionPolicy 超时） |

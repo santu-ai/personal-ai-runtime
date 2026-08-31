@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from app.core.runtime.handler_registry import subscribe
 from app.core.runtime.plan_resume import (
     PlanResume,
+    record_chat_tool_success,
     register_plan_resume,
     take_plan_resume,
 )
@@ -114,9 +115,16 @@ async def on_approve_requested(ctx: "ExecutionContext", event: "Event") -> None:
         assistant_message = ""
         if conv_id and tool_call_id:
             try:
+                from app.core.agents.brain_chat_stream import chat_correlation_for_approval
+
+                chat_corr = chat_correlation_for_approval(approval_id) or ctx.correlation_id
                 assistant_message = _persist_denied_chat_turn(
-                    conv_id, tool_call_id, tool_name, ctx.correlation_id,
+                    conv_id, tool_call_id, tool_name, chat_corr,
                 )
+                if chat_corr:
+                    from app.core.runtime.plan_resume import clear_chat_checkpoint
+
+                    clear_chat_checkpoint(chat_corr, kernel=kernel)
             except Exception as exc:
                 logger.warning("Approve: persist denied chat turn failed: %s", exc)
         ctx.emit(
@@ -150,18 +158,49 @@ async def on_approve_requested(ctx: "ExecutionContext", event: "Event") -> None:
         })
 
     assistant_message = ""
+    continuation: dict = {}
     if conv_id and tool_call_id:
         from app.core.agents.brain import Brain
+        from app.core.agents.brain_chat_stream import (
+            append_approved_tool_to_checkpoint,
+            chat_correlation_for_approval,
+            resume_after_approved_tool,
+        )
         from app.core.agents.conversation import ConversationManager
+        from app.core.runtime.taint import is_write_class_tool
 
+        chat_corr = chat_correlation_for_approval(approval_id) or (ctx.correlation_id or "")
         conversation = ConversationManager(
             conversation_id=conv_id,
-            correlation_id=ctx.correlation_id or None,
+            correlation_id=chat_corr or None,
         )
         conversation.save_tool_result(result_str, tool_call_id)
+        if cap_result["status"] == "success" and chat_corr and is_write_class_tool(tool_name):
+            try:
+                record_chat_tool_success(
+                    chat_corr, tool_name, tool_args, result_str, kernel=kernel,
+                )
+            except Exception:
+                logger.debug("Approve: chat idempotency record failed", exc_info=True)
+
+        ckpt = append_approved_tool_to_checkpoint(
+            chat_corr,
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            result_str=result_str,
+        ) if chat_corr else None
         brain = Brain()
         try:
-            assistant_message = await brain.continue_after_tool_result(conversation)
+            if ckpt is not None and not ckpt.get("pending_tool_call_ids"):
+                continuation = await resume_after_approved_tool(
+                    brain,
+                    conversation,
+                    correlation_id=chat_corr,
+                    execution_id=ctx.execution_id or "",
+                )
+                assistant_message = continuation.get("assistant_message") or ""
+            elif ckpt is None:
+                assistant_message = await brain.continue_after_tool_result(conversation)
         except Exception as exc:
             logger.warning("Approve: conversation resume failed: %s", exc)
 
@@ -196,6 +235,12 @@ async def on_approve_requested(ctx: "ExecutionContext", event: "Event") -> None:
             "tool_call_id": tool_call_id,
             "assistant_message": assistant_message or "",
             "plan_resumed": plan_resumed,
+            "pending": bool(continuation.get("pending")),
+            "next_tool_name": continuation.get("tool_name") or "",
+            "next_tool_args": continuation.get("tool_args") or {},
+            "next_approval_id": continuation.get("approval_id") or "",
+            "next_tool_call_id": continuation.get("tool_call_id") or "",
+            "tool_results": continuation.get("tool_results") or [],
         },
         caused_by=event.id,
     )

@@ -248,6 +248,10 @@ async def test_chat_stream_persists_tool_calls_on_confirmation(isolated_kernel, 
         assistants = [m for m in conv.get_history() if m["role"] == "assistant"]
         assert len(assistants) == 1
         assert assistants[0]["tool_calls"][0]["id"] == "call_shell_1"
+        ckpt = load_chat_checkpoint("apr-corr", kernel=k)
+        assert ckpt is not None
+        assert ckpt.get("status") == "awaiting_approval"
+        assert ckpt.get("pending_tool_call_ids") == ["call_shell_1"]
 
         conv.save_tool_result(
             '{"status":"error","error":"Command not found: echo"}',
@@ -262,5 +266,448 @@ async def test_chat_stream_persists_tool_calls_on_confirmation(isolated_kernel, 
             m.get("role") == "tool" and m.get("tool_call_id") == "call_shell_1"
             for m in assembled
         )
+    finally:
+        configure_plan_resume_db(None)
+
+
+def _fake_llm():
+    return SimpleNamespace(
+        provider=SimpleNamespace(
+            name="fake", model="fake",
+            price_per_prompt_token=0, price_per_completion_token=0,
+        ),
+        create_stream=AsyncMock(return_value=("resp", None, SimpleNamespace(
+            name="fake", model="fake",
+            price_per_prompt_token=0, price_per_completion_token=0,
+        ))),
+        replace_provider=lambda *_a, **_k: None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_approval_resume_continues_tool_loop(isolated_kernel, monkeypatch):
+    k, db = isolated_kernel
+    configure_plan_resume_db(db)
+    cid = "apr-resume-corr"
+    try:
+        monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", k)
+        monkeypatch.setattr("app.core.agents.brain_chat_stream.kernel", k)
+        monkeypatch.setattr(
+            "app.chat.prompt_compiler.prompt_compiler.compile",
+            AsyncMock(return_value="s"),
+        )
+
+        async def pending_then_text(_kwargs=None, **_kw):
+            return {"status": "pending", "approval_id": "apr_resume_1"}
+
+        monkeypatch.setattr(k, "invoke_capability", pending_then_text)
+
+        stream_calls = {"n": 0}
+
+        async def fake_iter(_response):
+            stream_calls["n"] += 1
+            if stream_calls["n"] == 1:
+                yield {
+                    "type": "_stream_assembled",
+                    "result": AssembledStream(
+                        visible_text="",
+                        tool_calls=[{
+                            "id": "call_write_1",
+                            "function_name": "write_file",
+                            "arguments": '{"path": "/tmp/x", "content": "hi"}',
+                        }],
+                    ),
+                }
+            else:
+                yield {"type": "text_delta", "content": "文件已写入，接下来可以继续。"}
+                yield {
+                    "type": "_stream_assembled",
+                    "result": AssembledStream(
+                        visible_text="文件已写入，接下来可以继续。",
+                        tool_calls=[],
+                    ),
+                }
+
+        monkeypatch.setattr(
+            "app.core.agents.brain_chat_stream.iter_assembled_stream",
+            fake_iter,
+        )
+        monkeypatch.setattr(
+            "app.core.agents.brain_chat_stream.record_llm_call",
+            lambda *a, **_k: 0,
+        )
+
+        def build_messages(_conv, user_message, *, system_prompt=""):
+            return [
+                {"role": "system", "content": system_prompt or "s"},
+                {"role": "user", "content": user_message},
+            ]
+
+        brain = SimpleNamespace(llm=_fake_llm(), build_messages=build_messages)
+        conv = ConversationManager(conversation_id="apr-resume-conv", kernel=k)
+        k.emit_event(
+            "ConversationCreated", "conversation", "apr-resume-conv",
+            payload={"title": "apr"}, actor="user",
+        )
+
+        from app.core.agents import brain_chat_stream
+
+        events = []
+        async for evt in brain_chat_stream.chat_stream(
+            brain, conv, "写个文件",
+            system_prompt="s",
+            correlation_id=cid,
+        ):
+            events.append(evt)
+        assert any(e.get("type") == "confirmation_required" for e in events)
+
+        conv.save_tool_result('{"ok": true}', "call_write_1")
+        updated = brain_chat_stream.append_approved_tool_to_checkpoint(
+            cid,
+            tool_call_id="call_write_1",
+            tool_name="write_file",
+            result_str='{"ok": true}',
+        )
+        assert updated is not None
+        assert updated.get("resume_after_approval") is True
+        assert not updated.get("pending_tool_call_ids")
+
+        result = await brain_chat_stream.resume_after_approved_tool(
+            brain, conv, correlation_id=cid,
+        )
+        assert "文件已写入" in result["assistant_message"]
+        assert result["pending"] is False
+        assert load_chat_checkpoint(cid, kernel=k) is None
+    finally:
+        configure_plan_resume_db(None)
+
+
+@pytest.mark.asyncio
+async def test_approval_resume_can_request_second_confirmation(isolated_kernel, monkeypatch):
+    k, db = isolated_kernel
+    configure_plan_resume_db(db)
+    cid = "apr-second-corr"
+    try:
+        monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", k)
+        monkeypatch.setattr("app.core.agents.brain_chat_stream.kernel", k)
+        monkeypatch.setattr(
+            "app.chat.prompt_compiler.prompt_compiler.compile",
+            AsyncMock(return_value="s"),
+        )
+
+        async def always_pending(**_kwargs):
+            return {"status": "pending", "approval_id": f"apr_{stream_calls['n']}"}
+
+        stream_calls = {"n": 0}
+
+        async def fake_iter(_response):
+            stream_calls["n"] += 1
+            yield {
+                "type": "_stream_assembled",
+                "result": AssembledStream(
+                    visible_text="",
+                    tool_calls=[{
+                        "id": f"call_{stream_calls['n']}",
+                        "function_name": "write_file",
+                        "arguments": '{"path": "/tmp/x", "content": "hi"}',
+                    }],
+                ),
+            }
+
+        monkeypatch.setattr(k, "invoke_capability", always_pending)
+        monkeypatch.setattr(
+            "app.core.agents.brain_chat_stream.iter_assembled_stream",
+            fake_iter,
+        )
+        monkeypatch.setattr(
+            "app.core.agents.brain_chat_stream.record_llm_call",
+            lambda *a, **_k: 0,
+        )
+
+        def build_messages(_conv, user_message, *, system_prompt=""):
+            return [
+                {"role": "system", "content": system_prompt or "s"},
+                {"role": "user", "content": user_message},
+            ]
+
+        brain = SimpleNamespace(llm=_fake_llm(), build_messages=build_messages)
+        conv = ConversationManager(conversation_id="apr-second-conv", kernel=k)
+        k.emit_event(
+            "ConversationCreated", "conversation", "apr-second-conv",
+            payload={"title": "apr"}, actor="user",
+        )
+
+        from app.core.agents import brain_chat_stream
+
+        async for _ in brain_chat_stream.chat_stream(
+            brain, conv, "写两个文件",
+            system_prompt="s",
+            correlation_id=cid,
+        ):
+            pass
+
+        conv.save_tool_result('{"ok": true}', "call_1")
+        brain_chat_stream.append_approved_tool_to_checkpoint(
+            cid,
+            tool_call_id="call_1",
+            tool_name="write_file",
+            result_str='{"ok": true}',
+        )
+        result = await brain_chat_stream.resume_after_approved_tool(
+            brain, conv, correlation_id=cid,
+        )
+        assert result["pending"] is True
+        assert result["tool_call_id"] == "call_2"
+        ckpt = load_chat_checkpoint(cid, kernel=k)
+        assert ckpt is not None
+        assert ckpt.get("status") == "awaiting_approval"
+        assert ckpt.get("pending_tool_call_ids") == ["call_2"]
+    finally:
+        configure_plan_resume_db(None)
+
+
+@pytest.mark.asyncio
+async def test_waiting_checkpoint_survives_chat_replay(isolated_kernel, monkeypatch):
+    k, db = isolated_kernel
+    configure_plan_resume_db(db)
+    cid = "apr-wait-corr"
+    try:
+        monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", k)
+        monkeypatch.setattr("app.core.agents.brain_chat_stream.kernel", k)
+
+        async def pending_invoke(**_kwargs):
+            return {"status": "pending", "approval_id": "apr_wait"}
+
+        monkeypatch.setattr(k, "invoke_capability", pending_invoke)
+
+        async def fake_iter(_response):
+            yield {
+                "type": "_stream_assembled",
+                "result": AssembledStream(
+                    visible_text="",
+                    tool_calls=[{
+                        "id": "call_wait",
+                        "function_name": "write_file",
+                        "arguments": "{}",
+                    }],
+                ),
+            }
+
+        monkeypatch.setattr(
+            "app.core.agents.brain_chat_stream.iter_assembled_stream",
+            fake_iter,
+        )
+        monkeypatch.setattr(
+            "app.core.agents.brain_chat_stream.record_llm_call",
+            lambda *a, **_k: 0,
+        )
+
+        def build_messages(_conv, user_message, *, system_prompt=""):
+            return [
+                {"role": "system", "content": system_prompt or "s"},
+                {"role": "user", "content": user_message},
+            ]
+
+        brain = SimpleNamespace(llm=_fake_llm(), build_messages=build_messages)
+        conv = ConversationManager(conversation_id="apr-wait-conv", kernel=k)
+        k.emit_event(
+            "ConversationCreated", "conversation", "apr-wait-conv",
+            payload={"title": "apr"}, actor="user",
+        )
+        from app.core.agents import brain_chat_stream
+
+        async for _ in brain_chat_stream.chat_stream(
+            brain, conv, "wait", system_prompt="s", correlation_id=cid,
+        ):
+            pass
+        assert load_chat_checkpoint(cid, kernel=k) is not None
+
+        events = []
+        async for evt in brain_chat_stream.chat_stream(
+            brain, conv, "wait", system_prompt="s", correlation_id=cid,
+        ):
+            events.append(evt)
+        assert events == [{"type": "done"}]
+        ckpt = load_chat_checkpoint(cid, kernel=k)
+        assert ckpt is not None
+        assert ckpt.get("status") == "awaiting_approval"
+    finally:
+        configure_plan_resume_db(None)
+
+
+@pytest.mark.asyncio
+async def test_approval_resume_respects_iteration_cap(isolated_kernel, monkeypatch):
+    k, db = isolated_kernel
+    configure_plan_resume_db(db)
+    cid = "apr-cap-corr"
+    try:
+        monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", k)
+        monkeypatch.setattr("app.core.agents.brain_chat_stream.kernel", k)
+        monkeypatch.setattr(
+            "app.chat.prompt_compiler.prompt_compiler.compile",
+            AsyncMock(return_value="s"),
+        )
+        monkeypatch.setattr(
+            "app.core.agents.brain_chat_stream.settings.max_tool_iterations",
+            1,
+        )
+        monkeypatch.setattr(
+            "app.core.agents.brain_chat_stream.record_llm_call",
+            lambda *a, **_k: 0,
+        )
+
+        llm_calls = {"n": 0}
+
+        async def fake_iter(_response):
+            llm_calls["n"] += 1
+            yield {
+                "type": "_stream_assembled",
+                "result": AssembledStream(
+                    visible_text="",
+                    tool_calls=[{
+                        "id": "call_cap",
+                        "function_name": "write_file",
+                        "arguments": "{}",
+                    }],
+                ),
+            }
+
+        monkeypatch.setattr(
+            "app.core.agents.brain_chat_stream.iter_assembled_stream",
+            fake_iter,
+        )
+
+        async def pending_invoke(**_kwargs):
+            return {"status": "pending", "approval_id": "apr_cap"}
+
+        monkeypatch.setattr(k, "invoke_capability", pending_invoke)
+
+        llm = _fake_llm()
+        llm.synthesize_from_tool_results = AsyncMock(return_value="已根据已有结果收尾。")
+
+        def build_messages(_conv, user_message, *, system_prompt=""):
+            return [
+                {"role": "system", "content": system_prompt or "s"},
+                {"role": "user", "content": user_message},
+            ]
+
+        brain = SimpleNamespace(llm=llm, build_messages=build_messages)
+        conv = ConversationManager(conversation_id="apr-cap-conv", kernel=k)
+        k.emit_event(
+            "ConversationCreated", "conversation", "apr-cap-conv",
+            payload={"title": "apr"}, actor="user",
+        )
+        from app.core.agents import brain_chat_stream
+
+        async for _ in brain_chat_stream.chat_stream(
+            brain, conv, "cap", system_prompt="s", correlation_id=cid,
+        ):
+            pass
+
+        conv.save_tool_result('{"ok": true}', "call_cap")
+        brain_chat_stream.append_approved_tool_to_checkpoint(
+            cid,
+            tool_call_id="call_cap",
+            tool_name="write_file",
+            result_str='{"ok": true}',
+        )
+        result = await brain_chat_stream.resume_after_approved_tool(
+            brain, conv, correlation_id=cid,
+        )
+        assert "已根据已有结果收尾" in result["assistant_message"]
+        assert "次数上限" in result["assistant_message"]
+        assert result["pending"] is False
+        assert llm_calls["n"] == 1
+        assert load_chat_checkpoint(cid, kernel=k) is None
+        llm.synthesize_from_tool_results.assert_awaited()
+    finally:
+        configure_plan_resume_db(None)
+
+
+@pytest.mark.asyncio
+async def test_approval_resume_error_keeps_checkpoint(isolated_kernel, monkeypatch):
+    k, db = isolated_kernel
+    configure_plan_resume_db(db)
+    cid = "apr-err-corr"
+    try:
+        monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", k)
+        monkeypatch.setattr("app.core.agents.brain_chat_stream.kernel", k)
+        monkeypatch.setattr(
+            "app.chat.prompt_compiler.prompt_compiler.compile",
+            AsyncMock(return_value="s"),
+        )
+        monkeypatch.setattr(
+            "app.core.agents.brain_chat_stream.record_llm_call",
+            lambda *a, **_k: 0,
+        )
+
+        stream_calls = {"n": 0}
+
+        async def fake_iter(_response):
+            yield {
+                "type": "_stream_assembled",
+                "result": AssembledStream(
+                    visible_text="",
+                    tool_calls=[{
+                        "id": "call_err",
+                        "function_name": "write_file",
+                        "arguments": "{}",
+                    }],
+                ),
+            }
+
+        monkeypatch.setattr(
+            "app.core.agents.brain_chat_stream.iter_assembled_stream",
+            fake_iter,
+        )
+
+        async def pending_invoke(**_kwargs):
+            return {"status": "pending", "approval_id": "apr_err"}
+
+        monkeypatch.setattr(k, "invoke_capability", pending_invoke)
+
+        def build_messages(_conv, user_message, *, system_prompt=""):
+            return [
+                {"role": "system", "content": system_prompt or "s"},
+                {"role": "user", "content": user_message},
+            ]
+
+        llm = _fake_llm()
+        orig_create = llm.create_stream
+
+        async def create_stream_then_fail(*args, **kwargs):
+            stream_calls["n"] += 1
+            if stream_calls["n"] > 1:
+                raise RuntimeError("llm down")
+            return await orig_create(*args, **kwargs)
+
+        llm.create_stream = create_stream_then_fail
+        brain = SimpleNamespace(llm=llm, build_messages=build_messages)
+        conv = ConversationManager(conversation_id="apr-err-conv", kernel=k)
+        k.emit_event(
+            "ConversationCreated", "conversation", "apr-err-conv",
+            payload={"title": "apr"}, actor="user",
+        )
+        from app.core.agents import brain_chat_stream
+
+        async for _ in brain_chat_stream.chat_stream(
+            brain, conv, "err", system_prompt="s", correlation_id=cid,
+        ):
+            pass
+
+        conv.save_tool_result('{"ok": true}', "call_err")
+        brain_chat_stream.append_approved_tool_to_checkpoint(
+            cid,
+            tool_call_id="call_err",
+            tool_name="write_file",
+            result_str='{"ok": true}',
+        )
+        result = await brain_chat_stream.resume_after_approved_tool(
+            brain, conv, correlation_id=cid,
+        )
+        assert result["error"]
+        ckpt = load_chat_checkpoint(cid, kernel=k)
+        assert ckpt is not None
+        assert ckpt.get("resume_after_approval") is True
     finally:
         configure_plan_resume_db(None)

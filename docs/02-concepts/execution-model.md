@@ -41,7 +41,7 @@ Personal AI Runtime 的所有执行路径用**一套三车道语义**解释。�
 | Lease / multi-worker ownership | Absent / **Non-goal** | 单进程；见 [runtime-invariants.md](runtime-invariants.md) INV-W6；`check_single_process_control_plane.py` |
 | Quota | Partial | HTTP/WS rate limits；tool-loop token/iteration caps；无 per-tenant scheduler quota |
 | Backpressure | Present | `scheduler_max_pending` → `queue_full` |
-| Durable continuation | Partial | `plan_resumes` for Execute/Approve；Chat 工具环 `chat_ckpt:{correlation_id}` 供 interrupt 重放；审批后仍是 one-shot `continue_after_tool_result`（ADR-R011） |
+| Durable continuation | Yes | `plan_resumes` for Execute/Approve；Chat 工具环 `chat_ckpt:{correlation_id}` 供 interrupt 重放与审批后续写（ADR-R011） |
 
 ## 负空间登记（Negative Space）
 
@@ -49,7 +49,7 @@ Personal AI Runtime 的所有执行路径用**一套三车道语义**解释。�
 |-------------------|--------|-------|
 | Distributed lease | Non-goal | Personal single-process Runtime |
 | Multi-worker Scheduler | Non-goal | Same process as FastAPI lifespan |
-| Chat tool-loop cursor across restart | Partial | `chat_ckpt:{correlation_id}` + Scheduler interrupt replay；审批 resolve 仍 one-shot |
+| Chat tool-loop cursor across restart | Yes | `chat_ckpt:{correlation_id}` + Scheduler interrupt replay；审批 resolve 恢复同一工具环 |
 | Multi-tenant isolation | Non-goal | Single-user Principal model |
 
 ## 生命周期对照（Work / Execution / PlanResume）
