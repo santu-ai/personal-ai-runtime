@@ -76,7 +76,7 @@ make test-live        # RUN_LIVE_LLM=1 pytest tests/e2e_live/ -m live_llm（需�
 
 **覆盖率是结果，不是目标。**
 
-CI 的 `--fail-under` 阈值定在 75（runtime）和 50（api），不是 90+。理由：
+CI 的 `--fail-under` 阈值定在 runtime 75、api 50、harness 68、product 80，不是 90+。理由：
 
 - **覆盖率高 ≠ 测试质量高**。低覆盖率套件如果测的是核心不变量，比高覆盖率套件全是断言 `"T" in iso_string` 这种实现细节更有价值。
 - **高阈值反而鼓励坏测试**。当开发者被强制把 coverage 推到 83% 才能合并，他们会写出大量 `test_coverage_*.py` 测试，绑死实现细节（ISO 时间格式、字符串前缀），重构时大量失败，最终开发者学会「绕开测试」而不是「修测试」。
@@ -88,7 +88,7 @@ CI 报告用 `--cov-report=term-missing` 让缺失部分可见，开发者按需
 
 ## 层 2：架构不变量脚本
 
-独立脚本位于 [`backend/scripts/`](../../backend/scripts/)，每个验证一个不变量。它们通过 Makefile 的 `backend-ci-core` 单一入口同时接入 `make ci-local` 与 GitHub Actions：先并行跑 `backend-ci-static`，再并行跑 `backend-ci-runtime`；清单由 `BACKEND_CI_STATIC` / `BACKEND_CI_RUNTIME` 维护。调用约定为 `python -m scripts.<name>`（从 `backend/` 目录）。每个 PR 的合并门槛是 `make merge-gate`：后端全量测试、前端测试与构建、`boundary`、`layer-deps`、`projection-provenance`、`rebuild-verify`。
+独立脚本位于 [`backend/scripts/`](../../backend/scripts/)，每个验证一个不变量。它们通过 Makefile 的 `backend-ci-core` 单一入口同时接入 `make ci-local` 与 GitHub Actions：先并行跑 `backend-ci-static`，再并行跑 `backend-ci-runtime`；清单由 `BACKEND_CI_STATIC` / `BACKEND_CI_RUNTIME` 维护。调用约定为 `python -m scripts.<name>`（从 `backend/` 目录）。每个 PR 的合并门槛是 `make merge-gate`：后端 **coverage 门**测试、前端测试与构建、`boundary`、`layer-deps`、`projection-provenance`、`rebuild-verify`。
 
 ### 边界 / 归属 / 溯源
 
@@ -207,7 +207,7 @@ python scripts/soak_dogfood_report.py --db path/to/other.db
 
 [`backend/pyproject.toml`](../../backend/pyproject.toml) 的 `[tool.coverage.run]`：
 
-- `source = ["app/api", "app/product"]`（默认 coverage 作用域）
+- `source = ["app/core/runtime", "app/core/harness", "app/api", "app/product"]`
 - `runtime_loop.py` / `capability_governance.py` **不再 omit**；cron 边界与治理决策矩阵由 `tests/runtime/test_runtime_loop_cron.py`、`tests/runtime/test_capability_governance_matrix.py` 覆盖
 
-CI 两个 `--fail-under` 门（见 [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)）：`app/core/runtime/*` ≥75%、`app/api/*` ≥50%。
+CI `--fail-under` 门（`make test-backend-coverage` / Windows `Makefile.ps1 -Task test-backend-coverage`）：`app/core/runtime/*` ≥75%、`app/api/*` ≥50%、`app/core/harness/*` ≥68%、`app/product/*` ≥80%。GitHub `backend` job 经 `make backend-ci-core` 走同一套门。

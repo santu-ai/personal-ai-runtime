@@ -89,7 +89,7 @@ Kernel 拥有 Chroma 索引。`emit_event` 对 `MEMORY_INDEX_EVENT_TYPES` 在**�
 
 ### 记忆衰减
 
-记忆衰减逻辑内联在 [`cron_registry.py`](../../backend/app/core/runtime/cron_registry.py) 与 [`projectors_core.py`](../../backend/app/core/runtime/kernel/projectors_core.py) 的 `MemoryDecayed` 投影中：查询 `decay_eligible=True` 的记忆并发 `MemoryDecayed` 事件。由每日 03:00 的 cron 触发。
+记忆衰减逻辑内联在 [`cron_registry.py`](../../backend/app/core/runtime/cron_registry.py) 与 [`projectors_core.py`](../../backend/app/core/runtime/kernel/projectors_core.py) 的 `MemoryDecayed` 投影中：查询 `decay_eligible=True` 的记忆并发 `MemoryDecayed` 事件。由每日 03:00 的 cron 触发。召回侧 `_enrich_recall_hits` 会丢掉置信度低于 `0.3` 的命中，因此衰减会真正改变聊天上下文；Chroma 仍保留候选，由 governed 投影最终裁决。
 
 ### 本地 LLM
 
@@ -103,13 +103,17 @@ Kernel 拥有 Chroma 索引。`emit_event` 对 `MEMORY_INDEX_EVENT_TYPES` 在**�
 |---|---|
 | 每 tick（100ms） | 循环空闲 |
 | 每 10 tick（~1s） | `_check_timers` — 扫描 `timer_events` 投影中 `fire_at <= now` 的项，emit `TimerFired`；对 cron 类型用**同一 aggregate_id** 再 emit `TimerCreated`（`INSERT OR REPLACE` 把行标回 `active`）。重启时 `_init_timers` 只跳过仍为 `active` 的具名行。 |
-| 每 100 tick（~10s） | `_maintenance` — 4 件事（见下） |
+| 每 100 tick（~10s） | `_maintenance`（见下） |
 
 `_maintenance`（[`runtime_loop.py`](../../backend/app/core/runtime/runtime_loop.py)）：
-1. `agent_registry.cleanup_stale`
-2. `kernel.expire_stale_approvals`
-3. `_smart_notification_check` — 对停滞 ≥3 天的目标发通知（[`runtime_loop.py`](../../backend/app/core/runtime/runtime_loop.py)）
-4. `_process_background_tasks` — 拉一个 pending `work_items(work_type=background)`，emit `WorkItemStatusChanged(running)` + `submit_command("ExecuteRequested")`（[`runtime_loop.py`](../../backend/app/core/runtime/runtime_loop.py)）
+
+1. `kernel.expire_stale_approvals`
+2. `_check_reactions`
+3. `_process_background_tasks` — 拉 pending `work_items(work_type=background)`，fire-and-forget `submit_command("ExecuteRequested")`
+4. `_drain_memory_index_repairs`（`asyncio.to_thread`）
+5. `_prune_handler_executions`（`asyncio.to_thread`）
+6. `_reclaim_stale_leases`
+7. `_maybe_wal_checkpoint` — 约每 60s 一次 `PRAGMA wal_checkpoint(PASSIVE)`，同样 off-loop
 
 cron 表达式解析 `_next_cron_fire(cron_expr, from_ts)`（[`runtime_loop.py`](../../backend/app/core/runtime/runtime_loop.py)）支持 `minute=*/N`、`hour`/`minute`、`day`、`day_of_week`（名称或数字）。
 

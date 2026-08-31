@@ -147,7 +147,7 @@ types.ts       ← 共享 TS 接口
 4. `<main>` 含 `<Suspense>` + `<ErrorBoundary>` 包 `<Outlet />`。
 5. 对话框：删除会话确认、`OnboardingWizard`、`NotificationDetailModal`。
 
-Layout 在根处挂三个副作用 hook：`useNotifications()`（持有 WS）、`useWsInvalidationBridge()`、挂载时调 `getSystemHealth()` + `listConversations()`。
+Layout 在根处挂三个副作用 hook：`useNotifications()`（唯一持有 WS）、`useWsInvalidationBridge()`、会话/健康查询。仪表盘经 `LiveNotificationContext` 消费实时通知，不再自开第二条 socket。
 
 ## 构建 / 开发 / 测试
 

@@ -106,6 +106,7 @@ Available tasks:
   docker-up            docker compose up --build
   docker-down          docker compose down
   compose-smoke        Verify Caddy same-origin / , /api/system/live, /ws
+  secrets-scan         gitleaks working-tree scan
 
 Note: Unix ``make backend-ci-core`` runs static/runtime waves with -j parallel.
 PowerShell runs modules sequentially for reliable exit codes; use make/WSL for parallel CI.
@@ -259,6 +260,17 @@ PowerShell runs modules sequentially for reliable exit codes; use make/WSL for p
         & $PSCommandPath "backend-ci-runtime"
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         Write-Host "backend-ci-core checks passed"
+    }
+    "secrets-scan" {
+        Push-Location $Root
+        try {
+            $gitleaks = Get-Command gitleaks -ErrorAction Stop
+            & $gitleaks.Source detect --config .gitleaks.toml --source . --no-banner --redact
+            if ($LASTEXITCODE -ne 0) { Pop-Location; exit $LASTEXITCODE }
+        } catch {
+            Write-Host "gitleaks not installed — install from https://github.com/gitleaks/gitleaks"
+        }
+        Pop-Location
     }
     "docker-up" {
         docker compose up --build

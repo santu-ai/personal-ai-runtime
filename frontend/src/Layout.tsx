@@ -15,7 +15,7 @@ import ErrorBoundary from "./components/ui/ErrorBoundary";
 import NoticeBanner from "./components/ui/NoticeBanner";
 import ToastCard from "./components/ui/ToastCard";
 import QuickCaptureDialog from "./components/quickcapture/QuickCaptureDialog";
-import { useNotifications } from "./hooks/useNotifications";
+import { LiveNotificationContext, useNotifications } from "./hooks/useNotifications";
 import { useWsInvalidationBridge } from "./hooks/useWsInvalidationBridge";
 
 export default function Layout() {
@@ -28,7 +28,7 @@ export default function Layout() {
   const { data: health } = useSettingsHealthQuery();
   const authRequired = Boolean(health?.auth_required);
 
-  const { toasts, dismissToast } = useNotifications();
+  const { toasts, liveNotifications, dismissToast } = useNotifications();
   useWsInvalidationBridge();
   const { errors, dismissError, backendUnavailable, addError } = useErrorStore();
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -80,6 +80,7 @@ export default function Layout() {
   };
 
   return (
+    <LiveNotificationContext.Provider value={liveNotifications}>
     <div className="flex h-screen bg-surface-base text-fg-primary">
       <Sidebar
         conversations={conversations}
@@ -180,5 +181,6 @@ export default function Layout() {
 
       <QuickCaptureDialog />
     </div>
+    </LiveNotificationContext.Provider>
   );
 }

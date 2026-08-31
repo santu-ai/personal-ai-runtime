@@ -21,10 +21,6 @@ vi.mock("../hooks/useDashboard", () => ({
   useDashboard: vi.fn(),
 }));
 
-vi.mock("../hooks/useNotifications", () => ({
-  useNotifications: vi.fn(),
-}));
-
 vi.mock("../hooks/useApprovalsQuery", () => ({
   useApprovalsQuery: vi.fn(() => ({ data: [] })),
 }));
@@ -38,13 +34,11 @@ vi.mock("../hooks/useGoalsQuery", () => ({
 }));
 
 import { useDashboard } from "../hooks/useDashboard";
-import { useNotifications } from "../hooks/useNotifications";
 import { useApprovalsQuery } from "../hooks/useApprovalsQuery";
 import { useInboxQuery } from "../hooks/useInboxQuery";
 import { useGoalsQuery } from "../hooks/useGoalsQuery";
 
 const mockUseDashboard = vi.mocked(useDashboard);
-const mockUseNotifications = vi.mocked(useNotifications);
 const mockUseApprovalsQuery = vi.mocked(useApprovalsQuery);
 const mockUseInboxQuery = vi.mocked(useInboxQuery);
 const mockUseGoalsQuery = vi.mocked(useGoalsQuery);
@@ -101,12 +95,6 @@ function mockDashboardData(overrides: Partial<ReturnType<typeof useDashboard>> =
     refresh: vi.fn(),
     ...overrides,
   });
-
-  mockUseNotifications.mockReturnValue({
-    toasts: [],
-    liveNotifications: [],
-    dismissToast: vi.fn(),
-  });
 }
 
 describe("DashboardPage", () => {
@@ -151,11 +139,6 @@ describe("DashboardPage", () => {
 
   it("shows empty reminder message when none present", () => {
     mockDashboardData({ notifications: [] });
-    mockUseNotifications.mockReturnValue({
-      toasts: [],
-      liveNotifications: [],
-      dismissToast: vi.fn(),
-    });
     renderDashboard();
     expect(screen.getAllByText("暂无提醒")[0]).toBeInTheDocument();
   });

@@ -28,7 +28,8 @@ connectors, timeline, work_items
 
 **Startup**：
 
-1. `run_startup_checks()` → 快照
+1. `acquire_instance_lock()`（单实例文件锁）
+2. `run_startup_checks()` → 快照
 2. AUTH_TOKEN 安全策略：未设且非 localhost bind 且未开 `ALLOW_NO_AUTH_ON_EXPOSED` → `sys.exit(1)`
 3. `init_scheduler()` — 注册 cron + 任务依赖订阅
 4. `capability_governance.seed_from_json(kernel)` — 从 [`capability_policy.json`](../../backend/capability_policy.json) 播种 `PolicyCreated`
@@ -37,12 +38,14 @@ connectors, timeline, work_items
 7. `enrich_with_mcp_status(...)`
 8. 若裸奔运行，启动 600s 周期安全告警协程
 
-**Shutdown**：
+关闭段包在 `try/finally` 里，每步 best-effort，**最后**释放单实例锁：
 
 1. `await stop_mcp_mesh()`
 2. 取消周期性 auth warning
 3. `await runtime_loop.stop()`
-4. 关闭所有 WebSocket
+4. `shutdown_scheduler()`（cron）
+5. 关闭所有 WebSocket
+6. `release_instance_lock()`
 
 ## 端点分类速览
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { getAuthToken } from "../api/client";
 import { dispatchWsEvent } from "./useWsInvalidationBridge";
 
@@ -52,6 +52,12 @@ function buildWsProtocols(): string[] | undefined {
 
 const INITIAL_RECONNECT_MS = 1000;
 const MAX_RECONNECT_MS = 60_000;
+
+export const LiveNotificationContext = createContext<NotificationItem[]>([]);
+
+export function useLiveNotifications(): NotificationItem[] {
+  return useContext(LiveNotificationContext);
+}
 
 function reconnectDelayMs(attempt: number): number {
   return Math.min(MAX_RECONNECT_MS, INITIAL_RECONNECT_MS * 2 ** Math.max(0, attempt));

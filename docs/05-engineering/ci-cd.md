@@ -18,9 +18,9 @@ push/PR 到 `main` 时触发，六个 job：
 
 **`dependency-platforms` job**：在 `ubuntu-latest` / `macos-latest` / `windows-latest` 上执行依赖同步检查与 `--require-hashes` 安装，确保同一份 lock 可在三大平台安装（含 Windows 条件依赖与 Chroma 二进制包）。
 
-**`frontend` job**（Node 22）：
+**`frontend` job**（Node 22；前端 Docker 构建镜像仍是 `node:20-slim`）：
 
-1. `npm install`。
+1. `npm ci`。
 2. `tsc --noEmit`。
 3. `npm run lint`（`eslint src/ && prettier --check src/`）。
 4. `npm test`（vitest）。

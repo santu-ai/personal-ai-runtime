@@ -62,7 +62,7 @@ make docker-down    # docker compose down
 
 - 基础镜像 `python:3.12-slim`。
 - 装 `build-essential` + `curl`。
-- `pip install -r requirements.txt`。
+- `pip install --require-hashes -r requirements.lock`。
 - 复制 backend。
 - `PYTHONPATH=/app/backend`、`DATA_DIR=/app/backend/data`。
 - 创建非 root `par` 用户（uid 1000）。
@@ -73,7 +73,7 @@ make docker-down    # docker compose down
 
 两阶段：
 
-- **builder**：接受构建参数 `VITE_API_HOST` / `VITE_API_PORT` / `VITE_AUTH_TOKEN`，`npm ci` + `npm run build`。
+- **builder**：`node:20-slim`（CI 用 Node 22；镜像构建基线仍是 20），接受构建参数 `VITE_API_HOST` / `VITE_API_PORT` / `VITE_AUTH_TOKEN`，`npm ci` + `npm run build`。
 - **runtime**：`caddy:2-alpine`，复制 [`frontend/Caddyfile`](../../frontend/Caddyfile) 与 `dist` 到 `/usr/share/caddy`，监听 5173；`/api/*` 与 `/ws` 反代到 `backend:8000`。
 
 ## 桌面端打包

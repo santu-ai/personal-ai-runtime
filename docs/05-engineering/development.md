@@ -229,4 +229,4 @@ make lockfile
 make secrets-scan
 ```
 
-[`Makefile:130-132`](../../Makefile)：`gitleaks detect --config .gitleaks.toml --source . --no-banner --redact`。规则见 [`.gitleaks.toml`](../../.gitleaks.toml)，允许 `.env.example`/`docs/*.md` 中的占位符。
+[`Makefile`](../../Makefile) 的 `secrets-scan`：`gitleaks detect --config .gitleaks.toml --source . --no-banner --redact`（Windows：`powershell -File Makefile.ps1 -Task secrets-scan`）。规则见 [`.gitleaks.toml`](../../.gitleaks.toml)，允许 `.env.example`/`docs/*.md` 中的占位符，不放行整个 `backend/tests/`。

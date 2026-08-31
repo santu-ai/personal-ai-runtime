@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { markNotificationRead, type Notification } from "../api/client";
 import { useDashboard } from "../hooks/useDashboard";
-import { useNotifications } from "../hooks/useNotifications";
+import { useLiveNotifications } from "../hooks/useNotifications";
 import { useApprovalsQuery } from "../hooks/useApprovalsQuery";
 import { useInboxQuery } from "../hooks/useInboxQuery";
 import { useGoalsQuery } from "../hooks/useGoalsQuery";
@@ -39,7 +39,7 @@ export default function DashboardPage() {
 
   const { cost, tools, memory, health, notifications, dashboard, loading, error, refresh } =
     useDashboard();
-  const { liveNotifications } = useNotifications();
+  const liveNotifications = useLiveNotifications();
   const { data: pendingApprovals = [] } = useApprovalsQuery();
   const { data: inboxData } = useInboxQuery();
   const { data: goals = [] } = useGoalsQuery();
