@@ -19,7 +19,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import uuid
 from typing import Any, Coroutine
 
 from app.config import settings
@@ -198,10 +197,9 @@ class RuntimeLoop:
                     continue
                 if schedule_type == "cron" and cron_expr:
                     next_fire = self._next_cron_fire(cron_expr, now)
-                    new_tid = f"t_{uuid.uuid4().hex[:12]}"
                     try:
                         kernel.emit_event(
-                            "TimerCreated", "timer", new_tid,
+                            "TimerCreated", "timer", timer_id,
                             payload={
                                 "handler_name": handler_name,
                                 "schedule_type": "cron",
@@ -257,7 +255,26 @@ class RuntimeLoop:
         minute = int(parts.get("minute", "0"))
         target = now_local.replace(hour=hour, minute=minute, second=0, microsecond=0)
         if "day" in parts:
-            target = target.replace(day=int(parts["day"]))
+            from calendar import monthrange
+
+            day = int(parts["day"])
+
+            def _clamp_day(year: int, month: int, wanted: int) -> int:
+                return min(wanted, monthrange(year, month)[1])
+
+            target = target.replace(
+                day=_clamp_day(target.year, target.month, day),
+            )
+            if target <= now_local:
+                if target.month == 12:
+                    next_year, next_month = target.year + 1, 1
+                else:
+                    next_year, next_month = target.year, target.month + 1
+                target = target.replace(
+                    year=next_year,
+                    month=next_month,
+                    day=_clamp_day(next_year, next_month, day),
+                )
         elif "day_of_week" in parts:
             # Support both numeric (0=Mon) and name ("mon", "monday")
             dow_str = parts["day_of_week"].lower()
@@ -269,16 +286,12 @@ class RuntimeLoop:
                 dow = int(dow_str)
             except ValueError:
                 pass
-            days_ahead = dow - target.weekday()
-            if days_ahead <= 0:
-                days_ahead += 7
+            days_ahead = (dow - target.weekday()) % 7
             target += timedelta(days=days_ahead)
-        if target <= now_local:
-            if "day" in parts or "day_of_week" in parts:
-                target += timedelta(days=1) if "day" not in parts else timedelta(days=31)
-                target = target.replace(day=1)
-            else:
-                target += timedelta(days=1)
+            if target <= now_local:
+                target += timedelta(days=7)
+        elif target <= now_local:
+            target += timedelta(days=1)
 
         # Always return as UTC ISO8601 for consistent string comparison in DB
         return target.astimezone(UTC).isoformat().replace("+00:00", "Z")

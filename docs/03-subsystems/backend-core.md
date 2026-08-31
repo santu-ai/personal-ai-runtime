@@ -102,7 +102,7 @@ Kernel 拥有 Chroma 索引。`emit_event` 对 `MEMORY_INDEX_EVENT_TYPES` 在**�
 | Tick 频率 | 动作 |
 |---|---|
 | 每 tick（100ms） | 循环空闲 |
-| 每 10 tick（~1s） | `_check_timers` — 扫描 `timer_events` 投影中 `fire_at <= now` 的项，emit `TimerFired`；对 cron 类型计算下次触发并 emit `TimerCreated` |
+| 每 10 tick（~1s） | `_check_timers` — 扫描 `timer_events` 投影中 `fire_at <= now` 的项，emit `TimerFired`；对 cron 类型用**同一 aggregate_id** 再 emit `TimerCreated`（`INSERT OR REPLACE` 把行标回 `active`）。重启时 `_init_timers` 只跳过仍为 `active` 的具名行。 |
 | 每 100 tick（~10s） | `_maintenance` — 4 件事（见下） |
 
 `_maintenance`（[`runtime_loop.py`](../../backend/app/core/runtime/runtime_loop.py)）：

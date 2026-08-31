@@ -66,3 +66,48 @@ def test_day_of_week_name_advances_to_named_weekday():
     nxt = datetime.fromisoformat(result.replace("Z", "+00:00"))
     # Next Monday 09:00 CST = 2026-08-10 01:00 UTC
     assert nxt == datetime(2026, 8, 10, 1, 0, tzinfo=UTC)
+
+
+def test_day_of_week_keeps_today_when_time_has_not_arrived():
+    """Sunday 05:00 local + day_of_week=sun,hour=6 → later today, not next week."""
+    # 2026-08-02 is Sunday. 05:00 CST = 2026-08-01 21:00 UTC
+    from_ts = datetime(2026, 8, 1, 21, 0, 0, tzinfo=UTC)
+    result = RuntimeLoop._next_cron_fire(
+        "day_of_week=sun,hour=6,minute=0",
+        from_ts=from_ts,
+    )
+    nxt = datetime.fromisoformat(result.replace("Z", "+00:00"))
+    # 2026-08-02 06:00 CST = 2026-08-01 22:00 UTC
+    assert nxt == datetime(2026, 8, 1, 22, 0, tzinfo=UTC)
+
+
+def test_day_of_week_rolls_to_next_week_when_todays_slot_passed():
+    """Sunday 07:00 local + day_of_week=sun,hour=6 → next Sunday."""
+    # 07:00 CST Sunday = 2026-08-01 23:00 UTC
+    from_ts = datetime(2026, 8, 1, 23, 0, 0, tzinfo=UTC)
+    result = RuntimeLoop._next_cron_fire(
+        "day_of_week=sun,hour=6,minute=0",
+        from_ts=from_ts,
+    )
+    nxt = datetime.fromisoformat(result.replace("Z", "+00:00"))
+    # 2026-08-09 06:00 CST = 2026-08-08 22:00 UTC
+    assert nxt == datetime(2026, 8, 8, 22, 0, tzinfo=UTC)
+
+
+def test_monthly_day_keeps_this_month_when_not_yet_due():
+    """day=15 from Aug 10 local → Aug 15, not Sep 1."""
+    # 2026-08-10 18:00 CST = 10:00 UTC
+    from_ts = datetime(2026, 8, 10, 10, 0, 0, tzinfo=UTC)
+    result = RuntimeLoop._next_cron_fire("day=15,hour=9,minute=0", from_ts=from_ts)
+    nxt = datetime.fromisoformat(result.replace("Z", "+00:00"))
+    # Aug 15 09:00 CST = Aug 15 01:00 UTC
+    assert nxt == datetime(2026, 8, 15, 1, 0, tzinfo=UTC)
+
+
+def test_monthly_day_rolls_to_next_month_after_the_slot():
+    """day=15 from Aug 20 local → Sep 15."""
+    from_ts = datetime(2026, 8, 20, 10, 0, 0, tzinfo=UTC)
+    result = RuntimeLoop._next_cron_fire("day=15,hour=9,minute=0", from_ts=from_ts)
+    nxt = datetime.fromisoformat(result.replace("Z", "+00:00"))
+    assert nxt == datetime(2026, 9, 15, 1, 0, tzinfo=UTC)
+

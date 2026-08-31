@@ -45,7 +45,7 @@ def _init_timers():
     for sched in SCHEDULES:
         name = sched["name"]
         existing = read_ports.query_timer(name)
-        if existing:
+        if existing and existing.get("status") == "active":
             continue
         cron_expr = sched.get("cron_expr", "")
         next_fire = RuntimeLoop._next_cron_fire(cron_expr)

@@ -84,3 +84,123 @@ def test_next_cron_fire_returns_aware_future():
     parsed = datetime.fromisoformat(result)
     assert parsed.tzinfo is not None
     assert parsed > now
+
+
+def test_init_timers_reseeds_fired_named_timer(isolated_kernel, monkeypatch):
+    """Fired named cron rows must be re-created as active on startup."""
+    k, _db = isolated_kernel
+    monkeypatch.setattr("app.core.runtime.cron_registry.kernel", k)
+
+    k.emit_event(
+        "TimerCreated",
+        "timer",
+        "morning_brief",
+        payload={
+            "handler_name": "morning_brief",
+            "schedule_type": "cron",
+            "cron_expr": "hour=8,minute=0",
+            "fire_at": "2020-01-01T00:00:00Z",
+        },
+        actor="test",
+    )
+    k.emit_event(
+        "TimerFired",
+        "timer",
+        "morning_brief",
+        payload={"fired_at": "2020-01-01T00:00:01Z", "handler_name": "morning_brief"},
+        actor="test",
+    )
+    assert k.query_state("timer_events", id="morning_brief")[0]["status"] == "fired"
+
+    from app.core.runtime.cron_registry import _init_timers
+
+    _init_timers()
+    row = k.query_state("timer_events", id="morning_brief")[0]
+    assert row["status"] == "active"
+    assert row["fire_at"] > "2020-01-01T00:00:00Z"
+
+
+@pytest.mark.asyncio
+async def test_cron_fire_reuses_aggregate_id(isolated_kernel, monkeypatch):
+    """TimerFired + next TimerCreated share the named id so restart can heal."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.core.runtime.runtime_loop import RuntimeLoop
+    import app.core.runtime.runtime_loop as rl_mod
+
+    k, _db = isolated_kernel
+    past = (datetime.now(UTC) - timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
+    k.emit_event(
+        "TimerCreated",
+        "timer",
+        "morning_brief",
+        payload={
+            "handler_name": "morning_brief",
+            "schedule_type": "cron",
+            "cron_expr": "hour=8,minute=0",
+            "fire_at": past,
+        },
+        actor="test",
+    )
+    monkeypatch.setattr(rl_mod, "kernel", k)
+
+    await RuntimeLoop()._check_timers()
+
+    row = k.query_state("timer_events", id="morning_brief")[0]
+    assert row["status"] == "active"
+    assert row["fire_at"] > past
+    with _db.get_db() as conn:
+        fired = conn.execute(
+            "SELECT 1 FROM event_log WHERE type='TimerFired' "
+            "AND aggregate_id='morning_brief' LIMIT 1"
+        ).fetchone()
+        created = conn.execute(
+            "SELECT COUNT(*) FROM event_log WHERE type='TimerCreated' "
+            "AND aggregate_id='morning_brief'"
+        ).fetchone()
+    assert fired is not None
+    assert created[0] >= 2
+
+
+@pytest.mark.asyncio
+async def test_cron_reschedule_failure_healed_by_init_timers(isolated_kernel, monkeypatch):
+    """If TimerCreated after fire fails, _init_timers restores the named row."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.core.runtime.runtime_loop import RuntimeLoop
+    import app.core.runtime.runtime_loop as rl_mod
+
+    k, _db = isolated_kernel
+    past = (datetime.now(UTC) - timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
+    k.emit_event(
+        "TimerCreated",
+        "timer",
+        "morning_brief",
+        payload={
+            "handler_name": "morning_brief",
+            "schedule_type": "cron",
+            "cron_expr": "hour=8,minute=0",
+            "fire_at": past,
+        },
+        actor="test",
+    )
+
+    original_emit = k.emit_event
+
+    def _emit(event_type, *args, **kwargs):
+        if event_type == "TimerCreated":
+            raise RuntimeError("reschedule boom")
+        return original_emit(event_type, *args, **kwargs)
+
+    monkeypatch.setattr(k, "emit_event", _emit)
+    monkeypatch.setattr(rl_mod, "kernel", k)
+    await RuntimeLoop()._check_timers()
+    assert k.query_state("timer_events", id="morning_brief")[0]["status"] == "fired"
+
+    monkeypatch.setattr(k, "emit_event", original_emit)
+    monkeypatch.setattr("app.core.runtime.cron_registry.kernel", k)
+    from app.core.runtime.cron_registry import _init_timers
+
+    _init_timers()
+    assert k.query_state("timer_events", id="morning_brief")[0]["status"] == "active"
+
