@@ -93,11 +93,12 @@ make demo         # LLM_API_KEY=${LLM_API_KEY:-demo-seed} python3 -m scripts.see
 
 | 闭环 | 通过标准（开发期） | 状态标记 |
 |------|-------------------|---------|
-| Chat | 真实 LLM 多轮对话 + 至少 1 次工具审批弹窗并放行 | `pass` / `fail` |
-| Memory | 对话触发记忆抽取 → Memories 页可见 → 后续对话能召回该记忆 | `pass` / `fail` |
+| Chat | 真实 LLM 多轮对话 + 至少 1 次工具审批弹窗并放行；若模型继续请求敏感工具，应能再次确认而无需另发消息 | `pass` / `fail` |
+| Memory | 对话触发记忆抽取 → 当前会话确认 proposed → **新会话**能召回该记忆；更新事实后只答新值 | `pass` / `fail` |
 | Work items | 创建/分解/完成至少一条 work item（goal/task） | `pass` / `fail` |
 | Desktop | `make desktop` 托盘运行，WebSocket 推送时收到系统通知 | `pass` / `fail` |
 | Inbox | Gmail 拉取可见邮件；**未接 Gmail 时记 `blocked`，不假装通过** | `pass` / `fail` / `blocked` |
+| 今天工作台 | 打开 `/dashboard` 后 **30 秒内**从「需要你决定」完成一次有效操作（进入审批/记忆确认/邮件）；主栏与提醒区无重复实体 | `pass` / `fail` |
 
 记录方式：在本地笔记或 PR 描述里记一行 `2026-WW Chat:pass Memory:fail Work:pass Desktop:pass Inbox:blocked`，无需入库。连续两周某项 `fail` 应优先排进下周计划。
 

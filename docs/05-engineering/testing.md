@@ -148,6 +148,7 @@ CI 报告用 `--cov-report=term-missing` 让缺失部分可见，开发者按需
 - **聊天流**：`/chat/:id` 输入框 placeholder `输入消息`、`发送` 按钮。
 - **聊天审批流**（headline）：mock SSE 流返回 `confirmation_required`（工具 `write_file`、`approval_id=ap-e2e-1`），断言 `确认写入文件` 对话框出现，点 `确认执行`，断言对话框在 `/api/chat/approvals/ap-e2e-1/resolve` 返回 approved 后消失；另一测试点 `取消` 验证 deny。
 - **可信闭环**（[`e2e/trust-loops.spec.ts`](../../frontend/e2e/trust-loops.spec.ts)）：首页发送进对话、重载后恢复待审批卡、收件箱失败后重试同步、确认 proposed 记忆后出现在聊天上下文、会话 A 确认→会话 B 召回→更新后会话 C 只用新事实、工作台三栏与提醒区不重复同一实体。
+- **连续审批**（[`e2e/chat-approval.spec.ts`](../../frontend/e2e/chat-approval.spec.ts)）：首次确认后若后端返回下一审批，无需另发消息即可再次确认；切换会话不会串走确认卡，回到原会话可从待审批列表恢复。
 - **错误处理**：telemetry 端点 500 时 dashboard 显示 `重试`。
 - **新页面**：timeline（`人生时间线`、含 `BeliefFormed` 事件）、dashboard 数据主权面板（`1,250` events、`121` memories、`全部本地存储`、`导出我的数据`）。
 
