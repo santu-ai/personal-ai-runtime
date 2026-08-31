@@ -111,7 +111,7 @@ describe("Electron main process", () => {
   it("defaults loopback URLs to IPv4 so Windows localhost IPv6 does not miss the backend", () => {
     expect(source).toContain('process.env.BACKEND_URL || "http://127.0.0.1:8000"');
     expect(source).toContain('return "http://127.0.0.1:5173"');
-    expect(source).toContain('client.connect(parseInt(BACKEND_PORT), "127.0.0.1"');
+    expect(source).toContain("`http://127.0.0.1:${BACKEND_PORT}/api/system/health`");
   });
 
   it("guards resolveFrontendFile against path traversal", () => {
@@ -131,6 +131,16 @@ describe("Electron main process", () => {
   it("scopes quick-capture postMessage to the window origin", () => {
     expect(source).toContain("window.postMessage({ type: 'quick-capture' }, window.location.origin)");
     expect(source).not.toContain("postMessage({ type: 'quick-capture' }, '*')");
+  });
+
+  it("awaits backend stop before restart and identifies health by service/version", () => {
+    expect(source).toContain("await stopBackend()");
+    expect(source).toContain("inspectBackendHealth");
+    expect(source).toContain("waitForProcessExit");
+    expect(source).toContain("showPortConflictError");
+    expect(source).toContain('service/version 不匹配');
+    expect(source).not.toContain("setTimeout(connectWebSocket");
+    expect(source).not.toContain("setTimeout(startBackend");
   });
 
   it("packs every local require() from main.js in electron-builder files", () => {

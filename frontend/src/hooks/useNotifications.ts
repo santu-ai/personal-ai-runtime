@@ -50,13 +50,16 @@ function buildWsProtocols(): string[] | undefined {
   return token ? [`auth.${token}`, "auth.ok"] : undefined;
 }
 
-const MAX_RECONNECT_ATTEMPTS = 5;
-const RECONNECT_DELAY_MS = 5000;
+const INITIAL_RECONNECT_MS = 1000;
+const MAX_RECONNECT_MS = 60_000;
+
+function reconnectDelayMs(attempt: number): number {
+  return Math.min(MAX_RECONNECT_MS, INITIAL_RECONNECT_MS * 2 ** Math.max(0, attempt));
+}
 
 export function useNotifications() {
   const [toasts, setToasts] = useState<NotificationItem[]>([]);
   const [liveNotifications, setLiveNotifications] = useState<NotificationItem[]>([]);
-  const reconnectCountRef = useRef(0);
 
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -68,11 +71,36 @@ export function useNotifications() {
 
   useEffect(() => {
     let ws: WebSocket | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout>;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
     let stopped = false;
+    let attempt = 0;
+
+    const clearTimer = () => {
+      if (reconnectTimer !== undefined) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = undefined;
+      }
+    };
+
+    const scheduleReconnect = () => {
+      if (stopped || reconnectTimer !== undefined) return;
+      const delay = reconnectDelayMs(attempt);
+      attempt += 1;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = undefined;
+        connect();
+      }, delay);
+    };
 
     const connect = () => {
-      if (stopped || reconnectCountRef.current >= MAX_RECONNECT_ATTEMPTS) return;
+      if (stopped) return;
+      clearTimer();
+      if (
+        ws &&
+        (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)
+      ) {
+        return;
+      }
 
       try {
         const protocols = buildWsProtocols();
@@ -116,36 +144,48 @@ export function useNotifications() {
         };
 
         ws.onopen = () => {
-          reconnectCountRef.current = 0;
+          attempt = 0;
         };
 
         ws.onerror = () => {
-          // onclose will handle reconnection
+          // onclose uniquely schedules reconnection
         };
 
         ws.onclose = () => {
-          if (!stopped) {
-            reconnectCountRef.current += 1;
-            if (reconnectCountRef.current < MAX_RECONNECT_ATTEMPTS) {
-              reconnectTimer = setTimeout(connect, RECONNECT_DELAY_MS);
-            }
-          }
+          ws = null;
+          if (!stopped) scheduleReconnect();
         };
       } catch {
-        if (!stopped) {
-          reconnectCountRef.current += 1;
-          if (reconnectCountRef.current < MAX_RECONNECT_ATTEMPTS) {
-            reconnectTimer = setTimeout(connect, RECONNECT_DELAY_MS * 2);
-          }
-        }
+        if (!stopped) scheduleReconnect();
       }
     };
 
+    const reconnectNow = () => {
+      if (stopped) return;
+      clearTimer();
+      if (
+        ws &&
+        (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)
+      ) {
+        return;
+      }
+      connect();
+    };
+
+    const onOnline = () => reconnectNow();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") reconnectNow();
+    };
+
     connect();
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisible);
 
     return () => {
       stopped = true;
-      clearTimeout(reconnectTimer);
+      clearTimer();
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisible);
       ws?.close();
     };
   }, []);

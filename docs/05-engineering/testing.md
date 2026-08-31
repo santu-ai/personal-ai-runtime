@@ -165,12 +165,13 @@ vitest，**不需要 Electron 已安装**。读 `main.js` 源码，字符串 `to
 - 调用 `globalShortcut.register`、`setLoginItemSettings`。
 - `package.json` `build.files` 覆盖 `main.js` 的每一个 `require("./…")`（含 `runtimePaths.js`）。
 - 安装 `will-navigate` / `setWindowOpenHandler` 导航守卫。
+- [`desktop/runtimePaths.test.js`](../../desktop/runtimePaths.test.js) 覆盖 WS 单次重连、进程退出等待、健康身份识别。
 
 运行：`make desktop-test`（`make ci-local` 与 GitHub Actions 的 desktop job 均执行）。
 
 ### 前端单元（vitest）
 
-`auth.test.ts`、`api/client.test.ts`，hook 测试（`useChatMessages` 切会话竞态、`sw.test.ts` API 不进 Cache Storage），组件测试（`Button/Input/Dialog/Sidebar/MessageItem/ToolCallDisplay/ContextPanel/ConfirmationDialog/ChatView/ui.snapshots`），页面测试（`Dashboard/Inbox/Memories/Goals/Settings/Portrait/TrustReport`）。运行：`make test-frontend`（含 `tsc --noEmit`）。
+`auth.test.ts`、`api/client.test.ts`，hook 测试（`useChatMessages` 切会话竞态、`useNotifications` 指数退避重连、`sw.test.ts` API 不进 Cache Storage），组件测试（`Button/Input/Dialog/Sidebar/MessageItem/ToolCallDisplay/ContextPanel/ConfirmationDialog/ChatView/ui.snapshots`），页面测试（`Dashboard/Inbox/Memories/Goals/Settings/Portrait/TrustReport`）。运行：`make test-frontend`（含 `tsc --noEmit`）。
 
 ## Soak 测试（Execution 契约 §3）
 

@@ -93,10 +93,191 @@ function isSafeExternalUrl(url) {
   return parsed.protocol === "http:" || parsed.protocol === "https:";
 }
 
+function reconnectDelayMs(attempt, { initialMs = 1000, maxMs = 60000 } = {}) {
+  const safeAttempt = Math.max(0, Number(attempt) || 0);
+  return Math.min(maxMs, initialMs * 2 ** safeAttempt);
+}
+
+function createWsReconnectPolicy({
+  initialDelayMs = 1000,
+  maxDelayMs = 60000,
+  setTimeoutFn = setTimeout,
+  clearTimeoutFn = clearTimeout,
+} = {}) {
+  let timer = null;
+  let attempt = 0;
+  let stopped = false;
+
+  function schedule(connectFn) {
+    if (stopped || timer != null || typeof connectFn !== "function") return false;
+    const delay = reconnectDelayMs(attempt, { initialMs: initialDelayMs, maxMs: maxDelayMs });
+    attempt += 1;
+    timer = setTimeoutFn(() => {
+      timer = null;
+      connectFn();
+    }, delay);
+    return true;
+  }
+
+  function noteOpen() {
+    attempt = 0;
+  }
+
+  function cancelTimer() {
+    if (timer != null) {
+      clearTimeoutFn(timer);
+      timer = null;
+    }
+  }
+
+  function stop() {
+    stopped = true;
+    cancelTimer();
+  }
+
+  function reset() {
+    stopped = false;
+    cancelTimer();
+    attempt = 0;
+  }
+
+  return {
+    schedule,
+    noteOpen,
+    cancelTimer,
+    stop,
+    reset,
+    getAttempt: () => attempt,
+    hasTimer: () => timer != null,
+    isStopped: () => stopped,
+  };
+}
+
+function attachNotificationSocketHandlers(ws, {
+  reconnect,
+  connect,
+  onNotification,
+  logger = console,
+} = {}) {
+  if (!ws || typeof ws.on !== "function") return;
+
+  ws.on("open", () => {
+    if (reconnect && typeof reconnect.noteOpen === "function") reconnect.noteOpen();
+    if (logger && typeof logger.log === "function") {
+      logger.log("WebSocket connected for notifications");
+    }
+  });
+
+  ws.on("message", (data) => {
+    try {
+      const raw = typeof data === "string" ? data : data && data.toString ? data.toString() : "";
+      const event = JSON.parse(raw);
+      if (event && event.type === "notification" && typeof onNotification === "function") {
+        onNotification(event);
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  });
+
+  ws.on("error", (err) => {
+    if (logger && typeof logger.error === "function") {
+      logger.error("WebSocket error:", err && err.message ? err.message : err);
+    }
+  });
+
+  ws.on("close", () => {
+    if (reconnect && typeof reconnect.schedule === "function") {
+      reconnect.schedule(connect);
+    }
+  });
+}
+
+function waitForProcessExit(proc, {
+  graceMs = 5000,
+  killSignal = "SIGKILL",
+  setTimeoutFn = setTimeout,
+  clearTimeoutFn = clearTimeout,
+} = {}) {
+  return new Promise((resolve) => {
+    if (!proc) {
+      resolve("missing");
+      return;
+    }
+    let settled = false;
+    let timer = null;
+    const finish = (reason) => {
+      if (settled) return;
+      settled = true;
+      if (timer != null) clearTimeoutFn(timer);
+      resolve(reason);
+    };
+    if (typeof proc.once === "function") {
+      proc.once("close", () => finish("closed"));
+    }
+    timer = setTimeoutFn(() => {
+      try {
+        if (typeof proc.kill === "function") proc.kill(killSignal);
+      } catch {
+        // Process already gone.
+      }
+      finish("killed");
+    }, graceMs);
+  });
+}
+
+function isPersonalAiRuntimeHealth(payload, expectedVersion) {
+  if (!payload || typeof payload !== "object") return false;
+  if (payload.service !== "personal-ai-runtime") return false;
+  if (
+    expectedVersion &&
+    payload.version != null &&
+    String(payload.version) !== String(expectedVersion)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+async function inspectBackendHealth({ fetchImpl, healthUrl, expectedVersion } = {}) {
+  if (typeof fetchImpl !== "function" || !healthUrl) {
+    return { kind: "unavailable" };
+  }
+  try {
+    const res = await fetchImpl(healthUrl);
+    const status = res && typeof res.status === "number" ? res.status : 0;
+    let payload = null;
+    try {
+      if (res && typeof res.json === "function") {
+        payload = await res.json();
+      } else if (res && typeof res.text === "function") {
+        payload = JSON.parse(await res.text());
+      }
+    } catch {
+      payload = null;
+    }
+    if (res && res.ok && isPersonalAiRuntimeHealth(payload, expectedVersion)) {
+      return { kind: "ours", status, payload };
+    }
+    if (res && res.ok) {
+      return { kind: "foreign", status, payload };
+    }
+    return { kind: "unavailable", status, payload };
+  } catch (error) {
+    return { kind: "unavailable", error };
+  }
+}
+
 module.exports = {
   projectVenvPython,
   resolvePythonCommand,
   resolveFrontendFile,
   isInternalNavigationUrl,
   isSafeExternalUrl,
+  reconnectDelayMs,
+  createWsReconnectPolicy,
+  attachNotificationSocketHandlers,
+  waitForProcessExit,
+  isPersonalAiRuntimeHealth,
+  inspectBackendHealth,
 };

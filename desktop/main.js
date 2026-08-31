@@ -16,12 +16,15 @@ const { spawn, spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const { pathToFileURL } = require("url");
-const net = require("net");
 const {
   resolvePythonCommand: resolvePythonCommandImpl,
   resolveFrontendFile: resolveFrontendFileImpl,
   isInternalNavigationUrl,
   isSafeExternalUrl,
+  createWsReconnectPolicy,
+  attachNotificationSocketHandlers,
+  waitForProcessExit,
+  inspectBackendHealth,
 } = require("./runtimePaths");
 
 // Declare the app:// scheme as privileged BEFORE app is ready.
@@ -255,38 +258,52 @@ function resolveBackendLauncher() {
   return path.join(__dirname, "run-backend.py");
 }
 
+function backendHealthUrl() {
+  return `http://127.0.0.1:${BACKEND_PORT}/api/system/health`;
+}
+
+async function probeLocalBackend() {
+  return inspectBackendHealth({
+    fetchImpl: (url) => electronNet.fetch(url),
+    healthUrl: backendHealthUrl(),
+    expectedVersion: APP_VERSION,
+  });
+}
+
 async function waitForBackendReady(maxWaitMs = 90000) {
-  const healthUrl = `http://127.0.0.1:${BACKEND_PORT}/api/system/health`;
   const started = Date.now();
   while (Date.now() - started < maxWaitMs) {
-    try {
-      const res = await electronNet.fetch(healthUrl);
-      if (res.ok) return true;
-    } catch {
-      // Backend still booting.
-    }
+    const probe = await probeLocalBackend();
+    if (probe.kind === "ours") return true;
+    if (probe.kind === "foreign") return false;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   return false;
 }
 
-function startBackend() {
-  if (backendProcess || backendStarting) return;
+function showPortConflictError() {
+  dialog.showErrorBox(
+    "Personal AI Runtime — 端口冲突",
+    `端口 ${BACKEND_PORT} 已被其他服务占用，且响应不是 Personal AI Runtime（service/version 不匹配）。\n请关闭占用该端口的程序，或设置 BACKEND_URL 使用其他端口。`,
+  );
+}
+
+async function startBackend() {
+  if (backendProcess || backendStarting) return "busy";
 
   backendStarting = true;
   const backendDir = RESOLVED_BACKEND_DIR;
+  try {
+    const probe = await probeLocalBackend();
+    if (probe.kind === "ours") {
+      console.log("Backend already running on port", BACKEND_PORT);
+      return "reused";
+    }
+    if (probe.kind === "foreign") {
+      showPortConflictError();
+      return "conflict";
+    }
 
-  // Check if backend is already running
-  const net = require("net");
-  const client = new net.Socket();
-  client.connect(parseInt(BACKEND_PORT), "127.0.0.1", () => {
-    client.destroy();
-    console.log("Backend already running on port", BACKEND_PORT);
-    backendStarting = false;
-  });
-
-  client.on("error", () => {
-    client.destroy();
     console.log("Starting backend...");
 
     const pythonCmd = resolvePythonCommand();
@@ -302,16 +319,14 @@ function startBackend() {
     if (!verifyPythonDependencies(pythonCmd, backendDir, dataEnv)) {
       console.error("Python dependencies missing for", pythonCmd.executable);
       showPythonSetupError();
-      backendStarting = false;
-      return;
+      return "failed";
     }
 
     const launcherPath = resolveBackendLauncher();
     if (!fs.existsSync(launcherPath)) {
       console.error("Backend launcher missing:", launcherPath);
       showPythonSetupError();
-      backendStarting = false;
-      return;
+      return "failed";
     }
 
     backendProcess = spawn(pythonCmd.executable, [...pythonCmd.args, launcherPath], {
@@ -337,24 +352,28 @@ function startBackend() {
       console.error("Backend start error:", err.message);
       showPythonSetupError();
       backendProcess = null;
-      backendStarting = false;
     });
 
+    return "spawned";
+  } finally {
     backendStarting = false;
-  });
+  }
 }
 
 function stopBackend() {
-  if (backendProcess) {
-    console.log("Stopping backend...");
-    backendProcess.kill("SIGTERM");
-    setTimeout(() => {
-      if (backendProcess) {
-        backendProcess.kill("SIGKILL");
-        backendProcess = null;
-      }
-    }, 5000);
+  if (!backendProcess) return Promise.resolve("missing");
+  const proc = backendProcess;
+  console.log("Stopping backend...");
+  try {
+    proc.kill("SIGTERM");
+  } catch {
+    if (backendProcess === proc) backendProcess = null;
+    return Promise.resolve("missing");
   }
+  return waitForProcessExit(proc, { graceMs: 5000 }).then((reason) => {
+    if (backendProcess === proc) backendProcess = null;
+    return reason;
+  });
 }
 
 // ── Window State ─────────────────────────────────────────────────────
@@ -505,8 +524,10 @@ function createTrayMenuItems() {
     {
       label: backendProcess ? "重启后端" : "启动后端",
       click: () => {
-        stopBackend();
-        setTimeout(startBackend, 1000);
+        void (async () => {
+          await stopBackend();
+          await startBackend();
+        })();
       },
     },
     { type: "separator" },
@@ -539,7 +560,6 @@ function createTrayMenuItems() {
       label: "退出",
       click: () => {
         isQuitting = true;
-        stopBackend();
         app.quit();
       },
     },
@@ -614,16 +634,18 @@ app.whenReady().then(async () => {
   }
 
   // Auto-start backend and wait until health responds (migrations can take a while).
-  startBackend();
-  const backendReady = await waitForBackendReady();
-  if (!backendReady) {
-    dialog.showMessageBox({
-      type: "warning",
-      title: "Personal AI Runtime",
-      message: "后端启动较慢或失败",
-      detail:
-        "应用界面已打开，但暂时无法连接后端。请稍后在托盘菜单选择「重启后端」，或查看 README 中的安装说明。",
-    });
+  const startStatus = await startBackend();
+  if (startStatus !== "conflict") {
+    const backendReady = await waitForBackendReady();
+    if (!backendReady) {
+      dialog.showMessageBox({
+        type: "warning",
+        title: "Personal AI Runtime",
+        message: "后端启动较慢或失败",
+        detail:
+          "应用界面已打开，但暂时无法连接后端。请稍后在托盘菜单选择「重启后端」，或查看 README 中的安装说明。",
+      });
+    }
   }
 
   createMainWindow();
@@ -644,42 +666,53 @@ app.on("window-all-closed", () => {
   // Keep running in tray
 });
 
-app.on("before-quit", () => {
+let stoppingForQuit = false;
+
+app.on("before-quit", (event) => {
   isQuitting = true;
   globalShortcut.unregisterAll();
-  stopBackend();
+  disconnectWebSocket();
+  if (backendProcess && !stoppingForQuit) {
+    event.preventDefault();
+    stoppingForQuit = true;
+    void stopBackend().finally(() => {
+      app.quit();
+    });
+  }
 });
 
 // ── WebSocket ────────────────────────────────────────────────────────
 
+const wsReconnect = createWsReconnectPolicy({
+  initialDelayMs: 1000,
+  maxDelayMs: 60000,
+});
+let desktopWs = null;
+
+function disconnectWebSocket() {
+  wsReconnect.stop();
+  if (!desktopWs) return;
+  try {
+    desktopWs.removeAllListeners();
+    desktopWs.close();
+  } catch {
+    // already closed
+  }
+  desktopWs = null;
+}
+
 function connectWebSocket() {
+  if (wsReconnect.isStopped()) return;
   try {
     const WebSocket = require("ws");
     const wsUrl = BACKEND_URL.replace(/^http/, "ws") + "/ws";
     const protocols = AUTH_TOKEN ? [`auth.${AUTH_TOKEN}`, "auth.ok"] : undefined;
     const ws = protocols ? new WebSocket(wsUrl, protocols) : new WebSocket(wsUrl);
-
-    ws.on("open", () => {
-      console.log("WebSocket connected for notifications");
-    });
-
-    ws.on("message", (data) => {
-      try {
-        const event = JSON.parse(data.toString());
-        if (event.type === "notification") {
-          showNotification(event.title, event.content);
-        }
-      } catch {
-        // Ignore parse errors
-      }
-    });
-
-    ws.on("close", () => {
-      setTimeout(connectWebSocket, 5000);
-    });
-
-    ws.on("error", () => {
-      setTimeout(connectWebSocket, 10000);
+    desktopWs = ws;
+    attachNotificationSocketHandlers(ws, {
+      reconnect: wsReconnect,
+      connect: connectWebSocket,
+      onNotification: (event) => showNotification(event.title, event.content),
     });
   } catch {
     // WebSocket not available, skip

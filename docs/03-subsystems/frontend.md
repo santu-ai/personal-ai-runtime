@@ -114,7 +114,7 @@ types.ts       ← 共享 TS 接口
 | `useChatMessages` | [`useChatMessages.ts:139-334`](../../frontend/src/hooks/useChatMessages.ts) | 加载消息、管理流式状态、解析 tool calls/sources/inbox 摘要、驱动发送循环 |
 | `useQuickChat` | [`useQuickChat.ts:13-33`](../../frontend/src/hooks/useQuickChat.ts) | 创建会话、导航到 `/chat/{id}`、可选设 pending prompt |
 | `useApprovalFlow` | [`useApprovalFlow.ts:37-231`](../../frontend/src/hooks/useApprovalFlow.ts) | 管理待工具确认；会话级 trusted-tools 缓存（`sessionStorage["par_trust_session_{convId}"]`）；inflight 审批去重；trusted 工具自动批准 |
-| `useNotifications` | [`useNotifications.ts:49-141`](../../frontend/src/hooks/useNotifications.ts) | 持有 WebSocket（最多 5 次重连，5s 退避）；toast + 实时通知；每 payload 转发到失效桥 |
+| `useNotifications` | [`useNotifications.ts`](../../frontend/src/hooks/useNotifications.ts) | 持有单 socket WebSocket；指数退避重连（封顶 60s，无次数上限）；`online` 与页面重新可见时立即重连；toast + 实时通知；每 payload 转发到失效桥 |
 | `useWsInvalidationBridge` | [`useWsInvalidationBridge.ts`](../../frontend/src/hooks/useWsInvalidationBridge.ts) | 见上 |
 | `useDashboard` | [`useDashboard.ts`](../../frontend/src/hooks/useDashboard.ts) | 见上 |
 | `useMemoriesGroupedQuery` | [`useMemoriesQuery.ts`](../../frontend/src/hooks/useMemoriesQuery.ts) | 见上 |

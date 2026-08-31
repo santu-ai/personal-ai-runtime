@@ -15,9 +15,11 @@
 
 | 文件 | 行数 | 职责 |
 |---|---|---|
-| [`desktop/main.js`](../../desktop/main.js) | 704 | 主进程 |
-| [`desktop/preload.js`](../../desktop/preload.js) | 9 | preload（无 IPC 暴露） |
-| [`desktop/main.test.js`](../../desktop/main.test.js) | 120 | vitest smoke 测试 |
+| [`desktop/main.js`](../../desktop/main.js) | — | 主进程 |
+| [`desktop/preload.js`](../../desktop/preload.js) | — | preload（无 IPC 暴露） |
+| [`desktop/runtimePaths.js`](../../desktop/runtimePaths.js) | — | Python/前端路径、WS 重连、进程退出、健康身份 |
+| [`desktop/main.test.js`](../../desktop/main.test.js) | — | vitest smoke 测试 |
+| [`desktop/runtimePaths.test.js`](../../desktop/runtimePaths.test.js) | — | 重连/进程/健康行为测试 |
 | [`desktop/package.json`](../../desktop/package.json) | — | scripts + electron-builder 配置 |
 | [`desktop/vitest.config.js`](../../desktop/vitest.config.js) | — | vitest 配置 |
 | [`desktop/generate_icon.py`](../../desktop/generate_icon.py) | — | `postinstall` 时生成 `icon.png` |
@@ -52,9 +54,10 @@ AUTH_TOKEN   = process.env.AUTH_TOKEN   || ""
 
 [`main.js`](../../desktop/main.js) 的 `startBackend()`：
 
-1. 探测 `BACKEND_PORT`：用 `net.Socket` 连 localhost。
-2. 若已有进程监听 → 复用，记日志。
-3. 若连不上 → 解析 Python 可执行文件并 spawn：
+1. 请求 `http://127.0.0.1:<port>/api/system/health`，校验 `service === "personal-ai-runtime"` 且 `version` 与桌面 `VERSION` 一致。
+2. 若已是本运行时 → 复用，记日志。
+3. 若端口返回其他服务或版本不匹配 → 弹出端口冲突，**不**连接陌生本机服务。
+4. 若健康检查不可达 → 解析 Python 可执行文件并 spawn：
 
 ```
 <python> -m uvicorn app.main:app --host 127.0.0.1 --port <BACKEND_PORT>
@@ -63,7 +66,7 @@ env = { ...process.env, DATA_DIR, VECTOR_DIR, SQLITE_PATH }
 stdio = ["ignore", "pipe", "pipe"]
 ```
 
-托盘菜单提供「重启后端」/「启动后端」；`stopBackend()` 发 SIGTERM（5s 后升级为 SIGKILL）。
+托盘菜单提供「重启后端」/「启动后端」；`stopBackend()` 返回 Promise，等待进程 `close` 或 5s 后 SIGKILL。托盘重启会 `await stopBackend()` 后再 `startBackend()`，避免 1 秒竞态。退出路径在 `before-quit` 里取消 WebSocket 重连并等待后端停完。
 
 ## 窗口管理
 
@@ -91,7 +94,7 @@ stdio = ["ignore", "pipe", "pipe"]
 
 ## WebSocket
 
-`connectWebSocket()`（[`desktop/main.js`](../../desktop/main.js)）：用 `ws` 包，连接 `BACKEND_URL.replace(/^http/,'ws') + "/ws"`。若 `AUTH_TOKEN` 设置，用子协议 `[`auth.${AUTH_TOKEN}`, "auth.ok"]`。监听 `{type:"notification"}` payload 并调 `showNotification`。关闭 5s / 错误 10s 自动重连。
+`connectWebSocket()`（[`desktop/main.js`](../../desktop/main.js)）：用 `ws` 包，连接 `BACKEND_URL.replace(/^http/,'ws') + "/ws"`。若 `AUTH_TOKEN` 设置，用子协议 `[`auth.${AUTH_TOKEN}`, "auth.ok"]`。监听 `{type:"notification"}` payload 并调 `showNotification`。`error` 只记日志；`close` 通过 [`runtimePaths.js`](../../desktop/runtimePaths.js) 的指数退避策略（封顶 60s）调度唯一一次重连。退出时 `disconnectWebSocket()` 取消 timer 并关闭 socket。
 
 ## Preload / IPC
 
@@ -99,7 +102,7 @@ stdio = ["ignore", "pipe", "pipe"]
 
 ## Smoke 测试
 
-[`desktop/main.test.js`](../../desktop/main.test.js) 是 vitest smoke 测试，**不需要 Electron 已安装**。它读 `main.js` 源码（字符串 `toContain`）断言：
+[`desktop/runtimePaths.test.js`](../../desktop/runtimePaths.test.js) 覆盖可测试行为：WebSocket `error`→`close` 只调度一次重连、退出后不再重连、进程慢关闭 vs 5s 强杀、健康检查识别本运行时 / 外来服务。[`desktop/main.test.js`](../../desktop/main.test.js) 仍是 vitest smoke，**不需要 Electron 已安装**。它读 `main.js` 源码断言接线：
 
 - 源码作为有效 JS 解析（`new Function(source)`）。
 - 常量 `WEB_URL`、`BACKEND_URL`、`AUTH_TOKEN` 存在。
@@ -107,6 +110,7 @@ stdio = ["ignore", "pipe", "pipe"]
 - 调用 `globalShortcut.register`、`setLoginItemSettings`。
 - `build.files` 覆盖 `main.js` 的本地 `require("./…")`（含 `runtimePaths.js`）。
 - 安装导航守卫，并把 quick-capture `postMessage` 限制在窗口 origin。
+- 托盘重启 `await stopBackend()`；健康检查校验 `service`/`version`，外来服务视为端口冲突。
 
 ## 构建配置
 
