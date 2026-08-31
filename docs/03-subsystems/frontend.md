@@ -113,7 +113,7 @@ types.ts       ← 共享 TS 接口
 |---|---|---|
 | `useChatMessages` | [`useChatMessages.ts:139-334`](../../frontend/src/hooks/useChatMessages.ts) | 加载消息、管理流式状态、解析 tool calls/sources/inbox 摘要、驱动发送循环 |
 | `useQuickChat` | [`useQuickChat.ts:13-33`](../../frontend/src/hooks/useQuickChat.ts) | 创建会话、导航到 `/chat/{id}`、可选设 pending prompt |
-| `useApprovalFlow` | [`useApprovalFlow.ts:37-231`](../../frontend/src/hooks/useApprovalFlow.ts) | 管理待工具确认；会话级 trusted-tools 缓存（`sessionStorage["par_trust_session_{convId}"]`）；inflight 审批去重；trusted 工具自动批准 |
+| `useApprovalFlow` | [`useApprovalFlow.ts:101-233`](../../frontend/src/hooks/useApprovalFlow.ts) | 管理待工具确认；inflight 审批去重；批准后续写若返回下一审批则立即展示 |
 | `useNotifications` | [`useNotifications.ts`](../../frontend/src/hooks/useNotifications.ts) | 持有单 socket WebSocket；指数退避重连（封顶 60s，无次数上限）；`online` 与页面重新可见时立即重连；toast + 实时通知；每 payload 转发到失效桥 |
 | `useWsInvalidationBridge` | [`useWsInvalidationBridge.ts`](../../frontend/src/hooks/useWsInvalidationBridge.ts) | 见上 |
 | `useDashboard` | [`useDashboard.ts`](../../frontend/src/hooks/useDashboard.ts) | 见上 |
@@ -190,7 +190,7 @@ Layout 在根处挂三个副作用 hook：`useNotifications()`（唯一持有 WS
 
 [`frontend/playwright.config.ts`](../../frontend/playwright.config.ts)：`testDir: "./e2e"`、60s 超时、headless、baseURL `http://localhost:5173`。`webServer.command: "npm run dev"`，复用已存在 server，120s 超时。
 
-e2e 文件：[`e2e/chat-approval.spec.ts`](../../frontend/e2e/chat-approval.spec.ts)、[`e2e/extra-flows.spec.ts`](../../frontend/e2e/extra-flows.spec.ts)、[`e2e/trust-loops.spec.ts`](../../frontend/e2e/trust-loops.spec.ts)、[`e2e/real-backend.spec.ts`](../../frontend/e2e/real-backend.spec.ts)，配合 [`e2e/helpers.ts`](../../frontend/e2e/helpers.ts) 的 `MockApiRouter`。mock 套件覆盖导航、聊天发送、审批确认/拒绝流、首页发送、审批重载恢复、收件箱重试同步、proposed 确认进上下文、仪表盘错误态、时间线、仪表盘数据主权面板；`real-backend.spec.ts` 走真实后端 + fake LLM。
+e2e 文件：[`e2e/chat-approval.spec.ts`](../../frontend/e2e/chat-approval.spec.ts)、[`e2e/extra-flows.spec.ts`](../../frontend/e2e/extra-flows.spec.ts)、[`e2e/trust-loops.spec.ts`](../../frontend/e2e/trust-loops.spec.ts)、[`e2e/real-backend.spec.ts`](../../frontend/e2e/real-backend.spec.ts)，配合 [`e2e/helpers.ts`](../../frontend/e2e/helpers.ts) 的 `MockApiRouter`。mock 套件覆盖导航、聊天发送、审批确认/拒绝流、连续二次确认、首页发送、审批重载恢复、收件箱重试同步、proposed 确认进上下文、仪表盘错误态、时间线、仪表盘数据主权面板；`real-backend.spec.ts` 走真实后端 + fake LLM。
 
 ### 单元测试
 

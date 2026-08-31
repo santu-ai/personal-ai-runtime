@@ -228,6 +228,99 @@ describe("ChatView", () => {
     });
   });
 
+  it("clears the confirmation when switching conversations", async () => {
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({
+          type: "confirmation_required",
+          tool_name: "write_file",
+          tool_args: { path: "/tmp/x", content: "data" },
+          approval_id: "ap-test-switch",
+          tool_call_id: "tc-test-switch",
+        });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+    function renderWith(id: string) {
+      return (
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <ChatView conversationId={id} />
+          </MemoryRouter>
+        </QueryClientProvider>
+      );
+    }
+
+    const { rerender } = render(renderWith("test-conv-1"));
+    const inputs = screen.getAllByPlaceholderText(/输入消息/);
+    fireEvent.change(inputs[inputs.length - 1], {
+      target: { value: "create a file" },
+    });
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "发送" })[
+        screen.getAllByRole("button", { name: "发送" }).length - 1
+      ],
+    );
+    expect(await screen.findByText(/建议：写入文件/)).toBeInTheDocument();
+
+    rerender(renderWith("test-conv-2"));
+    await waitFor(() => {
+      expect(screen.queryByText(/建议：写入文件/)).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows the next confirmation when approve resumes into another tool", async () => {
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({
+          type: "confirmation_required",
+          tool_name: "write_file",
+          tool_args: { path: "/tmp/x", content: "data" },
+          approval_id: "ap-test-1",
+          tool_call_id: "tc-test-1",
+        });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+    vi.mocked(resolveApproval).mockResolvedValue({
+      status: "approved",
+      result: '{"ok": true}',
+      assistant_message: "接下来写入第二份文件。",
+      pending: true,
+      tool_name: "write_file",
+      tool_args: { path: "/tmp/y", content: "next" },
+      approval_id: "ap-test-2",
+      tool_call_id: "tc-test-2",
+    });
+
+    const { container } = renderChatView();
+    const inputs = screen.getAllByPlaceholderText(/输入消息/);
+    fireEvent.change(inputs[inputs.length - 1], {
+      target: { value: "create two files" },
+    });
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "发送" })[
+        screen.getAllByRole("button", { name: "发送" }).length - 1
+      ],
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/建议：写入文件/)).toBeInTheDocument();
+    });
+    fireEvent.click(within(container).getByRole("button", { name: "确认写入" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("接下来写入第二份文件。")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "确认写入" })).toBeInTheDocument();
+    });
+  });
+
   it("shows a denial note when the user cancels a pending tool", async () => {
     vi.mocked(sendMessage).mockImplementation(
       async (_convId, _content, onEvent, _onError, onDone) => {

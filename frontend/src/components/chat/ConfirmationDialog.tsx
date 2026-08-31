@@ -25,57 +25,57 @@ const EXTRA_SUGGESTION_TOOLS = new Set(["set_timer"]);
 const SUGGESTION_OVERRIDES: Record<string, SuggestionCopy> = {
   set_timer: {
     title: "建议：创建定时提醒",
-    hint: "确认后将创建定时器，并自动续写一次回复。",
+    hint: "确认后将创建定时器，并继续执行当前对话。",
     confirm: "确认创建",
   },
   create_goal: {
     title: "建议：创建目标",
-    hint: "确认后将创建目标，并自动续写一次回复。",
+    hint: "确认后将创建目标，并继续执行当前对话。",
     confirm: "确认创建",
   },
   update_goal_progress: {
     title: "建议：更新目标进度",
-    hint: "确认后将更新目标进度，并自动续写一次回复。",
+    hint: "确认后将更新目标进度，并继续执行当前对话。",
     confirm: "确认更新",
   },
   complete_goal: {
     title: "建议：完成目标",
-    hint: "确认后将标记目标完成，并自动续写一次回复。",
+    hint: "确认后将标记目标完成，并继续执行当前对话。",
     confirm: "确认完成",
   },
   delete_goal: {
     title: "建议：删除目标",
-    hint: "确认后将删除目标，并自动续写一次回复。",
+    hint: "确认后将删除目标，并继续执行当前对话。",
     confirm: "确认删除",
   },
   send_email: {
     title: "建议：发送邮件",
-    hint: "确认后将发送邮件，并自动续写一次回复。",
+    hint: "确认后将发送邮件，并继续执行当前对话。",
     confirm: "确认发送",
   },
   add_calendar_event: {
     title: "建议：添加日历日程",
-    hint: "确认后将写入日历，并自动续写一次回复。",
+    hint: "确认后将写入日历，并继续执行当前对话。",
     confirm: "确认添加",
   },
   write_file: {
     title: "建议：写入文件",
-    hint: "确认后将写入文件，并自动续写一次回复。",
+    hint: "确认后将写入文件，并继续执行当前对话。",
     confirm: "确认写入",
   },
   apply_patch: {
     title: "建议：修改文件",
-    hint: "确认后将应用补丁，并自动续写一次回复。",
+    hint: "确认后将应用补丁，并继续执行当前对话。",
     confirm: "确认修改",
   },
   shell_exec: {
     title: "建议：执行命令",
-    hint: "确认后将在本机执行命令，并自动续写一次回复。",
+    hint: "确认后将在本机执行命令，并继续执行当前对话。",
     confirm: "确认执行",
   },
   telegram_send: {
     title: "建议：发送 Telegram 消息",
-    hint: "确认后将发送消息，并自动续写一次回复。",
+    hint: "确认后将发送消息，并继续执行当前对话。",
     confirm: "确认发送",
   },
 };
@@ -95,7 +95,7 @@ function suggestionFor(
   const label = toolLabel(name);
   return {
     title: `建议：${label}`,
-    hint: "确认后将执行该操作，并自动续写一次回复。",
+    hint: "确认后将执行该操作，并继续执行当前对话。",
     confirm: "确认执行",
   };
 }
@@ -116,7 +116,7 @@ export default function ConfirmationDialog({ toolCall, onConfirm, onDeny }: Prop
     >
       <div className="w-full space-y-2">
         <p className="text-xs text-fg-tertiary">
-          {suggestion?.hint ?? "确认后将执行工具并自动续写一次回复"}
+          {suggestion?.hint ?? "确认后将执行工具并继续当前对话"}
         </p>
         <div className="flex gap-2">
           <Button size="sm" onClick={onConfirm}>

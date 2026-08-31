@@ -1,5 +1,5 @@
 /**
- * Whether approving this item can continue the originating chat (one-shot resume).
+ * Whether approving this item can continue the originating chat tool loop.
  * Requires conversation id, tool call id, and a non-empty action name.
  */
 export function canContinueApproval(item: {

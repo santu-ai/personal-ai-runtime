@@ -7,13 +7,13 @@
 
 - 当前分支：`main`（本地领先 origin）
 - 进行中任务 / WIP：无
-- 已知坏点 / 待办：审批续写仍 one-shot（ADR-R011，不推翻）；Memory 连续两周 pass / 工作台 30 秒有效操作待 dogfood
-- 最近审阅：2026-08-31 CI 跟进：Prettier 5 文件、product 覆盖率门 79（CI 实测）
-- **本机 git**：`/usr/bin/git` 2.21 / `/usr/local/bin/git` 2.23；Cursor 提交包装会传 `--trailer`，需走 `git commit -F`。完整方法见 [`macos-git-commit.md`](macos-git-commit.md)
-- **本机 typecheck 假阳性**：本机 `mcp` 是 1.12.4，lock 钉 2.0.0；`mcp_compat.py:16` 的 `MCPError` 报错只在本机出现，CI 按 lock 装依赖不受影响
+- 已知坏点 / 待办：日用库不在本机 Windows（soak 默认空库 `data/personal_ai.db`）；Telegram / proposed 过期仍未做
+- 最近审阅：2026-08-31 产品验收 + 审批续写（ADR-R011 仍有效，批准后恢复同一工具环）
+- **本机 git**：Windows 提交走 `git -c core.hooksPath=.githooks commit -F`；venv 放 PATH 以免 pre-commit mypy 用到系统 `mcp`
+- **本机 typecheck 假阳性**：本机若用系统 `mcp` 1.12.4 会误报；lock 钉 2.0.0，CI 不受影响
 - **P0（2026-08-30 已修）**：云端聊天曾被出口门一律拒绝（提示词里的 `Memories` 被当成个人上下文）。现只认 `memory_id:` 与 `MEMORY_CONTEXT_MARKER`
-- **本机 DeepSeek key 已失效**：`.env` 的 `LLM_API_KEY` 现在返回 401（`****-key is invalid`）。8/17 常驻旧进程用的是自身环境里的有效 key，已随进程终止丢失。换有效 key 前无法做真 LLM dogfood
-- **本机后端**：8/17 起常驻的 pid 75317 已停；现由 `backend/.venv` 起新进程跑当前代码（127.0.0.1:8000）
+- **本机 DeepSeek key**：2026-08-31 本会话 `deepseek-v4-flash` ping 成功，W35 dogfood 真 LLM 已跑通
+- **本机后端**：`127.0.0.1:8000`，本轮 dogfood 用 `backend/data/personal_ai.db`（`MCP_EXTERNAL_ENABLED=false`）
 
 ## 本机环境
 
@@ -42,7 +42,7 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
-| 2026-08-31 | CI：Prettier 5 文件、product 门 79 | 跟进 CI 红 |
+| 2026-08-31 | W35 dogfood：Memory 两轮 pass、今天 30 秒 pass；Chat 审批后续写接回同一工具环 | 三次提交：test(dogfood)/feat(chat)/feat(frontend)；未推远程 |
 | 2026-08-31 | CI：gitleaks 放行 RFC WebSocket 样例、harness 门 66、tsc 排除 Node 测试 | 跟进剩余问题收口 |
 | 2026-08-31 | 核心产品闭环：会话级待确认、Claim 替代链、抽取只信用户、「今天」三栏去重 | 本会话，待推远程 |
 | 2026-08-31 | 合入 12 个 Dependabot：backend mypy/pypdf/ruff/tiktoken/uvicorn；desktop electron/vitest；frontend eslint/lucide/vite/plugin-react/vitest；重生 backend+desktop lock | 本地 `fc62cc2`，待推远程 |

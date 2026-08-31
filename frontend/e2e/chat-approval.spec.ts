@@ -29,7 +29,9 @@ test.describe("Navigation and pages", () => {
 
   test("dashboard page loads with overview", async ({ page }) => {
     await page.goto("/dashboard", { waitUntil: "networkidle" });
-    await expect(page.getByRole("heading", { name: "今天", exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole("heading", { name: "今天", exact: true })).toBeVisible({
+      timeout: 10000,
+    });
     await expect(page.getByText("今天要做")).toBeVisible();
   });
 
@@ -95,6 +97,148 @@ test.describe("Chat approval flow", () => {
     await expect(page.getByText(/建议：写入文件/)).toBeVisible({ timeout: 10000 });
     await page.getByRole("button", { name: "确认写入" }).click();
     await expect(page.getByText(/建议：写入文件/)).not.toBeVisible({ timeout: 5000 });
+  });
+
+  test("approve can present a second confirmation without sending again", async ({ page }) => {
+    await installMocks(page, (router) => {
+      router.handler(`/api/chat/conversations/${CONV_ID}/messages`, async (route) => {
+        if (route.request().method() === "GET") {
+          await route.fulfill({ json: [] });
+          return;
+        }
+        const sse =
+          'data: {"type":"confirmation_required","tool_name":"write_file","tool_args":{"path":"/tmp/e2e.txt","content":"hello"},"approval_id":"ap-e2e-1","tool_call_id":"tc-e2e-1"}\n\n' +
+          'data: {"type":"done"}\n\n';
+        await route.fulfill({
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+          body: sse,
+        });
+      });
+      router.handler("/api/chat/approvals/ap-e2e-1/resolve", async (route) => {
+        await route.fulfill({
+          json: {
+            status: "approved",
+            result: '{"ok":true}',
+            assistant_message: "还需要再写一份。",
+            pending: true,
+            tool_name: "write_file",
+            tool_args: { path: "/tmp/e2e-2.txt", content: "hello" },
+            approval_id: "ap-e2e-3",
+            tool_call_id: "tc-e2e-3",
+          },
+        });
+      });
+      router.handler("/api/chat/approvals/ap-e2e-3/resolve", async (route) => {
+        await route.fulfill({
+          json: { status: "approved", result: '{"ok":true}', assistant_message: "两份都写好了。" },
+        });
+      });
+    });
+
+    await page.goto(`/chat/${CONV_ID}`);
+    await page.getByPlaceholder(/输入消息/).fill("请写入两个文件");
+    await page.getByRole("button", { name: "发送" }).click();
+    await expect(page.getByText(/建议：写入文件/)).toBeVisible({ timeout: 10000 });
+    await page.getByRole("button", { name: "确认写入" }).click();
+    await expect(page.getByText("还需要再写一份。")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("button", { name: "确认写入" })).toBeVisible();
+    await page.getByRole("button", { name: "确认写入" }).click();
+    await expect(page.getByText("两份都写好了。")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/建议：写入文件/)).not.toBeVisible({ timeout: 5000 });
+  });
+
+  test("switching conversations does not leak the pending confirmation", async ({ page }) => {
+    const otherId = "e2e-conv-2";
+    await installMocks(page, (router) => {
+      router.handler("/api/chat/conversations", async (route) => {
+        const pathname = new URL(route.request().url()).pathname;
+        if (pathname.endsWith("/cancel") && route.request().method() === "POST") {
+          await route.fulfill({ json: { status: "ok", cancelled: 0 } });
+          return;
+        }
+        if (route.request().method() === "GET") {
+          await route.fulfill({
+            json: [
+              {
+                id: CONV_ID,
+                title: "待审批对话",
+                summary: null,
+                created_at: "2026-06-10T00:00:00Z",
+                updated_at: "2026-06-10T00:00:00Z",
+              },
+              {
+                id: otherId,
+                title: "另一段对话",
+                summary: null,
+                created_at: "2026-06-10T00:00:00Z",
+                updated_at: "2026-06-10T00:00:00Z",
+              },
+            ],
+          });
+          return;
+        }
+        await route.continue();
+      });
+      router.handler(`/api/chat/conversations/${CONV_ID}/messages`, async (route) => {
+        if (route.request().method() === "GET") {
+          await route.fulfill({
+            json: [
+              {
+                id: "u1",
+                conversation_id: CONV_ID,
+                role: "user",
+                content: "请写入一个文件",
+                tool_calls: null,
+                tool_call_id: null,
+                created_at: "2026-08-17T00:00:00Z",
+              },
+              {
+                id: "a1",
+                conversation_id: CONV_ID,
+                role: "assistant",
+                content: "",
+                tool_calls: JSON.stringify([
+                  {
+                    id: "tc-persist",
+                    function: {
+                      name: "write_file",
+                      arguments: JSON.stringify({ path: "/tmp/x" }),
+                    },
+                  },
+                ]),
+                tool_call_id: null,
+                created_at: "2026-08-17T00:00:01Z",
+              },
+            ],
+          });
+          return;
+        }
+        await route.continue();
+      });
+      router.handler(`/api/chat/conversations/${otherId}/messages`, async (route) => {
+        await route.fulfill({ json: [] });
+      });
+      router.json("/api/approvals", [
+        {
+          id: "ap-persist",
+          action: "write_file",
+          status: "pending",
+          conversation_id: CONV_ID,
+          tool_call_id: "tc-persist",
+          params: JSON.stringify({ path: "/tmp/x" }),
+        },
+      ]);
+    });
+
+    await page.goto(`/chat/${CONV_ID}`);
+    await expect(page.getByText(/建议：写入文件/)).toBeVisible({ timeout: 10000 });
+    await page.getByText("另一段对话").click();
+    await expect(page).toHaveURL(new RegExp(`/chat/${otherId}`));
+    await expect(page.getByText(/建议：写入文件/)).not.toBeVisible({ timeout: 5000 });
+    await page.getByText("待审批对话").click();
+    await expect(page).toHaveURL(new RegExp(`/chat/${CONV_ID}`));
+    await expect(page.getByText(/建议：写入文件/)).toBeVisible({ timeout: 10000 });
   });
 
   test("user can deny pending tool approval", async ({ page }) => {
@@ -259,7 +403,9 @@ test.describe("New pages", () => {
     await router.install(page);
 
     await page.goto("/dashboard", { waitUntil: "networkidle" });
-    await expect(page.getByRole("heading", { name: "今天", exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole("heading", { name: "今天", exact: true })).toBeVisible({
+      timeout: 10000,
+    });
     // 数据主权面板折叠在"运行状况"中，需先展开
     await page.getByText("运行状况").click();
     await expect(page.getByRole("heading", { name: "我的数据" })).toBeVisible({ timeout: 5000 });

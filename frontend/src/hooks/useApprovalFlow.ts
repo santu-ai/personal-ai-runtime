@@ -16,14 +16,26 @@ interface PendingConfirmation {
 
 type SetMessages = React.Dispatch<React.SetStateAction<DisplayMessage[]>>;
 
+type ResolveResult = {
+  result?: string;
+  assistant_message?: string;
+  pending?: boolean;
+  tool_name?: string;
+  tool_args?: Record<string, unknown>;
+  approval_id?: string;
+  tool_call_id?: string;
+  tool_results?: Array<{ tool_name: string; tool_call_id: string; content: string }>;
+};
+
 function applyResolveToMessages(
   setMessages: SetMessages,
   assistantMsgId: string,
   toolName: string,
   toolCallId: string,
-  res: { result?: string; assistant_message?: string },
+  res: ResolveResult,
   options?: { denied?: boolean },
-) {
+): string | undefined {
+  let followupId: string | undefined;
   setMessages((prev) => {
     const updated = prev.map((m) => {
       if (m.id !== assistantMsgId) return m;
@@ -31,24 +43,51 @@ function applyResolveToMessages(
       const content = options?.denied
         ? JSON.stringify({ status: "denied", reason: "User denied the operation" })
         : res.result;
+      const extra = (res.tool_results || []).filter((r) => r.tool_call_id !== toolCallId);
       return {
         ...m,
         isStreaming: false,
         toolResults: content
-          ? [...existing, { tool_name: toolName, tool_call_id: toolCallId, content }]
+          ? [
+              ...existing,
+              { tool_name: toolName, tool_call_id: toolCallId, content },
+              ...extra.map((r) => ({
+                tool_name: r.tool_name,
+                tool_call_id: r.tool_call_id,
+                content: r.content,
+              })),
+            ]
           : existing,
       };
     });
-    if (res.assistant_message) {
+    if (res.pending && res.approval_id) {
+      followupId = `assistant-followup-${Date.now()}`;
       updated.push({
-        id: `assistant-followup-${Date.now()}`,
+        id: followupId,
+        role: "assistant",
+        content: res.assistant_message ? stripToolMarkup(res.assistant_message) : "",
+        isStreaming: false,
+        toolCalls: [
+          {
+            index: 0,
+            id: res.tool_call_id || "",
+            function_name: res.tool_name || "",
+            arguments: JSON.stringify(res.tool_args || {}),
+          },
+        ],
+      });
+    } else if (res.assistant_message) {
+      followupId = `assistant-followup-${Date.now()}`;
+      updated.push({
+        id: followupId,
         role: "assistant",
         content: stripToolMarkup(res.assistant_message),
         isStreaming: false,
       });
     } else if (options?.denied) {
+      followupId = `assistant-followup-${Date.now()}`;
       updated.push({
-        id: `assistant-followup-${Date.now()}`,
+        id: followupId,
         role: "assistant",
         content: toolName ? `已拒绝「${toolName}」，没有执行该操作。` : "已拒绝该操作。",
         isStreaming: false,
@@ -56,6 +95,7 @@ function applyResolveToMessages(
     }
     return updated;
   });
+  return followupId;
 }
 
 export function useApprovalFlow(conversationId: string) {
@@ -82,13 +122,27 @@ export function useApprovalFlow(conversationId: string) {
           conversationId,
           pc.toolCall.id,
         );
-        applyResolveToMessages(
+        const followupId = applyResolveToMessages(
           setMessages,
           pc.assistantMsgId,
           pc.toolCall.function_name,
           pc.toolCall.id,
           res,
         );
+        if (res.pending && res.approval_id) {
+          const nextId = res.approval_id;
+          inflightApprovalsRef.current.add(nextId);
+          setPendingConfirmation({
+            toolCall: {
+              index: 0,
+              id: res.tool_call_id || "",
+              function_name: res.tool_name || "",
+              arguments: JSON.stringify(res.tool_args || {}),
+            },
+            approvalId: nextId,
+            assistantMsgId: followupId || pc.assistantMsgId,
+          });
+        }
       } catch (err) {
         setPendingConfirmation(pc);
         const msg =

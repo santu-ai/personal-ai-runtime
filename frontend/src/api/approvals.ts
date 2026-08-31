@@ -34,7 +34,17 @@ export async function resolveApproval(
   toolArgs: Record<string, unknown>,
   convId: string,
   toolCallId: string,
-): Promise<{ status: string; result?: string; assistant_message?: string }> {
+): Promise<{
+  status: string;
+  result?: string;
+  assistant_message?: string;
+  pending?: boolean;
+  tool_name?: string;
+  tool_args?: Record<string, unknown>;
+  approval_id?: string;
+  tool_call_id?: string;
+  tool_results?: Array<{ tool_name: string; tool_call_id: string; content: string }>;
+}> {
   return request(`${API_BASE}/chat/approvals/${approvalId}/resolve`, {
     method: "POST",
     body: JSON.stringify({
