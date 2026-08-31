@@ -24,7 +24,7 @@ dependencies = [
     "mcp==2.0.0",
     "alembic==1.19.1",
     "sqlalchemy==2.0.52",
-    "tiktoken==0.13.0",
+    "tiktoken==0.14.0",
     "structlog==26.1.0",
     "cryptography==49.0.0",
     "pypdf==6.16.1",
