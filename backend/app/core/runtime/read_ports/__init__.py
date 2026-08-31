@@ -61,9 +61,11 @@ from app.core.runtime.read_ports.inbox import (
 from app.core.runtime.read_ports.memory import (
     attach_claim_reject_reasons,
     build_memory_graph_edges,
+    collect_superseded_memory_ids,
     count_memories,
     query_memories,
     query_memory,
+    query_supersedes_memory_id,
     recall_memories_for_context,
     retrieve_memory_context,
     retrieve_memory_with_sources,
@@ -71,6 +73,7 @@ from app.core.runtime.read_ports.memory import (
     summarize_memory_stats,
 )
 from app.core.runtime.read_ports.notifications import (
+    broadcast_event,
     cancel_chat_execution,
     create_notification,
     find_notification,
@@ -173,6 +176,8 @@ __all__ = [
     "retrieve_memory_with_sources",
     "query_memory",
     "query_memories",
+    "query_supersedes_memory_id",
+    "collect_superseded_memory_ids",
     "attach_claim_reject_reasons",
     "summarize_claim_conversion",
     "notify_goal_action_completed",
@@ -201,6 +206,7 @@ __all__ = [
     "create_notification",
     "find_notification",
     "push_notification",
+    "broadcast_event",
     "register_sse_queue",
     "unregister_sse_queue",
     "cancel_chat_execution",

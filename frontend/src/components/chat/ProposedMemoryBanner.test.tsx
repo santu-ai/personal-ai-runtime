@@ -43,11 +43,35 @@ describe("ProposedMemoryBanner", () => {
     mockReject.mockResolvedValue({ status: "ok", claim_status: "rejected" });
   });
 
-  it("renders nothing when count is zero", async () => {
+    it("renders nothing when count is zero", async () => {
     mockCount.mockResolvedValue({ count: 0 });
     renderWithRouter(<ProposedMemoryBanner />);
     await waitFor(() => expect(mockCount).toHaveBeenCalled());
     expect(screen.queryByText(/待确认后才会进入对话/)).not.toBeInTheDocument();
+  });
+
+  it("queries only the current conversation when conversationId is set", async () => {
+    mockCount.mockResolvedValue({ count: 1 });
+    mockList.mockResolvedValue({
+      memories: [{ id: "m1", content: "本对话事实", confidence: 0.8 }],
+      total: 1,
+    });
+    renderWithRouter(<ProposedMemoryBanner conversationId="conv-a" />);
+    await waitFor(() => {
+      expect(mockCount).toHaveBeenCalledWith({
+        claimStatus: "proposed",
+        conversationId: "conv-a",
+        source: undefined,
+      });
+    });
+    expect(mockList).toHaveBeenCalledWith(
+      expect.objectContaining({
+        claimStatus: "proposed",
+        conversationId: "conv-a",
+      }),
+    );
+    expect(await screen.findByText(/1 条本对话记忆待确认后才会进入对话/)).toBeInTheDocument();
+    expect(screen.getByText("本对话事实")).toBeInTheDocument();
   });
 
   it("shows items and ratifies inline", async () => {

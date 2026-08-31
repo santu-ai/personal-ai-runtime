@@ -8,6 +8,19 @@ export interface ListMemoriesGroupedOpts {
   category?: string;
   order?: string;
   limit?: number;
+  source?: string;
+  conversationId?: string;
+}
+
+function appendMemoryFilters(
+  qs: URLSearchParams,
+  opts?: Pick<ListMemoriesGroupedOpts, "claimStatus" | "category" | "source" | "conversationId">,
+): void {
+  if (!opts) return;
+  if (opts.claimStatus) qs.set("claim_status", opts.claimStatus);
+  if (opts.category) qs.set("category", opts.category);
+  if (opts.source) qs.set("source", opts.source);
+  if (opts.conversationId) qs.set("conversation_id", opts.conversationId);
 }
 
 export async function listMemoriesGrouped(
@@ -16,8 +29,7 @@ export async function listMemoriesGrouped(
   const normalized: ListMemoriesGroupedOpts =
     typeof opts === "string" ? { claimStatus: opts } : opts;
   const qs = new URLSearchParams();
-  if (normalized.claimStatus) qs.set("claim_status", normalized.claimStatus);
-  if (normalized.category) qs.set("category", normalized.category);
+  appendMemoryFilters(qs, normalized);
   if (normalized.order) qs.set("order", normalized.order);
   if (normalized.limit != null) qs.set("limit", String(normalized.limit));
   const suffix = qs.toString() ? `?${qs}` : "";
@@ -27,10 +39,11 @@ export async function listMemoriesGrouped(
 export async function countMemories(opts?: {
   claimStatus?: string;
   category?: string;
+  source?: string;
+  conversationId?: string;
 }): Promise<{ count: number }> {
   const qs = new URLSearchParams();
-  if (opts?.claimStatus) qs.set("claim_status", opts.claimStatus);
-  if (opts?.category) qs.set("category", opts.category);
+  appendMemoryFilters(qs, opts);
   const suffix = qs.toString() ? `?${qs}` : "";
   return request<{ count: number }>(`${API_BASE}/memory/memories/count${suffix}`);
 }

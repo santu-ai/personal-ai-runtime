@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
+import pytest
+
 from app.core.agents.memory_engine import MemoryEngine
+
+
+@pytest.fixture(autouse=True)
+def _no_supersession_chain(monkeypatch):
+    monkeypatch.setattr(
+        "app.core.agents.memory_engine.read_ports.collect_superseded_memory_ids",
+        lambda _ids: set(),
+    )
 
 
 def test_recall_for_context_overfetches_past_proposed(monkeypatch):
@@ -160,3 +170,41 @@ def test_format_memory_context_without_timestamp_keeps_confidence():
         [{"id": "m1", "content": "User prefers Python", "confidence": 0.8}],
     )
     assert "[置信度 0.80] User prefers Python" in rendered
+
+
+def test_recall_drops_superseded_memory(monkeypatch):
+    engine = MemoryEngine()
+    monkeypatch.setattr(
+        engine,
+        "search_relevant_memories",
+        lambda query, n_results=5: [
+            {"id": "old", "content": "passcode is TIANSHAN"},
+            {"id": "new", "content": "passcode is HUASHAN"},
+        ][:n_results],
+    )
+    rows = {
+        "old": {
+            "content": "passcode is TIANSHAN",
+            "confidence": 0.5,
+            "claim_status": "ratified",
+            "category": "fact",
+            "created_at": "2026-08-18",
+        },
+        "new": {
+            "content": "passcode is HUASHAN",
+            "confidence": 0.5,
+            "claim_status": "ratified",
+            "category": "fact",
+            "created_at": "2026-08-19",
+        },
+    }
+    monkeypatch.setattr(
+        "app.core.agents.memory_engine.read_ports.query_memory",
+        lambda memory_id: rows.get(memory_id),
+    )
+    monkeypatch.setattr(
+        "app.core.agents.memory_engine.read_ports.collect_superseded_memory_ids",
+        lambda ids: {"old"} if "new" in ids else set(),
+    )
+    enriched = engine.recall_for_context("暗号", max_memories=2)
+    assert [m["id"] for m in enriched] == ["new"]

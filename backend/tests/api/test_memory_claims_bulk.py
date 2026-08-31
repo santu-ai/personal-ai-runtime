@@ -152,6 +152,74 @@ def test_reject_reason_roundtrip_restore_and_stats(client):
     assert mid in ids
 
 
+def test_conversation_id_filters_source(client):
+    a = memory_engine.store_memory(
+        "User prefers dark mode in conversation A",
+        source="conv:sess-a", actor="extractor",
+    )
+    memory_engine.store_memory(
+        "User prefers light mode in conversation B",
+        source="conv:sess-b", actor="extractor",
+    )
+    r = client.get(
+        "/api/memory/memories/grouped",
+        params={"claim_status": "proposed", "conversation_id": "sess-a"},
+    )
+    assert r.status_code == 200
+    ids = {m["id"] for m in r.json()["memories"]}
+    assert a in ids
+    assert r.json()["total"] == 1
+
+    count = client.get(
+        "/api/memory/memories/count",
+        params={"claim_status": "proposed", "conversation_id": "sess-a"},
+    )
+    assert count.json()["count"] == 1
+
+
+def test_claim_action_broadcasts_memory_changed(client, monkeypatch):
+    seen: list[dict] = []
+    monkeypatch.setattr(
+        "app.api.memory.read_ports.broadcast_event",
+        lambda event: seen.append(event),
+    )
+    mid = _store_claim("User drinks oolong tea in the afternoon")
+    r = client.post(f"/api/memory/memories/{mid}/ratify")
+    assert r.status_code == 200
+    assert any(
+        e.get("type") == "memory_changed" and e.get("memory_id") == mid
+        for e in seen
+    )
+
+
+def test_ratify_rejects_superseded_claim(client):
+    old_id = memory_engine.store_memory(
+        "W34 passcode is TIANSHAN-DF-W34-0818",
+        source="conv:a", actor="extractor",
+    )
+    new_id = memory_engine.store_memory(
+        "W34-R3 passcode is HUASHAN-DF-W34-R3-0819",
+        source="conv:a", actor="extractor",
+        supersedes_memory_id=old_id,
+    )
+    client.post(f"/api/memory/memories/{old_id}/ratify")
+    r = client.post(f"/api/memory/memories/{new_id}/ratify")
+    assert r.status_code == 200
+    old = client.get(
+        "/api/memory/memories/grouped",
+        params={"claim_status": "rejected"},
+    )
+    rejected_ids = {m["id"] for m in old.json()["memories"]}
+    assert old_id in rejected_ids
+    ratified = client.get(
+        "/api/memory/memories/grouped",
+        params={"claim_status": "ratified"},
+    )
+    ratified_ids = {m["id"] for m in ratified.json()["memories"]}
+    assert new_id in ratified_ids
+    assert old_id not in ratified_ids
+
+
 def test_bulk_reject_persists_shared_reason(client):
     mid = _store_claim("User never drinks coffee after 3pm")
     r = client.post(

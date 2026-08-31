@@ -51,11 +51,15 @@ export function useMemoriesGroupedQuery(opts?: ListMemoriesGroupedOpts | string)
 }
 
 /** Lightweight badge count — avoids loading up to 100 rows for Sidebar. */
-export function useProposedMemoryCountQuery() {
+export function useProposedMemoryCountQuery(opts?: { conversationId?: string; source?: string }) {
   return useQuery({
-    queryKey: [...queryKeys.memoriesGrouped, "count", "proposed"] as const,
+    queryKey: [...queryKeys.memoriesGrouped, "count", "proposed", opts ?? {}] as const,
     queryFn: async () => {
-      const data = await countMemories({ claimStatus: "proposed" });
+      const data = await countMemories({
+        claimStatus: "proposed",
+        conversationId: opts?.conversationId,
+        source: opts?.source,
+      });
       return data.count;
     },
     staleTime: 10_000,

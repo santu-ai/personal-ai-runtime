@@ -10,6 +10,8 @@ const PREVIEW_LIMIT = 3;
 
 interface Props {
   className?: string;
+  /** When set, only show proposed memories extracted from this conversation. */
+  conversationId?: string;
 }
 
 /**
@@ -19,12 +21,14 @@ interface Props {
  * ChatHome previously had no path at all; ChatView only linked out to
  * /memories. Reuses existing memory APIs — no new fragment.
  */
-export default function ProposedMemoryBanner({ className = "" }: Props) {
-  const { data: proposedCount = 0 } = useProposedMemoryCountQuery();
+export default function ProposedMemoryBanner({ className = "", conversationId }: Props) {
+  const scope = conversationId ? { conversationId } : undefined;
+  const { data: proposedCount = 0 } = useProposedMemoryCountQuery(scope);
   const { data } = useMemoriesGroupedQuery({
     claimStatus: "proposed",
     limit: PREVIEW_LIMIT,
     order: "created_at_desc",
+    conversationId,
   });
   const queryClient = useQueryClient();
   const addError = useErrorStore((s) => s.addError);
@@ -33,6 +37,9 @@ export default function ProposedMemoryBanner({ className = "" }: Props) {
   if (proposedCount <= 0) return null;
 
   const items = (data?.memories ?? []).slice(0, PREVIEW_LIMIT);
+  const heading = conversationId
+    ? `${proposedCount} 条本对话记忆待确认后才会进入对话`
+    : `${proposedCount} 条记忆待确认后才会进入对话`;
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.memories });
@@ -64,7 +71,7 @@ export default function ProposedMemoryBanner({ className = "" }: Props) {
       className={`px-4 py-2 bg-insight/10 border-b border-insight/30 text-xs text-insight ${className}`.trim()}
     >
       <div className="flex items-center gap-2">
-        <p className="flex-1 min-w-0">{proposedCount} 条记忆待确认后才会进入对话</p>
+        <p className="flex-1 min-w-0">{heading}</p>
         <Link
           to="/memories?tab=review"
           className="shrink-0 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"

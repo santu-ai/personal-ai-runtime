@@ -287,6 +287,7 @@ describe("ChatView", () => {
     memoriesState.data.recent = [{ content: "likes tea" }];
     renderChatView();
     expect(screen.queryByText(/我刚记住了/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/待确认：/)).not.toBeInTheDocument();
   });
 
   it("sends a pending home prompt after messages hydrate", async () => {
@@ -363,7 +364,7 @@ describe("ChatView", () => {
   it("shows a review banner when proposed memories exist", () => {
     proposedCountState.data = 3;
     renderChatView();
-    expect(screen.getByText(/3 条记忆待确认后才会进入对话/)).toBeInTheDocument();
+    expect(screen.getByText(/3 条本对话记忆待确认后才会进入对话/)).toBeInTheDocument();
   });
 
   it("ratifies a proposed memory from the chat banner", async () => {
@@ -391,7 +392,7 @@ describe("ChatView", () => {
     memoriesState.data.memories = [{ id: "m1", content: "喜欢早起跑步" }];
     renderChatView();
 
-    const banner = await screen.findByText(/1 条记忆待确认后才会进入对话/);
+    const banner = await screen.findByText(/1 条本对话记忆待确认后才会进入对话/);
     const contextBtn = await screen.findByRole("button", { name: "上下文" });
     expect(banner.closest(".border-b")?.contains(contextBtn)).toBe(false);
   });

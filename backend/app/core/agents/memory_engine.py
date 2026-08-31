@@ -26,6 +26,7 @@ class MemoryEngine:
         confidence: float = 0.5,
         source_document_id: str | None = None,
         source_document_name: str | None = None,
+        supersedes_memory_id: str | None = None,
     ) -> str:
         """Store a memory via Kernel event; Chroma index syncs in Kernel Space.
 
@@ -33,6 +34,9 @@ class MemoryEngine:
         source_document_id / source_document_name to record the provenance
         link. (Knowledge Base was removed; the fields remain for future
         document-sourced extraction.)
+
+        ``supersedes_memory_id`` lives on the MemoryDerived payload only
+        (not the projection). Confirming the new claim rejects the old one.
         """
         memory_id = str(uuid.uuid4())
         payload: dict[str, object] = {
@@ -45,6 +49,8 @@ class MemoryEngine:
             payload["source_document_id"] = source_document_id
         if source_document_name:
             payload["source_document_name"] = source_document_name
+        if supersedes_memory_id:
+            payload["supersedes_memory_id"] = supersedes_memory_id
 
         kernel.emit_event(
             type="MemoryDerived",
@@ -112,7 +118,13 @@ class MemoryEngine:
             return []
         n_results = max(max_memories * max(1, overfetch_factor), max_memories)
         hits = self.search_relevant_memories(query, n_results=n_results)
-        selected = self._enrich_recall_hits(hits)[:max_memories]
+        selected = self._enrich_recall_hits(hits)
+        superseded = read_ports.collect_superseded_memory_ids(
+            [str(m["id"]) for m in selected if m.get("id")],
+        )
+        if superseded:
+            selected = [m for m in selected if m.get("id") not in superseded]
+        selected = selected[:max_memories]
         return sorted(
             selected, key=lambda m: str(m.get("created_at") or ""), reverse=True,
         )

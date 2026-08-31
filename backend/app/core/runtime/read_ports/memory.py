@@ -49,6 +49,7 @@ def query_memories(
     confidence_lt: float | None = None,
     decay_eligible: bool | None = None,
     claim_status: str | None = None,
+    source: str | None = None,
 ) -> list[dict[str, Any]]:
     filters: dict[str, Any] = {"limit": limit}
     if category:
@@ -63,6 +64,8 @@ def query_memories(
         filters["decay_eligible"] = decay_eligible
     if claim_status is not None:
         filters["claim_status"] = claim_status
+    if source is not None:
+        filters["source"] = source
     return kernel().query_state("memories", **filters)
 
 
@@ -74,6 +77,7 @@ def count_memories(
     confidence_gt: float | None = None,
     confidence_lt: float | None = None,
     decay_eligible: bool | None = None,
+    source: str | None = None,
 ) -> int:
     filters: dict[str, Any] = {}
     if category is not None:
@@ -82,6 +86,8 @@ def count_memories(
         filters["origin"] = origin
     if claim_status is not None:
         filters["claim_status"] = claim_status
+    if source is not None:
+        filters["source"] = source
     if confidence_gt is not None:
         filters["confidence_gt"] = confidence_gt
     if confidence_lt is not None:
@@ -207,4 +213,39 @@ def build_memory_graph_edges(sources: list[dict]) -> list[dict]:
 
     edges.sort(key=lambda e: e["weight"], reverse=True)
     return edges[:100]
+
+
+def query_supersedes_memory_id(memory_id: str) -> str | None:
+    """Read ``supersedes_memory_id`` from the MemoryDerived payload (event log)."""
+    events = kernel().read_events(
+        aggregate_type="memory",
+        aggregate_id=memory_id,
+        type="MemoryDerived",
+        limit=1,
+        order="asc",
+    )
+    if not events:
+        return None
+    raw = (events[0].payload or {}).get("supersedes_memory_id")
+    if not raw:
+        return None
+    text = str(raw).strip()
+    return text or None
+
+
+def collect_superseded_memory_ids(memory_ids: list[str]) -> set[str]:
+    """Walk MemoryDerived supersession links starting from ``memory_ids``."""
+    superseded: set[str] = set()
+    seen: set[str] = set()
+    stack = [mid for mid in memory_ids if mid]
+    while stack:
+        mid = stack.pop()
+        if mid in seen:
+            continue
+        seen.add(mid)
+        old = query_supersedes_memory_id(mid)
+        if old and old not in superseded:
+            superseded.add(old)
+            stack.append(old)
+    return superseded
 

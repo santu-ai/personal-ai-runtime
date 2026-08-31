@@ -64,6 +64,7 @@ def test_query_memories_forwards_all_filters(fake_kernel):
         confidence_gt=0.5,
         confidence_lt=0.9,
         decay_eligible=True,
+        source="conv:abc",
     )
     assert fake_kernel.query_calls == [
         (
@@ -75,6 +76,7 @@ def test_query_memories_forwards_all_filters(fake_kernel):
                 "confidence_gt": 0.5,
                 "confidence_lt": 0.9,
                 "decay_eligible": True,
+                "source": "conv:abc",
             },
         ),
     ]
@@ -95,6 +97,7 @@ def test_query_memories_omits_optional_filters(fake_kernel):
         ({"confidence_gt": 0.3}, {"confidence_gt": 0.3}),
         ({"confidence_lt": 0.7}, {"confidence_lt": 0.7}),
         ({"decay_eligible": True}, {"decay_eligible": True}),
+        ({"source": "conv:abc"}, {"source": "conv:abc"}),
         (
             {"category": "goal", "origin": "test", "claim_status": "unclaimed"},
             {"category": "goal", "origin": "test", "claim_status": "unclaimed"},

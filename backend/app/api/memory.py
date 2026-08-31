@@ -1,6 +1,7 @@
 """Memory API — manage long-term memories and user profile."""
 
 import asyncio
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -28,6 +29,49 @@ def _get_memory(memory_id: str) -> dict | None:
     return read_ports.query_memory(memory_id)
 
 
+def _memory_source(*, source: str | None, conversation_id: str | None) -> str | None:
+    """Map conversation_id onto the existing ``source=conv:{id}`` field."""
+    conv = (conversation_id or "").strip()
+    if conv:
+        return f"conv:{conv}"
+    src = (source or "").strip()
+    return src or None
+
+
+def _broadcast_memory_changed(
+    memory_id: str, event_type: str, mem: dict | None = None,
+) -> None:
+    """Push the existing memory_changed transport event so React Query invalidates."""
+    preview = str((mem or {}).get("content") or "")[:120]
+    category = str((mem or {}).get("category") or "general")
+    read_ports.broadcast_event({
+        "type": "memory_changed",
+        "event_type": event_type,
+        "memory_id": memory_id,
+        "category": category,
+        "preview": preview,
+        "ts": datetime.now(UTC).isoformat(),
+    })
+
+
+def _reject_superseded(new_memory_id: str) -> None:
+    """On ratify, reject the older claim linked by MemoryDerived.supersedes_memory_id."""
+    old_id = read_ports.query_supersedes_memory_id(new_memory_id)
+    if not old_id or old_id == new_memory_id:
+        return
+    old = _get_memory(old_id)
+    if not old or old.get("origin") != "claim":
+        return
+    if old.get("claim_status") == "rejected":
+        return
+    kernel.emit_event(
+        "ClaimRejected", "memory", old_id,
+        payload={"by": "user", "reason": "superseded"},
+        actor="user",
+    )
+    _broadcast_memory_changed(old_id, "ClaimRejected", old)
+
+
 def _apply_claim_action(memory_id: str, action: str, *, reason: str = "") -> dict:
     """Emit ClaimRatified/Rejected for one memory; raise HTTPException on failure."""
     mem = _get_memory(memory_id)
@@ -47,6 +91,9 @@ def _apply_claim_action(memory_id: str, action: str, *, reason: str = "") -> dic
         payload=payload,
         actor="user",
     )
+    _broadcast_memory_changed(memory_id, event_type, mem)
+    if action == "ratify":
+        _reject_superseded(memory_id)
     return {"status": "ok", "claim_status": status}
 
 
@@ -54,13 +101,17 @@ def _apply_claim_action(memory_id: str, action: str, *, reason: str = "") -> dic
 async def list_memories(
     category: str | None = None,
     claim_status: str | None = None,
+    source: str | None = None,
+    conversation_id: str | None = None,
     limit: int = Query(50, ge=1, le=200),
 ):
-    """List all memories, optionally filtered by category / claim_status."""
+    """List all memories, optionally filtered by category / claim_status / source."""
+    source_filter = _memory_source(source=source, conversation_id=conversation_id)
     rows = await asyncio.to_thread(
         read_ports.query_memories,
         category=category,
         claim_status=claim_status,
+        source=source_filter,
         limit=limit,
     )
     return await asyncio.to_thread(read_ports.attach_claim_reject_reasons, rows)
@@ -70,12 +121,16 @@ async def list_memories(
 async def count_memories(
     category: str | None = None,
     claim_status: str | None = None,
+    source: str | None = None,
+    conversation_id: str | None = None,
 ):
     """Return exact memory count (not truncated by list limit)."""
+    source_filter = _memory_source(source=source, conversation_id=conversation_id)
     total = await asyncio.to_thread(
         read_ports.count_memories,
         category=category,
         claim_status=claim_status,
+        source=source_filter,
     )
     return {"count": total}
 
@@ -84,6 +139,8 @@ async def count_memories(
 async def list_memories_grouped(
     claim_status: str | None = None,
     category: str | None = None,
+    source: str | None = None,
+    conversation_id: str | None = None,
     order: str = "created_at_desc",
     limit: int = Query(100, ge=1, le=500),
 ):
@@ -92,10 +149,12 @@ async def list_memories_grouped(
     ``total`` is the untruncated match count so badges/filters stay honest
     when ``limit`` truncates ``memories``.
     """
+    source_filter = _memory_source(source=source, conversation_id=conversation_id)
     rows = await asyncio.to_thread(
         read_ports.query_memories,
         claim_status=claim_status,
         category=category,
+        source=source_filter,
         order=order,
         limit=limit,
     )
@@ -104,6 +163,7 @@ async def list_memories_grouped(
         read_ports.count_memories,
         claim_status=claim_status,
         category=category,
+        source=source_filter,
     )
     return {"memories": rows, "total": total}
 
@@ -233,6 +293,9 @@ async def bulk_claim_action(body: BulkClaimActionRequest):
             payload=payload,
             actor="user",
         )
+        _broadcast_memory_changed(mid, event_type, mem)
+        if body.action == "ratify":
+            _reject_superseded(mid)
         ok += 1
     return {
         "status": "ok",
@@ -271,6 +334,7 @@ async def contest_memory(memory_id: str):
         payload={"by": "user"},
         actor="user",
     )
+    _broadcast_memory_changed(memory_id, "ClaimContested", mem)
     return {"status": "ok", "claim_status": "contested"}
 
 

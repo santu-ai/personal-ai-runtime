@@ -20,6 +20,22 @@ class TestQueryStateW3:
         results2 = k.query_state("memories", claim_status="ratified")
         assert not any(r["id"] == "m-claim" for r in results2)
 
+    def test_memories_by_source(self, isolated_kernel):
+        k, _db = isolated_kernel
+        k.emit_event("MemoryDerived", "memory", "m-conv-a", payload={
+            "category": "fact", "content": "from A", "source": "conv:a",
+            "confidence": 0.7, "origin": "claim", "claim_status": "proposed",
+        })
+        k.emit_event("MemoryDerived", "memory", "m-conv-b", payload={
+            "category": "fact", "content": "from B", "source": "conv:b",
+            "confidence": 0.7, "origin": "claim", "claim_status": "proposed",
+        })
+        results = k.query_state("memories", source="conv:a")
+        ids = {r["id"] for r in results}
+        assert "m-conv-a" in ids
+        assert "m-conv-b" not in ids
+        assert k.count_state("memories", source="conv:a") == 1
+
     def test_memories_order_created_at_desc(self, isolated_kernel):
         """order=created_at_desc must beat default confidence ranking."""
         k, _db = isolated_kernel

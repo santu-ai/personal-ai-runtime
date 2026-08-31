@@ -44,8 +44,15 @@ export default function ChatView({ conversationId }: Props) {
   // Server state lives in TanStack Query; cache is invalidated by WS
   // `memory_changed` events so we never need setTimeout polling.
   const { data: memData } = useMemoriesGroupedQuery();
+  const { data: convProposed } = useMemoriesGroupedQuery({
+    claimStatus: "proposed",
+    conversationId,
+    order: "created_at_desc",
+    limit: 3,
+  });
   const recentMemories: MemoryRow[] = memData?.recent ?? [];
-  const memoryTotal: number = memData?.memories.length ?? 0;
+  const proposedTotal: number = convProposed?.total ?? convProposed?.memories.length ?? 0;
+  const newestProposed = convProposed?.memories[0];
   // Track whether the user has sent at least one message in this session
   // — only then do we want "I just remembered" toasts. Initial cache load
   // must not fire a toast, and StrictMode double-invocation must not either.
@@ -92,7 +99,7 @@ export default function ChatView({ conversationId }: Props) {
       isAtBottomRef.current = true;
       setShowJumpToLatest(false);
       isProgrammaticScrollRef.current = false;
-      prevMemoryTotalRef.current = memData?.memories.length ?? 0;
+      prevMemoryTotalRef.current = proposedTotal;
       return (
         (await sendMessageBase(
           trimmed,
@@ -105,7 +112,15 @@ export default function ChatView({ conversationId }: Props) {
         )) === true
       );
     },
-    [isLoading, pendingConfirmation, sendMessageBase, setFromEvent, setMessages, addError, memData],
+    [
+      isLoading,
+      pendingConfirmation,
+      sendMessageBase,
+      setFromEvent,
+      setMessages,
+      addError,
+      proposedTotal,
+    ],
   );
 
   useEffect(() => {
@@ -177,29 +192,32 @@ export default function ChatView({ conversationId }: Props) {
     void loadSuggestions();
   }, [memData, loadSuggestions]);
 
-  // Surface a "I just remembered …" toast when the memory cache grows.
-  // Uses the TOTAL memory count (not the recent slice length, which is
-  // capped at 3 and would silently miss growth from 5 → 6). Suppressed
-  // until the user has actually sent a message, so initial mount / route
-  // changes / StrictMode double-invoke never fire a spurious toast.
+  useEffect(() => {
+    prevMemoryTotalRef.current = null;
+    setMemoryNotice(null);
+  }, [conversationId]);
+
+  // Surface a "待确认" toast when this conversation yields a new proposed memory.
+  // Uses the conversation-scoped proposed count (not the global memory total).
+  // Suppressed until the user has actually sent a message, so initial mount /
+  // route changes / StrictMode double-invoke never fire a spurious toast.
   useEffect(() => {
     if (prevMemoryTotalRef.current === null) {
-      prevMemoryTotalRef.current = memoryTotal;
+      prevMemoryTotalRef.current = proposedTotal;
       return;
     }
-    if (memoryTotal > prevMemoryTotalRef.current && hasSentRef.current) {
-      const newest = recentMemories[0];
-      if (newest) {
+    if (proposedTotal > prevMemoryTotalRef.current && hasSentRef.current) {
+      if (newestProposed) {
         setMemoryNotice(
-          `我刚记住了：${newest.content.slice(0, 40)}${newest.content.length > 40 ? "…" : ""}`,
+          `待确认：${newestProposed.content.slice(0, 40)}${newestProposed.content.length > 40 ? "…" : ""}`,
         );
         const t = setTimeout(() => setMemoryNotice(null), 6000);
-        prevMemoryTotalRef.current = memoryTotal;
+        prevMemoryTotalRef.current = proposedTotal;
         return () => clearTimeout(t);
       }
     }
-    prevMemoryTotalRef.current = memoryTotal;
-  }, [memoryTotal, recentMemories]);
+    prevMemoryTotalRef.current = proposedTotal;
+  }, [proposedTotal, newestProposed]);
 
   const BOTTOM_THRESHOLD_PX = 80;
 
@@ -306,7 +324,7 @@ export default function ChatView({ conversationId }: Props) {
   if (initialLoad && messages.length === 0 && !isLoading && !pendingPrompt) {
     return (
       <div className="flex-1 flex flex-col min-h-0">
-        <ProposedMemoryBanner />
+        <ProposedMemoryBanner conversationId={conversationId} />
         <WelcomeScreen
           recentMemories={recentMemories}
           suggestions={suggestions}
@@ -333,7 +351,7 @@ export default function ChatView({ conversationId }: Props) {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <ProposedMemoryBanner />
+      <ProposedMemoryBanner conversationId={conversationId} />
       {memoryNotice && (
         <div className="px-4 py-2 bg-insight/10 border-b border-insight/30 flex items-center gap-2 text-xs text-insight animate-pulse">
           <BrainCircuit size={14} className="shrink-0" />

@@ -98,6 +98,13 @@ def push_notification(
     return _push(notif_type, title, content, **kwargs)
 
 
+def broadcast_event(event: dict) -> Any:
+    """Transport-only broadcast (no notification row)."""
+    from app.core.runtime.notification_bridge import broadcast_event as _broadcast
+
+    return _broadcast(event)
+
+
 def register_sse_queue(correlation_id: str) -> Any:
     from app.core.runtime.notification_bridge import register
 

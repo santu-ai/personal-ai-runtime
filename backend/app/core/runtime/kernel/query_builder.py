@@ -534,6 +534,7 @@ def query_memories(db, filters: dict[str, Any]) -> list[dict] | int:
     memory_id = filters.get("id")
     category = filters.get("category")
     origin = filters.get("origin")
+    source = filters.get("source")
     claim_status = filters.get("claim_status")
     confidence_gt = filters.get("confidence_gt")
     confidence_lt = filters.get("confidence_lt")
@@ -542,8 +543,7 @@ def query_memories(db, filters: dict[str, Any]) -> list[dict] | int:
     order = filters.get("order")
     count_only = filters.get("count_only", False)
 
-    # Default preserves historical ranking (confidence, then recency).
-    # ``created_desc`` is an alias for dashboard / casual callers.
+    # Default ranking is confidence then recency; created_desc is a dashboard alias.
     order_sql = safe_order(
         order,
         {
@@ -563,15 +563,15 @@ def query_memories(db, filters: dict[str, Any]) -> list[dict] | int:
 
         clauses: list[str] = []
         params: list[Any] = []
-        if category is not None:
-            clauses.append("category = ?")
-            params.append(category)
-        if origin is not None:
-            clauses.append("origin = ?")
-            params.append(origin)
-        if claim_status is not None:
-            clauses.append("claim_status = ?")
-            params.append(claim_status)
+        for col, val in (
+            ("category", category),
+            ("origin", origin),
+            ("source", source),
+            ("claim_status", claim_status),
+        ):
+            if val is not None:
+                clauses.append(f"{col} = ?")
+                params.append(val)
         if confidence_gt is not None:
             clauses.append("confidence > ?")
             params.append(confidence_gt)
