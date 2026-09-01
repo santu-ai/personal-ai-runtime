@@ -18,6 +18,14 @@ logger = logging.getLogger(__name__)
 SETTINGS_CATEGORY = "telegram_gateway"
 
 
+def _safe_error(message: str) -> str:
+    token = settings.telegram_bot_token.strip()
+    text = str(message or "")
+    if token:
+        text = text.replace(f"/bot{token}", "/bot<redacted>").replace(token, "<redacted>")
+    return text[:500]
+
+
 def _defaults() -> dict[str, Any]:
     return {
         "enabled": False,
@@ -62,6 +70,7 @@ def save_config(changes: dict[str, Any], *, audit: bool = True) -> dict[str, Any
     with db.get_db() as conn:
         conn.execute("BEGIN IMMEDIATE")
         current = _load_config_from_conn(conn)
+        persisted_offset = int(current["last_update_id"] or 0)
         current.update({
             key: value
             for key, value in changes.items()
@@ -69,8 +78,12 @@ def save_config(changes: dict[str, Any], *, audit: bool = True) -> dict[str, Any
         })
         current["enabled"] = bool(current["enabled"])
         current["auto_reply"] = bool(current["auto_reply"])
-        current["last_update_id"] = max(int(current["last_update_id"] or 0), 0)
-        current["last_error"] = str(current["last_error"] or "")[:500]
+        current["last_update_id"] = max(
+            persisted_offset,
+            int(current["last_update_id"] or 0),
+            0,
+        )
+        current["last_error"] = _safe_error(current["last_error"])
         conn.execute(
             """INSERT INTO app_settings (category, data_json, updated_at)
                VALUES (?, ?, ?)
@@ -141,7 +154,7 @@ async def poll_once() -> dict[str, Any]:
     )
     now = now_dt.isoformat()
     if result.get("status") != "success":
-        error = str(result.get("error") or "telegram_updates failed")
+        error = _safe_error(result.get("error") or "telegram_updates failed")
         failures = int(config.get("consecutive_failures") or 0) + 1
         delay_seconds = min(60 * (2 ** (failures - 1)), 900)
         save_config({
@@ -191,7 +204,7 @@ async def poll_once() -> dict[str, Any]:
         kernel.emit_event(
             "ChatRequested",
             "chat",
-            f"chat_{conversation_id}",
+            conversation_id,
             payload={
                 "conversation_id": conversation_id,
                 "user_message": text,
@@ -204,6 +217,8 @@ async def poll_once() -> dict[str, Any]:
         )
         last_update_id = max(last_update_id, update_id)
         processed += 1
+        stalled = True
+        break
     next_offset = payload.get("next_offset")
     if not stalled and next_offset is not None:
         last_update_id = max(last_update_id, int(next_offset) - 1)
@@ -245,10 +260,15 @@ async def send_reply(text: str, *, correlation_id: str) -> dict[str, Any]:
         execution_id=get_current_execution_id(),
         **invoke_kwargs,
     )
-    changes = {"last_sent_at": datetime.now(UTC).isoformat()}
-    if result.get("status") == "error":
-        changes["last_error"] = str(result.get("error") or "")
-    save_config(changes, audit=False)
+    changes: dict[str, Any] = {}
+    status = result.get("status")
+    if status == "success":
+        changes["last_sent_at"] = datetime.now(UTC).isoformat()
+        changes["last_error"] = ""
+    elif status == "error":
+        changes["last_error"] = _safe_error(result.get("error") or "")
+    if changes:
+        save_config(changes, audit=False)
     return result
 
 

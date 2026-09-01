@@ -118,6 +118,126 @@ async def test_gateway_dedupes_updates_and_persists_offset(
     assert taint_registry.is_tainted("telegram:101")
     assert gateway.load_config()["last_update_id"] == 101
     assert invoke.await_args_list[1].args[1]["offset"] == 102
+    assert events[0].aggregate_id == gateway.load_config()["conversation_id"]
+
+
+@pytest.mark.asyncio
+async def test_poll_enqueues_one_chat_per_tick(isolated_kernel, monkeypatch):
+    from app.product import telegram_gateway as gateway
+
+    k, database = isolated_kernel
+    monkeypatch.setattr(gateway, "kernel", k)
+    monkeypatch.setattr(gateway, "db", database)
+    monkeypatch.setattr(gateway.settings, "telegram_chat_id", "42")
+    gateway.save_config({"enabled": True}, audit=False)
+    invoke = AsyncMock(return_value={
+        "status": "success",
+        "result": json.dumps({
+            "updates": [
+                {"update_id": 201, "chat_id": "42", "text": "one"},
+                {"update_id": 202, "chat_id": "42", "text": "two"},
+            ],
+            "next_offset": 203,
+        }),
+    })
+    monkeypatch.setattr(k, "invoke_capability", invoke)
+
+    result = await gateway.poll_once()
+
+    assert result["processed"] == 1
+    assert gateway.load_config()["last_update_id"] == 201
+    assert k.read_events(type="ChatRequested", correlation_id="telegram:201")
+    assert k.read_events(type="ChatRequested", correlation_id="telegram:202") == []
+
+
+def test_telegram_errors_redact_bot_token():
+    from app.core.harness.builtin_tools.telegram_bot import redact_telegram_secret
+
+    leaked = "GET https://api.telegram.org/botsecret-token/getUpdates"
+    cleaned = redact_telegram_secret(leaked, "secret-token")
+    assert "secret-token" not in cleaned
+    assert "<redacted>" in cleaned
+
+
+@pytest.mark.asyncio
+async def test_offset_does_not_move_backwards(isolated_kernel, monkeypatch):
+    from app.product import telegram_gateway as gateway
+
+    _k, database = isolated_kernel
+    monkeypatch.setattr(gateway, "db", database)
+    gateway.save_config({"enabled": True, "last_update_id": 101}, audit=False)
+    gateway.save_config({"last_update_id": 50}, audit=False)
+    assert gateway.load_config()["last_update_id"] == 101
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_marks_telegram_ingress_after_clear(
+    isolated_kernel, monkeypatch,
+):
+    from types import SimpleNamespace
+
+    from app.core.agents import brain_chat_stream
+    from app.core.agents.brain_stream_assemble import AssembledStream
+    from app.core.agents.conversation import ConversationManager
+    from app.core.runtime.taint import taint_registry
+
+    k, _database = isolated_kernel
+    monkeypatch.setattr("app.core.agents.brain_chat_stream.kernel", k)
+    monkeypatch.setattr(
+        "app.core.agents.brain_chat_stream.record_llm_call",
+        lambda *a, **_k: 0,
+    )
+
+    async def fake_iter(_response):
+        yield {
+            "type": "_stream_assembled",
+            "result": AssembledStream(visible_text="hi", tool_calls=[]),
+        }
+
+    monkeypatch.setattr(
+        "app.core.agents.brain_chat_stream.iter_assembled_stream",
+        fake_iter,
+    )
+
+    llm = SimpleNamespace(
+        provider=SimpleNamespace(
+            name="fake",
+            model="fake-model",
+            price_per_prompt_token=0,
+            price_per_completion_token=0,
+        ),
+    )
+
+    async def create_stream(*_a, **_k):
+        return object(), object(), llm.provider
+
+    llm.create_stream = create_stream
+    llm.replace_provider = lambda *_a, **_k: None
+    brain = SimpleNamespace(
+        llm=llm,
+        build_messages=lambda *_a, **_k: [{"role": "user", "content": "hi"}],
+    )
+    conv = ConversationManager(conversation_id="tg-taint", kernel=k)
+    k.emit_event(
+        "ConversationCreated", "conversation", "tg-taint",
+        payload={"title": "tg"}, actor="user",
+    )
+    cid = "telegram:909"
+    taint_registry.mark(cid, source="external_ingestion", reason="pre")
+
+    async for _ in brain_chat_stream.chat_stream(
+        brain, conv, "hi", system_prompt="s", correlation_id=cid,
+    ):
+        pass
+
+    assert taint_registry.is_tainted(cid)
+    result = await k.invoke_capability(
+        "write_file",
+        {"path": "/tmp/x", "content": "n"},
+        actor="user",
+        correlation_id=cid,
+    )
+    assert result["status"] == "pending"
 
 
 @pytest.mark.asyncio

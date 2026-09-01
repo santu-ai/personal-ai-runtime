@@ -94,6 +94,7 @@ _PATHISH_RE = re.compile(
 # *new* identifier are standing-decision updates, not copies (dogfood W34-R2).
 _CODE_RE = re.compile(r"(?i)(?<![A-Za-z0-9])[A-Za-z0-9]+(?:[-_][A-Za-z0-9]{2,})+")
 _HAS_DIGIT_RE = re.compile(r"\d")
+_WEEK_TAG_RE = re.compile(r"^20\d{2}-W\d{1,2}$", re.I)
 
 
 def distinctive_codes(text: str) -> frozenset[str]:
@@ -110,6 +111,11 @@ def distinctive_codes(text: str) -> frozenset[str]:
         for m in _CODE_RE.finditer(text)
         if _HAS_DIGIT_RE.search(m.group(0))
     )
+
+
+def material_identifier_codes(text: str) -> frozenset[str]:
+    """Identifiers that must be grounded; ISO week tags are contextual labels."""
+    return frozenset(code for code in distinctive_codes(text) if not _WEEK_TAG_RE.fullmatch(code))
 
 
 class MemoryExtractor:
@@ -283,10 +289,10 @@ class MemoryExtractor:
         """
         if grounding is None:
             return False
-        codes = distinctive_codes(fact)
+        codes = material_identifier_codes(fact)
         if not codes:
             return False
-        return not codes.issubset(distinctive_codes(grounding))
+        return not codes.issubset(material_identifier_codes(grounding))
 
     @staticmethod
     def _is_assistant_only_claim(

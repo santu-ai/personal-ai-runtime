@@ -10,6 +10,15 @@ from app.core.harness.mcp_hub import (
 from app.core.harness.url_safety import create_ssrf_safe_async_client
 
 
+def redact_telegram_secret(message: str, token: str = "") -> str:
+    """Strip bot token from exception / status text before it leaves the tool."""
+    text = str(message or "")
+    secret = (token or settings.telegram_bot_token).strip()
+    if secret:
+        text = text.replace(f"/bot{secret}", "/bot<redacted>").replace(secret, "<redacted>")
+    return text[:500]
+
+
 class TelegramBotServer:
     """Telegram Bot integration for messaging (opt-in advanced category)."""
 
@@ -58,7 +67,10 @@ class TelegramBotServer:
         except ToolInvokeError:
             raise
         except Exception as e:
-            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
+            raise ToolInvokeError(
+                OUTCOME_TOOL_EXECUTION_FAILURE,
+                redact_telegram_secret(str(e), token),
+            ) from e
 
     async def get_updates(
         self,
@@ -118,7 +130,10 @@ class TelegramBotServer:
         except ToolInvokeError:
             raise
         except Exception as e:
-            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, str(e)) from e
+            raise ToolInvokeError(
+                OUTCOME_TOOL_EXECUTION_FAILURE,
+                redact_telegram_secret(str(e), token),
+            ) from e
 
 
 telegram_bot_server = TelegramBotServer()

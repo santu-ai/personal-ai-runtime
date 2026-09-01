@@ -68,6 +68,9 @@ async def chat_stream(
     restored = bool(ckpt and isinstance(ckpt.get("messages"), list) and ckpt["messages"])
     taint_registry.clear(correlation_id)
     resume_after_approval = False
+    telegram_ingress = correlation_id.startswith("telegram:") and not correlation_id.startswith(
+        "telegram:poll:"
+    )
     if restored:
         assert ckpt is not None
         if ckpt.get("tainted"):
@@ -75,6 +78,12 @@ async def chat_stream(
                 correlation_id,
                 source="external_ingestion",
                 reason="chat_ckpt",
+            )
+        elif telegram_ingress:
+            taint_registry.mark(
+                correlation_id,
+                source="external_ingestion",
+                reason="telegram_updates",
             )
         messages = list(ckpt["messages"])
         tool_iterations = int(ckpt.get("iteration") or 0)
@@ -87,6 +96,12 @@ async def chat_stream(
             # Prior assistant+tool_calls already persisted; only save new turns.
             all_tc_for_msg = []
     else:
+        if telegram_ingress:
+            taint_registry.mark(
+                correlation_id,
+                source="external_ingestion",
+                reason="telegram_updates",
+            )
         messages = brain.build_messages(conversation, user_message, system_prompt=system_prompt)
         tool_iterations = 0
         all_tc_for_msg = []
@@ -106,17 +121,20 @@ async def chat_stream(
 
     def _persist_checkpoint() -> None:
         try:
+            payload = dict(ckpt or {})
+            payload.update({
+                "conversation_id": conversation.conversation_id,
+                "user_message": user_message,
+                "messages": messages,
+                "iteration": tool_iterations,
+                "status": "in_progress",
+                "tainted": taint_registry.is_tainted(correlation_id),
+                "tool_calls": all_tc_for_msg,
+                "resume_after_approval": resume_after_approval,
+            })
             record_chat_checkpoint(
                 correlation_id,
-                {
-                    "conversation_id": conversation.conversation_id,
-                    "user_message": user_message,
-                    "messages": messages,
-                    "iteration": tool_iterations,
-                    "status": "in_progress",
-                    "tainted": taint_registry.is_tainted(correlation_id),
-                    "tool_calls": all_tc_for_msg,
-                },
+                payload,
                 kernel=kernel,
             )
         except Exception:

@@ -33,6 +33,9 @@ from app.core.harness.url_safety import UnsafeUrlError, validate_http_url_async
 
 logger = logging.getLogger(__name__)
 
+_TEARDOWN_JOIN_SECONDS = 8
+_leaked_owner_tasks: set[asyncio.Task] = set()
+
 # 扫描工具参数时视为 URL 的字段名（大小写不敏感）。
 _URL_ARG_KEYS = frozenset({
     "url", "uri", "href", "link", "endpoint", "target_url", "page_url",
@@ -201,7 +204,15 @@ class _ServerConnection:
             if cancel:
                 task.cancel()
             try:
-                await task
+                await asyncio.wait_for(task, timeout=_TEARDOWN_JOIN_SECONDS)
+            except TimeoutError:
+                logger.warning(
+                    "MCP owner task for %s did not stop within %ss",
+                    self.config.name,
+                    _TEARDOWN_JOIN_SECONDS,
+                )
+                _leaked_owner_tasks.add(task)
+                task.add_done_callback(_leaked_owner_tasks.discard)
             except BaseException:
                 logger.debug(
                     "MCP owner task for %s raised during teardown",

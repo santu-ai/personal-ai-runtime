@@ -407,6 +407,25 @@ class TestMemoryExtractor:
         )
         assert stored == [fact]
 
+    async def test_model_week_tag_does_not_block_user_passcode(self, tmp_path, monkeypatch):
+        """LLM adding 2026-Wxx must not drop a passcode the user actually said."""
+        db = Database(db_path=str(tmp_path / "extract_week_label.db"))
+        k = Kernel(db=db, memory_index=None)
+        monkeypatch.setattr("app.core.agents.memory_engine.kernel", k)
+        monkeypatch.setattr(memory_engine, "search_relevant_memories", lambda *_a, **_k: [])
+
+        fact = "用户的 2026-W36 dogfood 暗号是 KUNLUN-DF-W36-0901-R2"
+
+        async def extract_fresh(_t: str) -> list[str]:
+            return [fact]
+
+        extractor = MemoryExtractor(extract_fn=extract_fresh)
+        stored = await extractor.extract_and_store(
+            "User: 新暗号是 KUNLUN-DF-W36-0901-R2\nAssistant: 已记下",
+            grounding_text="新暗号是 KUNLUN-DF-W36-0901-R2",
+        )
+        assert stored == [fact]
+
     async def test_assistant_only_claim_not_extracted(self, tmp_path, monkeypatch):
         """A preference that only appears in the assistant reply must not land."""
         db = Database(db_path=str(tmp_path / "extract_asst_only.db"))
