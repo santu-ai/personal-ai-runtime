@@ -50,7 +50,7 @@
     "env_vars": {"CONTEXT7_API_KEY": "可选；有则提升限额"},
     "optional_env": ["CONTEXT7_API_KEY"],
     "icon": "book",
-    "startup_connect": true,
+    "startup_connect": false,
     "connect_timeout_seconds": 30,
     "policy_default": "auto_allow",
     "ingestion_tools": ["resolve-library-id", "query-docs"]
@@ -96,7 +96,7 @@
     "env_vars": {"TAVILY_API_KEY": "从 https://tavily.com 获取"},
     "optional_env": ["TAVILY_API_KEY"],
     "icon": "search",
-    "startup_connect": true,
+    "startup_connect": false,
     "connect_timeout_seconds": 30,
     "policy_default": "auto_allow",
     "enabled_tools": ["tavily_search", "tavily_extract"],
