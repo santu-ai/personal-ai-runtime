@@ -1,0 +1,22 @@
+{
+  "id": "write-file-approval",
+  "user_message": "Write hello into out.txt.",
+  "system_prompt": "You are a test assistant. Use write_file.",
+  "model_steps": [
+    {
+      "text": "",
+      "tool_calls": [
+        {
+          "name": "write_file",
+          "arguments": {"path": "{workspace}/out.txt", "content": "hello"}
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "confirmation_required": true,
+    "tool_name": "write_file",
+    "message_roles": ["user", "assistant"],
+    "file_absent": ["out.txt"]
+  }
+}

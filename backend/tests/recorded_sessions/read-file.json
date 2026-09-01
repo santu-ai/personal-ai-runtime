@@ -1,0 +1,29 @@
+{
+  "id": "read-file",
+  "user_message": "Read note.txt and quote the nonce.",
+  "system_prompt": "You are a test assistant. Use read_file instead of guessing.",
+  "workspace_files": {
+    "note.txt": "nonce-RS-ALPHA"
+  },
+  "model_steps": [
+    {
+      "text": "",
+      "tool_calls": [
+        {"name": "read_file", "arguments": {"path": "{workspace}/note.txt"}}
+      ]
+    },
+    {
+      "text": "The file contains nonce-RS-ALPHA.",
+      "tool_calls": []
+    }
+  ],
+  "expect": {
+    "final_text_contains": ["nonce-RS-ALPHA"],
+    "message_roles": ["user", "tool", "assistant"],
+    "tools": ["read_file"],
+    "capability_invoked": ["read_file"],
+    "confirmation_required": false,
+    "tool_result_contains": ["nonce-RS-ALPHA"],
+    "file_contains": {"note.txt": "nonce-RS-ALPHA"}
+  }
+}

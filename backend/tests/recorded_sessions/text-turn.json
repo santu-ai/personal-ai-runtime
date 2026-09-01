@@ -1,0 +1,14 @@
+{
+  "id": "text-turn",
+  "user_message": "Reply with the single word pong.",
+  "system_prompt": "You are a test assistant. Follow the user exactly.",
+  "model_steps": [
+    {"text": "pong", "tool_calls": []}
+  ],
+  "expect": {
+    "final_text_contains": ["pong"],
+    "message_roles": ["user", "assistant"],
+    "tools": [],
+    "confirmation_required": false
+  }
+}

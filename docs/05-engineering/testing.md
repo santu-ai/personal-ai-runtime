@@ -31,7 +31,8 @@ flowchart TB
 
 | 目录 | 内容 |
 |---|---|
-| `agents/` | agent 层单测：brain 遥测、computer_use/voice import 安全、token_counter、tool_dispatcher、tool_markup/postprocess |
+| `agents/` | agent 层单测：brain 遥测、computer_use/voice import 安全、token_counter、tool_dispatcher、tool_markup/postprocess、会话压缩 |
+| `recorded_sessions/` | 无密钥 recorded-session：脚本模型 + 真 Brain/Kernel/工具环，断言 `messages` 投影与世界状态（文件是否被写） |
 | `api/` | API 覆盖冒烟（`test_api_coverage.py`） |
 | `integration/` | FastAPI TestClient + Kernel：approval flow、auth、b2/b3 审计、dashboard、goals/settings/system/timeline/trigger API |
 | `product/` | 基于 Kernel 的产品层：dashboard、encrypted_sync、inbox、notifications |
@@ -71,6 +72,8 @@ make test-live        # RUN_LIVE_LLM=1 pytest tests/e2e_live/ -m live_llm（需�
 ```
 
 `-m "not live_llm"` 排除需要真实 LLM API 的测试。`make test-live` 是显式启用的真 LLM 冒烟通道（见 [`tests/e2e_live/`](../../backend/tests/e2e_live/)）：one-shot smoke、Brain tool-loop、Memory A/B（手工注入召回）、Context A/B（`PromptCompiler` + `mail.recent_emails`）、Gmail IMAP 只读。
+
+无密钥的 loop 回归在 [`tests/recorded_sessions/`](../../backend/tests/recorded_sessions/)：JSON fixture 录制 `user_message` 与脚本化 `model_steps`，只 mock LLM，其余走真实 `Brain.chat_stream` + `invoke_capability`。断言对话投影、Capability 事件和磁盘，不断言模型自述。新增模型/工具可见行为时，优先加一条 fixture 而不是只加 mock 单测。
 
 ### 覆盖率策略
 
