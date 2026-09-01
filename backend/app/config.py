@@ -151,6 +151,8 @@ class Settings(BaseSettings):
 
     # --- Memory ---
     memory_extractor: str = "ollama"
+    proposed_memory_ttl_days: int = 30
+    """Days before an unreviewed proposed claim is automatically rejected. 0 disables."""
     sensitive_ops_local: bool = True
     allow_cloud_personal_data_egress: bool = False
     """Allow memory/identity/trajectory prompts to be sent to cloud LLMs.

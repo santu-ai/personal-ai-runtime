@@ -50,6 +50,8 @@ def query_memories(
     decay_eligible: bool | None = None,
     claim_status: str | None = None,
     source: str | None = None,
+    origin: str | None = None,
+    created_at_lte: str | None = None,
 ) -> list[dict[str, Any]]:
     filters: dict[str, Any] = {"limit": limit}
     if category:
@@ -66,6 +68,10 @@ def query_memories(
         filters["claim_status"] = claim_status
     if source is not None:
         filters["source"] = source
+    if origin is not None:
+        filters["origin"] = origin
+    if created_at_lte is not None:
+        filters["created_at_lte"] = created_at_lte
     return kernel().query_state("memories", **filters)
 
 
@@ -146,8 +152,15 @@ def _latest_claim_decisions(
                 continue
             order = _claim_event_order(event, source_index, event_index)
             current = latest.get(aggregate_id)
+            decision = event_type
+            if (
+                event_type == "ClaimRejected"
+                and str((getattr(event, "payload", None) or {}).get("reason") or "")
+                == "auto_expired"
+            ):
+                decision = "ClaimRejected:auto_expired"
             if current is None or order > current[0]:
-                latest[aggregate_id] = (order, event_type)
+                latest[aggregate_id] = (order, decision)
     return {aggregate_id: decision for aggregate_id, (_, decision) in latest.items()}
 
 
@@ -164,6 +177,9 @@ def summarize_claim_conversion(*, days: int = 30, limit: int = 500) -> dict[str,
     decisions = _latest_claim_decisions(ratified, rejected)
     ratified_n = sum(decision == "ClaimRatified" for decision in decisions.values())
     rejected_n = sum(decision == "ClaimRejected" for decision in decisions.values())
+    auto_expired_n = sum(
+        decision == "ClaimRejected:auto_expired" for decision in decisions.values()
+    )
     decided = ratified_n + rejected_n
     conversion_rate = (ratified_n / decided) if decided else None
     false_positive_rate = (rejected_n / decided) if decided else None
@@ -172,6 +188,7 @@ def summarize_claim_conversion(*, days: int = 30, limit: int = 500) -> dict[str,
         "proposed_open": proposed_open,
         "ratified": ratified_n,
         "rejected": rejected_n,
+        "auto_expired": auto_expired_n,
         "decided": decided,
         "conversion_rate": conversion_rate,
         "false_positive_rate": false_positive_rate,

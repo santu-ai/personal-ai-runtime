@@ -126,3 +126,27 @@ def run_memory_decay(threshold: float = 0.3, decay_to: float = 0.1) -> int:
             )
             count += 1
     return count
+
+
+def expire_proposed_memories(*, now: datetime | None = None) -> int:
+    """Auto-reject proposed claims older than the configured review TTL."""
+    ttl_days = max(int(settings.proposed_memory_ttl_days), 0)
+    if ttl_days == 0:
+        return 0
+    cutoff = (now or datetime.now(UTC)) - timedelta(days=ttl_days)
+    candidates = read_ports.query_memories(
+        origin="claim",
+        claim_status="proposed",
+        created_at_lte=cutoff.isoformat(),
+        order="created_at_asc",
+        limit=5000,
+    )
+    for memory in candidates:
+        kernel.emit_event(
+            type="ClaimRejected",
+            aggregate_type="memory",
+            aggregate_id=memory["id"],
+            payload={"reason": "auto_expired", "by": "scheduler"},
+            actor="scheduler",
+        )
+    return len(candidates)

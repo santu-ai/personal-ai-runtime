@@ -61,6 +61,8 @@ export default function MemoryListItem({
   const confidence = confidenceLabel(m.confidence);
   const isProposed = m.origin === "claim" && m.claim_status === "proposed";
   const isRejected = m.origin === "claim" && m.claim_status === "rejected";
+  const rejectReason =
+    m.reject_reason === "auto_expired" ? "已自动过期" : m.reject_reason;
 
   return (
     <li className="bg-surface-raised border border-border-subtle rounded-lg p-3 text-sm group flex gap-3">
@@ -86,8 +88,8 @@ export default function MemoryListItem({
             <span>源自：《{m.source_document_name}》</span>
           </span>
         )}
-        {isRejected && m.reject_reason && (
-          <p className="mt-1.5 text-xs text-danger/80">拒绝原因：{m.reject_reason}</p>
+        {isRejected && rejectReason && (
+          <p className="mt-1.5 text-xs text-danger/80">拒绝原因：{rejectReason}</p>
         )}
         <div className="flex items-center gap-2 mt-2 flex-wrap">
           {m.created_at && (

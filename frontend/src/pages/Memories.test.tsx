@@ -21,6 +21,7 @@ vi.mock("../api/client", () => ({
     proposed_open: 1,
     ratified: 2,
     rejected: 1,
+    auto_expired: 1,
     decided: 3,
     conversion_rate: 2 / 3,
     false_positive_rate: 1 / 3,
@@ -90,6 +91,13 @@ describe("MemoriesPage", () => {
               claim_status: "rejected",
               reject_reason: "记错了",
             },
+            {
+              id: "r2",
+              content: "过期的候选记忆",
+              origin: "claim",
+              claim_status: "rejected",
+              reject_reason: "auto_expired",
+            },
           ],
           total: 1,
         };
@@ -102,10 +110,12 @@ describe("MemoriesPage", () => {
     renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
 
     expect(await screen.findByTestId("claim-conversion-stats")).toHaveTextContent("转化率 67%");
+    expect(screen.getByTestId("claim-conversion-stats")).toHaveTextContent("系统清理 1");
     expect(screen.getByText("已拒绝的偏好")).toBeInTheDocument();
     expect(screen.getByText("拒绝原因：记错了")).toBeInTheDocument();
+    expect(screen.getByText("拒绝原因：已自动过期")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /恢复/ }));
+    fireEvent.click(screen.getAllByRole("button", { name: /恢复/ })[0]!);
     await waitFor(() => expect(ratifyMemory).toHaveBeenCalledWith("r1"));
 
     fireEvent.click(screen.getByRole("button", { name: "拒绝" }));

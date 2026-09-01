@@ -539,6 +539,7 @@ def query_memories(db, filters: dict[str, Any]) -> list[dict] | int:
     confidence_gt = filters.get("confidence_gt")
     confidence_lt = filters.get("confidence_lt")
     decay_eligible = filters.get("decay_eligible")
+    created_at_lte = filters.get("created_at_lte")
     limit = filters.get("limit", 50)
     order = filters.get("order")
     count_only = filters.get("count_only", False)
@@ -582,6 +583,9 @@ def query_memories(db, filters: dict[str, Any]) -> list[dict] | int:
             clauses.append(
                 "(decayed_at IS NULL OR decayed_at < datetime('now', '-7 days'))"
             )
+        if created_at_lte is not None:
+            clauses.append("created_at <= ?")
+            params.append(created_at_lte)
 
         where = build_where(clauses)
 

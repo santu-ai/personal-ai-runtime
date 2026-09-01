@@ -7,11 +7,13 @@ import pytest
 
 @pytest.mark.asyncio
 @patch("app.core.runtime.cron_registry.run_memory_decay")
-async def test_run_memory_decay(mock_decay):
+@patch("app.core.runtime.cron_registry.expire_proposed_memories")
+async def test_run_memory_decay(mock_expire, mock_decay):
     from app.core.agents.handlers.timer_trigger_handler import _call_product
 
     await _call_product("memory_decay")
     mock_decay.assert_called_once()
+    mock_expire.assert_called_once()
 
 
 @pytest.mark.asyncio

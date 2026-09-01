@@ -181,6 +181,24 @@ def test_summarize_claim_conversion_deduplicates_latest_decision(fake_kernel):
     assert result["false_positive_rate"] == pytest.approx(2 / 3)
 
 
+def test_summarize_claim_conversion_excludes_auto_expiry_from_false_positives(
+    fake_kernel,
+):
+    fake_kernel.events_by_type["ClaimRatified"] = [_Ev("accepted", {})]
+    fake_kernel.events_by_type["ClaimRejected"] = [
+        _Ev("wrong", {"reason": "incorrect"}),
+        _Ev("stale", {"reason": "auto_expired"}),
+    ]
+
+    result = memory_port.summarize_claim_conversion(days=30)
+
+    assert result["ratified"] == 1
+    assert result["rejected"] == 1
+    assert result["auto_expired"] == 1
+    assert result["decided"] == 2
+    assert result["false_positive_rate"] == pytest.approx(0.5)
+
+
 # ── Retrieval paths (mock memory_engine) ──────────────────────────────────
 
 

@@ -76,9 +76,13 @@ def _handle_deadline_alert(payload: dict, timer_id: str | None) -> None:
 
 def _handle_memory_decay(payload: dict, timer_id: str | None) -> None:
     del payload, timer_id
-    from app.core.runtime.cron_registry import run_memory_decay
+    from app.core.runtime.cron_registry import (
+        expire_proposed_memories,
+        run_memory_decay,
+    )
 
     run_memory_decay()
+    expire_proposed_memories()
 
 
 def _handle_world_model_snapshot(payload: dict, timer_id: str | None) -> None:

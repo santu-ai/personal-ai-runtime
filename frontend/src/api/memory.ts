@@ -115,6 +115,7 @@ export interface ClaimConversionStats {
   proposed_open: number;
   ratified: number;
   rejected: number;
+  auto_expired: number;
   decided: number;
   conversion_rate: number | null;
   false_positive_rate: number | null;

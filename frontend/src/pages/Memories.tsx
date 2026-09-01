@@ -350,6 +350,7 @@ export default function MemoriesPage() {
             {claimStats && (
               <p className="text-xs text-fg-tertiary" data-testid="claim-conversion-stats">
                 近 {claimStats.days} 天：确认 {claimStats.ratified} · 拒绝 {claimStats.rejected}
+                {claimStats.auto_expired > 0 && ` · 系统清理 ${claimStats.auto_expired}`}
                 {claimStats.conversion_rate != null &&
                   ` · 转化率 ${Math.round(claimStats.conversion_rate * 100)}%`}
                 {claimStats.false_positive_rate != null &&
