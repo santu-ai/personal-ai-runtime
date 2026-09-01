@@ -34,7 +34,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from app.core.harness.mcp_compat import MCPServer
+from app.core.harness.mcp_compat import MCPServer, ToolError
 from mcp_servers.runtime_gateway.http_client import (
     HttpResult,
     configure_base_url,
@@ -87,9 +87,13 @@ mcp = MCPServer(
 
 
 def _unwrap(output: ToolOutput) -> str:
-    """Return tool text, or raise so MCPServer marks the call as is_error."""
+    """Return tool text, or raise ToolError so MCPServer marks the call as is_error.
+
+    mcp 2.1+ swallows unexpected exceptions into a generic
+    ``Error executing tool …``; ToolError keeps the original text for the model.
+    """
     if output.is_error:
-        raise ValueError(output.text)
+        raise ToolError(output.text)
     return output.text
 
 

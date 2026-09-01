@@ -4,6 +4,7 @@ import asyncio
 import json
 
 import pytest
+
 from app.core.harness.mcp_compat import ToolError
 from mcp_servers.runtime_gateway import server
 from mcp_servers.runtime_gateway.http_client import HttpResult, reset_base_url_cache
@@ -202,7 +203,7 @@ class TestToolWhitelist:
 
 class TestUnwrap:
     def test_unwrap_raises_on_error(self):
-        with pytest.raises(ValueError, match="boom"):
+        with pytest.raises(ToolError, match="boom"):
             server._unwrap(ToolOutput("boom", is_error=True))
 
     def test_unwrap_returns_text(self):
