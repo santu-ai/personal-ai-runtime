@@ -18,6 +18,8 @@ Runtime 模块（``work_item_engine``、``reaction_registry``、桥、调度器�
 
 from app.core.runtime.notification_bridge import NotificationPayload
 from app.core.runtime.read_ports.approvals import (
+    approval_correlation_id,
+    load_approval_chat_checkpoint,
     query_approval,
     query_approvals,
     query_pending_approval_count,
@@ -41,6 +43,7 @@ from app.core.runtime.read_ports.conversation import (
 from app.core.runtime.read_ports.events import (
     conversation_chat_in_flight,
     goal_events,
+    mark_external_taint,
     query_execution_trust_summary,
     query_recent_events,
     recent_events,
@@ -197,6 +200,8 @@ __all__ = [
     "summarize_inbox_sync_metrics",
     "query_pending_approval_count",
     "query_pending_approvals",
+    "approval_correlation_id",
+    "load_approval_chat_checkpoint",
     "query_approval",
     "query_approvals",
     "query_notification",
@@ -245,5 +250,6 @@ __all__ = [
     "reconstruct_execution_trace",
     "query_execution_trust_summary",
     "conversation_chat_in_flight",
+    "mark_external_taint",
     "build_memory_graph_edges",
 ]

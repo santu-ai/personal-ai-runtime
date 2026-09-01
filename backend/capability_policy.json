@@ -46,7 +46,8 @@
     "check_inbox",
     "read_inbox_email",
     "web_search",
-    "fetch_url"
+    "fetch_url",
+    "telegram_updates"
   ],
   "forbidden": []
 }

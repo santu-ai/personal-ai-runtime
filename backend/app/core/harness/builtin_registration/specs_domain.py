@@ -299,11 +299,19 @@ def _goals_specs() -> list[BuiltinToolSpec]:
 def _telegram_specs() -> list[BuiltinToolSpec]:
     from app.core.harness.builtin_tools.telegram_bot import telegram_bot_server
 
-    async def handle_send_message(text: str, parse_mode: str = "Markdown") -> str:
-        return await telegram_bot_server.send_message(text, parse_mode)
+    async def handle_send_message(
+        text: str,
+        parse_mode: str = "Markdown",
+        chat_id: str | None = None,
+    ) -> str:
+        return await telegram_bot_server.send_message(text, parse_mode, chat_id)
 
-    async def handle_get_updates(limit: int = 5) -> str:
-        return await telegram_bot_server.get_updates(limit)
+    async def handle_get_updates(
+        limit: int = 5,
+        offset: int | None = None,
+        timeout: int = 5,
+    ) -> str:
+        return await telegram_bot_server.get_updates(limit, offset, timeout)
 
     return [
         BuiltinToolSpec(
@@ -319,6 +327,10 @@ def _telegram_specs() -> list[BuiltinToolSpec]:
                     "parse_mode": {
                         "type": "string",
                         "description": "Message format: 'Markdown' or 'HTML'.",
+                    },
+                    "chat_id": {
+                        "type": "string",
+                        "description": "Must equal the configured TELEGRAM_CHAT_ID.",
                     },
                 },
                 "required": ["text"],
@@ -336,6 +348,14 @@ def _telegram_specs() -> list[BuiltinToolSpec]:
                     "limit": {
                         "type": "integer",
                         "description": "Max messages to fetch (default 5).",
+                    },
+                    "offset": {
+                        "type": "integer",
+                        "description": "Return updates with update_id >= offset.",
+                    },
+                    "timeout": {
+                        "type": "integer",
+                        "description": "Long-poll timeout in seconds (0-20).",
                     },
                 },
             },

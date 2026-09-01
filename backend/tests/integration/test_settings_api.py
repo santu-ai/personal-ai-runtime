@@ -83,3 +83,21 @@ def test_get_capability_policy(client: TestClient):
     assert "write_file" in data["needs_user"]
     assert "send_email" in data["needs_user"]
     assert "web_search" in data["external_ingestion"]
+
+
+def test_telegram_settings_never_expose_credentials(client: TestClient, monkeypatch):
+    from app.product import telegram_gateway
+
+    monkeypatch.setattr(telegram_gateway.settings, "telegram_bot_token", "super-secret")
+    monkeypatch.setattr(telegram_gateway.settings, "telegram_chat_id", "42")
+    response = client.put(
+        "/api/settings/telegram",
+        json={"enabled": True, "auto_reply": False},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["enabled"] is True
+    assert data["token_configured"] is True
+    assert data["chat_configured"] is True
+    assert "super-secret" not in response.text
+    assert "telegram_bot_token" not in data

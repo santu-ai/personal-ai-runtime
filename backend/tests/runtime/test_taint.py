@@ -34,8 +34,11 @@ def test_external_ingestion_tools_loaded_from_policy():
     assert EXTERNAL_INGESTION_TOOLS  # non-empty
 
 def test_external_ingestion_tools_are_registered_mcp_tools():
-    """Contract: external ingestion tools must exist in mcp_hub."""
+    """Contract: ingestion tools must exist, including opt-in categories."""
+    from app.core.harness.builtin_registration.specs_domain import _telegram_specs
+
     registered = {t["function"]["name"] for t in mcp_hub.get_tool_defs_for_llm()}
+    registered.update(spec.name for spec in _telegram_specs())
     unknown = EXTERNAL_INGESTION_TOOLS - registered
     assert not unknown, f"Unknown external ingestion tools: {unknown}"
 

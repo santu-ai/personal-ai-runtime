@@ -99,6 +99,12 @@ async def on_chat_requested(ctx: "ExecutionContext", event: "Event") -> None:
         "approval_id": pending_data.get("approval_id", ""),
         "tool_call_id": pending_data.get("tool_call_id", ""),
     }
+    if event.payload.get("transport"):
+        result["transport"] = event.payload["transport"]
+    if event.payload.get("telegram_update_id") is not None:
+        result["telegram_update_id"] = event.payload["telegram_update_id"]
+    if event.payload.get("telegram_chat_id"):
+        result["telegram_chat_id"] = event.payload["telegram_chat_id"]
     try:
         from app.core.runtime.governance.context_pipeline import context_pipeline
 

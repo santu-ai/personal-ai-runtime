@@ -64,6 +64,11 @@ class TestLlmRequest(BaseModel):
     provider_id: str | None = None
 
 
+class TelegramGatewaySettings(BaseModel):
+    enabled: bool
+    auto_reply: bool
+
+
 def _llm_status_from_config(llm: dict) -> tuple[str, list[dict]]:
     """Derive default model and provider status from persisted config (not router cache)."""
     default_id = llm.get("default_provider", "deepseek")
@@ -428,6 +433,30 @@ async def get_capability_policy():
         "forbidden": list(data.get("forbidden") or []),
         "external_ingestion": list(data.get("external_ingestion") or []),
     }
+
+
+@router.get("/telegram")
+async def get_telegram_gateway_settings():
+    """Return gateway state without ever exposing bot credentials."""
+    from app.product.telegram_gateway import public_status
+
+    return public_status()
+
+
+@router.put("/telegram")
+async def update_telegram_gateway_settings(body: TelegramGatewaySettings):
+    from app.product.telegram_gateway import public_status, save_config
+
+    save_config(body.model_dump())
+    return public_status()
+
+
+@router.post("/telegram/poll")
+async def poll_telegram_gateway():
+    """Run one bounded poll for connection testing and manual recovery."""
+    from app.product.telegram_gateway import poll_once
+
+    return await poll_once()
 
 
 @router.put("/notifications")

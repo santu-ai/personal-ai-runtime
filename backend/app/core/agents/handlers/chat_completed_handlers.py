@@ -100,3 +100,19 @@ async def on_chat_completed_extract_memories(_ctx, event):
         grounding_text=str(user_message),
         assistant_text=str(assistant_content) if assistant_content else None,
     )
+
+
+@subscribe("ChatCompleted")
+async def on_chat_completed_telegram_reply(_ctx, event):
+    """Route only Telegram-origin final text back through governed egress."""
+    from app.product.telegram_gateway import handle_chat_completed
+
+    await handle_chat_completed(event)
+
+
+@subscribe("ApproveCompleted")
+async def on_approve_completed_telegram_reply(_ctx, event):
+    """Send a final post-approval continuation to the originating chat."""
+    from app.product.telegram_gateway import handle_approve_completed
+
+    await handle_approve_completed(event)

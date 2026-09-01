@@ -355,14 +355,8 @@ async def _retry_resume_only(approval_id: str, body: ResolveApprovalRequest) -> 
     if body.decision != "approve":
         return None
     from app.core.agents.brain_chat_stream import resume_after_approved_tool
-    from app.core.runtime.plan_resume import approval_correlation_id, load_chat_checkpoint
 
-    correlation_id = approval_correlation_id(approval_id, kernel=kernel)
-    checkpoint = (
-        load_chat_checkpoint(correlation_id, kernel=kernel)
-        if correlation_id
-        else None
-    )
+    correlation_id, checkpoint = read_ports.load_approval_chat_checkpoint(approval_id)
     if not checkpoint or not checkpoint.get("resume_after_approval"):
         return None
     if not body.conv_id:

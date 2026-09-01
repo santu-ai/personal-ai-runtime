@@ -532,16 +532,11 @@ def query_approvals(db, filters: dict[str, Any]) -> list[dict] | int:
 
 def query_memories(db, filters: dict[str, Any]) -> list[dict] | int:
     memory_id = filters.get("id")
-    category = filters.get("category")
-    origin = filters.get("origin")
-    source = filters.get("source")
-    claim_status = filters.get("claim_status")
-    confidence_gt = filters.get("confidence_gt")
-    confidence_lt = filters.get("confidence_lt")
+    category, origin = filters.get("category"), filters.get("origin")
+    source, claim_status = filters.get("source"), filters.get("claim_status")
+    confidence_gt, confidence_lt = filters.get("confidence_gt"), filters.get("confidence_lt")
     decay_eligible = filters.get("decay_eligible")
-    created_at_lte = filters.get("created_at_lte")
-    limit = filters.get("limit", 50)
-    order = filters.get("order")
+    limit, order = filters.get("limit", 50), filters.get("order")
     count_only = filters.get("count_only", False)
 
     # Default ranking is confidence then recency; created_desc is a dashboard alias.
@@ -583,9 +578,9 @@ def query_memories(db, filters: dict[str, Any]) -> list[dict] | int:
             clauses.append(
                 "(decayed_at IS NULL OR decayed_at < datetime('now', '-7 days'))"
             )
-        if created_at_lte is not None:
+        if filters.get("created_at_lte") is not None:
             clauses.append("created_at <= ?")
-            params.append(created_at_lte)
+            params.append(filters["created_at_lte"])
 
         where = build_where(clauses)
 

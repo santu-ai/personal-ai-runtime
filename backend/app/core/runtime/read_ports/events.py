@@ -327,3 +327,14 @@ def conversation_chat_in_flight(conv_id: str) -> bool:
             ):
                 return True
     return False
+
+
+def mark_external_taint(correlation_id: str, *, reason: str) -> None:
+    """Mark untrusted ingress for a chat correlation (Product ABI)."""
+    from app.core.runtime.taint import taint_registry
+
+    taint_registry.mark(
+        correlation_id,
+        source="external_ingestion",
+        reason=reason,
+    )

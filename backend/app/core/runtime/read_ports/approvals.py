@@ -34,3 +34,21 @@ def query_approvals(*, status: str | None = None, limit: int = 50) -> list[dict[
     if status:
         filters["status"] = status
     return kernel().query_state("approvals", **filters)
+
+
+def approval_correlation_id(approval_id: str) -> str:
+    from app.core.runtime.plan_resume import approval_correlation_id as resolve
+
+    return resolve(approval_id, kernel=kernel())
+
+
+def load_approval_chat_checkpoint(approval_id: str) -> tuple[str, dict[str, Any] | None]:
+    from app.core.runtime.plan_resume import load_chat_checkpoint
+
+    correlation_id = approval_correlation_id(approval_id)
+    checkpoint = (
+        load_chat_checkpoint(correlation_id, kernel=kernel())
+        if correlation_id
+        else None
+    )
+    return correlation_id, checkpoint

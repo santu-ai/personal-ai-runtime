@@ -201,6 +201,27 @@ async def _handle_url_monitor(payload: dict, timer_id: str | None) -> None:
     task.add_done_callback(_url_monitor_tasks.discard)
 
 
+# Strong refs so fire-and-forget telegram_poll tasks are not GC'd mid-flight.
+_telegram_poll_tasks: set[asyncio.Task] = set()
+
+
+async def _run_telegram_poll_bg() -> None:
+    from app.product.telegram_gateway import poll_once
+
+    try:
+        await poll_once()
+    except Exception:
+        logger.warning("telegram_poll background run failed", exc_info=True)
+
+
+async def _handle_telegram_poll(payload: dict, timer_id: str | None) -> None:
+    """Schedule Telegram long-poll off the TimerFired WorkItem (30s policy)."""
+    del payload, timer_id
+    task = asyncio.create_task(_run_telegram_poll_bg(), name="telegram_poll")
+    _telegram_poll_tasks.add(task)
+    task.add_done_callback(_telegram_poll_tasks.discard)
+
+
 _TIMER_HANDLERS: dict[str, TimerHandler] = {
     "deadline_alert": _handle_deadline_alert,
     "memory_decay": _handle_memory_decay,
@@ -211,6 +232,7 @@ _TIMER_HANDLERS: dict[str, TimerHandler] = {
     "morning_brief": _handle_morning_brief,
     "reminder": _handle_reminder,
     "url_monitor": _handle_url_monitor,
+    "telegram_poll": _handle_telegram_poll,
 }
 
 
