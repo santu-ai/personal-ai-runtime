@@ -31,7 +31,7 @@ flowchart TB
 
 | 目录 | 内容 |
 |---|---|
-| `agents/` | agent 层单测：brain 遥测、computer_use/voice import 安全、token_counter、tool_dispatcher、tool_markup/postprocess、会话压缩 |
+| `agents/` | agent 层单测：brain 遥测、computer_use/voice import 安全、token_counter、tool_dispatcher、tool_markup/postprocess、会话压缩、工具结果 spill |
 | `recorded_sessions/` | 无密钥 recorded-session：脚本模型 + 真 Brain/Kernel/工具环，断言 `messages` 投影与世界状态（文件是否被写） |
 | `api/` | API 覆盖冒烟（`test_api_coverage.py`） |
 | `integration/` | FastAPI TestClient + Kernel：approval flow、auth、b2/b3 审计、dashboard、goals/settings/system/timeline/trigger API |

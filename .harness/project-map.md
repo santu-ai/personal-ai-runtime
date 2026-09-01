@@ -17,6 +17,7 @@
 | 事件 / 投影器 | `backend/app/core/runtime/kernel/`（`emit_event`、`projectors_*.py`） |
 | 读端口 | `backend/app/core/runtime/read_ports/` |
 | 会话压缩 | `backend/app/core/agents/context_compaction.py`（`MessageAppended` checkpoint） |
+| 工具结果外溢 | `backend/app/core/agents/tool_spill.py`（`DATA_DIR/spills`，对话行存 preview） |
 | 无密钥 loop 回放 | `backend/tests/recorded_sessions/` |
 | 新增 Capability / 工具 | `backend/app/core/harness/builtin_registration/` + `mcp_config.json` |
 | 工具实现 | `backend/app/core/harness/builtin_tools/` 或 Product 侧 |

@@ -20,7 +20,7 @@ from app.core.agents.brain_stream_assemble import AssembledStream, iter_assemble
 from app.core.agents.brain_telemetry import record_llm_call
 from app.core.agents.conversation import ConversationManager
 from app.core.agents.tool_dispatcher import ToolDispatcher
-from app.core.agents.tool_postprocess import canned_summary, compact_for_llm
+from app.core.agents.tool_postprocess import canned_summary
 from app.core.runtime.governance.context_pipeline import get_sources
 from app.core.runtime.kernel_instance import kernel
 from app.core.runtime.plan_resume import (
@@ -378,7 +378,7 @@ def append_approved_tool_to_checkpoint(
     messages.append({
         "role": "tool",
         "tool_call_id": tool_call_id,
-        "content": compact_for_llm(tool_name, result_str),
+        "content": result_str,
     })
     pending = [
         pid for pid in list(ckpt.get("pending_tool_call_ids") or [])

@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from app.core.agents import context_compaction as compaction_mod
 from app.core.agents.context_compaction import compact_from_message, compact_source, surface_from
 from app.core.agents.tool_markup import strip_tool_markup
+from app.core.agents.tool_spill import prepare_tool_result, spill_from_message, spill_source
 from app.core.runtime import read_ports
 from app.core.runtime.kernel_instance import kernel as default_kernel
 
@@ -93,6 +94,9 @@ class ConversationManager:
             compact = compact_from_message(msg)
             if compact is not None:
                 item["compact"] = compact
+            spill = spill_from_message(msg)
+            if spill is not None:
+                item["spill"] = spill
             result.append(item)
         return result
 
@@ -116,6 +120,8 @@ class ConversationManager:
                 item["tool_call_id"] = msg["tool_call_id"]
             if msg.get("compact"):
                 item["compact"] = msg["compact"]
+            if msg.get("spill"):
+                item["spill"] = msg["spill"]
             result.append(item)
         return result
 
@@ -130,6 +136,7 @@ class ConversationManager:
         actor: str | None = None,
         correlation_id: str | None = None,
         compact: dict | None = None,
+        spill: dict | None = None,
     ) -> dict:
         """Persist a message via MessageAppended event.
 
@@ -148,12 +155,15 @@ class ConversationManager:
             "tool_call_id": tool_call_id,
             "created_at": _now(),
         }
+        projected: list = list(sources or [])
         if compact:
             payload["compact"] = compact
-            # Projected through the existing sources column — no Kernel change.
-            payload["sources"] = [compact_source(compact), *(sources or [])]
-        elif sources:
-            payload["sources"] = sources
+            projected = [compact_source(compact), *projected]
+        if spill:
+            payload["spill"] = spill
+            projected = [spill_source(spill), *projected]
+        if projected:
+            payload["sources"] = projected
         corr = correlation_id if correlation_id is not None else self.correlation_id
         self._k().emit_event(
             "MessageAppended",
@@ -218,8 +228,26 @@ class ConversationManager:
             role="assistant", content=content, tool_calls=tool_calls, sources=sources
         )
 
-    def save_tool_result(self, content: str, tool_call_id: str) -> dict:
-        return self.save_message(role="tool", content=content, tool_call_id=tool_call_id)
+    def save_tool_result(
+        self,
+        content: str,
+        tool_call_id: str,
+        *,
+        tool_name: str = "",
+    ) -> dict:
+        """Persist a tool result. Oversized bodies are spilled; the row stores the preview."""
+        llm_content, spill = prepare_tool_result(
+            content,
+            conversation_id=self.conversation_id,
+            tool_name=tool_name,
+            tool_call_id=tool_call_id,
+        )
+        return self.save_message(
+            role="tool",
+            content=llm_content,
+            tool_call_id=tool_call_id,
+            spill=spill,
+        )
 
     def save_system_message(self, content: str) -> dict:
         return self.save_message(role="system", content=content)

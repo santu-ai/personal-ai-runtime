@@ -6,7 +6,8 @@ History assembly logic, independently testable. Handles:
 - Logged compaction (``ensure_compacted``) instead of silent truncation
 - Tool-call sequence validation (strips orphaned tool_calls to avoid
   DeepSeek API 400 errors)
-- Tool-result compaction via ``compact_for_llm``
+- Tool-result compaction via ``compact_for_llm``; oversized results already
+  spilled at write time are left as stored (preview + locator)
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from app.core.agents.context_compaction import ensure_compacted
 from app.core.agents.tool_postprocess import compact_for_llm
+from app.core.agents.tool_spill import is_spilled_message
 
 if TYPE_CHECKING:
     from app.core.agents.conversation import ConversationManager
@@ -52,6 +54,7 @@ def build_messages(
             "content": msg["content"] or "",
             "tool_calls": tc,  # already parsed list from conversation.py
             "tool_call_id": msg.get("tool_call_id"),
+            "spill": msg.get("spill"),
         })
 
     # Scan for valid sequences: assistant_with_calls → N×tool_results
@@ -95,7 +98,7 @@ def build_messages(
             if keep_tool_result.get(idx):
                 tool_content: str = msg["content"] or ""
                 tool_name_guess = tool_name_by_id.get(msg.get("tool_call_id") or "", "")
-                if tool_name_guess:
+                if tool_name_guess and not is_spilled_message(msg):
                     tool_content = compact_for_llm(tool_name_guess, tool_content)
                 messages.append({
                     "role": "tool",

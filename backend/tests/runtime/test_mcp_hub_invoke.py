@@ -103,20 +103,36 @@ def test_clip_replaces_json_over_hard_cap():
     assert json.loads(out) == {"error": "result_too_large", "truncated": True}
 
 
+def test_clip_keeps_medium_plain_text():
+    from app.core.harness.mcp_hub import TOOL_RESULT_CHAR_LIMIT, _clip_tool_result
+
+    text = "x" * (TOOL_RESULT_CHAR_LIMIT + 50)
+    assert _clip_tool_result(text) == text
+
+
+def test_clip_plain_text_over_hard_cap():
+    from app.core.harness.mcp_hub import JSON_RESULT_CHAR_LIMIT, _clip_tool_result
+
+    huge = "x" * (JSON_RESULT_CHAR_LIMIT + 10)
+    out = _clip_tool_result(huge)
+    assert out.endswith("\n... [output truncated]")
+    assert len(out) == JSON_RESULT_CHAR_LIMIT + len("\n... [output truncated]")
+
+
 @pytest.mark.asyncio
-async def test_invoke_tool_still_clips_plain_text():
+async def test_invoke_tool_does_not_clip_medium_plain_text():
     from app.core.harness.mcp_hub import TOOL_RESULT_CHAR_LIMIT
 
+    body = "x" * (TOOL_RESULT_CHAR_LIMIT + 50)
     hub = MCPHub(enabled_categories=set())
     hub.register_tool(ToolDef(
         name="fat_text",
         description="x",
         parameters={"type": "object", "properties": {}},
-        handler=lambda: "x" * (TOOL_RESULT_CHAR_LIMIT + 50),
+        handler=lambda: body,
     ))
     result = await hub.invoke_tool("fat_text", {})
-    assert result.endswith("\n... [output truncated]")
-    assert len(result) == TOOL_RESULT_CHAR_LIMIT + len("\n... [output truncated]")
+    assert result == body
 
 
 @pytest.mark.asyncio

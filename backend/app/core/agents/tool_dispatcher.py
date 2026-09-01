@@ -11,8 +11,6 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any, AsyncIterator
 
-from app.core.agents.tool_postprocess import compact_for_llm
-
 if TYPE_CHECKING:
     from app.core.agents.conversation import ConversationManager
 
@@ -112,23 +110,11 @@ class ToolDispatcher:
                         )
                     except Exception:
                         logger.debug("chat idempotency record failed", exc_info=True)
-                yield {
-                    "type": "tool_result",
-                    "tool_name": tool_name,
-                    "tool_call_id": tc["id"],
-                    "content": tool_result,
-                }
             else:
                 tool_result = json.dumps({
                     "status": "error",
                     "error": cap_result.get("error", "unknown"),
                 })
-                yield {
-                    "type": "tool_result",
-                    "tool_name": tool_name,
-                    "tool_call_id": tc["id"],
-                    "content": tool_result,
-                }
 
             results.append({
                 "tool_name": tool_name,
@@ -136,13 +122,21 @@ class ToolDispatcher:
                 "content": tool_result,
             })
 
+            row = self._conversation.save_tool_result(
+                tool_result, tc["id"], tool_name=tool_name,
+            )
+            llm_content = (row or {}).get("content") or tool_result
             tool_messages.append({
                 "role": "tool",
                 "tool_call_id": tc["id"],
-                "content": compact_for_llm(tool_name, tool_result),
+                "content": llm_content,
             })
-
-            self._conversation.save_tool_result(tool_result, tc["id"])
+            yield {
+                "type": "tool_result",
+                "tool_name": tool_name,
+                "tool_call_id": tc["id"],
+                "content": llm_content,
+            }
 
         # Caller must suspend the turn when any tool awaits approval.
         if suspended:

@@ -46,16 +46,17 @@ def default_allowed_dirs() -> list[str]:
     user confirmed a single request. Reads of user files should be opt-in:
     set ``FILESYSTEM_ALLOWED_DIRS`` to add directories explicitly.
 
-    The project root is always kept: replacing it entirely (old behavior)
-    silently stranded the coding agent outside its own repo as soon as any
-    extra directory was configured.
+    The project root is always kept. ``DATA_DIR/spills`` is also allowed so
+    the model can ``read_file`` a spilled tool result when that directory is
+    outside the project root (desktop userData).
     """
     project_root = str(BASE_DIR.resolve())
     extras = _parse_path_list(settings.filesystem_allowed_dirs, [])
+    spill_root = str(Path(settings.data_dir).expanduser() / "spills")
     # De-dup while preserving order (project root first).
     seen: set[str] = set()
     ordered: list[str] = []
-    for p in [project_root, *extras]:
+    for p in [project_root, spill_root, *extras]:
         key = str(Path(p).expanduser().resolve())
         if key not in seen:
             seen.add(key)

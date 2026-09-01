@@ -83,6 +83,7 @@ def _persist_denied_chat_turn(
             "tool_name": tool_name,
         }),
         tool_call_id,
+        tool_name=tool_name,
     )
     note = _denied_user_note(tool_name)
     conversation.save_assistant_message(note)
@@ -172,7 +173,9 @@ async def on_approve_requested(ctx: "ExecutionContext", event: "Event") -> None:
             conversation_id=conv_id,
             correlation_id=chat_corr or None,
         )
-        conversation.save_tool_result(result_str, tool_call_id)
+        row = conversation.save_tool_result(
+            result_str, tool_call_id, tool_name=tool_name,
+        )
         if cap_result["status"] == "success" and chat_corr and is_write_class_tool(tool_name):
             try:
                 record_chat_tool_success(
@@ -181,11 +184,12 @@ async def on_approve_requested(ctx: "ExecutionContext", event: "Event") -> None:
             except Exception:
                 logger.debug("Approve: chat idempotency record failed", exc_info=True)
 
+        llm_content = (row or {}).get("content") or result_str
         ckpt = append_approved_tool_to_checkpoint(
             chat_corr,
             tool_call_id=tool_call_id,
             tool_name=tool_name,
-            result_str=result_str,
+            result_str=llm_content,
         ) if chat_corr else None
         brain = Brain()
         try:

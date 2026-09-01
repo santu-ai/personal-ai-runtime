@@ -46,16 +46,15 @@ class ToolDef:
     requires_confirmation: bool = False
 
 
-# Plain-text tool output is clipped so a single call cannot blow LLM context.
-# Structured JSON must stay parseable: Kernel consumers (inbox poll, mark-read)
-# json.loads the full result. LLM-facing compaction lives in tool_postprocess.
-TOOL_RESULT_CHAR_LIMIT = 8000
+# Hard cap so a single CapabilityInvoked cannot blow SQLite. LLM-facing
+# size lives in agents/tool_spill (preview + on-disk locator).
 JSON_RESULT_CHAR_LIMIT = 256_000
+TOOL_RESULT_CHAR_LIMIT = 8000  # historical LLM inline budget; spill uses this scale
 
 
 def _clip_tool_result(result: str) -> str:
-    """Clip oversized tool output without turning JSON into a parse error."""
-    if len(result) <= TOOL_RESULT_CHAR_LIMIT:
+    """Keep Kernel consumers parseable; do not silently crop the LLM window here."""
+    if len(result) <= JSON_RESULT_CHAR_LIMIT:
         return result
     stripped = result.lstrip()
     if stripped[:1] in "{[":
@@ -64,14 +63,12 @@ def _clip_tool_result(result: str) -> str:
         except (json.JSONDecodeError, ValueError, TypeError):
             pass
         else:
-            if len(result) <= JSON_RESULT_CHAR_LIMIT:
-                return result
             logger.warning(
                 "JSON tool result exceeds %s chars; replacing with error payload",
                 JSON_RESULT_CHAR_LIMIT,
             )
             return json.dumps({"error": "result_too_large", "truncated": True})
-    return result[:TOOL_RESULT_CHAR_LIMIT] + "\n... [output truncated]"
+    return result[:JSON_RESULT_CHAR_LIMIT] + "\n... [output truncated]"
 
 
 def _filter_tool_kwargs(handler: Callable[..., Any], arguments: dict) -> dict:

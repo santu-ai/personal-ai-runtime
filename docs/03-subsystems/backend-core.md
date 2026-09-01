@@ -60,7 +60,7 @@ Failover 执行在 `brain_llm_ops` / `brain_llm_client`（[`brain_llm_client.py`
 [`backend/app/core/agents/tool_dispatcher.py`](../../backend/app/core/agents/tool_dispatcher.py) 把工具调用批处理从 Brain 抽出。`ToolDispatcher(kernel, conversation).dispatch(tool_calls_data, correlation_id, execution_id)` 是异步迭代器，产出：
 
 - `tool_call_start`
-- `tool_result`（结果经 `tool_postprocess.compact_for_llm` 压缩，`conversation.save_tool_result` 持久化）
+- `tool_result`（结果经 `compact_for_llm` 整形；超长则 [`tool_spill`](../../backend/app/core/agents/tool_spill.py) 外溢，`conversation.save_tool_result` 持久化 preview）
 - `confirmation_required`（capability 状态为 pending 时，提前返回挂起）
 - `done`
 - `_dispatcher_done`（带 `results` 与 `tool_messages`）

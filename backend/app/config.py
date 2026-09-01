@@ -194,6 +194,9 @@ class Settings(BaseSettings):
     # LLM window cap. Exceeding it appends a MessageAppended compaction
     # checkpoint (older rows stay in the projection for UI / rebuild).
     max_recent_messages: int = 50
+    # Tool-result size at which the conversation row stores a preview + disk
+    # locator instead of the full body (Kernel still gets the handler return).
+    tool_spill_char_limit: int = 8000
     max_tool_iterations: int = 10
     tool_timeout_seconds: int = 30
     total_tool_loop_timeout: int = 300

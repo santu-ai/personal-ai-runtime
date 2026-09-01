@@ -119,6 +119,7 @@ flowchart LR
 | 字段 | 默认 | 环境变量 |
 |---|---|---|
 | `max_recent_messages` | `50` | `MAX_RECENT_MESSAGES`（LLM 窗口上限；超出则写 compaction checkpoint，不静默截断） |
+| `tool_spill_char_limit` | `8000` | `TOOL_SPILL_CHAR_LIMIT`（对话面工具结果超过此长度则外溢到 `DATA_DIR/spills`，`MessageAppended` 只存 preview） |
 | `max_tool_iterations` | `10` | `MAX_TOOL_ITERATIONS` |
 | `tool_timeout_seconds` | `30` | `TOOL_TIMEOUT_SECONDS` |
 | `total_tool_loop_timeout` | `300` | `TOTAL_TOOL_LOOP_TIMEOUT` |

@@ -6,7 +6,7 @@
 ## 当前状态
 
 - 当前分支：`main`（本地领先 origin，未推远程）
-- 进行中任务 / WIP：会话压缩读窗口 DESC + checkpoint 走 sources 已修；spill / ask_user 未做
+- 进行中任务 / WIP：spill 已落地；ask_user 未做
 - 已知坏点 / 待办：日用库不在本机 Windows（soak 默认空库 `data/personal_ai.db`）；本机无 Telegram token，真实收发 blocked
 - 最近审阅：2026-09-01 从 deepseek-harness 对齐「模型可见 ⟺ 可重建」，用 checkpoint 替换静默截断
 - **本机 git**：Windows 提交走 `git -c core.hooksPath=.githooks commit -F`；venv 放 PATH 以免 pre-commit mypy 用到系统 `mcp`
@@ -42,7 +42,7 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
-| 2026-09-01 | compaction：DESC 扫描最新窗口；checkpoint 识别走 payload.sources，不再靠 `[compacted]` 前缀 | 无 Kernel 改动 |
+| 2026-09-01 | spill：超大工具结果外溢到 DATA_DIR/spills，对话行只存 preview；mcp_hub 不再 8k 静默截断 | 无新事件类型 |
 | 2026-09-01 | recorded-session：脚本 LLM + 真 Brain/Kernel 回放 text/read_file/write 审批 | 无密钥 loop 回归 |
 | 2026-09-01 | 会话压缩：超窗写 MessageAppended checkpoint，去掉静默截断；顺带修 get_history 取最旧 50 条 | 无新事件类型 |
 | 2026-08-31 | W35 dogfood：Memory 两轮 pass、今天 30 秒 pass；Chat 审批后续写接回同一工具环 | 三次提交：test(dogfood)/feat(chat)/feat(frontend)；未推远程 |

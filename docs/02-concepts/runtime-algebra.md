@@ -114,6 +114,7 @@ TRANSPORT  — 瞬时推送通道（不入 event_log、容许丢失）
 - Fragment 只能读取 State（通过 read_ports），不能写入
 - Context 组装完成后的 `system_prompt` 是纯文本，流经 Brain
 - 送进模型的对话面必须能从 `event_log` 重建：超窗时写 `MessageAppended` checkpoint，禁止静默丢历史
+- 超大工具结果外溢到 `DATA_DIR/spills`：模型看见的 preview/locator 写在 `MessageAppended`，完整正文不进会话事件
 
 **它能表达什么**：
 

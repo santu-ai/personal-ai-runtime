@@ -11,8 +11,9 @@ class MockConversation:
     def __init__(self):
         self.saved: list[tuple[str, str]] = []
 
-    def save_tool_result(self, result, call_id):
+    def save_tool_result(self, result, call_id, **kwargs):
         self.saved.append((call_id, result))
+        return {"content": result}
 
 
 class MockKernel:
