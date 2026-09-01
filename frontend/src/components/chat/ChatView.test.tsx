@@ -253,7 +253,8 @@ describe("ChatView", () => {
     fireEvent.change(inputs[inputs.length - 1], {
       target: { value: "create a file" },
     });
-    fireEvent.click(screen.getAllByRole("button", { name: "发送" }).at(-1)!);
+    const sendButtons = screen.getAllByRole("button", { name: "发送" });
+    fireEvent.click(sendButtons[sendButtons.length - 1]);
 
     await waitFor(() => {
       expect(screen.getByText(/建议：写入文件/)).toBeInTheDocument();
