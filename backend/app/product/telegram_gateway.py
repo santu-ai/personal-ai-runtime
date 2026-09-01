@@ -10,7 +10,7 @@ from typing import Any
 
 from app.config import settings
 from app.core.runtime import read_ports
-from app.core.runtime.kernel_instance import kernel
+from app.core.runtime.kernel_instance import get_current_execution_id, kernel
 from app.store.database import db
 
 logger = logging.getLogger(__name__)
@@ -131,8 +131,6 @@ async def poll_once() -> dict[str, Any]:
         except ValueError:
             pass
     offset = int(config["last_update_id"] or 0) + 1
-    from app.core.runtime.kernel_instance import get_current_execution_id
-
     execution_id = get_current_execution_id()
     result = await kernel.invoke_capability(
         "telegram_updates",
@@ -244,6 +242,7 @@ async def send_reply(text: str, *, correlation_id: str) -> dict[str, Any]:
         args,
         actor=actor,
         correlation_id=correlation_id,
+        execution_id=get_current_execution_id(),
         **invoke_kwargs,
     )
     changes = {"last_sent_at": datetime.now(UTC).isoformat()}
