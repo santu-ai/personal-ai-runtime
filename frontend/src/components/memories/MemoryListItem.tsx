@@ -109,7 +109,10 @@ export default function MemoryListItem({
           {m.claim_status === "ratified" && (
             <span className="text-xs bg-success/15 text-success px-1.5 py-0.5 rounded">已确认</span>
           )}
-          {m.claim_status === "rejected" && (
+          {m.claim_status === "rejected" && m.reject_reason === "auto_expired" && (
+            <span className="text-xs bg-warning/15 text-warning px-1.5 py-0.5 rounded">已自动过期</span>
+          )}
+          {m.claim_status === "rejected" && m.reject_reason !== "auto_expired" && (
             <span className="text-xs bg-danger/15 text-danger px-1.5 py-0.5 rounded">已拒绝</span>
           )}
           {m.claim_status === "contested" && (

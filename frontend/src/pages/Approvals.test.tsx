@@ -145,4 +145,21 @@ describe("ApprovalsPage", () => {
       expect(mockNavigate).toHaveBeenCalledWith("/chat/conv-9");
     });
   });
+
+  it("does not navigate when chat resolve resume fails", async () => {
+    mockList.mockResolvedValueOnce([chatContinuable]).mockResolvedValue([]);
+    mockResolve.mockResolvedValue({
+      status: "resume_failed",
+      retryable: true,
+      error: "llm down",
+    });
+    renderWithRouter(<ApprovalsPage />);
+    await waitFor(() => expect(screen.getByText("批准并续写")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("批准并续写"));
+    await waitFor(() => {
+      expect(mockResolve).toHaveBeenCalled();
+      expect(addError).toHaveBeenCalledWith("llm down", "审批");
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
+  });
 });

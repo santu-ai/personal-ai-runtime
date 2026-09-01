@@ -17,9 +17,12 @@ interface PendingConfirmation {
 type SetMessages = React.Dispatch<React.SetStateAction<DisplayMessage[]>>;
 
 type ResolveResult = {
+  status?: string;
   result?: string;
   assistant_message?: string;
   pending?: boolean;
+  retryable?: boolean;
+  error?: string;
   tool_name?: string;
   tool_args?: Record<string, unknown>;
   approval_id?: string;
@@ -122,6 +125,11 @@ export function useApprovalFlow(conversationId: string) {
           conversationId,
           pc.toolCall.id,
         );
+        if (res.status === "resume_failed" || res.retryable) {
+          setPendingConfirmation(pc);
+          onError?.(res.error || "续写失败，可再试一次", "审批");
+          return;
+        }
         const followupId = applyResolveToMessages(
           setMessages,
           pc.assistantMsgId,

@@ -39,6 +39,8 @@ export async function resolveApproval(
   result?: string;
   assistant_message?: string;
   pending?: boolean;
+  retryable?: boolean;
+  error?: string;
   tool_name?: string;
   tool_args?: Record<string, unknown>;
   approval_id?: string;

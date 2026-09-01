@@ -228,6 +228,45 @@ describe("ChatView", () => {
     });
   });
 
+  it("keeps the confirmation when approval resume fails", async () => {
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({
+          type: "confirmation_required",
+          tool_name: "write_file",
+          tool_args: { path: "/tmp/x", content: "data" },
+          approval_id: "ap-resume-fail",
+          tool_call_id: "tc-resume-fail",
+        });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+    vi.mocked(resolveApproval).mockResolvedValue({
+      status: "resume_failed",
+      retryable: true,
+      error: "LLM API error",
+    });
+
+    const { container } = renderChatView();
+    const inputs = screen.getAllByPlaceholderText(/输入消息/);
+    fireEvent.change(inputs[inputs.length - 1], {
+      target: { value: "create a file" },
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "发送" }).at(-1)!);
+
+    await waitFor(() => {
+      expect(screen.getByText(/建议：写入文件/)).toBeInTheDocument();
+    });
+    fireEvent.click(within(container).getByRole("button", { name: "确认写入" }));
+
+    await waitFor(() => {
+      expect(resolveApproval).toHaveBeenCalled();
+    });
+    expect(within(container).getByRole("button", { name: "确认写入" })).toBeInTheDocument();
+    expect(screen.queryByText("File written.")).not.toBeInTheDocument();
+  });
+
   it("clears the confirmation when switching conversations", async () => {
     vi.mocked(sendMessage).mockImplementation(
       async (_convId, _content, onEvent, _onError, onDone) => {

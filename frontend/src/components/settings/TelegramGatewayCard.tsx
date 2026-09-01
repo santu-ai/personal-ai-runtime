@@ -86,6 +86,11 @@ export default function TelegramGatewayCard() {
         自动回复关闭时，每条 Telegram 回复都需要人工批准。凭据仅从环境变量读取。
       </p>
       {status.last_error && <p className="text-xs text-danger">最近错误：{status.last_error}</p>}
+      {(status.last_polled_at || status.last_update_id > 0) && (
+        <p className="text-xs text-fg-tertiary">
+          最近轮询 {status.last_polled_at || "尚未"} · update {status.last_update_id}
+        </p>
+      )}
       <div className="flex items-center gap-2">
         <Button onClick={() => void save()} disabled={busy}>保存</Button>
         <Button variant="secondary" onClick={() => void poll()} disabled={busy || !enabled}>
