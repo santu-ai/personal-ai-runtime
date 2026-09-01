@@ -1,5 +1,7 @@
 """Tests for shared minimal subprocess environment helper."""
 
+import sys
+
 from app.core.harness.subprocess_env import minimal_subprocess_env
 
 
@@ -18,3 +20,15 @@ def test_minimal_env_extra_overlay(monkeypatch):
     env = minimal_subprocess_env(extra={"BRAVE_API_KEY": "k", "EMPTY": ""})
     assert env["BRAVE_API_KEY"] == "k"
     assert "EMPTY" not in env
+
+
+def test_windows_env_keeps_npx_cache_paths(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setenv("PATH", r"C:\bin")
+    monkeypatch.setenv("APPDATA", r"C:\Users\test\AppData\Roaming")
+    monkeypatch.setenv("LOCALAPPDATA", r"C:\Users\test\AppData\Local")
+
+    env = minimal_subprocess_env()
+
+    assert env["APPDATA"].endswith("Roaming")
+    assert env["LOCALAPPDATA"].endswith("Local")

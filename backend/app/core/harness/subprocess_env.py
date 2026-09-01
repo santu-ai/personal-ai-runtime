@@ -30,6 +30,11 @@ _WIN_KEYS = (
     "USERPROFILE",
     "COMSPEC",
     "PATHEXT",
+    # npm/npx use these locations for their cache and per-user config.
+    # They are paths, not credentials; omitting them can make npx stall while
+    # bootstrapping an MCP package on Windows.
+    "APPDATA",
+    "LOCALAPPDATA",
 )
 
 

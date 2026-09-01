@@ -125,7 +125,14 @@ class _ServerConnection:
                 self._run(), name=f"mcp-conn-{self.config.name}"
             )
             try:
-                await self._ready
+                # Bound the complete startup path, including stdio process
+                # spawn and transport __aenter__.  The inner protocol calls
+                # have their own guards, but cannot help when npx/stdio never
+                # reaches session.initialize().
+                await asyncio.wait_for(
+                    self._ready,
+                    timeout=self.config.connect_timeout_seconds,
+                )
             except BaseException:
                 # 初始化失败或调用方取消——回收 owner 任务。
                 await self._teardown(cancel=True)

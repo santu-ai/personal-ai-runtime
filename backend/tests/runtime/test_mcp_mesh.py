@@ -1,5 +1,7 @@
 """Tests for MCP mesh URL validation and taint integration."""
 
+import asyncio
+
 import pytest
 
 from app.core.harness.mcp_hub import ToolDef, ToolInvokeError, mcp_hub
@@ -491,3 +493,69 @@ def test_get_server_status_single_server(monkeypatch):
     assert status["tool_count"] == 0
     assert status.get("reason") == "not_connected"
     assert mesh.list_server_tools("email") == []
+
+
+@pytest.mark.asyncio
+async def test_server_connection_timeout_covers_transport_startup(monkeypatch):
+    """A stdio/npx hang before initialize must not block application startup."""
+    from app.core.harness import mcp_mesh as mesh_mod
+    from app.core.harness.mcp_config import ExternalMCPServerConfig
+
+    cfg = ExternalMCPServerConfig(
+        name="hung",
+        command="never-starts",
+        args=[],
+        connect_timeout_seconds=0.01,
+    )
+    conn = mesh_mod._ServerConnection(cfg)
+    cancelled = False
+
+    async def hang_before_transport():
+        nonlocal cancelled
+        try:
+            await asyncio.Event().wait()
+        except BaseException:
+            cancelled = True
+            raise
+
+    monkeypatch.setattr(conn, "_run", hang_before_transport)
+
+    with pytest.raises(TimeoutError):
+        await conn.connect()
+
+    assert cancelled is True
+    assert conn._owner_task is None
+    assert conn.session is None
+
+
+@pytest.mark.asyncio
+async def test_mesh_start_records_timeout_and_completes(monkeypatch):
+    from app.core.harness import mcp_mesh as mesh_mod
+    from app.core.harness.mcp_config import ExternalMCPServerConfig
+
+    cfg = ExternalMCPServerConfig(
+        name="hung",
+        command="never-starts",
+        args=[],
+        startup_connect=True,
+        connect_timeout_seconds=0.01,
+    )
+    mesh = MCPMesh()
+
+    async def timeout_connect(self):
+        raise TimeoutError
+
+    monkeypatch.setattr(mesh_mod._ServerConnection, "connect", timeout_connect)
+    monkeypatch.setattr(
+        "app.core.harness.mcp_config.load_external_server_configs",
+        lambda: [cfg],
+    )
+    monkeypatch.setattr(
+        "app.core.harness.mcp_config.mcp_external_enabled",
+        lambda: True,
+    )
+
+    assert await mesh.start() == []
+    status = mesh.get_server_status()
+    server = next(s for s in status["servers"] if s["name"] == "hung")
+    assert server["status"] == "disconnected"
