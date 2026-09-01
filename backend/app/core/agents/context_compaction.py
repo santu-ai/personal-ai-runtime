@@ -8,6 +8,7 @@ is ``MessageAppended`` with ``role=system`` and a ``compact`` payload.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -19,16 +20,52 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 COMPACT_MARKER = "[compacted]"
+# Projected via messages.sources so the LLM window can identify checkpoints
+# without a new column or Kernel projector change. Event payload still has
+# ``compact`` as the reconstructable source of truth.
+COMPACT_SOURCE_TYPE = "compact_checkpoint"
 HISTORY_SCAN_LIMIT = 5000
 _SUMMARY_TOKEN_BUDGET = 400
 
 
+def compact_source(compact: dict[str, Any]) -> dict[str, Any]:
+    """Marker stored in MessageAppended.sources (already projected)."""
+    return {"type": COMPACT_SOURCE_TYPE, **compact}
+
+
+def _as_source_items(raw: Any) -> list[dict[str, Any]]:
+    if raw is None or raw == "":
+        return []
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return []
+    if isinstance(raw, dict):
+        raw = [raw]
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, dict)]
+
+
+def compact_from_message(msg: dict[str, Any]) -> dict[str, Any] | None:
+    """Return the checkpoint payload, or None if *msg* is not a checkpoint.
+
+    Prefers an in-memory ``compact`` dict; otherwise reads the projected
+    ``sources`` marker. Content prefix is display-only and is not consulted.
+    """
+    compact = msg.get("compact")
+    if isinstance(compact, dict) and compact.get("kind") == "checkpoint":
+        return compact
+    for item in _as_source_items(msg.get("sources")):
+        if item.get("type") == COMPACT_SOURCE_TYPE and item.get("kind") == "checkpoint":
+            return item
+    return None
+
+
 def is_checkpoint_message(msg: dict[str, Any]) -> bool:
     """True when *msg* is a compaction checkpoint (LLM-window reset)."""
-    if msg.get("role") != "system":
-        return False
-    content = msg.get("content") or ""
-    return content.startswith(COMPACT_MARKER)
+    return compact_from_message(msg) is not None
 
 
 def surface_from(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:

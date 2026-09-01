@@ -14,7 +14,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from app.core.agents.context_compaction import HISTORY_SCAN_LIMIT, surface_from
+from app.core.agents import context_compaction as compaction_mod
+from app.core.agents.context_compaction import compact_from_message, compact_source, surface_from
 from app.core.agents.tool_markup import strip_tool_markup
 from app.core.runtime import read_ports
 from app.core.runtime.kernel_instance import kernel as default_kernel
@@ -61,13 +62,19 @@ class ConversationManager:
         rows = self._query_messages(id=msg_id, limit=1)
         return rows[0] if rows else None
 
-    def load_recorded_messages(self) -> list[dict]:
-        """All recorded messages in chronological order (scan cap, not LLM window)."""
+    def load_recorded_messages(self, *, limit: int | None = None) -> list[dict]:
+        """Newest recorded messages in chronological order (scan cap, not LLM window).
+
+        Query is DESC then reversed so LIMIT cannot hide the latest checkpoint
+        behind older rows (ASC+LIMIT returns the oldest N).
+        """
+        cap = compaction_mod.HISTORY_SCAN_LIMIT if limit is None else limit
         rows = self._query_messages(
             conversation_id=self.conversation_id,
-            limit=HISTORY_SCAN_LIMIT,
-            order="created_at_asc",
+            limit=cap,
+            order="created_at_desc",
         )
+        rows.reverse()
         result: list[dict] = []
         for msg in rows:
             item: dict = {
@@ -83,6 +90,9 @@ class ConversationManager:
                     pass
             if msg.get("tool_call_id"):
                 item["tool_call_id"] = msg["tool_call_id"]
+            compact = compact_from_message(msg)
+            if compact is not None:
+                item["compact"] = compact
             result.append(item)
         return result
 
@@ -104,6 +114,8 @@ class ConversationManager:
                 item["tool_calls"] = msg["tool_calls"]
             if msg.get("tool_call_id"):
                 item["tool_call_id"] = msg["tool_call_id"]
+            if msg.get("compact"):
+                item["compact"] = msg["compact"]
             result.append(item)
         return result
 
@@ -136,10 +148,12 @@ class ConversationManager:
             "tool_call_id": tool_call_id,
             "created_at": _now(),
         }
-        if sources:
-            payload["sources"] = sources
         if compact:
             payload["compact"] = compact
+            # Projected through the existing sources column — no Kernel change.
+            payload["sources"] = [compact_source(compact), *(sources or [])]
+        elif sources:
+            payload["sources"] = sources
         corr = correlation_id if correlation_id is not None else self.correlation_id
         self._k().emit_event(
             "MessageAppended",

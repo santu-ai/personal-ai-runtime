@@ -110,7 +110,7 @@ token 估算用 [`backend/app/core/agents/token_counter.py`](../../backend/app/c
 
 ## 会话压缩（LLM 窗口）
 
-Fragment 管线组装的是 **system prompt**。多轮 **对话面** 另走 `MessageAppended` 投影：超过 `max_recent_messages` 时，[`context_compaction.ensure_compacted`](../../backend/app/core/agents/context_compaction.py) 追加一条 checkpoint（`role=system`，payload.compact），而不是在 `build_messages` 里静默截断。被折叠的行仍在 `messages` 表，可重建；模型只从最新 checkpoint 起读。这是 CONTEXT 原语上的窗口迁移，不是新事件类型，也不是 `event_log` GC（ADR-R014 仍适用于 handler_executions）。
+Fragment 管线组装的是 **system prompt**。多轮 **对话面** 另走 `MessageAppended` 投影：超过 `max_recent_messages` 时，[`context_compaction.ensure_compacted`](../../backend/app/core/agents/context_compaction.py) 追加一条 checkpoint（`role=system`，payload.compact，经 `messages.sources` 投影识别），而不是在 `build_messages` 里静默截断。被折叠的行仍在 `messages` 表，可重建；读投影时 DESC 再反转，模型只从最新 checkpoint 起读。这是 CONTEXT 原语上的窗口迁移，不是新事件类型，也不是 `event_log` GC（ADR-R014 仍适用于 handler_executions）。
 
 ## 读边界
 

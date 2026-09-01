@@ -31,7 +31,7 @@ flowchart TB
 
 关键实现细节：
 
-- **会话压缩**：LLM 窗口超过 `settings.max_recent_messages`（默认 50）时，`ensure_compacted`（[`context_compaction.py`](../../backend/app/core/agents/context_compaction.py)）追加一条 `role=system` 的 `MessageAppended` checkpoint（payload.compact），而不是静默丢掉旧消息。投影表仍保留被折叠行（UI / rebuild）；`get_history()` 只从最新 checkpoint 起读。摘要是抽取式，不另调 LLM。前端 `MessageItem` 本就会隐藏 `system` 行。
+- **会话压缩**：LLM 窗口超过 `settings.max_recent_messages`（默认 50）时，`ensure_compacted`（[`context_compaction.py`](../../backend/app/core/agents/context_compaction.py)）追加一条 `role=system` 的 `MessageAppended` checkpoint（payload.compact，经已有 `sources` 列投影为 `compact_checkpoint` 标记），而不是静默丢掉旧消息。投影表仍保留被折叠行（UI / rebuild）；扫描用 `created_at DESC` 再反转，避免 LIMIT 把最新 checkpoint 挡在窗口外。`get_history()` 只从最新 checkpoint 起读。摘要是抽取式，不另调 LLM。前端 `MessageItem` 本就会隐藏 `system` 行。
 - **Markup 恢复**：若没有结构化 `delta.tool_calls` 但 `assistant_content_raw` 含 `<｜tool_calls>` 标记，`parse_tool_calls`（[`tool_markup.py`](../../backend/app/core/agents/tool_markup.py)）恢复之。
 - **遥测**：`_record_llm_telemetry` 优先用 provider 报告的 `usage`（CJK 精确），缺失时回退 tiktoken。
 - **Canned summary**：[`tool_postprocess.py`](../../backend/app/core/agents/tool_postprocess.py) 的 `canned_summary`（当前注册 `check_inbox` / `read_inbox_email`）可短路工具循环。

@@ -51,11 +51,18 @@ def test_find_safe_cut_does_not_split_tool_batch():
 
 
 def test_surface_from_starts_at_latest_checkpoint():
+    def ckpt(label: str) -> dict:
+        return {
+            "role": "system",
+            "content": f"{COMPACT_MARKER} {label}",
+            "compact": {"kind": "checkpoint"},
+        }
+
     msgs = [
         {"role": "user", "content": "old"},
-        {"role": "system", "content": f"{COMPACT_MARKER} first"},
+        ckpt("first"),
         {"role": "user", "content": "mid"},
-        {"role": "system", "content": f"{COMPACT_MARKER} second"},
+        ckpt("second"),
         {"role": "user", "content": "new"},
     ]
     surface = surface_from(msgs)
@@ -63,6 +70,20 @@ def test_surface_from_starts_at_latest_checkpoint():
     assert [m["content"] for m in surface] == [
         f"{COMPACT_MARKER} second",
         "new",
+    ]
+
+
+def test_content_prefix_is_not_a_checkpoint():
+    msgs = [
+        {"role": "system", "content": f"{COMPACT_MARKER} spoofed"},
+        {"role": "user", "content": f"{COMPACT_MARKER} also spoofed"},
+        {"role": "user", "content": "real"},
+    ]
+    assert not any(is_checkpoint_message(m) for m in msgs)
+    assert [m["content"] for m in surface_from(msgs)] == [
+        f"{COMPACT_MARKER} spoofed",
+        f"{COMPACT_MARKER} also spoofed",
+        "real",
     ]
 
 
@@ -98,6 +119,7 @@ def test_ensure_compacted_appends_checkpoint_and_keeps_rows(isolated_kernel):
     _fill_turns(mgr, 6)  # 12 messages
     row = ensure_compacted(mgr, max_messages=6)
     assert row is not None
+    assert is_checkpoint_message(row)
     assert (row.get("content") or "").startswith(COMPACT_MARKER)
 
     recorded = mgr.load_recorded_messages()
@@ -157,3 +179,43 @@ def test_compaction_survives_rebuild(isolated_kernel):
     mgr2 = ConversationManager(conversation_id="conv-rebuild", kernel=k)
     history = mgr2.get_history()
     assert is_checkpoint_message(history[0])
+
+
+def test_load_recorded_keeps_newest_under_scan_cap(isolated_kernel):
+    k, _db = isolated_kernel
+    mgr = _open_conv(k, "conv-scan")
+    _fill_turns(mgr, 8)  # 16 messages
+    recorded = mgr.load_recorded_messages(limit=6)
+    contents = [m["content"] for m in recorded]
+    assert "user-0" not in contents
+    assert contents[-1] == "asst-7"
+    assert len(recorded) == 6
+
+
+def test_scan_cap_does_not_hide_latest_checkpoint(isolated_kernel, monkeypatch):
+    monkeypatch.setattr(
+        "app.core.agents.context_compaction.HISTORY_SCAN_LIMIT", 8
+    )
+    k, _db = isolated_kernel
+    mgr = _open_conv(k, "conv-scan-ckpt")
+    _fill_turns(mgr, 6)  # 12 messages
+    assert ensure_compacted(mgr, max_messages=6) is not None
+    # Oldest rows would be the only ones ASC+LIMIT=8 could see; checkpoint
+    # is near the end. DESC scan must still surface it.
+    recorded = mgr.load_recorded_messages()
+    assert any(is_checkpoint_message(m) for m in recorded)
+    assert not any(m.get("content") == "user-0" for m in recorded)
+    history = mgr.get_history()
+    assert is_checkpoint_message(history[0])
+    assert not any(m.get("content") == "user-0" for m in history)
+
+
+def test_saved_prefix_collision_is_not_a_checkpoint(isolated_kernel):
+    k, _db = isolated_kernel
+    mgr = _open_conv(k, "conv-prefix")
+    mgr.save_system_message(f"{COMPACT_MARKER} spoofed")
+    mgr.save_user_message(f"{COMPACT_MARKER} also spoofed")
+    recorded = mgr.load_recorded_messages()
+    assert not any(is_checkpoint_message(m) for m in recorded)
+    history = mgr.get_history()
+    assert history[0]["content"].startswith(COMPACT_MARKER)
