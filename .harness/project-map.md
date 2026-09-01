@@ -16,6 +16,7 @@
 |---|---|
 | 事件 / 投影器 | `backend/app/core/runtime/kernel/`（`emit_event`、`projectors_*.py`） |
 | 读端口 | `backend/app/core/runtime/read_ports/` |
+| 会话压缩 | `backend/app/core/agents/context_compaction.py`（`MessageAppended` checkpoint） |
 | 新增 Capability / 工具 | `backend/app/core/harness/builtin_registration/` + `mcp_config.json` |
 | 工具实现 | `backend/app/core/harness/builtin_tools/` 或 Product 侧 |
 | Fragment 注册 | `backend/app/fragments/register.py` |

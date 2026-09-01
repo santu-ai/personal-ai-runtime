@@ -113,12 +113,14 @@ TRANSPORT  — 瞬时推送通道（不入 event_log、容许丢失）
 - Fragment 是 Context 的**生产函数**，不是独立原语
 - Fragment 只能读取 State（通过 read_ports），不能写入
 - Context 组装完成后的 `system_prompt` 是纯文本，流经 Brain
+- 送进模型的对话面必须能从 `event_log` 重建：超窗时写 `MessageAppended` checkpoint，禁止静默丢历史
 
 **它能表达什么**：
 
 - Chat turn 输入：PromptCompiler 编译 fragment → system_prompt
 - 异步触发输入：`TimerFired` 事件的 payload 是 Context
 - 审批续接：`Brain.continue_after_tool_result` 重用同一条 Context 管线
+- 长对话窗口：compaction checkpoint + 其后的 `messages` 投影（被折叠行仍在 STATE）
 
 **它不是什么**：
 

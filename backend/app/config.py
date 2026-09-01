@@ -191,7 +191,8 @@ class Settings(BaseSettings):
     shell_allowed_cwd: str = ""
     """Comma-separated directories the shell tool may run commands in. Default: project root. Requires backend restart."""
 
-    # --- Conversation ---
+    # LLM window cap. Exceeding it appends a MessageAppended compaction
+    # checkpoint (older rows stay in the projection for UI / rebuild).
     max_recent_messages: int = 50
     max_tool_iterations: int = 10
     tool_timeout_seconds: int = 30

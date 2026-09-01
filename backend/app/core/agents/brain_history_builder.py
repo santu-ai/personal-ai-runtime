@@ -3,7 +3,7 @@
 History assembly logic, independently testable. Handles:
 
 - Injection of system_prompt as the first message
-- Long-context truncation (capped by ``settings.max_recent_messages``)
+- Logged compaction (``ensure_compacted``) instead of silent truncation
 - Tool-call sequence validation (strips orphaned tool_calls to avoid
   DeepSeek API 400 errors)
 - Tool-result compaction via ``compact_for_llm``
@@ -11,16 +11,13 @@ History assembly logic, independently testable. Handles:
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
-from app.config import settings
+from app.core.agents.context_compaction import ensure_compacted
 from app.core.agents.tool_postprocess import compact_for_llm
 
 if TYPE_CHECKING:
     from app.core.agents.conversation import ConversationManager
-
-logger = logging.getLogger(__name__)
 
 
 def build_messages(
@@ -38,24 +35,13 @@ def build_messages(
             "system_prompt must be compiled before calling Brain",
         )
 
+    ensure_compacted(conversation)
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
 
     # Add conversation history. Enforce that every assistant tool_calls
     # is immediately followed by ALL its tool result messages, otherwise
     # strip to avoid DeepSeek API 400 errors.
     history = conversation.get_history()
-
-    # Long-context mitigation: cap the number of history turns we send.
-    # Older turns are dropped (the system prompt + memory fragments already
-    # carry the durable facts). We keep the most recent window so tool-call
-    # sequences stay intact.
-    max_history: int = getattr(settings, "max_recent_messages", 50)
-    if len(history) > max_history:
-        dropped = len(history) - max_history
-        history = history[-max_history:]
-        logger.debug(
-            "Truncated %d older history message(s) before LLM call", dropped,
-        )
 
     # First, tag each message with its parsed tool data
     tagged: list[dict] = []

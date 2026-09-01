@@ -14,6 +14,7 @@
 | LLM provider | runtime_config（DB）或 env | 无 |
 | 通知通道 | `core/runtime/notification_channel.py` | 无 |
 | 工具后处理规则 | `core/agents/tool_postprocess.py` | 无 |
+| 会话压缩 | `core/agents/context_compaction.py`（`MessageAppended` checkpoint） | 无新事件类型 |
 | Runtime 子系统单例 | `core/runtime/runtime_container.py` | `runtime.reset()` 测试隔离 |
 
 ## 投影器：新增投影

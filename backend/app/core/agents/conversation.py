@@ -1,7 +1,9 @@
-"""Multi-turn conversation management with sliding window strategy.
+"""Multi-turn conversation management.
 
 All writes go through Kernel events (Conversation* / MessageAppended).
 The conversations and messages tables are projections, not source of truth.
+The LLM window starts at the latest compaction checkpoint (see
+``context_compaction``); older rows stay in the projection for UI and rebuild.
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from app.config import settings
+from app.core.agents.context_compaction import HISTORY_SCAN_LIMIT, surface_from
 from app.core.agents.tool_markup import strip_tool_markup
 from app.core.runtime import read_ports
 from app.core.runtime.kernel_instance import kernel as default_kernel
@@ -59,28 +61,48 @@ class ConversationManager:
         rows = self._query_messages(id=msg_id, limit=1)
         return rows[0] if rows else None
 
-    def get_history(self, *, since_created_at: str | None = None) -> list[dict]:
-        """Get recent messages within the sliding window.
-
-        If since_created_at is provided, only return messages created after
-        that timestamp (enables incremental fetching for long conversations).
-        """
-        messages = self._query_messages(
+    def load_recorded_messages(self) -> list[dict]:
+        """All recorded messages in chronological order (scan cap, not LLM window)."""
+        rows = self._query_messages(
             conversation_id=self.conversation_id,
-            limit=settings.max_recent_messages,
+            limit=HISTORY_SCAN_LIMIT,
             order="created_at_asc",
         )
-        result = []
-        for msg in messages:
-            if since_created_at and msg["created_at"] <= since_created_at:
-                continue
-            item = {"role": msg["role"], "content": msg["content"]}
-            if msg["tool_calls"]:
+        result: list[dict] = []
+        for msg in rows:
+            item: dict = {
+                "id": msg["id"],
+                "role": msg["role"],
+                "content": msg["content"],
+                "created_at": msg.get("created_at"),
+            }
+            if msg.get("tool_calls"):
                 try:
                     item["tool_calls"] = json.loads(msg["tool_calls"])
                 except (json.JSONDecodeError, TypeError):
                     pass
-            if msg["tool_call_id"]:
+            if msg.get("tool_call_id"):
+                item["tool_call_id"] = msg["tool_call_id"]
+            result.append(item)
+        return result
+
+    def get_history(self, *, since_created_at: str | None = None) -> list[dict]:
+        """LLM-facing history: from the latest compaction checkpoint onward.
+
+        If since_created_at is provided, only return messages created after
+        that timestamp (enables incremental fetching for long conversations).
+        Older compacted rows remain in the projection; they are not dropped.
+        """
+        result = []
+        for msg in surface_from(self.load_recorded_messages()):
+            if since_created_at and (msg.get("created_at") or "") <= since_created_at:
+                continue
+            item = {"role": msg["role"], "content": msg["content"]}
+            if msg.get("id"):
+                item["id"] = msg["id"]
+            if msg.get("tool_calls"):
+                item["tool_calls"] = msg["tool_calls"]
+            if msg.get("tool_call_id"):
                 item["tool_call_id"] = msg["tool_call_id"]
             result.append(item)
         return result
@@ -95,6 +117,7 @@ class ConversationManager:
         *,
         actor: str | None = None,
         correlation_id: str | None = None,
+        compact: dict | None = None,
     ) -> dict:
         """Persist a message via MessageAppended event.
 
@@ -115,6 +138,8 @@ class ConversationManager:
         }
         if sources:
             payload["sources"] = sources
+        if compact:
+            payload["compact"] = compact
         corr = correlation_id if correlation_id is not None else self.correlation_id
         self._k().emit_event(
             "MessageAppended",

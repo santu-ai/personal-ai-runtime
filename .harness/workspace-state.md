@@ -6,9 +6,9 @@
 ## 当前状态
 
 - 当前分支：`main`（本地领先 origin，未推远程）
-- 进行中任务 / WIP：无
+- 进行中任务 / WIP：会话压缩 checkpoint 已落地（`MessageAppended`，无新事件类型）；recorded-session / spill / ask_user 未做
 - 已知坏点 / 待办：日用库不在本机 Windows（soak 默认空库 `data/personal_ai.db`）；本机无 Telegram token，真实收发 blocked
-- 最近审阅：2026-09-01 W36（MCP 启动 / Memory grounding / 审批续写 / proposed 过期 / Telegram Product 网关）
+- 最近审阅：2026-09-01 从 deepseek-harness 对齐「模型可见 ⟺ 可重建」，用 checkpoint 替换静默截断
 - **本机 git**：Windows 提交走 `git -c core.hooksPath=.githooks commit -F`；venv 放 PATH 以免 pre-commit mypy 用到系统 `mcp`
 - **本机 typecheck 假阳性**：本机若用系统 `mcp` 1.12.4 会误报；lock 钉 2.0.0，CI 不受影响
 - **P0（2026-08-30 已修）**：云端聊天曾被出口门一律拒绝（提示词里的 `Memories` 被当成个人上下文）。现只认 `memory_id:` 与 `MEMORY_CONTEXT_MARKER`
@@ -42,6 +42,7 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
+| 2026-09-01 | 会话压缩：超窗写 MessageAppended checkpoint，去掉静默截断；顺带修 get_history 取最旧 50 条 | 无新事件类型 |
 | 2026-08-31 | W35 dogfood：Memory 两轮 pass、今天 30 秒 pass；Chat 审批后续写接回同一工具环 | 三次提交：test(dogfood)/feat(chat)/feat(frontend)；未推远程 |
 | 2026-08-31 | CI：gitleaks 放行 RFC WebSocket 样例、harness 门 66、tsc 排除 Node 测试 | 跟进剩余问题收口 |
 | 2026-08-31 | 核心产品闭环：会话级待确认、Claim 替代链、抽取只信用户、「今天」三栏去重 | 本会话，待推远程 |

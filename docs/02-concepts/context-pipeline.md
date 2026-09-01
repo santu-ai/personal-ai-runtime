@@ -108,6 +108,10 @@ Stage 变体：`_select_post_tool`（background + conversation_state + governanc
 
 token 估算用 [`backend/app/core/agents/token_counter.py`](../../backend/app/core/agents/token_counter.py) 的 tiktoken（失败回退 `len//4`）。
 
+## 会话压缩（LLM 窗口）
+
+Fragment 管线组装的是 **system prompt**。多轮 **对话面** 另走 `MessageAppended` 投影：超过 `max_recent_messages` 时，[`context_compaction.ensure_compacted`](../../backend/app/core/agents/context_compaction.py) 追加一条 checkpoint（`role=system`，payload.compact），而不是在 `build_messages` 里静默截断。被折叠的行仍在 `messages` 表，可重建；模型只从最新 checkpoint 起读。这是 CONTEXT 原语上的窗口迁移，不是新事件类型，也不是 `event_log` GC（ADR-R014 仍适用于 handler_executions）。
+
 ## 读边界
 
 Fragment **必须**通过 [`backend/app/core/runtime/read_ports/`](../../backend/app/core/runtime/read_ports/__init__.py) 访问数据，绝不直访 Kernel 存储。可用端口：`query_top_active_goals`、`query_recent_inbox_emails`、`retrieve_memory_with_sources`、`query_world_context`、`query_calendar_*`、MCP connector 探针、治理读端口（`query_pending_approval_count`、`query_stagnant_goal_count`）。这是 Kernel 边界的一部分，详见 [kernel-boundary.md](kernel-boundary.md)。
