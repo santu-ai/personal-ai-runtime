@@ -112,6 +112,23 @@ vi.mock("../api/connectors", () => ({
   installMcpConnector: vi.fn(),
 }));
 
+vi.mock("../api/settings", () => ({
+  getTelegramGatewayStatus: vi.fn().mockResolvedValue({
+    enabled: false,
+    auto_reply: false,
+    token_configured: true,
+    chat_configured: true,
+    capability_enabled: true,
+    connected: false,
+    last_update_id: 0,
+    last_error: "",
+    last_polled_at: "",
+    last_sent_at: "",
+  }),
+  updateTelegramGateway: vi.fn(),
+  pollTelegramGateway: vi.fn(),
+}));
+
 vi.mock("../stores/errorStore", () => ({
   useErrorStore: (selector: (s: { addError: () => void }) => unknown) =>
     selector({ addError: vi.fn() }),
@@ -151,6 +168,14 @@ describe("SettingsPage", () => {
     await expandSection("Gmail 邮箱配置");
     expect(await screen.findByText("保存邮箱配置")).toBeInTheDocument();
     expect(screen.getByText("测试连接")).toBeInTheDocument();
+  });
+
+  it("shows Telegram gateway controls without credentials", async () => {
+    renderWithRouter(<SettingsPage />);
+    await expandSection("Telegram 网关");
+    expect(await screen.findByText("启用每分钟本地轮询")).toBeInTheDocument();
+    expect(screen.getByText("Token 已配置 · Chat ID 已配置")).toBeInTheDocument();
+    expect(screen.queryByText(/secret/i)).not.toBeInTheDocument();
   });
 
   it("renders capability policy tools from API", async () => {

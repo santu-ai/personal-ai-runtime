@@ -17,6 +17,7 @@ import CapabilityTrustPanel from "../components/settings/CapabilityTrustPanel";
 import PromptEditor from "../components/settings/PromptEditor";
 import McpMarketplace from "../components/settings/McpMarketplace";
 import McpServerList from "../components/settings/McpServerList";
+import TelegramGatewayCard from "../components/settings/TelegramGatewayCard";
 
 export default function SettingsPage() {
   const addError = useErrorStore((s) => s.addError);
@@ -140,6 +141,10 @@ export default function SettingsPage() {
             浏览并安装社区 MCP 服务器，扩展 AI 的能力。
           </p>
           <McpMarketplace />
+        </Disclosure>
+
+        <Disclosure title="Telegram 网关" description="本地轮询、审批与自动回复">
+          <TelegramGatewayCard />
         </Disclosure>
 
         <Disclosure title="AI 能力与信任" description="工具风险分级与信任策略">

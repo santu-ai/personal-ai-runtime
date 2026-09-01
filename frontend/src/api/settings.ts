@@ -144,3 +144,38 @@ export interface CapabilityPolicy {
 export async function getCapabilityPolicy(): Promise<CapabilityPolicy> {
   return request<CapabilityPolicy>(`${API_BASE}/settings/capability-policy`);
 }
+
+export interface TelegramGatewayStatus {
+  enabled: boolean;
+  auto_reply: boolean;
+  token_configured: boolean;
+  chat_configured: boolean;
+  capability_enabled: boolean;
+  connected: boolean;
+  last_update_id: number;
+  last_error: string;
+  last_polled_at: string;
+  last_sent_at: string;
+}
+
+export async function getTelegramGatewayStatus(): Promise<TelegramGatewayStatus> {
+  return request<TelegramGatewayStatus>(`${API_BASE}/settings/telegram`);
+}
+
+export async function updateTelegramGateway(
+  enabled: boolean,
+  autoReply: boolean,
+): Promise<TelegramGatewayStatus> {
+  return request<TelegramGatewayStatus>(`${API_BASE}/settings/telegram`, {
+    method: "PUT",
+    body: JSON.stringify({ enabled, auto_reply: autoReply }),
+  });
+}
+
+export async function pollTelegramGateway(): Promise<{
+  status: string;
+  processed: number;
+  error?: string;
+}> {
+  return request(`${API_BASE}/settings/telegram/poll`, { method: "POST" });
+}
