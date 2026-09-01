@@ -59,7 +59,7 @@ flowchart TB
 - **能力治理与策略（T2/A3/C3）**：`test_capability_approval.py`、`test_capability_decision.py`、`test_capability_forbidden.py`、`test_capability_governance_matrix.py`、`test_c3_mcp_policy_eventsourcing.py`、`test_runtime_config.py`、`test_taint.py`、`test_sensitive_router.py`
 - **出口与安全**：`test_egress.py`、`test_fetch_ssrf.py`、`test_url_safety.py`、`test_web_search_html.py`
 - **MCP / filesystem / shell / email server**：`test_filesystem_server.py`、`test_shell_server.py`、`test_email_server.py`、`test_mcp_config.py`、`test_mcp_mesh.py`
-- **记忆 / 通知 / 后台**：`test_memory_extractor.py`、`test_memory_ws_notify.py`、`test_notification_bridge.py`、`test_notification_channel.py`、`test_sse_queue_registry.py`、`test_background_task_event_chain.py`、`test_work_item_engine_behavior.py`（状态词表校验、依赖门控、递归树、级联删除、父活动刷新）
+- **记忆 / Telegram / 通知 / 后台**：`test_memory_extractor.py`、`test_proposed_memory_expiry.py`、`test_telegram_gateway.py`（offset、allowlist、入站去重、重启状态、失败退避、scoped consent）、`test_memory_ws_notify.py`、`test_notification_bridge.py`、`test_notification_channel.py`、`test_sse_queue_registry.py`、`test_background_task_event_chain.py`、`test_work_item_engine_behavior.py`（状态词表校验、依赖门控、递归树、级联删除、父活动刷新）
 - **Read ports**：`test_read_ports_api.py`、`test_read_ports_events.py`、`test_read_ports_telemetry.py`、`test_read_ports_memory_behavior.py`（记忆检索/查询/计数参数转发）、`test_read_ports_work_behavior.py`（work 查询转发、background 映射、cancel/execute 守卫、目标完成通知）
 - **Product / 主权 / fragment**：`tests/product/`（dashboard / inbox / notifications / encrypted_sync）、`test_sovereignty_basic.py`、`test_governance_fragment.py`、`test_scenario_fragments.py`、`test_mail_fragment_collect.py`、`test_fragment_read_boundary.py`、`test_fragment_registry_audit.py`、`test_fragment_selector_behavior.py`、`test_core_tier_fragments.py`、`test_runtime_container.py`
 
@@ -154,7 +154,10 @@ CI 报告用 `--cov-report=term-missing` 让缺失部分可见，开发者按需
 
 运行：`make test-e2e`（先 `npx playwright install chromium`）。
 
-真实 backend SSE + 审批闭环：`make test-e2e-real`（启动 fake LLM，不走真实供应商）。默认 `make test-e2e` 会忽略 `real-backend.spec.ts`。
+真实 backend SSE + 审批闭环：`make test-e2e-real`（启动 fake LLM，不走真实供应商）。
+其中覆盖第一次确认后重启 backend、从同一 SQLite checkpoint 恢复、第二次确认与最终文本，
+并验证两个写工具各执行一次且受 `MAX_TOOL_ITERATIONS` 约束。默认 `make test-e2e`
+会忽略 `real-backend.spec.ts`。
 
 ### Desktop smoke（[`desktop/main.test.js`](../../desktop/main.test.js)）
 

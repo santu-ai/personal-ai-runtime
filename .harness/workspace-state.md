@@ -5,10 +5,10 @@
 
 ## 当前状态
 
-- 当前分支：`main`（本地领先 origin）
+- 当前分支：`main`（本地领先 origin，未推远程）
 - 进行中任务 / WIP：无
-- 已知坏点 / 待办：日用库不在本机 Windows（soak 默认空库 `data/personal_ai.db`）；Telegram / proposed 过期仍未做
-- 最近审阅：2026-08-31 产品验收 + 审批续写（ADR-R011 仍有效，批准后恢复同一工具环）
+- 已知坏点 / 待办：日用库不在本机 Windows（soak 默认空库 `data/personal_ai.db`）；本机无 Telegram token，真实收发 blocked
+- 最近审阅：2026-09-01 W36（MCP 启动 / Memory grounding / 审批续写 / proposed 过期 / Telegram Product 网关）
 - **本机 git**：Windows 提交走 `git -c core.hooksPath=.githooks commit -F`；venv 放 PATH 以免 pre-commit mypy 用到系统 `mcp`
 - **本机 typecheck 假阳性**：本机若用系统 `mcp` 1.12.4 会误报；lock 钉 2.0.0，CI 不受影响
 - **P0（2026-08-30 已修）**：云端聊天曾被出口门一律拒绝（提示词里的 `Memories` 被当成个人上下文）。现只认 `memory_id:` 与 `MEMORY_CONTEXT_MARKER`
@@ -34,8 +34,8 @@
 
 ## 产品观察（后续规划候选）
 
-- Wave B 续：Telegram 双向网关
-- 可选：proposed 过期自动拒绝（用户未选）
+- Wave B 续：Telegram 双向网关（W36 已落地 Product 网关；真机收发仍 blocked）
+- 可选：proposed 过期自动拒绝（W36 已落地 ClaimRejected auto_expired）
 - God Object（`query_builder`/`main`/`mcp_mesh`/`agent_scheduler`）受概念压缩约束，不能无配对拆文件；优先单文件内 helper（见 conventions）。
 
 ## 近期改动日志

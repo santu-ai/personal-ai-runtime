@@ -94,6 +94,7 @@ flowchart LR
 | 字段 | 默认 | 环境变量 |
 |---|---|---|
 | `memory_extractor` | `ollama` | `MEMORY_EXTRACTOR`（`ollama` 本地 或 `cloud`） |
+| `proposed_memory_ttl_days` | `30` | `PROPOSED_MEMORY_TTL_DAYS`（`0` 禁用自动过期） |
 | `sensitive_ops_local` | `True` | `SENSITIVE_OPS_LOCAL`（家目录路径启发式；**项目根内路径不升级**） |
 | `allow_cloud_personal_data_egress` | `False` | `ALLOW_CLOUD_PERSONAL_DATA_EGRESS`（见下方说明） |
 | `execution_shadow_compare` | `False` | `EXECUTION_SHADOW_COMPARE` |
@@ -138,6 +139,11 @@ Host/port 默认值在 `runtime_config.GMAIL_DEFAULTS`（非 Settings 字段）�
 |---|---|---|
 | `telegram_bot_token` | `""` | `TELEGRAM_BOT_TOKEN` |
 | `telegram_chat_id` | `""` | `TELEGRAM_CHAT_ID` |
+
+启用本地网关还需把 `telegram` 加入 `BUILTIN_TOOL_CATEGORIES` 并重启后端。
+轮询与 scoped auto-reply 开关由设置页保存到 `app_settings.telegram_gateway`；
+token/chat id 不写数据库且 API 不回显。网关每分钟 long-poll，失败按 1–15 分钟
+指数退避。自动回复关闭时每条出站消息需人工批准。
 
 ### 前端
 

@@ -78,18 +78,27 @@ flowchart TB
 
 ## Taint 追踪（防提示注入）
 
-[`backend/app/core/runtime/taint.py`](../../backend/app/core/runtime/taint.py) 跟踪不可信内容的污染。当外部内容（收件箱、网页抓取）进入 agent 上下文后，同一 `correlation_id` 链上的后续写类工具调用必须强制 high 风险。
+[`backend/app/core/runtime/taint.py`](../../backend/app/core/runtime/taint.py) 跟踪不可信内容的污染。当外部内容（收件箱、网页抓取、Telegram 入站）进入 agent 上下文后，同一 `correlation_id` 链上的后续写类工具调用必须强制 high 风险。
 
 关键实现：
 
 - `TaintRegistry`（[`taint.py`](../../backend/app/core/runtime/taint.py)）按 `correlation_id` 维护污染标记，**实例级 dict**（非 ContextVar，避免 `asyncio.gather` 扇出 bug），TTL 300s。
 - 工具分类集合：
-  - `_BUILTIN_EXTERNAL_INGESTION_TOOLS`（[`taint.py`](../../backend/app/core/runtime/taint.py)）：`check_inbox`、`read_inbox_email`、`web_search`、`fetch_url`（另含外部 MCP ingestion 工具）。
+  - `_BUILTIN_EXTERNAL_INGESTION_TOOLS`（[`taint.py`](../../backend/app/core/runtime/taint.py)）：`check_inbox`、`read_inbox_email`、`web_search`、`fetch_url`、`telegram_updates`（另含外部 MCP ingestion 工具）。
   - `WRITE_CLASS_TOOLS`（[`taint.py`](../../backend/app/core/runtime/taint.py)）：`apply_patch`、`write_file`、`add_calendar_event`、`send_email`、`shell_exec`、`telegram_send`、`computer_click`/`type`/`key`。
 - 集成点：`Kernel.invoke_capability` 在摄入类工具成功后调用 `taint_registry.mark(correlation_id, source="external_ingestion", reason=name)`（[`kernel.py`](../../backend/app/core/runtime/kernel/kernel.py)）。
 - Brain 在每次回合开始时清空该 `correlation_id` 的 taint。
 
 `is_external_ingestion_tool` / `is_write_class_tool` / `register_external_ingestion_tool` / `register_external_write_tool` / `reset_external_tools` 是公开接口。
+
+## Telegram scoped consent
+
+Telegram 网关不降低 `telegram_send` 的 high 风险。默认每条回复进入人工审批；
+用户在设置中显式开启 auto-reply 后，网关只对环境中 `TELEGRAM_CHAT_ID` 对应的
+一条精确回复创建并消费一次 pre-approved approval，principal 为
+`user:telegram:{chat_id}`。每次发送仍产生 Approval 与 Capability 审计，不能
+扩展到其他 chat id 或其他写能力。完整决策见
+[ADR-R018](../07-adr/ADR-R018-telegram-scoped-consent.md)。
 
 ## 敏感操作路由
 

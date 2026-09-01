@@ -126,6 +126,9 @@
 | PUT | `/api/settings/notifications` | auth | internal | Update Notification Settings |
 | GET | `/api/settings/prompt` | auth | — | Get Prompt Config |
 | PUT | `/api/settings/prompt` | auth | — | Update Prompt Config |
+| GET | `/api/settings/telegram` | auth | — | Get Telegram Gateway Settings |
+| PUT | `/api/settings/telegram` | auth | — | Update Telegram Gateway Settings |
+| POST | `/api/settings/telegram/poll` | auth | — | Poll Telegram Gateway |
 
 ## system — `/api/system`（[`api/system.py`](../../backend/app/api/system.py)）
 

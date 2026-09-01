@@ -53,13 +53,20 @@
 
 ### `_ServerConnection`（[`mcp_mesh.py`](../../backend/app/core/harness/mcp_mesh.py)）
 
-`connect()` 用 `stdio_client(StdioServerParameters)` + `ClientSession`，调 `initialize()` + `list_tools()` 带超时。
+`connect()` 用 `stdio_client(StdioServerParameters)` + `ClientSession`。端到端
+`connect_timeout_seconds` 覆盖子进程拉起、stdio context、`initialize()` 与
+`list_tools()`；超时会取消并 join owner task，避免 FastAPI lifespan 永久悬挂。
+Windows 最小子进程环境保留 `APPDATA` / `LOCALAPPDATA` 供 npm/npx 使用，但仍不
+透传 provider 密钥。
 
 ### `MCPMesh`（[`mcp_mesh.py`](../../backend/app/core/harness/mcp_mesh.py)）
 
 - `start()` 并行连接 startup servers，为 `startup_connect=False` 的服务器 spawn 懒连接后台任务。
 - `call_tool(registered_name, arguments)` 经 `url_safety.validate_http_url` 校验 Playwright URL 工具；失败抛 `ToolInvokeError`（未知工具 / 禁止 / 超时 / 执行失败），不返回 JSON error 字符串。
 - `get_server_status()` 报告每服务器 connected/lazy/disconnected/unavailable。
+
+仓库配置中的 Context7、Tavily 为 lazy connect：应用先 ready，首次使用或后台
+懒连接再启动；单个 server 失败只进入 status 降级，不阻塞其他 server。
 
 ### 发现
 
