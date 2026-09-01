@@ -1,6 +1,7 @@
 """HTTP resolve_approval must execute the governed approval record."""
 
 import json
+from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
 
@@ -130,3 +131,113 @@ def test_resolve_missing_decision_returns_422(client: TestClient):
         json={"conv_id": "", "tool_call_id": ""},
     )
     assert r.status_code == 422
+
+
+def test_approved_checkpoint_allows_resume_only_retry(
+    client: TestClient, monkeypatch,
+):
+    """A failed post-tool LLM call retries reasoning, never the capability."""
+    from app.core.agents.conversation import ConversationAPI
+    from app.core.runtime.kernel_instance import kernel
+    from app.core.runtime.plan_resume import record_chat_checkpoint
+
+    correlation_id = "approval-resume-only"
+    conv_id = ConversationAPI.create("resume only")["id"]
+    pending = kernel.request_approval(
+        "write_file",
+        risk="high",
+        ctx={"args": {"path": "/tmp/safe.txt", "content": "hello"}},
+        actor="user",
+        correlation_id=correlation_id,
+    )
+    approval_id = pending["approval_id"]
+    kernel.grant_approval(
+        approval_id,
+        action="write_file",
+        actor="user",
+        correlation_id=correlation_id,
+    )
+    record_chat_checkpoint(
+        correlation_id,
+        {
+            "status": "in_progress",
+            "resume_after_approval": True,
+            "messages": [{"role": "tool", "tool_call_id": "tc_retry", "content": "ok"}],
+            "iteration": 1,
+            "user_message": "write it",
+        },
+        kernel=kernel,
+    )
+
+    resume = AsyncMock(side_effect=[
+        {
+            "assistant_message": "",
+            "pending": False,
+            "tool_results": [],
+            "error": "llm down",
+        },
+        {
+            "assistant_message": "恢复完成",
+            "pending": False,
+            "tool_results": [],
+            "error": "",
+        },
+    ])
+    monkeypatch.setattr(
+        "app.core.agents.brain_chat_stream.resume_after_approved_tool",
+        resume,
+    )
+    invoke = AsyncMock(side_effect=AssertionError("capability must not run again"))
+    monkeypatch.setattr(kernel, "invoke_capability", invoke)
+
+    payload = {
+        "decision": "approve",
+        "conv_id": conv_id,
+        "tool_call_id": "tc_retry",
+    }
+    first = client.post(
+        f"/api/chat/approvals/{approval_id}/resolve",
+        json=payload,
+    )
+    assert first.status_code == 200
+    assert first.json()["status"] == "resume_failed"
+    assert first.json()["retryable"] is True
+
+    second = client.post(
+        f"/api/chat/approvals/{approval_id}/resolve",
+        json=payload,
+    )
+    assert second.status_code == 200
+    assert second.json()["assistant_message"] == "恢复完成"
+    assert resume.await_count == 2
+    invoke.assert_not_awaited()
+
+
+def test_deny_clears_checkpoint_without_conversation_payload(client: TestClient):
+    from app.core.runtime.kernel_instance import kernel
+    from app.core.runtime.plan_resume import (
+        load_chat_checkpoint,
+        record_chat_checkpoint,
+    )
+
+    correlation_id = "approval-deny-clear"
+    pending = kernel.request_approval(
+        "write_file",
+        risk="high",
+        ctx={"args": {"path": "/tmp/safe.txt", "content": "hello"}},
+        actor="user",
+        correlation_id=correlation_id,
+    )
+    record_chat_checkpoint(
+        correlation_id,
+        {"status": "awaiting_approval", "messages": [], "iteration": 0},
+        kernel=kernel,
+    )
+
+    response = client.post(
+        f"/api/chat/approvals/{pending['approval_id']}/resolve",
+        json={"decision": "deny", "conv_id": "", "tool_call_id": ""},
+    )
+
+    assert response.status_code == 200
+    assert load_chat_checkpoint(correlation_id, kernel=kernel) is None

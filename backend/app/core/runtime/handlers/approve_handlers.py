@@ -113,18 +113,16 @@ async def on_approve_requested(ctx: "ExecutionContext", event: "Event") -> None:
         take_plan_resume(approval_id, kernel=kernel)  # drop any queued plan resume
         kernel.deny_approval(approval_id, action=tool_name, actor="user", reason="user_denied")
         assistant_message = ""
+        from app.core.runtime.plan_resume import clear_chat_checkpoint_for_approval
+
+        chat_corr = clear_chat_checkpoint_for_approval(
+            approval_id, kernel=kernel,
+        ) or ctx.correlation_id
         if conv_id and tool_call_id:
             try:
-                from app.core.agents.brain_chat_stream import chat_correlation_for_approval
-
-                chat_corr = chat_correlation_for_approval(approval_id) or ctx.correlation_id
                 assistant_message = _persist_denied_chat_turn(
                     conv_id, tool_call_id, tool_name, chat_corr,
                 )
-                if chat_corr:
-                    from app.core.runtime.plan_resume import clear_chat_checkpoint
-
-                    clear_chat_checkpoint(chat_corr, kernel=kernel)
             except Exception as exc:
                 logger.warning("Approve: persist denied chat turn failed: %s", exc)
         ctx.emit(
@@ -203,6 +201,7 @@ async def on_approve_requested(ctx: "ExecutionContext", event: "Event") -> None:
                 assistant_message = await brain.continue_after_tool_result(conversation)
         except Exception as exc:
             logger.warning("Approve: conversation resume failed: %s", exc)
+            continuation = {"error": str(exc)}
 
     # After the approved tool runs, continue any paused execute/background plan.
     # E-6: take first (atomic claim) so concurrent Approve cannot double-resume;
@@ -241,6 +240,7 @@ async def on_approve_requested(ctx: "ExecutionContext", event: "Event") -> None:
             "next_approval_id": continuation.get("approval_id") or "",
             "next_tool_call_id": continuation.get("tool_call_id") or "",
             "tool_results": continuation.get("tool_results") or [],
+            "resume_error": continuation.get("error") or "",
         },
         caused_by=event.id,
     )

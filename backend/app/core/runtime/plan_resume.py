@@ -512,3 +512,35 @@ def clear_chat_checkpoint(
     take_plan_resume(
         chat_checkpoint_key(correlation_id), db=db, kernel=kernel,
     )
+
+
+def approval_correlation_id(approval_id: str, *, kernel: Any) -> str:
+    """Resolve an approval's durable originating correlation id."""
+    if not approval_id:
+        return ""
+    try:
+        events = kernel.read_events(
+            type="ApprovalRequested",
+            aggregate_id=approval_id,
+            limit=5,
+        )
+    except Exception:
+        logger.debug("approval correlation lookup failed", exc_info=True)
+        return ""
+    for event in events:
+        correlation_id = getattr(event, "correlation_id", None) or ""
+        if correlation_id:
+            return str(correlation_id)
+    return ""
+
+
+def clear_chat_checkpoint_for_approval(
+    approval_id: str,
+    *,
+    kernel: Any,
+) -> str:
+    """Clear a waiting chat checkpoint on approval denial or expiry."""
+    correlation_id = approval_correlation_id(approval_id, kernel=kernel)
+    if correlation_id:
+        clear_chat_checkpoint(correlation_id, kernel=kernel)
+    return correlation_id

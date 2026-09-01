@@ -18,6 +18,7 @@ let testDataDir = "";
 let writeTarget = "";
 let backendPort = 0;
 let fakeLlmPort = 0;
+let backendEnv: NodeJS.ProcessEnv = {};
 
 async function freePort(): Promise<number> {
   return await new Promise((resolve, reject) => {
@@ -70,6 +71,23 @@ async function killProc(proc: ChildProcess | null): Promise<void> {
   });
 }
 
+async function startBackend(): Promise<void> {
+  backendProc = spawn(PYTHON, [
+    "-m", "uvicorn", "app.main:app",
+    "--host", "127.0.0.1",
+    "--port", String(backendPort),
+  ], {
+    cwd: path.join(REPO_ROOT, "backend"),
+    env: backendEnv,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  backendProc.stderr!.on("data", (d: Buffer) => process.stderr.write(`[backend] ${d}`));
+  backendProc.once("error", (err) => {
+    throw err;
+  });
+  await waitForHealth(`http://127.0.0.1:${backendPort}/api/system/health`);
+}
+
 function parseSseEvents(text: string): Array<Record<string, unknown>> {
   const events: Array<Record<string, unknown>> = [];
   for (const line of text.split("\n")) {
@@ -86,6 +104,8 @@ function parseSseEvents(text: string): Array<Record<string, unknown>> {
 }
 
 test.describe("Real backend E2E — SSE chat + approval flow", () => {
+  test.describe.configure({ mode: "serial" });
+
   test.beforeAll(async () => {
     testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "personal-ai-runtime-e2e-"));
     fs.mkdirSync(path.join(testDataDir, "vectors"), { recursive: true });
@@ -123,7 +143,7 @@ test.describe("Real backend E2E — SSE chat + approval flow", () => {
     });
 
     // Minimal env — do not inherit provider keys that could fall through to real APIs.
-    const env: NodeJS.ProcessEnv = {
+    backendEnv = {
       PATH: process.env.PATH,
       HOME: process.env.HOME,
       PYTHONPATH: path.join(REPO_ROOT, "backend"),
@@ -146,20 +166,7 @@ test.describe("Real backend E2E — SSE chat + approval flow", () => {
       MAX_TOOL_ITERATIONS: "2",
     };
 
-    backendProc = spawn(PYTHON, [
-      "-m", "uvicorn", "app.main:app",
-      "--host", "127.0.0.1",
-      "--port", String(backendPort),
-    ], {
-      cwd: path.join(REPO_ROOT, "backend"),
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    backendProc.stderr!.on("data", (d: Buffer) => process.stderr.write(`[backend] ${d}`));
-    backendProc.once("error", (err) => {
-      throw err;
-    });
-    await waitForHealth(`http://127.0.0.1:${backendPort}/api/system/health`);
+    await startBackend();
   });
 
   test.afterAll(async () => {
@@ -172,6 +179,7 @@ test.describe("Real backend E2E — SSE chat + approval flow", () => {
     }
     try {
       fs.rmSync(writeTarget, { force: true });
+      fs.rmSync(`${writeTarget}.second`, { force: true });
     } catch (error) {
       console.warn(`Could not remove E2E write target ${writeTarget}:`, error);
     }
@@ -319,5 +327,84 @@ test.describe("Real backend E2E — SSE chat + approval flow", () => {
           message.role === "tool" && message.tool_call_id === toolCallId,
       ),
     ).toBe(true);
+  });
+
+  test("continuous approvals survive backend restart and execute once", async ({ request }) => {
+    const headers = {
+      Authorization: "Bearer e2e-secret",
+      "Content-Type": "application/json",
+    };
+    const create = await request.post(
+      `http://127.0.0.1:${backendPort}/api/chat/conversations`,
+      { headers, data: { title: "Continuous Approval Restart" } },
+    );
+    expect(create.status()).toBe(200);
+    const convId = (await create.json()).id;
+
+    const firstTurn = await fetch(
+      `http://127.0.0.1:${backendPort}/api/chat/conversations/${convId}/messages`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ content: "Run E2E_CONTINUOUS_APPROVAL now" }),
+      },
+    );
+    const firstEvents = parseSseEvents(await firstTurn.text());
+    const first = firstEvents.find((event) => event.type === "confirmation_required");
+    expect(first).toBeTruthy();
+
+    await killProc(backendProc);
+    backendProc = null;
+    await startBackend();
+
+    const resolveFirst = await request.post(
+      `http://127.0.0.1:${backendPort}/api/chat/approvals/${String(first!.approval_id)}/resolve`,
+      {
+        headers,
+        data: {
+          decision: "approve",
+          conv_id: convId,
+          tool_call_id: String(first!.tool_call_id),
+        },
+      },
+    );
+    expect(resolveFirst.status()).toBe(200);
+    const firstBody = await resolveFirst.json();
+    expect(firstBody.pending).toBe(true);
+    expect(firstBody.approval_id).toBeTruthy();
+    expect(fs.readFileSync(writeTarget, "utf8")).toBe("hello from e2e");
+
+    const resolveSecond = await request.post(
+      `http://127.0.0.1:${backendPort}/api/chat/approvals/${String(firstBody.approval_id)}/resolve`,
+      {
+        headers,
+        data: {
+          decision: "approve",
+          conv_id: convId,
+          tool_call_id: String(firstBody.tool_call_id),
+        },
+      },
+    );
+    expect(resolveSecond.status()).toBe(200);
+    const secondBody = await resolveSecond.json();
+    expect(secondBody.status).toBe("success");
+    expect(secondBody.pending || false).toBe(false);
+    expect(String(secondBody.assistant_message || "").length).toBeGreaterThan(0);
+    expect(fs.readFileSync(`${writeTarget}.second`, "utf8")).toBe(
+      "second approval from e2e",
+    );
+
+    const duplicate = await request.post(
+      `http://127.0.0.1:${backendPort}/api/chat/approvals/${String(firstBody.approval_id)}/resolve`,
+      {
+        headers,
+        data: {
+          decision: "approve",
+          conv_id: convId,
+          tool_call_id: String(firstBody.tool_call_id),
+        },
+      },
+    );
+    expect(duplicate.status()).toBe(409);
   });
 });

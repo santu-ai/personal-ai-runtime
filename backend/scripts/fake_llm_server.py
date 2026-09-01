@@ -19,16 +19,17 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 TOOL_TRIGGER = "E2E_TOOL_APPROVAL"
+CONTINUOUS_TRIGGER = "E2E_CONTINUOUS_APPROVAL"
 
 
 def _write_path() -> str:
     return os.environ.get("E2E_WRITE_PATH") or os.path.abspath("e2e_write_test.txt")
 
 
-def _tool_args() -> str:
+def _tool_args(step: int = 1) -> str:
     return json.dumps({
-        "path": _write_path(),
-        "content": "hello from e2e",
+        "path": _write_path() if step == 1 else f"{_write_path()}.second",
+        "content": "hello from e2e" if step == 1 else "second approval from e2e",
     })
 
 
@@ -39,29 +40,36 @@ class FakeLLMHandler(BaseHTTPRequestHandler):
         messages = body.get("messages", [])
         stream = bool(body.get("stream", False))
 
-        last_user = ""
-        last_message = messages[-1] if messages else {}
-        if last_message.get("role") == "user":
-            content = last_message.get("content") or ""
+        user_texts: list[str] = []
+        for message in messages:
+            if message.get("role") != "user":
+                continue
+            content = message.get("content") or ""
             if isinstance(content, list):
                 content = " ".join(
                     part.get("text", "") if isinstance(part, dict) else str(part)
                     for part in content
                 )
-            last_user = str(content)
+            user_texts.append(str(content))
 
-        want_tool = TOOL_TRIGGER in last_user
-        after_tool = any(msg.get("role") == "tool" for msg in messages)
+        user_text = "\n".join(user_texts)
+        tool_count = sum(1 for msg in messages if msg.get("role") == "tool")
+        continuous = CONTINUOUS_TRIGGER in user_text
+        if continuous:
+            tool_step = tool_count + 1 if tool_count < 2 else 0
+        else:
+            tool_step = 1 if TOOL_TRIGGER in user_text and tool_count == 0 else 0
+        after_tool = tool_count > 0
         if stream:
-            self._sse_stream(want_tool=want_tool, after_tool=after_tool)
+            self._sse_stream(tool_step=tool_step, after_tool=after_tool)
         else:
             self._json_response(
                 200,
-                self._nonstream(want_tool=want_tool, after_tool=after_tool),
+                self._nonstream(tool_step=tool_step, after_tool=after_tool),
             )
 
-    def _nonstream(self, *, want_tool: bool, after_tool: bool = False) -> dict:
-        if want_tool:
+    def _nonstream(self, *, tool_step: int, after_tool: bool = False) -> dict:
+        if tool_step:
             return {
                 "id": "fake-ns",
                 "object": "chat.completion",
@@ -72,11 +80,11 @@ class FakeLLMHandler(BaseHTTPRequestHandler):
                         "role": "assistant",
                         "content": None,
                         "tool_calls": [{
-                            "id": "call_fake_1",
+                            "id": f"call_fake_{tool_step}",
                             "type": "function",
                             "function": {
                                 "name": "write_file",
-                                "arguments": _tool_args(),
+                                "arguments": _tool_args(tool_step),
                             },
                         }],
                     },
@@ -99,13 +107,13 @@ class FakeLLMHandler(BaseHTTPRequestHandler):
             }],
         }
 
-    def _sse_stream(self, *, want_tool: bool, after_tool: bool = False) -> None:
+    def _sse_stream(self, *, tool_step: int, after_tool: bool = False) -> None:
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
 
-        if want_tool:
+        if tool_step:
             chunks = [
                 {
                     "id": "fake-tc",
@@ -117,7 +125,7 @@ class FakeLLMHandler(BaseHTTPRequestHandler):
                             "role": "assistant",
                             "tool_calls": [{
                                 "index": 0,
-                                "id": "call_fake_1",
+                                "id": f"call_fake_{tool_step}",
                                 "type": "function",
                                 "function": {"name": "write_file", "arguments": ""},
                             }],
@@ -135,7 +143,7 @@ class FakeLLMHandler(BaseHTTPRequestHandler):
                             "tool_calls": [{
                                 "index": 0,
                                 "function": {
-                                    "arguments": _tool_args(),
+                                    "arguments": _tool_args(tool_step),
                                 },
                             }],
                         },

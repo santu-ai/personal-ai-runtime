@@ -330,22 +330,9 @@ async def chat_stream(
 
 def chat_correlation_for_approval(approval_id: str) -> str:
     """Return the originating Chat correlation_id for an ApprovalRequested event."""
-    if not approval_id:
-        return ""
-    try:
-        events = kernel.read_events(
-            type="ApprovalRequested",
-            aggregate_id=approval_id,
-            limit=5,
-        )
-    except Exception:
-        logger.debug("approval correlation lookup failed", exc_info=True)
-        return ""
-    for ev in events:
-        cid = getattr(ev, "correlation_id", None) or ""
-        if cid:
-            return str(cid)
-    return ""
+    from app.core.runtime.plan_resume import approval_correlation_id
+
+    return approval_correlation_id(approval_id, kernel=kernel)
 
 
 def append_approved_tool_to_checkpoint(

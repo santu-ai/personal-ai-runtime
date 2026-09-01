@@ -87,10 +87,14 @@ def expire_stale_approvals(kernel) -> int:
     expired_ids = [(row["id"], row["action"] or "") for row in rows]
 
     if expired_ids:
-        from app.core.runtime.plan_resume import take_plan_resume
+        from app.core.runtime.plan_resume import (
+            clear_chat_checkpoint_for_approval,
+            take_plan_resume,
+        )
 
         for approval_id, action in expired_ids:
             take_plan_resume(approval_id, kernel=kernel)
+            clear_chat_checkpoint_for_approval(approval_id, kernel=kernel)
             kernel.emit_event(
                 type="ApprovalDenied",
                 aggregate_type="approval",

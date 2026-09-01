@@ -327,10 +327,81 @@ def _reject_client_approval_mismatch(body: ResolveApprovalRequest, tool_name: st
         raise HTTPException(status_code=400, detail="tool_args do not match approval record")
 
 
+def _approval_result_payload(result: dict) -> dict:
+    payload: dict = {
+        "status": "resume_failed" if result.get("resume_error") else result.get("status", "error"),
+        "result": result.get("result", ""),
+    }
+    if result.get("assistant_message"):
+        payload["assistant_message"] = strip_tool_markup(result["assistant_message"])
+    if result.get("pending"):
+        payload["pending"] = True
+        payload["tool_name"] = result.get("next_tool_name") or result.get("tool_name") or ""
+        payload["tool_args"] = result.get("next_tool_args") or result.get("tool_args") or {}
+        payload["approval_id"] = result.get("next_approval_id") or result.get("approval_id") or ""
+        payload["tool_call_id"] = (
+            result.get("next_tool_call_id") or result.get("tool_call_id") or ""
+        )
+    if result.get("tool_results"):
+        payload["tool_results"] = result["tool_results"]
+    if result.get("resume_error"):
+        payload["retryable"] = True
+        payload["error"] = result["resume_error"]
+    return payload
+
+
+async def _retry_resume_only(approval_id: str, body: ResolveApprovalRequest) -> dict | None:
+    """Retry post-tool reasoning without re-invoking an approved capability."""
+    if body.decision != "approve":
+        return None
+    from app.core.agents.brain_chat_stream import resume_after_approved_tool
+    from app.core.runtime.plan_resume import approval_correlation_id, load_chat_checkpoint
+
+    correlation_id = approval_correlation_id(approval_id, kernel=kernel)
+    checkpoint = (
+        load_chat_checkpoint(correlation_id, kernel=kernel)
+        if correlation_id
+        else None
+    )
+    if not checkpoint or not checkpoint.get("resume_after_approval"):
+        return None
+    if not body.conv_id:
+        raise HTTPException(
+            status_code=400,
+            detail="conv_id is required to retry approval continuation",
+        )
+    conversation = ConversationManager(
+        conversation_id=body.conv_id,
+        correlation_id=correlation_id,
+    )
+    continuation = await resume_after_approved_tool(
+        Brain(),
+        conversation,
+        correlation_id=correlation_id,
+    )
+    return _approval_result_payload({
+        "status": "success",
+        "assistant_message": continuation.get("assistant_message") or "",
+        "pending": bool(continuation.get("pending")),
+        "next_tool_name": continuation.get("tool_name") or "",
+        "next_tool_args": continuation.get("tool_args") or {},
+        "next_approval_id": continuation.get("approval_id") or "",
+        "next_tool_call_id": continuation.get("tool_call_id") or "",
+        "tool_results": continuation.get("tool_results") or [],
+        "resume_error": continuation.get("error") or "",
+    })
+
+
 @router.post("/approvals/{approval_id}/resolve")
 async def resolve_approval(approval_id: str, body: ResolveApprovalRequest):
     """Resolve a pending approval — submit_command for synchronous request-response."""
     from app.api.approve_submit import submit_approve_requested
+
+    approval = read_ports.query_approval(approval_id)
+    if approval and approval.get("status") == "approved":
+        retried = await _retry_resume_only(approval_id, body)
+        if retried is not None:
+            return retried
 
     tool_name, tool_args = _load_pending_approval(approval_id)
     _reject_client_approval_mismatch(body, tool_name, tool_args)
@@ -344,16 +415,4 @@ async def resolve_approval(approval_id: str, body: ResolveApprovalRequest):
         tool_call_id=body.tool_call_id or "",
     )
 
-    payload: dict = {"status": result.get("status", "error"), "result": result.get("result", "")}
-    if result.get("assistant_message"):
-        from app.core.agents.tool_markup import strip_tool_markup
-        payload["assistant_message"] = strip_tool_markup(result["assistant_message"])
-    if result.get("pending"):
-        payload["pending"] = True
-        payload["tool_name"] = result.get("next_tool_name") or result.get("tool_name") or ""
-        payload["tool_args"] = result.get("next_tool_args") or result.get("tool_args") or {}
-        payload["approval_id"] = result.get("next_approval_id") or ""
-        payload["tool_call_id"] = result.get("next_tool_call_id") or ""
-    if result.get("tool_results"):
-        payload["tool_results"] = result["tool_results"]
-    return payload
+    return _approval_result_payload(result)
