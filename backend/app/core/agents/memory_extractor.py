@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 
 from app.core.agents.fact_parsing import parse_facts_from_text
 from app.core.agents.memory_engine import memory_engine
+from app.core.runtime import read_ports
 from app.core.runtime.runtime_container import _LazyProxy, runtime
 
 logger = logging.getLogger(__name__)
@@ -211,6 +212,9 @@ class MemoryExtractor:
             if self._is_assistant_only_claim(fact, grounding_text, assistant_text):
                 logger.debug("Skipping assistant-only memory: %s", fact[:80])
                 continue
+            if any(self._same_identifier_fact(fact, prior) for prior in stored):
+                logger.debug("Skipping same-turn identifier duplicate: %s", fact[:80])
+                continue
             skip, superseded_id = self._dedup_decision(fact)
             if skip:
                 logger.debug("Skipping duplicate memory: %s", fact[:80])
@@ -268,20 +272,21 @@ class MemoryExtractor:
 
     @staticmethod
     def _is_ungrounded_identifier(fact: str, grounding: str | None) -> bool:
-        """True when every identifier in ``fact`` is absent from the user's words.
+        """True when any identifier in ``fact`` is absent from the user's words.
 
         The assistant restating a stale value must not become a new fact:
         dogfood W34-R3 answered the previous week's passcode and that answer
         was extracted back into ``proposed``, letting the model poison its own
-        memory. Identifiers have to originate from the user turn; facts with no
-        identifier at all are unaffected and still go through dedup.
+        memory. Every identifier has to originate from the user turn; sharing
+        only a week tag must not launder an assistant-supplied passcode. Facts
+        with no identifier are unaffected and still go through dedup.
         """
         if grounding is None:
             return False
         codes = distinctive_codes(fact)
         if not codes:
             return False
-        return codes.isdisjoint(distinctive_codes(grounding))
+        return not codes.issubset(distinctive_codes(grounding))
 
     @staticmethod
     def _is_assistant_only_claim(
@@ -308,6 +313,18 @@ class MemoryExtractor:
         return not new_codes <= distinctive_codes(existing)
 
     @staticmethod
+    def _same_identifier_fact(fact: str, existing: str) -> bool:
+        """True when all identifiers in ``fact`` already exist in ``existing``.
+
+        This catches cross-language restatements even when their embedding
+        similarity is low.  Facts without identifiers still use semantic and
+        lexical de-duplication.
+        """
+        new_codes = distinctive_codes(fact)
+        existing_codes = distinctive_codes(existing)
+        return bool(new_codes and existing_codes and new_codes <= existing_codes)
+
+    @staticmethod
     def _dedup_decision(
         fact: str, *, threshold: float = _DEDUP_SIMILARITY,
     ) -> tuple[bool, str | None]:
@@ -332,6 +349,8 @@ class MemoryExtractor:
             existing = (hit.get("content") or "").strip()
             if not existing:
                 continue
+            if MemoryExtractor._same_identifier_fact(fact, existing):
+                return True, None
             if MemoryExtractor._is_identifier_update(fact, existing):
                 hid = hit.get("id")
                 if hid and superseded is None:
@@ -341,6 +360,23 @@ class MemoryExtractor:
             if sim is not None and sim >= threshold:
                 return True, None
             if existing == fact or existing in fact or fact in existing:
+                return True, None
+        # Vector top-k can miss a cross-language twin.  A bounded projection
+        # scan is deterministic and only applies to identifier-bearing facts.
+        if distinctive_codes(fact):
+            try:
+                recent = read_ports.query_memories(
+                    order="created_at_desc",
+                    limit=100,
+                )
+            except Exception:
+                recent = []
+            if any(
+                MemoryExtractor._same_identifier_fact(
+                    fact, str(row.get("content") or ""),
+                )
+                for row in recent
+            ):
                 return True, None
         return False, superseded
 

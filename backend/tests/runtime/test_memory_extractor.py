@@ -310,6 +310,84 @@ class TestMemoryExtractor:
             rows = conn.execute("SELECT * FROM memories").fetchall()
         assert rows == [], "assistant restatement must not reach proposed triage"
 
+    async def test_shared_week_tag_does_not_ground_assistant_passcode(
+        self, tmp_path, monkeypatch,
+    ):
+        """W35: a shared week id must not authorize an assistant-only code."""
+        db = Database(db_path=str(tmp_path / "extract_partial_grounding.db"))
+        k = Kernel(db=db, memory_index=None)
+        monkeypatch.setattr("app.core.agents.memory_engine.kernel", k)
+        monkeypatch.setattr(memory_engine, "search_relevant_memories", lambda *_a, **_k: [])
+
+        fact = "用户的 2026-W35 暗号是 HUANGSHAN-DF-W35-0831-R2"
+
+        async def extract_reply(_t: str) -> list[str]:
+            return [fact]
+
+        extractor = MemoryExtractor(extract_fn=extract_reply)
+        stored = await extractor.extract_and_store(
+            "User: 2026-W35 的暗号是什么\n"
+            "Assistant: HUANGSHAN-DF-W35-0831-R2",
+            grounding_text="2026-W35 的暗号是什么",
+            assistant_text="HUANGSHAN-DF-W35-0831-R2",
+        )
+        assert stored == []
+
+    async def test_cross_language_same_identifier_dedupes_at_low_similarity(
+        self, tmp_path, monkeypatch,
+    ):
+        existing = (
+            "The user's dogfood passphrase for 2026-W35 is "
+            "HUANGSHAN-DF-W35-0831-R2."
+        )
+        restated = "用户的 2026-W35 dogfood 暗号是 HUANGSHAN-DF-W35-0831-R2。"
+        db = Database(db_path=str(tmp_path / "extract_cross_language.db"))
+        k = Kernel(db=db, memory_index=None)
+        monkeypatch.setattr("app.core.agents.memory_engine.kernel", k)
+        monkeypatch.setattr(
+            memory_engine,
+            "search_relevant_memories",
+            lambda *_a, **_k: [{
+                "id": "m-existing",
+                "content": existing,
+                "score": 0.4,
+            }],
+        )
+
+        async def extract_restated(_t: str) -> list[str]:
+            return [restated]
+
+        extractor = MemoryExtractor(extract_fn=extract_restated)
+        assert await extractor.extract_and_store(
+            "anything",
+            grounding_text=restated,
+        ) == []
+
+    async def test_same_turn_cross_language_identifier_stores_once(
+        self, tmp_path, monkeypatch,
+    ):
+        english = (
+            "The user's dogfood passphrase for 2026-W35 is "
+            "HUANGSHAN-DF-W35-0831-R2."
+        )
+        chinese = "用户的 2026-W35 dogfood 暗号是 HUANGSHAN-DF-W35-0831-R2。"
+        db = Database(db_path=str(tmp_path / "extract_same_turn_codes.db"))
+        k = Kernel(db=db, memory_index=None)
+        monkeypatch.setattr("app.core.agents.memory_engine.kernel", k)
+        monkeypatch.setattr(memory_engine, "search_relevant_memories", lambda *_a, **_k: [])
+
+        async def extract_pair(_t: str) -> list[str]:
+            return [english, chinese]
+
+        extractor = MemoryExtractor(extract_fn=extract_pair)
+        stored = await extractor.extract_and_store(
+            "anything",
+            grounding_text=(
+                "2026-W35 HUANGSHAN-DF-W35-0831-R2"
+            ),
+        )
+        assert stored == [english]
+
     async def test_user_stated_identifier_still_extracted(self, tmp_path, monkeypatch):
         """Grounding must not block the passcode the user actually supplied."""
         db = Database(db_path=str(tmp_path / "extract_grounded_ok.db"))
