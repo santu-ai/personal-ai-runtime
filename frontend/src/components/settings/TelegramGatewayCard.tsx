@@ -42,7 +42,9 @@ export default function TelegramGatewayCard() {
     try {
       const result = await pollTelegramGateway();
       setMessage(
-        result.status === "ok" ? `轮询完成，处理 ${result.processed} 条消息` : result.error || "轮询失败",
+        result.status === "ok"
+          ? `轮询完成，处理 ${result.processed} 条消息`
+          : result.error || "轮询失败",
       );
       setStatus(await getTelegramGatewayStatus());
     } catch (error) {
@@ -92,7 +94,9 @@ export default function TelegramGatewayCard() {
         </p>
       )}
       <div className="flex items-center gap-2">
-        <Button onClick={() => void save()} disabled={busy}>保存</Button>
+        <Button onClick={() => void save()} disabled={busy}>
+          保存
+        </Button>
         <Button variant="secondary" onClick={() => void poll()} disabled={busy || !enabled}>
           立即轮询
         </Button>

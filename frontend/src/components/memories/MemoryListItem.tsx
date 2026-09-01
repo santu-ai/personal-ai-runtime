@@ -61,8 +61,7 @@ export default function MemoryListItem({
   const confidence = confidenceLabel(m.confidence);
   const isProposed = m.origin === "claim" && m.claim_status === "proposed";
   const isRejected = m.origin === "claim" && m.claim_status === "rejected";
-  const rejectReason =
-    m.reject_reason === "auto_expired" ? "已自动过期" : m.reject_reason;
+  const rejectReason = m.reject_reason === "auto_expired" ? "已自动过期" : m.reject_reason;
 
   return (
     <li className="bg-surface-raised border border-border-subtle rounded-lg p-3 text-sm group flex gap-3">
@@ -110,7 +109,9 @@ export default function MemoryListItem({
             <span className="text-xs bg-success/15 text-success px-1.5 py-0.5 rounded">已确认</span>
           )}
           {m.claim_status === "rejected" && m.reject_reason === "auto_expired" && (
-            <span className="text-xs bg-warning/15 text-warning px-1.5 py-0.5 rounded">已自动过期</span>
+            <span className="text-xs bg-warning/15 text-warning px-1.5 py-0.5 rounded">
+              已自动过期
+            </span>
           )}
           {m.claim_status === "rejected" && m.reject_reason !== "auto_expired" && (
             <span className="text-xs bg-danger/15 text-danger px-1.5 py-0.5 rounded">已拒绝</span>
