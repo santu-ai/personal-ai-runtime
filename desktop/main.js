@@ -538,7 +538,6 @@ function createTrayMenuItems() {
       click: (menuItem) => {
         app.setLoginItemSettings({
           openAtLogin: menuItem.checked,
-          openAsHidden: true,
         });
       },
     },
@@ -626,7 +625,7 @@ app.whenReady().then(async () => {
         cancelId: 1,
       });
       if (result.response === 0) {
-        app.setLoginItemSettings({ openAtLogin: true, openAsHidden: true });
+        app.setLoginItemSettings({ openAtLogin: true });
       }
     }
   } catch {
