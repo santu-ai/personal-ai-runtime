@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import Button from "./Button";
 
 interface Props {
@@ -12,6 +12,7 @@ interface Props {
   confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  children?: ReactNode;
 }
 
 export default function Dialog({
@@ -24,6 +25,7 @@ export default function Dialog({
   confirmDisabled = false,
   onConfirm,
   onCancel,
+  children,
 }: Props) {
   const titleId = useId();
   const descId = useId();
@@ -79,6 +81,7 @@ export default function Dialog({
             {description}
           </p>
         )}
+        {children ? <div className="mt-4">{children}</div> : null}
         <div className="flex justify-end gap-2 mt-6">
           <Button type="button" variant="secondary" size="sm" onClick={onCancel}>
             {cancelLabel}

@@ -43,6 +43,7 @@ if TYPE_CHECKING:
     from app.store.vector import VectorStore
 
 _InboxPollApplier = Callable[..., Awaitable[dict[str, Any]]]
+_WorkDeliveryCompiler = Callable[..., Awaitable[dict[str, Any]]]
 
 
 class RuntimeContainer:
@@ -53,6 +54,8 @@ class RuntimeContainer:
         self._inventory: list[dict] = []
         # Product-bound inbox poll applier (survives handler module reload).
         self._inbox_poll_applier: _InboxPollApplier | None = None
+        # Product-bound project-brief compiler (R1 inversion).
+        self._work_delivery_compiler: _WorkDeliveryCompiler | None = None
         # kernel
         self._kernel: "Kernel | None" = None
         # governance
@@ -95,6 +98,14 @@ class RuntimeContainer:
     @property
     def inbox_poll_applier(self) -> _InboxPollApplier | None:
         return self._inbox_poll_applier
+
+    def bind_work_delivery_compiler(self, fn: _WorkDeliveryCompiler) -> None:
+        """Register Product project-brief compiler (R1 inversion)."""
+        self._work_delivery_compiler = fn
+
+    @property
+    def work_delivery_compiler(self) -> _WorkDeliveryCompiler | None:
+        return self._work_delivery_compiler
 
     # ── Kernel ────────────────────────────────────────────────────────
 

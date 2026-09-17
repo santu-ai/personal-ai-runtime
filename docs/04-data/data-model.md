@@ -50,6 +50,8 @@ frozenset({
 
 `work_type` 区分 `task` / `action` / `background` / `goal`。目标通过 `query_state("work_items", work_type="goal", ...)` 读取（[`kernel_query_state.py`](../../backend/app/core/runtime/kernel/kernel_query_state.py)）。
 
+项目资料简报的**任务要求**存在 `executable_plan` JSON 的 `contract` 字段（与 `steps` 并列），用户可见说明仍在 `description`。交付版本与验收决定不另开表：它们作为 `WorkItemUpdated` payload 的 `delivery_published` / `delivery_decision` 写入 `event_log`。投影器忽略这些键，因此 `work_items` 行形状不变；读取经 Product 折叠事件。完整正文在事件 payload 中，不能用步骤预览代替。
+
 ### `memories`
 
 ```python

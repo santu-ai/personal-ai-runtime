@@ -57,6 +57,36 @@ class UpdateWorkItemRequest(BaseModel):
     parent_work_id: str | None = Field(default=None, max_length=128)
 
 
+class ProjectBriefSourceFile(BaseModel):
+    path: str = Field(max_length=2000)
+    label: str | None = Field(default=None, max_length=500)
+
+
+class ProjectBriefEmailScope(BaseModel):
+    enabled: bool = False
+    query: str = Field(default="", max_length=500)
+    days: int = Field(default=3, ge=0, le=90)
+    limit: int = Field(default=30, ge=1, le=100)
+
+
+class ProjectBriefSourceScope(BaseModel):
+    timezone: str | None = Field(default=None, max_length=64)
+    email: ProjectBriefEmailScope | None = None
+    files: list[ProjectBriefSourceFile] = Field(default_factory=list, max_length=20)
+
+
+class CreateProjectBriefRequest(BaseModel):
+    title: str = Field(max_length=500)
+    objective: str = Field(max_length=20000)
+    source_scope: ProjectBriefSourceScope = Field(default_factory=ProjectBriefSourceScope)
+    acceptance_criteria: list[str] | None = Field(default=None, max_length=20)
+
+
+class DeliveryDecisionRequest(BaseModel):
+    reason: str = Field(default="", max_length=5000)
+    idempotency_key: str | None = Field(default=None, max_length=128)
+
+
 def _validate_score(name: str, value: object) -> float:
     if not isinstance(value, (int, float, str)):
         raise HTTPException(status_code=400, detail=f"{name} must be a number")
@@ -131,6 +161,37 @@ async def list_work_items(
     )
 
 
+@router.post("/project-brief")
+async def create_project_brief(body: CreateProjectBriefRequest):
+    """Create a project-brief task with a structured contract and source plan."""
+    from app.product.project_brief import create_project_brief_work
+
+    title = body.title.strip()
+    objective = body.objective.strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Title is required")
+    if not objective:
+        raise HTTPException(status_code=400, detail="objective is required")
+    try:
+        item = create_project_brief_work(
+            title=title,
+            objective=objective,
+            source_scope=body.source_scope.model_dump(),
+            acceptance_criteria=body.acceptance_criteria,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return item
+
+
+@router.get("/unreviewed-deliveries")
+async def list_unreviewed_deliveries(limit: int = Query(20, ge=1, le=50)):
+    """Current unreviewed project-brief deliveries for the task inbox."""
+    from app.product.work_delivery import list_unreviewed_deliveries as _list
+
+    return _list(limit=limit)
+
+
 def _execution_snapshot(item_id: str, item: dict) -> dict:
     """Delegate to read_ports (keeps api/ off deep runtime imports)."""
     return read_ports.work_item_execution_snapshot(item_id, item)
@@ -138,7 +199,7 @@ def _execution_snapshot(item_id: str, item: dict) -> dict:
 
 @router.get("/{item_id}")
 async def get_work_item(item_id: str, include: str | None = None):
-    """Get a work item. include=actions,events,execution embeds extras."""
+    """Get a work item. include=actions,events,execution,deliveries embeds extras."""
     item = read_ports.query_work_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Work item not found")
@@ -156,6 +217,10 @@ async def get_work_item(item_id: str, include: str | None = None):
         item["tree"] = read_ports.get_work_item_tree(item_id)
     if "execution" in flags:
         item["execution"] = _execution_snapshot(item_id, item)
+    if "deliveries" in flags:
+        from app.product.work_delivery import public_bundle
+
+        item["delivery_bundle"] = public_bundle(item_id)
     return item
 
 
@@ -174,6 +239,83 @@ async def get_events(item_id: str, limit: int = Query(20, ge=1, le=200)):
     if not read_ports.query_work_item(item_id):
         raise HTTPException(status_code=404, detail="Work item not found")
     return read_ports.goal_events(item_id, limit=limit)
+
+
+def _delivery_http_error(exc: Exception) -> HTTPException:
+    from app.product.work_delivery import (
+        DeliveryConflictError,
+        DeliveryNotFoundError,
+        DeliveryValidationError,
+    )
+
+    if isinstance(exc, DeliveryNotFoundError):
+        return HTTPException(status_code=404, detail="Delivery not found")
+    if isinstance(exc, DeliveryValidationError):
+        return HTTPException(status_code=400, detail=str(exc))
+    if isinstance(exc, DeliveryConflictError):
+        return HTTPException(status_code=409, detail=str(exc))
+    return HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/{item_id}/deliveries")
+async def list_work_deliveries(item_id: str):
+    """List delivery versions and the current review status."""
+    from app.product.work_delivery import public_bundle
+
+    if not read_ports.query_work_item(item_id):
+        raise HTTPException(status_code=404, detail="Work item not found")
+    return public_bundle(item_id)
+
+
+@router.get("/{item_id}/deliveries/{delivery_id}")
+async def get_work_delivery(item_id: str, delivery_id: str):
+    """Return one delivery version with full content."""
+    from app.product.work_delivery import get_delivery
+
+    if not read_ports.query_work_item(item_id):
+        raise HTTPException(status_code=404, detail="Work item not found")
+    try:
+        return get_delivery(item_id, delivery_id)
+    except Exception as exc:
+        raise _delivery_http_error(exc) from exc
+
+
+@router.post("/{item_id}/deliveries/{delivery_id}/accept")
+async def accept_work_delivery(item_id: str, delivery_id: str, body: DeliveryDecisionRequest):
+    """Accept a specific delivery version. Does not skip tool approval."""
+    from app.product.work_delivery import accept_delivery
+
+    if not read_ports.query_work_item(item_id):
+        raise HTTPException(status_code=404, detail="Work item not found")
+    try:
+        return accept_delivery(
+            item_id,
+            delivery_id,
+            reason=body.reason,
+            idempotency_key=body.idempotency_key,
+            actor="user",
+        )
+    except Exception as exc:
+        raise _delivery_http_error(exc) from exc
+
+
+@router.post("/{item_id}/deliveries/{delivery_id}/rework")
+async def rework_work_delivery(item_id: str, delivery_id: str, body: DeliveryDecisionRequest):
+    """Request rework of a delivery version with a non-empty reason."""
+    from app.product.work_delivery import request_rework
+
+    if not read_ports.query_work_item(item_id):
+        raise HTTPException(status_code=404, detail="Work item not found")
+    try:
+        return request_rework(
+            item_id,
+            delivery_id,
+            reason=body.reason,
+            idempotency_key=body.idempotency_key,
+            actor="user",
+        )
+    except Exception as exc:
+        raise _delivery_http_error(exc) from exc
 
 
 @router.patch("/{item_id}")

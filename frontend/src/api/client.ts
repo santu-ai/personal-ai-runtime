@@ -86,6 +86,12 @@ export {
   executeWorkItem,
   cancelWorkItem,
   decomposeWorkItem,
+  createProjectBrief,
+  getWorkDeliveries,
+  getWorkDelivery,
+  acceptWorkDelivery,
+  reworkWorkDelivery,
+  listUnreviewedDeliveries,
 } from "./workItems";
 
 // Inbox

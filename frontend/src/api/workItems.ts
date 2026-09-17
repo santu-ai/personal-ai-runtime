@@ -2,7 +2,15 @@
  * Work Items API — unified endpoint for tasks, actions, goals.
  */
 import { API_BASE, request } from "./core";
-import type { WorkItem, WorkItemType } from "./types";
+import type {
+  CreateProjectBriefPayload,
+  UnreviewedDelivery,
+  WorkDelivery,
+  WorkDeliveryBundle,
+  WorkDeliveryDecisionResult,
+  WorkItem,
+  WorkItemType,
+} from "./types";
 
 export async function listWorkItems(workType?: WorkItemType, status?: string): Promise<WorkItem[]> {
   const params = new URLSearchParams();
@@ -84,6 +92,56 @@ export async function decomposeWorkItem(itemId: string): Promise<{ steps: string
   return request<{ steps: string[] }>(`${API_BASE}/work-items/${itemId}/decompose`, {
     method: "POST",
   });
+}
+
+export async function createProjectBrief(body: CreateProjectBriefPayload): Promise<WorkItem> {
+  return request<WorkItem>(`${API_BASE}/work-items/project-brief`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function getWorkDeliveries(itemId: string): Promise<WorkDeliveryBundle> {
+  return request<WorkDeliveryBundle>(`${API_BASE}/work-items/${itemId}/deliveries`);
+}
+
+export async function getWorkDelivery(
+  itemId: string,
+  deliveryId: string,
+): Promise<WorkDelivery> {
+  return request<WorkDelivery>(`${API_BASE}/work-items/${itemId}/deliveries/${deliveryId}`);
+}
+
+export async function acceptWorkDelivery(
+  itemId: string,
+  deliveryId: string,
+  body: { reason?: string; idempotency_key?: string } = {},
+): Promise<WorkDeliveryDecisionResult> {
+  return request<WorkDeliveryDecisionResult>(
+    `${API_BASE}/work-items/${itemId}/deliveries/${deliveryId}/accept`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function reworkWorkDelivery(
+  itemId: string,
+  deliveryId: string,
+  body: { reason: string; idempotency_key?: string },
+): Promise<WorkDeliveryDecisionResult> {
+  return request<WorkDeliveryDecisionResult>(
+    `${API_BASE}/work-items/${itemId}/deliveries/${deliveryId}/rework`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function listUnreviewedDeliveries(): Promise<UnreviewedDelivery[]> {
+  return request<UnreviewedDelivery[]>(`${API_BASE}/work-items/unreviewed-deliveries`);
 }
 
 /** List work items with work_type=goal. */

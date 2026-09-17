@@ -537,3 +537,10 @@ def work_item_execution_snapshot(item_id: str, item: dict[str, Any] | None = Non
         "handler_execution": handler,
     }
 
+
+def reset_work_item_plan_progress(item_id: str) -> None:
+    """Clear operational plan resume/progress so a rework run starts from step 0."""
+    from app.core.runtime.plan_resume import clear_plan_resumes_for_work_item
+
+    clear_plan_resumes_for_work_item(item_id, kernel=kernel())
+
