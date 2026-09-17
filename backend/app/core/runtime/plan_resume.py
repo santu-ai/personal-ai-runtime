@@ -219,6 +219,7 @@ def clear_plan_resumes(*, db: Any | None = None) -> None:
 # Synthetic approval_id keys keep zero new tables / event types:
 #   progress:{action_id}              — last completed step_index + output
 #   idem:{correlation_id}:{step}      — successful step result for replay skip
+#   stepres:{action_id}:{step}        — full step result for compile after resume
 #   chat_ckpt:{correlation_id}        — Chat tool-loop messages for interrupt replay
 
 
@@ -228,6 +229,10 @@ def progress_key(action_id: str) -> str:
 
 def idempotency_key(correlation_id: str, step_index: int) -> str:
     return f"idem:{correlation_id}:{int(step_index)}"
+
+
+def action_step_key(action_id: str, step_index: int) -> str:
+    return f"stepres:{action_id}:{int(step_index)}"
 
 
 def save_plan_progress(
@@ -274,20 +279,27 @@ def record_step_success(
     db: Any | None = None,
     kernel: Any | None = None,
 ) -> None:
-    """Record a successful step under ``idempotency_key`` (E-1)."""
-    if not correlation_id:
-        return
-    register_plan_resume(
-        idempotency_key(correlation_id, step_index),
-        PlanResume(
-            kind="execute",
-            resume_from=int(step_index) + 1,
-            previous_output={"result": result, "status": "success"},
-            action_id=action_id or "",
-        ),
-        db=db,
-        kernel=kernel,
+    """Record a successful step under correlation and action keys (E-1)."""
+    row = PlanResume(
+        kind="execute",
+        resume_from=int(step_index) + 1,
+        previous_output={"result": result, "status": "success"},
+        action_id=action_id or "",
     )
+    if correlation_id:
+        register_plan_resume(
+            idempotency_key(correlation_id, step_index),
+            row,
+            db=db,
+            kernel=kernel,
+        )
+    if action_id:
+        register_plan_resume(
+            action_step_key(action_id, step_index),
+            row,
+            db=db,
+            kernel=kernel,
+        )
 
 
 def lookup_step_success(
@@ -302,6 +314,22 @@ def lookup_step_success(
         return None
     row = peek_plan_resume(
         idempotency_key(correlation_id, step_index), db=db, kernel=kernel,
+    )
+    return _success_result(row)
+
+
+def lookup_action_step_success(
+    action_id: str,
+    step_index: int,
+    *,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> str | None:
+    """Return cached full step result keyed by work/action id (survives new correlation)."""
+    if not action_id:
+        return None
+    row = peek_plan_resume(
+        action_step_key(action_id, step_index), db=db, kernel=kernel,
     )
     return _success_result(row)
 

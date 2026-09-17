@@ -9,6 +9,7 @@ from typing import Any
 
 from app.core.runtime.plan_resume import (
     PlanResume,
+    lookup_action_step_success,
     lookup_step_success,
     record_step_success,
     register_plan_resume,
@@ -87,6 +88,50 @@ def _persist_progress(
     )
 
 
+def _cached_step_result(
+    *,
+    correlation_id: str,
+    action_id: str,
+    step_index: int,
+    kernel: Any,
+) -> str | None:
+    cached = lookup_step_success(correlation_id, step_index, kernel=kernel) if correlation_id else None
+    if cached is not None:
+        return cached
+    if action_id:
+        return lookup_action_step_success(action_id, step_index, kernel=kernel)
+    return None
+
+
+def _hydrate_prior_results(
+    *,
+    steps: list[dict[str, Any]],
+    start: int,
+    correlation_id: str,
+    action_id: str,
+    kernel: Any,
+) -> list[StepResult]:
+    """Rebuild skipped prefix from durable full results (not truncated previous_output)."""
+    prior: list[StepResult] = []
+    end = min(max(0, start), len(steps))
+    for i in range(0, end):
+        cached = _cached_step_result(
+            correlation_id=correlation_id,
+            action_id=action_id,
+            step_index=i,
+            kernel=kernel,
+        )
+        if cached is None:
+            continue
+        prior.append(StepResult(
+            step=i,
+            tool=str(steps[i].get("tool") or ""),
+            status="success",
+            result=cached,
+        ))
+    return prior
+
+
 async def run_plan_steps(
     *,
     steps: list[dict[str, Any]],
@@ -116,15 +161,22 @@ async def run_plan_steps(
         return PlanRunOutcome(stopped_reason="empty")
 
     start = max(0, int(resume_from or 0))
+    corr = correlation_id or ""
+    results = _hydrate_prior_results(
+        steps=steps,
+        start=start,
+        correlation_id=corr,
+        action_id=action_id,
+        kernel=kernel,
+    )
     if start >= len(steps):
         return PlanRunOutcome(
+            results=results,
             stopped_reason="completed",
             previous_output=previous_output,
         )
 
-    results: list[StepResult] = []
     output = dict(previous_output) if previous_output else None
-    corr = correlation_id or ""
 
     for i in range(start, len(steps)):
         if cancel_check is not None and cancel_check():
@@ -149,8 +201,10 @@ async def run_plan_steps(
                 previous_output=output,
             )
 
-        # E-1: skip side effects when this correlation already completed the step.
-        cached = lookup_step_success(corr, i, kernel=kernel) if corr else None
+        # E-1: skip side effects when this action/correlation already completed the step.
+        cached = _cached_step_result(
+            correlation_id=corr, action_id=action_id, step_index=i, kernel=kernel,
+        )
         if cached is not None:
             results.append(StepResult(
                 step=i, tool=tool_name, status="success", result=cached,
@@ -186,10 +240,9 @@ async def run_plan_steps(
                 step=i, tool=tool_name, status="success", result=step_result,
             ))
             output = _step_output(i, step_result)
-            if corr:
-                record_step_success(
-                    corr, i, step_result, action_id=action_id, kernel=kernel,
-                )
+            record_step_success(
+                corr, i, step_result, action_id=action_id, kernel=kernel,
+            )
             _persist_progress(
                 action_id=action_id, step_index=i, output=output, kernel=kernel,
             )

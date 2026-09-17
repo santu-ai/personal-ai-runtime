@@ -83,6 +83,12 @@ def test_accept_rework_conflict_and_idempotency(client):
     assert second.status_code == 200
     assert second.json()["replayed"] is True
 
+    opposite = client.post(
+        f"/api/work-items/{work_id}/deliveries/{v2['delivery_id']}/rework",
+        json={"reason": "再改", "idempotency_key": "r-opposite"},
+    )
+    assert opposite.status_code == 409
+
     empty_rework = client.post(
         f"/api/work-items/{work_id}/deliveries/{v2['delivery_id']}/rework",
         json={"reason": ""},

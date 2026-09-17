@@ -7,37 +7,38 @@ import {
   acceptWorkDelivery,
   createProjectBrief,
   executeWorkItem,
+  getWorkDelivery,
   getWorkItem,
   listWorkItems,
+  type WorkDelivery,
+  type WorkItem,
 } from "../api/client";
 
-vi.mock("../api/client", () => ({
-  listWorkItems: vi.fn(),
-  getWorkItem: vi.fn(),
-  executeWorkItem: vi.fn().mockResolvedValue({}),
-  cancelWorkItem: vi.fn(),
-  createProjectBrief: vi.fn(),
-  acceptWorkDelivery: vi.fn().mockResolvedValue({ replayed: false }),
-  reworkWorkDelivery: vi.fn().mockResolvedValue({ replayed: false }),
-  ApiError: class extends Error {
-    status: number;
-    constructor(message: string, status: number) {
-      super(message);
-      this.status = status;
-    }
-  },
-}));
+vi.mock("../api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/client")>();
+  return {
+    ...actual,
+    listWorkItems: vi.fn(),
+    getWorkItem: vi.fn(),
+    getWorkDelivery: vi.fn(),
+    executeWorkItem: vi.fn().mockResolvedValue({}),
+    cancelWorkItem: vi.fn(),
+    createProjectBrief: vi.fn(),
+    acceptWorkDelivery: vi.fn().mockResolvedValue({ replayed: false }),
+    reworkWorkDelivery: vi.fn().mockResolvedValue({ replayed: false }),
+  };
+});
 
 vi.mock("../stores/errorStore", () => ({
   useErrorStore: (selector: (s: { addError: () => void }) => unknown) =>
     selector({ addError: vi.fn() }),
 }));
 
-const sampleTask = {
+const sampleTask: WorkItem = {
   id: "task_1",
   title: "整理报告",
   description: null,
-  work_type: "task" as const,
+  work_type: "task",
   parent_work_id: null,
   status: "pending",
   priority: 0,
@@ -61,7 +62,60 @@ const sampleTask = {
   },
 };
 
-const briefTask = {
+const currentDelivery: WorkDelivery = {
+  delivery_id: "d2",
+  version: 2,
+  contract_version: 1,
+  summary: "有进度风险",
+  content: "完整正文超过预览长度".repeat(20),
+  limitations: ["仅覆盖最近三天"],
+  suggested_actions: [{ title: "核对排期" }],
+  sources: [{ id: "email:m1", type: "email", title: "延期邮件" }],
+  checks: [],
+  findings: [],
+  schema_version: 1,
+  qualified: true,
+  review_status: "unreviewed",
+};
+
+const historySummary: WorkDelivery = {
+  delivery_id: "d1",
+  version: 1,
+  contract_version: 1,
+  summary: "第一版摘要",
+  content_length: 42,
+  limitations: [],
+  suggested_actions: [],
+  sources: [],
+  checks: [],
+  findings: [],
+  schema_version: 1,
+  qualified: true,
+  review_status: "changes_requested",
+};
+
+const historyFull: WorkDelivery = {
+  ...historySummary,
+  content: "历史版本完整正文甲",
+};
+
+const currentSummary: WorkDelivery = {
+  delivery_id: "d2",
+  version: 2,
+  contract_version: 1,
+  summary: "有进度风险",
+  content_length: 200,
+  limitations: [],
+  suggested_actions: [],
+  sources: [],
+  checks: [],
+  findings: [],
+  schema_version: 1,
+  qualified: true,
+  review_status: "unreviewed",
+};
+
+const briefTask: WorkItem = {
   ...sampleTask,
   id: "brief_1",
   title: "项目 A 简报",
@@ -77,37 +131,8 @@ const briefTask = {
   delivery_bundle: {
     work_id: "brief_1",
     current_review_status: "unreviewed",
-    current: {
-      delivery_id: "d1",
-      version: 1,
-      contract_version: 1,
-      summary: "有进度风险",
-      content: "完整正文超过预览长度".repeat(20),
-      limitations: ["仅覆盖最近三天"],
-      suggested_actions: [{ title: "核对排期" }],
-      sources: [{ id: "email:m1", type: "email", title: "延期邮件" }],
-      checks: [],
-      findings: [],
-      schema_version: 1,
-      qualified: true,
-      review_status: "unreviewed",
-    },
-    deliveries: [
-      {
-        delivery_id: "d1",
-        version: 1,
-        contract_version: 1,
-        summary: "有进度风险",
-        limitations: [],
-        suggested_actions: [],
-        sources: [],
-        checks: [],
-        findings: [],
-        schema_version: 1,
-        qualified: true,
-        review_status: "unreviewed",
-      },
-    ],
+    current: currentDelivery,
+    deliveries: [historySummary, currentSummary],
   },
 };
 
@@ -129,6 +154,7 @@ describe("TasksPage", () => {
       return [];
     });
     vi.mocked(getWorkItem).mockResolvedValue(sampleTask);
+    vi.mocked(getWorkDelivery).mockResolvedValue(historyFull);
   });
 
   it("renders empty tasks shell", async () => {
@@ -187,9 +213,27 @@ describe("TasksPage", () => {
     await waitFor(() => {
       expect(acceptWorkDelivery).toHaveBeenCalledWith(
         "brief_1",
-        "d1",
+        "d2",
         expect.objectContaining({ idempotency_key: expect.any(String) }),
       );
     });
+  });
+
+  it("loads full history version content by delivery id", async () => {
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [briefTask];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(briefTask);
+    vi.mocked(getWorkDelivery).mockResolvedValue(historyFull);
+    renderTasks("/tasks/brief_1");
+
+    expect(await screen.findByText("完整正文超过预览长度".repeat(20))).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /v1 · 已要求返工/ }));
+    await waitFor(() => {
+      expect(getWorkDelivery).toHaveBeenCalledWith("brief_1", "d1");
+    });
+    expect(await screen.findByText("历史版本完整正文甲")).toBeInTheDocument();
+    expect(screen.queryByText("完整正文超过预览长度".repeat(20))).not.toBeInTheDocument();
   });
 });

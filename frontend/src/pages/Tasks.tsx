@@ -6,6 +6,7 @@ import {
   cancelWorkItem,
   createProjectBrief,
   executeWorkItem,
+  getWorkDelivery,
   reworkWorkDelivery,
   type WorkDelivery,
   type WorkItem,
@@ -119,6 +120,9 @@ export default function TasksPage() {
   const [reworkOpen, setReworkOpen] = useState(false);
   const [reworkReason, setReworkReason] = useState("");
   const [historyId, setHistoryId] = useState<string | null>(null);
+  const [historyFull, setHistoryFull] = useState<WorkDelivery | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const executeInFlight = useRef(false);
   const acceptKey = useRef<string | null>(null);
 
@@ -133,8 +137,44 @@ export default function TasksPage() {
     setReworkOpen(false);
     setReworkReason("");
     setHistoryId(null);
+    setHistoryFull(null);
+    setHistoryError(null);
+    setHistoryLoading(false);
     acceptKey.current = null;
   }, [urlTaskId]);
+
+  useEffect(() => {
+    if (!urlTaskId || !historyId) {
+      setHistoryFull(null);
+      setHistoryError(null);
+      setHistoryLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setHistoryLoading(true);
+    setHistoryError(null);
+    setHistoryFull(null);
+    void getWorkDelivery(urlTaskId, historyId)
+      .then((row) => {
+        if (!cancelled) {
+          setHistoryFull(row);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setHistoryFull(null);
+          setHistoryError(err instanceof ApiError ? err.message : "加载历史版本失败");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setHistoryLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [urlTaskId, historyId]);
 
   useEffect(() => {
     if (listError) {
@@ -315,14 +355,10 @@ export default function TasksPage() {
     selected && selected.work_type === "background" && !TERMINAL_STATUSES.has(selected.status);
   const bundle = selected?.delivery_bundle;
   const currentDelivery = bundle?.current ?? null;
-  const historyDelivery =
-    bundle?.deliveries.find((row) => row.delivery_id === historyId) ?? null;
-  const shownDelivery = historyDelivery && historyDelivery.delivery_id !== currentDelivery?.delivery_id
-    ? historyDelivery
-    : currentDelivery;
   const viewingHistory = Boolean(
-    shownDelivery && currentDelivery && shownDelivery.delivery_id !== currentDelivery.delivery_id,
+    historyId && currentDelivery && historyId !== currentDelivery.delivery_id,
   );
+  const shownDelivery = viewingHistory ? historyFull : currentDelivery;
 
   return (
     <div className="flex-1 flex min-h-0">
@@ -418,6 +454,12 @@ export default function TasksPage() {
               )}
             </header>
 
+            {viewingHistory && historyLoading && (
+              <p className="text-sm text-fg-tertiary">加载历史版本全文…</p>
+            )}
+            {viewingHistory && historyError && (
+              <p className="text-sm text-danger">{historyError}</p>
+            )}
             {shownDelivery ? (
               <section className="space-y-3 rounded-xl border border-border-subtle p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -449,7 +491,7 @@ export default function TasksPage() {
                 </div>
                 <p className="text-sm text-fg-secondary whitespace-pre-wrap">{shownDelivery.summary}</p>
                 <pre className="text-sm text-fg-primary whitespace-pre-wrap break-words bg-surface-sunken rounded-lg p-3">
-                  {shownDelivery.content || "（打开详情后显示完整正文）"}
+                  {shownDelivery.content || "（正在加载完整正文）"}
                 </pre>
                 {shownDelivery.limitations.length > 0 && (
                   <div>

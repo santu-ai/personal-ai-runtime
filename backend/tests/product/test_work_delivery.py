@@ -111,3 +111,111 @@ def test_old_work_without_delivery_still_reads(isolated_kernel):
     row = read_ports.query_work_item(item["id"])
     assert row is not None
     assert row["title"] == "普通任务"
+
+
+def test_opposite_decision_conflicts(isolated_kernel):
+    item = _create_task()
+    work_id = item["id"]
+    v1 = publish_delivery(
+        work_id,
+        content="body",
+        summary="v1",
+        sources=[],
+        execution_id="exec-opp",
+    )
+    accepted = accept_delivery(work_id, v1["delivery_id"], idempotency_key="accept-1")
+    assert accepted["replayed"] is False
+    with pytest.raises(DeliveryConflictError, match="已验收"):
+        request_rework(
+            work_id,
+            v1["delivery_id"],
+            reason="再改一版",
+            idempotency_key="rework-after-accept",
+            dispatch=False,
+        )
+
+
+def test_idempotency_key_cannot_cover_different_request(isolated_kernel):
+    item = _create_task()
+    work_id = item["id"]
+    v1 = publish_delivery(
+        work_id,
+        content="body",
+        summary="v1",
+        sources=[],
+        execution_id="exec-key",
+    )
+    accept_delivery(work_id, v1["delivery_id"], idempotency_key="shared-key")
+    with pytest.raises(DeliveryConflictError, match="幂等键"):
+        request_rework(
+            work_id,
+            v1["delivery_id"],
+            reason="不同请求",
+            idempotency_key="shared-key",
+            dispatch=False,
+        )
+
+
+def test_rework_replay_completes_dispatch_after_interrupt(isolated_kernel, monkeypatch):
+    item = read_ports.create_work_item(
+        "项目简报",
+        description="整理最近变化",
+        work_type="task",
+        executable_plan=(
+            '{"kind":"project_brief","contract":{"contract_version":1,'
+            '"output_kind":"project_brief"},'
+            '"steps":[{"tool":"echo","params":{"t":"1"}}]}'
+        ),
+        status="completed",
+    )
+    work_id = item["id"]
+    v1 = publish_delivery(
+        work_id,
+        content="v1",
+        summary="v1",
+        sources=[],
+        execution_id="exec-r2",
+    )
+    execute_calls: list[str] = []
+    monkeypatch.setattr(
+        read_ports,
+        "request_work_item_execute",
+        lambda wid: execute_calls.append(wid) or {"id": wid, "status": "running"},
+    )
+
+    def boom(_wid: str) -> None:
+        raise RuntimeError("injected reset failure")
+
+    monkeypatch.setattr(read_ports, "reset_work_item_plan_progress", boom)
+    with pytest.raises(RuntimeError, match="injected"):
+        request_rework(
+            work_id,
+            v1["delivery_id"],
+            reason="需要补风险",
+            idempotency_key="rework-resume",
+        )
+    assert execute_calls == []
+
+    monkeypatch.setattr(read_ports, "reset_work_item_plan_progress", lambda _wid: None)
+    replay = request_rework(
+        work_id,
+        v1["delivery_id"],
+        reason="需要补风险",
+        idempotency_key="rework-resume",
+    )
+    assert replay["replayed"] is True
+    assert execute_calls == [work_id]
+    folded = fold_delivery_history(work_id)
+    assert folded["current_review_status"] == "changes_requested"
+    assert any(
+        str(row.get("delivery_id")) == v1["delivery_id"]
+        for row in folded["_dispatches"]
+    )
+    second = request_rework(
+        work_id,
+        v1["delivery_id"],
+        reason="需要补风险",
+        idempotency_key="rework-resume",
+    )
+    assert second["replayed"] is True
+    assert execute_calls == [work_id]

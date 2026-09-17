@@ -12,6 +12,7 @@ from app.core.runtime.plan_resume import (
     clear_plan_resumes,
     configure_plan_resume_db,
     peek_plan_resume,
+    record_step_success,
     register_plan_resume,
     take_plan_resume,
 )
@@ -64,6 +65,38 @@ async def test_run_plan_steps_success_and_resume_from():
     assert outcome.completed_steps == 1
     assert kernel.invoke_capability.await_count == 1
     assert kernel.invoke_capability.await_args.kwargs["name"] == "t2"
+
+
+@pytest.mark.asyncio
+async def test_run_plan_steps_hydrates_cached_prefix_without_replay():
+    kernel = MagicMock()
+    kernel.invoke_capability = AsyncMock(
+        return_value={"status": "success", "result": "should-not-run"},
+    )
+    steps = [
+        {"tool": "check_inbox", "params": {}},
+        {"tool": "read_file", "params": {"path": "a.md"}},
+    ]
+    inbox_body = '{"emails":[{"message_id":"m1","subject":"ok"}]}'
+    file_body = "file body from first pass"
+    record_step_success("old-corr", 0, inbox_body, action_id="work-resume")
+    record_step_success("old-corr", 1, file_body, action_id="work-resume")
+
+    outcome = await run_plan_steps(
+        steps=steps,
+        kernel=kernel,
+        actor="executor",
+        execution_id="ex-new",
+        correlation_id="new-corr",
+        resume_from=2,
+        action_id="work-resume",
+    )
+    assert outcome.stopped_reason == "completed"
+    assert [(r.step, r.tool, r.result) for r in outcome.results] == [
+        (0, "check_inbox", inbox_body),
+        (1, "read_file", file_body),
+    ]
+    assert kernel.invoke_capability.await_count == 0
 
 
 @pytest.mark.asyncio

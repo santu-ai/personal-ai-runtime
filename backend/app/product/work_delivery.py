@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 PAYLOAD_DELIVERY_PUBLISHED = "delivery_published"
 PAYLOAD_DELIVERY_DECISION = "delivery_decision"
+PAYLOAD_REWORK_DISPATCHED = "rework_dispatched"
 REVIEW_UNREVIEWED = "unreviewed"
 REVIEW_ACCEPTED = "accepted"
 REVIEW_CHANGES_REQUESTED = "changes_requested"
@@ -112,6 +113,7 @@ def fold_delivery_history(work_id: str) -> dict[str, Any]:
     """Replay work_item events into versioned deliveries + review state."""
     deliveries: list[dict[str, Any]] = []
     decisions: list[dict[str, Any]] = []
+    dispatches: list[dict[str, Any]] = []
     by_id: dict[str, dict[str, Any]] = {}
 
     for event in _read_work_events(work_id):
@@ -129,6 +131,12 @@ def fold_delivery_history(work_id: str) -> dict[str, Any]:
             row.setdefault("event_id", event.id)
             row.setdefault("event_seq", event.seq)
             decisions.append(row)
+        dispatched = payload.get(PAYLOAD_REWORK_DISPATCHED)
+        if isinstance(dispatched, dict) and dispatched.get("delivery_id"):
+            row = dict(dispatched)
+            row.setdefault("event_id", event.id)
+            row.setdefault("event_seq", event.seq)
+            dispatches.append(row)
 
     latest_by_delivery: dict[str, dict[str, Any]] = {}
     by_idempotency: dict[str, dict[str, Any]] = {}
@@ -144,11 +152,9 @@ def fold_delivery_history(work_id: str) -> dict[str, Any]:
     current_decision = latest_by_delivery.get(current_id) if current_id else None
     review_status = REVIEW_UNREVIEWED
     if current_decision:
-        raw = str(current_decision.get("decision") or "")
-        if raw == DECISION_ACCEPTED:
-            review_status = REVIEW_ACCEPTED
-        elif raw == DECISION_CHANGES_REQUESTED:
-            review_status = REVIEW_CHANGES_REQUESTED
+        review_status = _review_status_from_decision(
+            str(current_decision.get("decision") or ""),
+        )
 
     summaries = []
     for row in deliveries:
@@ -179,6 +185,7 @@ def fold_delivery_history(work_id: str) -> dict[str, Any]:
         "latest_decision": current_decision,
         "_by_id": by_id,
         "_decisions": decisions,
+        "_dispatches": dispatches,
         "_by_idempotency": by_idempotency,
         "_current_id": current_id,
     }
@@ -335,6 +342,72 @@ def _require_current_delivery(
     return row
 
 
+def _idempotency_matches(prior: dict[str, Any], *, delivery_id: str, decision: str, reason: str) -> bool:
+    if str(prior.get("delivery_id") or "") != delivery_id:
+        return False
+    if str(prior.get("decision") or "") != decision:
+        return False
+    return str(prior.get("reason") or "").strip() == str(reason or "").strip()
+
+
+def _review_status_from_decision(raw: str) -> str:
+    if raw == DECISION_ACCEPTED:
+        return REVIEW_ACCEPTED
+    if raw == DECISION_CHANGES_REQUESTED:
+        return REVIEW_CHANGES_REQUESTED
+    return REVIEW_UNREVIEWED
+
+
+def _dispatch_recorded(
+    folded: dict[str, Any],
+    delivery_id: str,
+    decision_id: str | None,
+) -> bool:
+    wanted = str(decision_id or "")
+    for row in folded.get("_dispatches") or []:
+        if str(row.get("delivery_id") or "") != delivery_id:
+            continue
+        recorded = str(row.get("decision_id") or "")
+        if wanted and recorded and recorded != wanted:
+            continue
+        return True
+    return False
+
+
+def _has_rework_note(notes: list[Any], delivery_id: str, reason: str) -> bool:
+    wanted = str(reason).strip()
+    for note in notes:
+        if not isinstance(note, dict):
+            continue
+        if str(note.get("delivery_id") or "") != delivery_id:
+            continue
+        if str(note.get("reason") or "").strip() == wanted:
+            return True
+    return False
+
+
+def _emit_rework_dispatched(
+    work_id: str,
+    *,
+    delivery_id: str,
+    decision_id: str | None,
+    actor: str,
+) -> None:
+    kernel.emit_event(
+        EVENT_WORK_ITEM_UPDATED,
+        AGGREGATE_WORK_ITEM,
+        work_id,
+        payload={
+            PAYLOAD_REWORK_DISPATCHED: {
+                "delivery_id": delivery_id,
+                "decision_id": decision_id,
+                "at": _now(),
+            }
+        },
+        actor=actor,
+    )
+
+
 def decide_delivery(
     work_id: str,
     delivery_id: str,
@@ -359,6 +432,13 @@ def decide_delivery(
         if key:
             prior = folded["_by_idempotency"].get(key)
             if prior is not None:
+                if not _idempotency_matches(
+                    prior, delivery_id=delivery_id, decision=decision, reason=reason,
+                ):
+                    raise DeliveryConflictError(
+                        "幂等键已用于不同的交付决定",
+                        code="idempotency_conflict",
+                    )
                 return {
                     "work_id": work_id,
                     "replayed": True,
@@ -368,6 +448,16 @@ def decide_delivery(
 
         row = _require_current_delivery(folded, delivery_id)
         current_status = folded["current_review_status"]
+        if current_status == REVIEW_ACCEPTED and decision != DECISION_ACCEPTED:
+            raise DeliveryConflictError(
+                "该版本已验收，不能再改为返工",
+                code="decision_conflict",
+            )
+        if current_status == REVIEW_CHANGES_REQUESTED and decision != DECISION_CHANGES_REQUESTED:
+            raise DeliveryConflictError(
+                "该版本已要求返工，不能再改为验收",
+                code="decision_conflict",
+            )
         if (
             decision == DECISION_CHANGES_REQUESTED
             and current_status == REVIEW_CHANGES_REQUESTED
@@ -443,8 +533,31 @@ def request_rework(
     item = read_ports.query_work_item(work_id)
     if item is None:
         raise DeliveryNotFoundError(work_id)
-    if str(item.get("status") or "") in {"running", "waiting_approval"}:
-        raise DeliveryConflictError("任务仍在执行或待审批，请等待完成后再返工")
+    status = str(item.get("status") or "")
+    if status in {"running", "waiting_approval"}:
+        folded = fold_delivery_history(work_id)
+        latest = folded.get("latest_decision") or {}
+        in_flight = (
+            str(latest.get("delivery_id") or "") == delivery_id
+            and str(latest.get("decision") or "") == DECISION_CHANGES_REQUESTED
+        )
+        if not in_flight:
+            raise DeliveryConflictError("任务仍在执行或待审批，请等待完成后再返工")
+        result = {
+            "work_id": work_id,
+            "replayed": True,
+            "decision": latest,
+            "bundle": public_bundle(work_id),
+        }
+        if dispatch:
+            return _complete_rework_dispatch(
+                work_id,
+                delivery_id,
+                reason=reason,
+                actor=actor,
+                result=result,
+            )
+        return result
 
     result = decide_delivery(
         work_id,
@@ -454,42 +567,83 @@ def request_rework(
         idempotency_key=idempotency_key,
         actor=actor,
     )
-    if result.get("replayed") or not dispatch:
+    if not dispatch:
         return result
-
-    item = read_ports.query_work_item(work_id)
-    if item is None:
-        raise DeliveryNotFoundError(work_id)
-
-    plan = parse_plan(item.get("executable_plan"))
-    notes = list(plan.get("rework_notes") or [])
-    notes.append({
-        "delivery_id": delivery_id,
-        "reason": str(reason).strip(),
-        "at": _now(),
-    })
-    plan["rework_notes"] = notes
-    kernel.emit_event(
-        EVENT_WORK_ITEM_UPDATED,
-        AGGREGATE_WORK_ITEM,
+    return _complete_rework_dispatch(
         work_id,
-        payload={"executable_plan": json.dumps(plan, ensure_ascii=False)},
+        delivery_id,
+        reason=reason,
         actor=actor,
+        result=result,
     )
 
-    status = str(item.get("status") or "pending")
-    if status in {"completed", "failed"}:
-        read_ports.update_work_item_status(work_id, "pending")
-    read_ports.reset_work_item_plan_progress(work_id)
-    if dispatch:
+
+def _complete_rework_dispatch(
+    work_id: str,
+    delivery_id: str,
+    *,
+    reason: str,
+    actor: str,
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    """Resume notes / reopen / execute after a durable changes_requested decision."""
+    raw_decision = result.get("decision")
+    decision: dict[str, Any] = raw_decision if isinstance(raw_decision, dict) else {}
+    decision_id = str(decision.get("decision_id") or "") or None
+    with _work_lock(work_id):
+        folded = fold_delivery_history(work_id)
+        if _dispatch_recorded(folded, delivery_id, decision_id):
+            result["replayed"] = True
+            result["bundle"] = public_bundle(work_id)
+            result["work"] = read_ports.query_work_item(work_id)
+            return result
+
+        item = read_ports.query_work_item(work_id)
+        if item is None:
+            raise DeliveryNotFoundError(work_id)
+        status = str(item.get("status") or "pending")
+        if status in {"running", "waiting_approval"}:
+            _emit_rework_dispatched(
+                work_id, delivery_id=delivery_id, decision_id=decision_id, actor=actor,
+            )
+            result["bundle"] = public_bundle(work_id)
+            result["work"] = read_ports.query_work_item(work_id)
+            return result
+
+        plan = parse_plan(item.get("executable_plan"))
+        notes = list(plan.get("rework_notes") or [])
+        if not _has_rework_note(notes, delivery_id, reason):
+            notes.append({
+                "delivery_id": delivery_id,
+                "reason": str(reason).strip(),
+                "at": _now(),
+            })
+            plan["rework_notes"] = notes
+            kernel.emit_event(
+                EVENT_WORK_ITEM_UPDATED,
+                AGGREGATE_WORK_ITEM,
+                work_id,
+                payload={"executable_plan": json.dumps(plan, ensure_ascii=False)},
+                actor=actor,
+            )
+
+        if status in {"completed", "failed"}:
+            read_ports.update_work_item_status(work_id, "pending")
+        read_ports.reset_work_item_plan_progress(work_id)
         try:
             read_ports.request_work_item_execute(work_id)
         except ValueError as exc:
             logger.info("rework execute deferred for %s: %s", work_id, exc)
             result["execute_error"] = str(exc)
-    result["bundle"] = public_bundle(work_id)
-    result["work"] = read_ports.query_work_item(work_id)
-    return result
+            result["bundle"] = public_bundle(work_id)
+            result["work"] = read_ports.query_work_item(work_id)
+            return result
+        _emit_rework_dispatched(
+            work_id, delivery_id=delivery_id, decision_id=decision_id, actor=actor,
+        )
+        result["bundle"] = public_bundle(work_id)
+        result["work"] = read_ports.query_work_item(work_id)
+        return result
 
 
 def list_unreviewed_deliveries(*, limit: int = 20) -> list[dict[str, Any]]:

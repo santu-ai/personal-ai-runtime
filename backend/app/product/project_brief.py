@@ -34,6 +34,8 @@ DEFAULT_CRITERIA = (
 )
 
 _JSON_FENCE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
+_SOURCE_ID_RE = re.compile(r"\b(?:email|file):[^\s\]\)\}\"'`]+")
+PROGRAMMATIC_CRITERIA = frozenset(DEFAULT_CRITERIA)
 
 
 def default_acceptance_criteria() -> list[str]:
@@ -185,6 +187,7 @@ def collect_allowed_sources(
     contract: dict[str, Any],
     step_results: list[Any],
     retrieved_at: str,
+    plan_steps: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str], list[str]]:
     """Return (sources, source_bodies_for_prompt, limitation/error notes)."""
     raw_scope = contract.get("source_scope")
@@ -204,6 +207,16 @@ def collect_allowed_sources(
     days = int(email_scope.get("days") or DEFAULT_DAYS)
     query = str(email_scope.get("query") or "").strip().lower()
     cutoff = datetime.now(tz) - timedelta(days=max(days, 0))
+
+    file_by_step: dict[int, dict[str, Any]] = {}
+    if plan_steps:
+        file_i = 0
+        for idx, step in enumerate(plan_steps):
+            if str(step.get("tool") or "") != "read_file":
+                continue
+            if file_i < len(file_specs):
+                file_by_step[idx] = file_specs[file_i]
+            file_i += 1
 
     sources: list[dict[str, Any]] = []
     bodies: list[str] = []
@@ -269,8 +282,13 @@ def collect_allowed_sources(
                 notes.append("邮箱已读取，但没有落入时间范围或关键词的邮件")
         elif tool == "read_file":
             files_attempted += 1
-            spec = file_specs[file_index] if file_index < len(file_specs) else {}
-            file_index += 1
+            step_idx = getattr(result, "step", None)
+            spec: dict[str, Any]
+            if isinstance(step_idx, int) and file_by_step:
+                spec = file_by_step.get(step_idx) or {}
+            else:
+                spec = file_specs[file_index] if file_index < len(file_specs) else {}
+                file_index += 1
             path = str(spec.get("path") or "")
             label = str(spec.get("label") or path or "file")
             if status != "success":
@@ -315,6 +333,57 @@ def _extract_json(text: str) -> dict[str, Any]:
     return obj
 
 
+def _cited_source_ids(*texts: str) -> list[str]:
+    found: list[str] = []
+    for text in texts:
+        for match in _SOURCE_ID_RE.finditer(text or ""):
+            token = match.group(0).rstrip(".,;:")
+            if token:
+                found.append(token)
+    return found
+
+
+def _render_grounded_content(
+    *,
+    summary: str,
+    findings: list[dict[str, Any]],
+    actions: list[dict[str, Any]],
+    limitations: list[str],
+    sources: list[dict[str, Any]] | None = None,
+) -> str:
+    lines = ["# 项目简报", "", summary.strip(), "", "## 变化、风险与结论"]
+    if findings:
+        for item in findings:
+            cites = " ".join(f"`{sid}`" for sid in item.get("source_ids") or [])
+            kind = str(item.get("kind") or "change")
+            text = str(item.get("text") or "").strip()
+            suffix = f" {cites}" if cites else ""
+            lines.append(f"- [{kind}] {text}{suffix}".rstrip())
+    else:
+        lines.append("（无带引用来源的结构化结论）")
+    lines.extend(["", "## 建议待办"])
+    if actions:
+        for item in actions:
+            cites = " ".join(f"`{sid}`" for sid in item.get("source_ids") or [])
+            title = str(item.get("title") or "").strip()
+            reason = str(item.get("reason") or "").strip()
+            extra = f"：{reason}" if reason else ""
+            suffix = f" {cites}" if cites else ""
+            lines.append(f"- {title}{extra}{suffix}".rstrip())
+    else:
+        lines.append("（无建议待办）")
+    if limitations:
+        lines.extend(["", "## 限制与不足"])
+        lines.extend(f"- {note}" for note in limitations)
+    if sources:
+        lines.extend(["", "## 来源"])
+        for src in sources:
+            locator = str(src.get("locator") or "").strip()
+            extra = f" · {locator}" if locator else ""
+            lines.append(f"- `{src.get('id')}` {src.get('title') or ''}{extra}".rstrip())
+    return "\n".join(lines).strip() + "\n"
+
+
 def validate_model_brief(
     obj: dict[str, Any],
     *,
@@ -327,13 +396,18 @@ def validate_model_brief(
     if not summary or not content:
         raise ValueError("model output missing summary or content")
 
+    unknown_in_body = [
+        sid for sid in _cited_source_ids(summary, content) if sid not in allowed_ids
+    ]
+    if unknown_in_body:
+        raise ValueError(f"forged or out-of-scope source ids: {unknown_in_body[:8]}")
+
     findings_raw = obj.get("findings")
     if findings_raw is None:
         findings_raw = []
     if not isinstance(findings_raw, list):
         raise ValueError("findings must be a list")
     findings: list[dict[str, Any]] = []
-    cited: set[str] = set()
     unknown: list[str] = []
     missing_cite = 0
     for item in findings_raw:
@@ -350,8 +424,6 @@ def validate_model_brief(
         for sid in source_ids:
             if sid not in allowed_ids:
                 unknown.append(sid)
-            else:
-                cited.add(sid)
         if allowed_ids and not source_ids:
             missing_cite += 1
         findings.append({
@@ -361,6 +433,8 @@ def validate_model_brief(
         })
     if unknown:
         raise ValueError(f"forged or out-of-scope source ids: {unknown[:8]}")
+    if allowed_ids and not findings:
+        missing_cite += 1
 
     actions_raw = obj.get("suggested_actions") or []
     if not isinstance(actions_raw, list):
@@ -399,7 +473,11 @@ def validate_model_brief(
             "criterion": "每条关键结论附来源",
             "result": "pass" if cite_ok else "fail",
             "programmatic": True,
-            "detail": "0 missing citations" if cite_ok else f"{missing_cite} findings lack citations",
+            "detail": (
+                "0 missing citations"
+                if cite_ok
+                else f"{missing_cite} findings lack citations"
+            ),
         })
     else:
         checks.append({
@@ -408,7 +486,6 @@ def validate_model_brief(
             "programmatic": True,
             "detail": "no sources in this run",
         })
-    insufficient_ok = (not allowed_ids and bool(limitations)) or bool(allowed_ids)
     if "资料不足时明确说明" in criteria:
         checks.append({
             "criterion": "资料不足时明确说明",
@@ -422,15 +499,36 @@ def validate_model_brief(
         "programmatic": True,
         "detail": "all citations in allowed source set",
     })
-    qualified = all(c.get("result") != "fail" for c in checks) and cite_ok
+    covered = {str(check.get("criterion") or "") for check in checks}
+    for item in criteria:
+        criterion = str(item).strip()
+        if not criterion or criterion in covered:
+            continue
+        if criterion in PROGRAMMATIC_CRITERIA:
+            continue
+        checks.append({
+            "criterion": criterion,
+            "result": "needs_review",
+            "programmatic": False,
+            "detail": "requires human judgment",
+        })
+    qualified = (
+        all(c.get("result") not in {"fail", "needs_review"} for c in checks)
+        and cite_ok
+    )
     if not allowed_ids:
         qualified = False
         if not limitations:
             limitations.append("资料不足：本次没有可用来源")
-    _ = insufficient_ok
+    grounded = _render_grounded_content(
+        summary=summary,
+        findings=findings,
+        actions=actions,
+        limitations=limitations,
+    )
     return {
         "summary": summary,
-        "content": content,
+        "content": grounded,
         "findings": findings,
         "suggested_actions": actions,
         "limitations": limitations,
@@ -583,10 +681,12 @@ async def compile_project_brief_delivery(
     contract = contract_from_plan(plan) or {}
     results = list(getattr(outcome, "results", None) or [])
     retrieved_at = datetime.now(UTC).isoformat()
+    plan_steps = [s for s in (plan.get("steps") or []) if isinstance(s, dict)]
     sources, bodies, notes = collect_allowed_sources(
         contract=contract,
         step_results=results,
         retrieved_at=retrieved_at,
+        plan_steps=plan_steps,
     )
     allowed_ids = {str(src["id"]) for src in sources}
     source_failures = [note for note in notes if "失败" in note]

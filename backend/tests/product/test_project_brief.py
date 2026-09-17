@@ -100,3 +100,84 @@ def test_collect_sources_records_unconfigured_failure():
     )
     assert sources == []
     assert any("失败" in note for note in notes)
+
+
+def test_collect_sources_maps_file_by_original_step_index():
+    results = [
+        SimpleNamespace(
+            step=2,
+            tool="read_file",
+            status="success",
+            result="second file body",
+        ),
+    ]
+    sources, _bodies, _notes = collect_allowed_sources(
+        contract={
+            "source_scope": {
+                "files": [
+                    {"path": "C:/tmp/first.md", "label": "first"},
+                    {"path": "C:/tmp/second.md", "label": "second"},
+                ],
+            }
+        },
+        step_results=results,
+        retrieved_at="t0",
+        plan_steps=[
+            {"tool": "check_inbox"},
+            {"tool": "read_file", "params": {"path": "C:/tmp/first.md"}},
+            {"tool": "read_file", "params": {"path": "C:/tmp/second.md"}},
+        ],
+    )
+    assert len(sources) == 1
+    assert sources[0]["title"] == "second"
+    assert sources[0]["locator"] == "C:/tmp/second.md"
+
+
+def test_validate_rejects_forged_ids_in_body_even_without_findings():
+    with pytest.raises(ValueError, match="out-of-scope"):
+        validate_model_brief(
+            {
+                "summary": "s",
+                "content": "Critical claim [email:forged]",
+                "findings": [],
+            },
+            allowed_ids={"email:real"},
+            criteria=["每条关键结论附来源", "不编造来源"],
+            source_notes=[],
+        )
+
+
+def test_validate_empty_findings_with_sources_is_unqualified():
+    result = validate_model_brief(
+        {
+            "summary": "看起来完整",
+            "content": "没有任何引用的结论",
+            "findings": [],
+        },
+        allowed_ids={"email:real"},
+        criteria=["每条关键结论附来源"],
+        source_notes=[],
+    )
+    assert result["qualified"] is False
+    assert any(c["result"] == "fail" for c in result["checks"])
+    assert "结构化结论" in result["content"]
+
+
+def test_validate_custom_criterion_needs_review():
+    result = validate_model_brief(
+        {
+            "summary": "s",
+            "content": "c",
+            "findings": [{"text": "change happened", "source_ids": ["email:1"]}],
+        },
+        allowed_ids={"email:1"},
+        criteria=["每条关键结论附来源", "语气必须让老板满意"],
+        source_notes=[],
+    )
+    assert result["qualified"] is False
+    assert any(
+        c["criterion"] == "语气必须让老板满意" and c["result"] == "needs_review"
+        for c in result["checks"]
+    )
+    assert "change happened" in result["content"]
+    assert "`email:1`" in result["content"]

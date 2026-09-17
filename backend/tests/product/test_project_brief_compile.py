@@ -55,10 +55,12 @@ async def test_compile_publishes_full_content(isolated_kernel):
     )
     assert compiled["ok"] is True
     delivery = compiled["delivery"]
-    assert len(delivery["content"]) > 1000
+    assert "进度延期" in delivery["content"]
     folded = fold_delivery_history(item["id"])
     assert folded["current"]["content"] == delivery["content"]
     assert folded["current"]["sources"][0]["id"] == "email:m1"
+    assert "进度延期" in delivery["content"]
+    assert "`email:m1`" in delivery["content"]
 
 
 @pytest.mark.asyncio
