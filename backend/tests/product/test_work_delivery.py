@@ -219,3 +219,117 @@ def test_rework_replay_completes_dispatch_after_interrupt(isolated_kernel, monke
     )
     assert second["replayed"] is True
     assert execute_calls == [work_id]
+
+
+def _brief_task_with_steps() -> dict:
+    return read_ports.create_work_item(
+        "项目简报",
+        description="整理最近变化",
+        work_type="task",
+        executable_plan=(
+            '{"kind":"project_brief","contract":{"contract_version":1,'
+            '"output_kind":"project_brief"},'
+            '"steps":[{"tool":"echo","params":{"t":"1"}}]}'
+        ),
+        status="completed",
+    )
+
+
+def test_rework_emits_execute_after_running_without_execute_requested(isolated_kernel, monkeypatch):
+    k, _db = isolated_kernel
+    item = _brief_task_with_steps()
+    work_id = item["id"]
+    v1 = publish_delivery(
+        work_id,
+        content="v1",
+        summary="v1",
+        sources=[],
+        execution_id="exec-r2b",
+    )
+    real_emit = k.emit_event
+
+    def fail_execute_requested(*args, **kwargs):
+        event_type = args[0] if args else kwargs.get("type")
+        if event_type == "ExecuteRequested":
+            raise RuntimeError("injected execute emit failure")
+        return real_emit(*args, **kwargs)
+
+    monkeypatch.setattr(k, "emit_event", fail_execute_requested)
+    with pytest.raises(RuntimeError, match="injected execute"):
+        request_rework(
+            work_id,
+            v1["delivery_id"],
+            reason="需要补风险",
+            idempotency_key="rework-running",
+        )
+    assert k.read_events(type="ExecuteRequested", aggregate_id=f"exec_{work_id}") == []
+    stuck = read_ports.query_work_item(work_id)
+    assert stuck is not None
+    assert stuck["status"] == "running"
+    folded = fold_delivery_history(work_id)
+    assert folded["_dispatches"] == []
+
+    monkeypatch.setattr(k, "emit_event", real_emit)
+    replay = request_rework(
+        work_id,
+        v1["delivery_id"],
+        reason="需要补风险",
+        idempotency_key="rework-running",
+    )
+    assert replay["replayed"] is True
+    execs = k.read_events(type="ExecuteRequested", aggregate_id=f"exec_{work_id}")
+    assert len(execs) == 1
+    folded = fold_delivery_history(work_id)
+    assert len(folded["_dispatches"]) == 1
+    again = request_rework(
+        work_id,
+        v1["delivery_id"],
+        reason="需要补风险",
+        idempotency_key="rework-running",
+    )
+    assert again["replayed"] is True
+    assert len(k.read_events(type="ExecuteRequested", aggregate_id=f"exec_{work_id}")) == 1
+
+
+def test_rework_does_not_duplicate_execute_after_marker_gap(isolated_kernel, monkeypatch):
+    k, _db = isolated_kernel
+    item = _brief_task_with_steps()
+    work_id = item["id"]
+    v1 = publish_delivery(
+        work_id,
+        content="v1",
+        summary="v1",
+        sources=[],
+        execution_id="exec-r2b-mark",
+    )
+    real_emit = k.emit_event
+
+    def fail_dispatch_marker(*args, **kwargs):
+        payload = kwargs.get("payload")
+        if payload is None and len(args) >= 4:
+            payload = args[3]
+        if isinstance(payload, dict) and payload.get("rework_dispatched"):
+            raise RuntimeError("injected marker failure")
+        return real_emit(*args, **kwargs)
+
+    monkeypatch.setattr(k, "emit_event", fail_dispatch_marker)
+    with pytest.raises(RuntimeError, match="injected marker"):
+        request_rework(
+            work_id,
+            v1["delivery_id"],
+            reason="需要补风险",
+            idempotency_key="rework-marker",
+        )
+    assert len(k.read_events(type="ExecuteRequested", aggregate_id=f"exec_{work_id}")) == 1
+    assert fold_delivery_history(work_id)["_dispatches"] == []
+
+    monkeypatch.setattr(k, "emit_event", real_emit)
+    replay = request_rework(
+        work_id,
+        v1["delivery_id"],
+        reason="需要补风险",
+        idempotency_key="rework-marker",
+    )
+    assert replay["replayed"] is True
+    assert len(k.read_events(type="ExecuteRequested", aggregate_id=f"exec_{work_id}")) == 1
+    assert len(fold_delivery_history(work_id)["_dispatches"]) == 1

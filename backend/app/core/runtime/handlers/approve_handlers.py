@@ -12,7 +12,11 @@ from typing import TYPE_CHECKING
 from app.core.runtime.handler_registry import subscribe
 from app.core.runtime.plan_resume import (
     PlanResume,
+    lookup_action_step_success,
+    lookup_step_success,
+    peek_plan_resume,
     record_chat_tool_success,
+    record_step_success,
     register_plan_resume,
     take_plan_resume,
 )
@@ -110,6 +114,18 @@ async def on_approve_requested(ctx: "ExecutionContext", event: "Event") -> None:
         )
         return
 
+    pending_resume = peek_plan_resume(approval_id, kernel=kernel)
+    cached_plan_result: str | None = None
+    if pending_resume is not None:
+        approved_step = max(int(pending_resume.resume_from) - 1, 0)
+        cached_plan_result = lookup_action_step_success(
+            pending_resume.action_id, approved_step, kernel=kernel,
+        )
+        if cached_plan_result is None:
+            cached_plan_result = lookup_step_success(
+                ctx.correlation_id or "", approved_step, kernel=kernel,
+            )
+
     if decision == "deny":
         take_plan_resume(approval_id, kernel=kernel)  # drop any queued plan resume
         kernel.deny_approval(approval_id, action=tool_name, actor="user", reason="user_denied")
@@ -139,15 +155,18 @@ async def on_approve_requested(ctx: "ExecutionContext", event: "Event") -> None:
         )
         return
 
-    cap_result = await kernel.invoke_capability(
-        name=tool_name,
-        args=tool_args,
-        actor="user",
-        pre_approved=True,
-        approval_id=approval_id,
-        execution_id=ctx.execution_id,
-        correlation_id=ctx.correlation_id,
-    )
+    if cached_plan_result is not None:
+        cap_result = {"status": "success", "result": cached_plan_result}
+    else:
+        cap_result = await kernel.invoke_capability(
+            name=tool_name,
+            args=tool_args,
+            actor="user",
+            pre_approved=True,
+            approval_id=approval_id,
+            execution_id=ctx.execution_id,
+            correlation_id=ctx.correlation_id,
+        )
     if cap_result["status"] == "success":
         result_str = cap_result["result"]
     else:
@@ -212,6 +231,16 @@ async def on_approve_requested(ctx: "ExecutionContext", event: "Event") -> None:
     # re-register on dispatch failure so a retry can succeed.
     plan_resumed = False
     if cap_result["status"] == "success":
+        pending = peek_plan_resume(approval_id, kernel=kernel)
+        if pending is not None:
+            approved_step = max(int(pending.resume_from) - 1, 0)
+            record_step_success(
+                ctx.correlation_id or "",
+                approved_step,
+                result_str,
+                action_id=pending.action_id,
+                kernel=kernel,
+            )
         resume = take_plan_resume(approval_id, kernel=kernel)
         if resume is not None:
             approved_step = max(resume.resume_from - 1, 0)

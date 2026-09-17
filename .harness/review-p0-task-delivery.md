@@ -85,5 +85,44 @@
 | R4 | 相反决定 409；幂等键必须匹配 delivery/decision/reason |
 | R5 | 扫描 summary/content 引用；空 findings 不合格；自定义条件 `needs_review`；正文由结构化结论生成 |
 | R6 | 选择历史版本时 `getWorkDelivery` 拉全文，含加载/错误与取消竞态 |
+| R2-B | 派发完成只认本次 decision 之后的 `ExecuteRequested`；running 且未派发时补发，不把 running 当成已派发 |
+| R3-B | 批准工具成功后、派发剩余计划前写入完整步骤缓存；重试命中缓存则跳过工具 |
 
-未跑全量 merge-gate、真 LLM 或真实邮箱。
+## 第二轮 Review：3fa88f5（2026-09-17）
+
+结论：R1 构建问题已关闭；相反决定/请求键校验、正文校验和历史全文均有修复及相关回归。R2/R3 仍存在以下两个已复现的 P1 缺口，暂不建议通过完整 P0 验收。
+
+### R2-B [P1] running 状态不能作为返工已派发的证据
+
+位置：`backend/app/product/work_delivery.py:605` 至 `:611`。
+
+`request_work_item_execute` 在两个独立 emit 中先写 WorkItemStatusChanged(running)，再写 ExecuteRequested。若中断发生在两者之间，任务已 running，但调度请求不存在。重试返工进入 `_complete_rework_dispatch` 的 running 分支，只补写 rework_dispatched 并返回，把未派发的任务永久标成已派发。
+
+隔离复现：使用真实 Kernel 和真实 request_work_item_execute，仅对 ExecuteRequested 的 emit 注入异常；恢复原 emit 并重试相同请求。结果：ExecuteRequested 数量为 0，rework_dispatched 数量为 1，Work 仍 running。
+
+修复要求：依据绑定本次 decision/run 的持久派发事实或执行记录判断是否已派发，不能依据 Work 展示状态。覆盖 running 写入之后/ExecuteRequested 之前、ExecuteRequested 之后/dispatch 标记之前两个窗口，恢复后既不漏派也不重复。遵守 Kernel 受保护边界。
+
+### R3-B [P1] 审批路径未保存完整步骤结果，恢复后仍漏来源
+
+位置：`backend/app/core/runtime/handlers/plan_runner.py:122` 至 `:130`；关联 `backend/app/core/runtime/handlers/approve_handlers.py:217` 至 `:220`。
+
+新 hydration 只读取成功缓存；正常 plan_runner 成功路径会 record_step_success，但审批批准后的工具在 approve handler 执行，该路径仍只调用 with_step_output（截为 1000 字符），没有记录完整结果，然后从下一步派发。hydration 查不到缓存就静默跳过，因此需要审批的来源在恢复时仍丢失，即使审批工具已成功读到全文。
+
+隔离复现：注册单步 read_file 的 PlanResume；调用真实 on_approve_requested，stub 的工具返回超过 1000 字符正文；用它发出的 ExecuteRequested payload 调用真实 run_plan_steps。结果：outcome.results=[]，应保留的完整来源不存在。
+
+修复要求：批准工具成功后、派发剩余计划前，持久保存与本次 action/run/step 关联的完整结果；确保重试不会重复外部效果。补审批→剩余执行→简报来源的集成测试，以及保存/派发之间中断的恢复测试。缺失缓存时不能静默声称资料已完整恢复。
+
+### 本轮验证
+
+- `npm run build`：通过。
+- Tasks 与 Dialog 前端测试：11 passed。
+- delivery/project_brief/API/execute/plan_runner 后端相关测试：33 passed。
+- 两条临时隔离缺陷复现：2 failed，分别对应 R2-B/R3-B；复现后已删除临时文件。
+- 未运行全量 merge-gate、浏览器真实后端 E2E 或真实邮件/LLM。未修改产品代码与个人数据。
+
+## 第三轮修复（R2-B / R3-B）
+
+代码已按第二轮要求修复：
+
+- 返工是否已派发，只看本次 `changes_requested` 之后是否存在 `ExecuteRequested`，以及 `rework_dispatched` 标记。`running` 不再当作完成证据。覆盖 running 写入后/ExecuteRequested 前、ExecuteRequested 后/标记前两个窗口。
+- 批准工具成功后先写入完整 `record_step_success`，再派发剩余计划；重试若已有缓存则不再调用工具。审批恢复后 `run_plan_steps` 能水合超过 1000 字符的来源正文。

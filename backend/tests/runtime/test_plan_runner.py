@@ -267,6 +267,135 @@ async def test_approve_keeps_resume_when_dispatch_fails(monkeypatch):
     assert kept.previous_output == {"step_0_output": "ok"}
 
 
+@pytest.mark.asyncio
+async def test_approve_persists_full_result_for_resume_hydration(monkeypatch):
+    from app.core.runtime.handlers import approve_handlers as mod
+    from app.core.runtime.plan_resume import lookup_action_step_success
+
+    body = "approved-source-body-" + ("x" * 1200)
+    register_plan_resume(
+        "apr_src",
+        PlanResume(kind="execute", resume_from=1, action_id="brief_src", previous_output={}),
+    )
+    emitted: list[tuple] = []
+
+    class Ctx:
+        execution_id = "ex"
+        correlation_id = "corr-approve"
+
+        def emit(self, *args, **kwargs):
+            emitted.append((args, kwargs))
+
+    invoke = AsyncMock(return_value={"status": "success", "result": body})
+    monkeypatch.setattr(
+        "app.core.runtime.kernel_instance.kernel",
+        MagicMock(invoke_capability=invoke, deny_approval=MagicMock()),
+    )
+    event = MagicMock()
+    event.id = "evt-src"
+    event.payload = {
+        "approval_id": "apr_src",
+        "decision": "approve",
+        "tool_name": "read_file",
+        "tool_args": {"path": "a.md"},
+        "conv_id": "",
+        "tool_call_id": "",
+    }
+    await mod.on_approve_requested(Ctx(), event)
+
+    cached = lookup_action_step_success("brief_src", 0)
+    assert cached == body
+    resume_emits = [e for e in emitted if e[0] and e[0][0] == "ExecuteRequested"]
+    assert len(resume_emits) == 1
+    payload = resume_emits[0][1]["payload"]
+    assert payload["resume_from"] == 1
+    assert len(payload["previous_output"]["step_0_output"]) == 1000
+
+    kernel = MagicMock()
+    kernel.invoke_capability = AsyncMock(
+        return_value={"status": "success", "result": "should-not-run"},
+    )
+    outcome = await run_plan_steps(
+        steps=[{"tool": "read_file", "params": {"path": "a.md"}}],
+        kernel=kernel,
+        actor="executor",
+        execution_id="ex-resume",
+        correlation_id="new-corr",
+        resume_from=int(payload["resume_from"]),
+        previous_output=payload.get("previous_output"),
+        action_id=str(payload["action_id"]),
+    )
+    assert outcome.stopped_reason == "completed"
+    assert outcome.results
+    assert outcome.results[0].result == body
+    assert kernel.invoke_capability.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_approve_skips_tool_replay_after_save_before_dispatch(monkeypatch):
+    from app.core.runtime.handlers import approve_handlers as mod
+
+    body = "full-approved-body-" + ("y" * 800)
+    register_plan_resume(
+        "apr_gap",
+        PlanResume(kind="execute", resume_from=1, action_id="act_gap"),
+    )
+    invoke = AsyncMock(return_value={"status": "success", "result": body})
+
+    class FailingCtx:
+        execution_id = "ex"
+        correlation_id = "corr-gap"
+
+        def emit(self, *args, **kwargs):
+            if args and args[0] == "ExecuteRequested":
+                raise RuntimeError("emit failed")
+
+    monkeypatch.setattr(
+        "app.core.runtime.kernel_instance.kernel",
+        MagicMock(invoke_capability=invoke, deny_approval=MagicMock()),
+    )
+    event = MagicMock()
+    event.id = "evt-gap"
+    event.payload = {
+        "approval_id": "apr_gap",
+        "decision": "approve",
+        "tool_name": "read_file",
+        "tool_args": {"path": "a.md"},
+        "conv_id": "",
+        "tool_call_id": "",
+    }
+    await mod.on_approve_requested(FailingCtx(), event)
+    assert peek_plan_resume("apr_gap") is not None
+    assert invoke.await_count == 1
+
+    emitted: list[tuple] = []
+
+    class OkCtx:
+        execution_id = "ex"
+        correlation_id = "corr-gap"
+
+        def emit(self, *args, **kwargs):
+            emitted.append((args, kwargs))
+
+    await mod.on_approve_requested(OkCtx(), event)
+    assert invoke.await_count == 1
+    assert any(e[0] and e[0][0] == "ExecuteRequested" for e in emitted)
+
+    kernel = MagicMock()
+    kernel.invoke_capability = AsyncMock()
+    outcome = await run_plan_steps(
+        steps=[{"tool": "read_file", "params": {"path": "a.md"}}],
+        kernel=kernel,
+        actor="executor",
+        execution_id="ex2",
+        correlation_id="other",
+        resume_from=1,
+        action_id="act_gap",
+    )
+    assert outcome.results[0].result == body
+    kernel.invoke_capability.assert_not_awaited()
+
+
 def test_plan_resume_survives_process_restart(tmp_path):
     """APP_STORAGE rows remain after dropping the in-process db binding.
 

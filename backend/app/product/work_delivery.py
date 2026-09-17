@@ -20,6 +20,7 @@ from typing import Any
 from app.core.runtime import read_ports
 from app.core.runtime.kernel.constants import (
     AGGREGATE_WORK_ITEM,
+    EVENT_EXECUTE_REQUESTED,
     EVENT_WORK_ITEM_UPDATED,
 )
 from app.core.runtime.kernel_instance import kernel
@@ -374,6 +375,30 @@ def _dispatch_recorded(
     return False
 
 
+def _decision_seq(folded: dict[str, Any], decision_id: str | None) -> int:
+    wanted = str(decision_id or "")
+    if wanted:
+        for row in folded.get("_decisions") or []:
+            if str(row.get("decision_id") or "") == wanted:
+                return int(row.get("event_seq") or 0)
+    latest = folded.get("latest_decision")
+    if isinstance(latest, dict):
+        return int(latest.get("event_seq") or 0)
+    return 0
+
+
+def _execute_requested_since(work_id: str, after_seq: int) -> bool:
+    events = kernel.read_events(
+        aggregate_type="action",
+        aggregate_id=f"exec_{work_id}",
+        type=EVENT_EXECUTE_REQUESTED,
+        since_seq=int(after_seq or 0),
+        order="asc",
+        limit=1,
+    )
+    return bool(events)
+
+
 def _has_rework_note(notes: list[Any], delivery_id: str, reason: str) -> bool:
     wanted = str(reason).strip()
     for note in notes:
@@ -598,17 +623,18 @@ def _complete_rework_dispatch(
             result["work"] = read_ports.query_work_item(work_id)
             return result
 
-        item = read_ports.query_work_item(work_id)
-        if item is None:
-            raise DeliveryNotFoundError(work_id)
-        status = str(item.get("status") or "pending")
-        if status in {"running", "waiting_approval"}:
+        if _execute_requested_since(work_id, _decision_seq(folded, decision_id)):
             _emit_rework_dispatched(
                 work_id, delivery_id=delivery_id, decision_id=decision_id, actor=actor,
             )
             result["bundle"] = public_bundle(work_id)
             result["work"] = read_ports.query_work_item(work_id)
             return result
+
+        item = read_ports.query_work_item(work_id)
+        if item is None:
+            raise DeliveryNotFoundError(work_id)
+        status = str(item.get("status") or "pending")
 
         plan = parse_plan(item.get("executable_plan"))
         notes = list(plan.get("rework_notes") or [])
@@ -629,9 +655,13 @@ def _complete_rework_dispatch(
 
         if status in {"completed", "failed"}:
             read_ports.update_work_item_status(work_id, "pending")
+            status = "pending"
         read_ports.reset_work_item_plan_progress(work_id)
         try:
-            read_ports.request_work_item_execute(work_id)
+            if status == "running":
+                read_ports.ensure_work_item_execute_requested(work_id)
+            else:
+                read_ports.request_work_item_execute(work_id)
         except ValueError as exc:
             logger.info("rework execute deferred for %s: %s", work_id, exc)
             result["execute_error"] = str(exc)
