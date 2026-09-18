@@ -1,5 +1,29 @@
 # P0 交付闭环 Review
 
+## 第四轮修复（R3-C，相对 3fac187）
+
+代码已按第三轮要求修复：批准成功后先写入 `aprdis:{approval_id}` 派发意图（含完整工具结果），再领取并删除原始恢复行；仅在 `ExecuteRequested` 已落库或意图标记 `dispatched` 后视为派发完成。进程在领取后、派发前退出时，重试从意图定位缓存结果，跳过工具并补发一次后续执行。同一审批用 asyncio 锁串行化。隔离测试覆盖领取后/派发前中断、派发后/标记前中断、并发审批。相关后端 69 passed。仍未跑完整 merge-gate / 真 LLM / 真实邮箱，不宣称完整 P0 验收通过。
+
+## 最新：第三轮 Review，3fac187（2026-09-18）
+
+本轮结论：R2-B 的 running/ExecuteRequested 窗口已补齐；R3-B 的审批结果保存及普通派发异常重试已补齐。相关后端 37 项测试通过。仍有以下 1 项 P1 恢复缺口，暂不建议宣称完整 P0 验收通过。
+
+### R3-C [P1] 删除审批恢复记录后进程退出，会永久丢失后续派发
+
+位置：`backend/app/core/runtime/handlers/approve_handlers.py:244` 至 `:249`；关联缓存读取条件 `:117` 至 `:127`。
+
+`record_step_success` 成功之后，handler 通过 `take_plan_resume` 将 approval_id 对应行 DELETE 并提交，再调用 `_dispatch_plan_resume`。当前 except Exception 只覆盖可捕获的派发异常，不能覆盖进程退出/终止发生在 DELETE 与 ExecuteRequested 之间的情况。
+
+此时完整结果虽已落盘，但重试时 pending_resume=None，缓存读取被跳过，重新进入 invoke_capability 路径；随后 take_plan_resume 仍为空，不再产生 ExecuteRequested。任务的后续计划因此无法恢复。真实工具是否重复产生效果取决于能力层的审批/幂等处理，本轮没有声称已复现真实外部副作用。
+
+隔离复现使用真实 Kernel 临时数据库及真实 approve handler，stub 工具结果；在恢复记录已删除、派发之前注入 BaseException 模拟不执行异常补偿的进程终止，再重试同一事件。结果：恢复派发 0 次，stub capability 调用 2 次；预期派发 1 次、工具调用 1 次。此为中断边界注入，并非真实进程重启 E2E。
+
+修复要求：approval→action/run/step 的关联及派发意图在确认持久派发前不可丢失；采用可恢复 claim/持久派发状态等机制，重试无需依赖已删除行即可定位成功结果，并区分尚未派发与已经派发。不能仅扩大异常捕获范围来代替崩溃恢复，也不能仅去掉 DELETE 而引入并发重复派发。补删除/领取后、派发前及派发后、清理前的中断测试和并发审批测试。
+
+本轮范围：审查 `3fa88f5..3fac187`；既有相关后端 37 passed，临时补充复现 1 failed（复现后已删除临时文件）；未修改产品代码、未调用真实邮箱/LLM。前端无新增改动，沿用上轮构建验证，未重跑完整 merge-gate。
+
+---
+
 日期：2026-09-17  
 审查提交：`041f398`（相对 `5136eec`）  
 结论：当前不建议判定 P0 验收通过。发现 6 项需要修复的问题，其中前端构建及恢复链路是阻塞项。
@@ -87,6 +111,7 @@
 | R6 | 选择历史版本时 `getWorkDelivery` 拉全文，含加载/错误与取消竞态 |
 | R2-B | 派发完成只认本次 decision 之后的 `ExecuteRequested`；running 且未派发时补发，不把 running 当成已派发 |
 | R3-B | 批准工具成功后、派发剩余计划前写入完整步骤缓存；重试命中缓存则跳过工具 |
+| R3-C | 领取原始恢复行前写入 `aprdis:` 派发意图；确认 ExecuteRequested 或 dispatched 后才视为完成；进程退出窗口可定位缓存并补派发 |
 
 ## 第二轮 Review：3fa88f5（2026-09-17）
 

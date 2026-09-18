@@ -5,19 +5,25 @@ Lives in runtime.handlers (orchestration), not agents.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-from typing import TYPE_CHECKING
+import threading
+from typing import TYPE_CHECKING, Any
 
 from app.core.runtime.handler_registry import subscribe
 from app.core.runtime.plan_resume import (
     PlanResume,
+    clear_approval_dispatch_intent,
+    dispatch_intent_is_done,
+    dispatch_intent_result,
+    load_approval_dispatch_intent,
     lookup_action_step_success,
     lookup_step_success,
     peek_plan_resume,
     record_chat_tool_success,
     record_step_success,
-    register_plan_resume,
+    save_approval_dispatch_intent,
     take_plan_resume,
 )
 
@@ -27,11 +33,27 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_LOCKS_GUARD = threading.Lock()
+_APPROVAL_LOCKS: dict[tuple[int, str], asyncio.Lock] = {}
+
+
+def _approval_lock(approval_id: str) -> asyncio.Lock:
+    loop = asyncio.get_running_loop()
+    key = (id(loop), approval_id)
+    with _LOCKS_GUARD:
+        lock = _APPROVAL_LOCKS.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            _APPROVAL_LOCKS[key] = lock
+        return lock
+
 
 def _dispatch_plan_resume(
     ctx: "ExecutionContext",
     event: "Event",
     resume: PlanResume,
+    *,
+    approval_id: str = "",
 ) -> bool:
     """Re-enqueue the remainder of an execute plan after approval.
 
@@ -46,6 +68,7 @@ def _dispatch_plan_resume(
                 "action_id": resume.action_id,
                 "resume_from": resume.resume_from,
                 "previous_output": resume.previous_output or {},
+                "approval_id": approval_id,
             },
             caused_by=event.id,
         )
@@ -53,6 +76,31 @@ def _dispatch_plan_resume(
     logger.error(
         "Approve: plan resume missing action_id (kind=%s)", resume.kind
     )
+    return False
+
+
+def _execute_requested_for_approval(kernel: object, action_id: str, approval_id: str) -> bool:
+    """True when ExecuteRequested for this approval is already in the event log."""
+    if not action_id or not approval_id:
+        return False
+    read_events = getattr(kernel, "read_events", None)
+    if not callable(read_events):
+        return False
+    try:
+        events = read_events(
+            aggregate_type="action",
+            aggregate_id=f"exec_{action_id}",
+            type="ExecuteRequested",
+            order="asc",
+        )
+    except Exception:
+        return False
+    if not isinstance(events, list):
+        return False
+    for ev in events:
+        payload = getattr(ev, "payload", None) or {}
+        if isinstance(payload, dict) and str(payload.get("approval_id") or "") == approval_id:
+            return True
     return False
 
 
@@ -114,9 +162,35 @@ async def on_approve_requested(ctx: "ExecutionContext", event: "Event") -> None:
         )
         return
 
+    async with _approval_lock(approval_id):
+        await _on_approve_requested_locked(
+            ctx, event, kernel,
+            approval_id=approval_id,
+            decision=decision,
+            tool_name=tool_name,
+            tool_args=tool_args,
+            conv_id=conv_id,
+            tool_call_id=tool_call_id,
+        )
+
+
+async def _on_approve_requested_locked(
+    ctx: "ExecutionContext",
+    event: "Event",
+    kernel: Any,
+    *,
+    approval_id: str,
+    decision: str,
+    tool_name: str,
+    tool_args: dict,
+    conv_id: str,
+    tool_call_id: str,
+) -> None:
     pending_resume = peek_plan_resume(approval_id, kernel=kernel)
-    cached_plan_result: str | None = None
-    if pending_resume is not None:
+    if pending_resume is None:
+        pending_resume = load_approval_dispatch_intent(approval_id, kernel=kernel)
+    cached_plan_result: str | None = dispatch_intent_result(pending_resume)
+    if pending_resume is not None and cached_plan_result is None:
         approved_step = max(int(pending_resume.resume_from) - 1, 0)
         cached_plan_result = lookup_action_step_success(
             pending_resume.action_id, approved_step, kernel=kernel,
@@ -128,6 +202,7 @@ async def on_approve_requested(ctx: "ExecutionContext", event: "Event") -> None:
 
     if decision == "deny":
         take_plan_resume(approval_id, kernel=kernel)  # drop any queued plan resume
+        clear_approval_dispatch_intent(approval_id, kernel=kernel)
         kernel.deny_approval(approval_id, action=tool_name, actor="user", reason="user_denied")
         assistant_message = ""
         from app.core.runtime.plan_resume import clear_chat_checkpoint_for_approval
@@ -227,35 +302,56 @@ async def on_approve_requested(ctx: "ExecutionContext", event: "Event") -> None:
             continuation = {"error": str(exc)}
 
     # After the approved tool runs, continue any paused execute/background plan.
-    # E-6: take first (atomic claim) so concurrent Approve cannot double-resume;
-    # re-register on dispatch failure so a retry can succeed.
+    # Persist aprdis:{approval_id} BEFORE deleting the original row so a process
+    # exit between take and ExecuteRequested can still locate the result and
+    # remaining plan. Concurrent Approve is serialized per approval_id.
     plan_resumed = False
     if cap_result["status"] == "success":
-        pending = peek_plan_resume(approval_id, kernel=kernel)
-        if pending is not None:
-            approved_step = max(int(pending.resume_from) - 1, 0)
+        resume = peek_plan_resume(approval_id, kernel=kernel)
+        if resume is None:
+            resume = load_approval_dispatch_intent(approval_id, kernel=kernel)
+        if resume is not None:
+            approved_step = max(int(resume.resume_from) - 1, 0)
+            updated = resume.with_step_output(approved_step, result_str)
             record_step_success(
                 ctx.correlation_id or "",
                 approved_step,
                 result_str,
-                action_id=pending.action_id,
+                action_id=resume.action_id,
                 kernel=kernel,
             )
-        resume = take_plan_resume(approval_id, kernel=kernel)
-        if resume is not None:
-            approved_step = max(resume.resume_from - 1, 0)
-            updated = resume.with_step_output(approved_step, result_str)
+            already = _execute_requested_for_approval(
+                kernel, resume.action_id, approval_id,
+            ) or dispatch_intent_is_done(
+                load_approval_dispatch_intent(approval_id, kernel=kernel)
+            )
+            if not already:
+                save_approval_dispatch_intent(
+                    approval_id, updated, result=result_str, kernel=kernel,
+                )
+                take_plan_resume(approval_id, kernel=kernel)
             try:
-                if _dispatch_plan_resume(ctx, event, updated):
+                if already:
                     plan_resumed = True
-                # Invalid resume (no action_id) — already taken, leave dropped.
+                elif _dispatch_plan_resume(
+                    ctx, event, updated, approval_id=approval_id,
+                ):
+                    plan_resumed = True
             except Exception:
                 logger.exception(
                     "Approve: failed to dispatch plan resume for %s", approval_id
                 )
-                register_plan_resume(approval_id, updated, kernel=kernel)
+            else:
+                save_approval_dispatch_intent(
+                    approval_id,
+                    updated,
+                    result=result_str,
+                    dispatched=True,
+                    kernel=kernel,
+                )
     else:
         take_plan_resume(approval_id, kernel=kernel)
+        clear_approval_dispatch_intent(approval_id, kernel=kernel)
 
     ctx.emit(
         "ApproveCompleted", "approval", f"approve_{approval_id}",

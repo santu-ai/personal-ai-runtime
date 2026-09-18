@@ -6,7 +6,7 @@
 ## 当前状态
 
 - 当前分支：`main`（本地简报提交正在接到已合入 Dependabot #66、#68-#78 的 origin/main）
-- 进行中任务 / WIP：项目资料简报 MVP 已落地（交办/交付/验收/返工）；spill 已落地；ask_user 未做
+- 进行中任务 / WIP：项目资料简报 MVP 已落地（交办/交付/验收/返工）；spill 已落地；ask_user 未做；P0 审查项 R1–R6 / R2-B / R3-B / R3-C 代码已修，未宣称完整 P0 验收
 - 已知坏点 / 待办：日用库不在本机 Windows（soak 默认空库 `data/personal_ai.db`）；本机无 Telegram token，真实收发 blocked
 - 最近审阅：2026-09-01 从 deepseek-harness 对齐「模型可见 ⟺ 可重建」，用 checkpoint 替换静默截断
 - **本机 git**：Windows 提交走 `git -c core.hooksPath=.githooks commit -F`；venv 放 PATH 以免 pre-commit mypy 用到系统 `mcp`
@@ -43,6 +43,7 @@
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
 | 2026-09-22 | 汇总 Dependabot #66、#68–#78：backend lock 重生（alembic/openai/pypdf/mcp/ruff）；frontend react+react-dom 19.3.0 同步；desktop electron 44.4.3 / vitest 5.0.1 | 已合入 main |
+| 2026-09-18 | R3-C：审批恢复领取后、ExecuteRequested 前保留 `aprdis:` 派发意图，进程退出仍可跳过工具并补派发 | 无新事件类型；未推远程；未跑 merge-gate |
 | 2026-09-17 | 可验收任务助手 MVP：项目资料简报创建/执行/来源校验、版本化交付验收与返工 | 无新事件类型；交付在 WorkItemUpdated payload；未推远程 |
 | 2026-09-01 | spill：超大工具结果外溢到 DATA_DIR/spills，对话行只存 preview；mcp_hub 不再 8k 静默截断 | 无新事件类型 |
 | 2026-09-01 | recorded-session：脚本 LLM + 真 Brain/Kernel 回放 text/read_file/write 审批 | 无密钥 loop 回归 |
@@ -106,6 +107,8 @@
 | 2026-08-05 | P0：删休眠子系统；执行可信/白名单；ADR-R017 | commit `fddafb3` |
 
 ## 备注
+
+- 2026-09-18：四修 R3-C：`aprdis:` 派发意图覆盖领取后/派发前进程退出；相关后端 69 passed；未跑 merge-gate，不宣称完整 P0。
 
 - dogfood 记录约定（周记格式）仍见 `docs/05-engineering/development.md` §自用检查。
 - DLQ 人工重放：`python -m scripts.replay_dead_letters [--limit N] [--dry-run]`
