@@ -215,10 +215,16 @@ def _reset_runtime():
     # BoundProxy stores monkeypatch/setattr on the proxy object. After reset the
     # underlying MCPHub is new, but a restored bound method (hub.invoke_tool)
     # would keep dispatching to the dead instance → unknown-tool lies.
+    # The same holds for ``ki.kernel``: a test that patches
+    # ``kernel.invoke_capability`` leaves the previous Kernel's bound method on
+    # the proxy, so later tests silently execute capabilities against a dead DB.
     from app.core.harness.mcp_hub import mcp_hub as _mcp_hub_proxy
-    for _key in list(_mcp_hub_proxy.__dict__.keys()):
-        if _key != "_factory":
-            del _mcp_hub_proxy.__dict__[_key]
+    for _proxy in (_mcp_hub_proxy, ki.kernel):
+        if not isinstance(_proxy, _LazyProxy):
+            continue
+        for _key in list(_proxy.__dict__.keys()):
+            if _key != "_factory":
+                del _proxy.__dict__[_key]
 
     yield
 

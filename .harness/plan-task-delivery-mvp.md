@@ -1,7 +1,7 @@
 # Plan：可验收的个人任务助手 MVP
 
-日期：2026-09-17  
-状态：P0 已实现（见第 12 节）；真 LLM 日用待用户显式试用。  
+日期：2026-09-17（2026-09-18 更新验证状态）  
+状态：P0 已实现并通过 merge-gate 与真实后端端到端回归（见第 12 节）；真 LLM / 真实邮箱日用待用户显式试用。  
 适用基线：分析时 HEAD `5136eec`；接手时必须重新核对代码与工作区。  
 目标：在现有 Personal AI Runtime 上完成“交办 → 执行 → 有来源的交付 → 验收/返工”闭环。
 
@@ -260,12 +260,26 @@ P1 的启动依据是重复使用和真实阻塞。若用户仍需大量重写�
 
 未修改 `kernel/` 实现、`check_boundary.py`、`capability_policy.json`、`taint.py`、密钥文件。`runtime_container` / `kernel_instance` 仅增加与 inbox poll 同构的 Product 绑定。
 
-### 验证
+### 验证（2026-09-18 最新）
 
-- 后端：`pytest tests/ -q --ignore=tests/e2e_live` → 1574 passed / 9 skipped
-- 前端：`vitest run src/pages/Tasks.test.tsx src/components/ui/Dialog.test.tsx` → 10 passed
-- `check_layer_deps` / `check_concept_growth` / `check_boundary` / `ruff` / `check_doc_links` 通过
-- 真 LLM + 真实邮箱日用未在本会话执行（会读取真实邮件，留待用户显式试用）
+- `Makefile.ps1 -Task merge-gate` 通过：后端 1593 passed / 9 skipped / 5 deselected；前端 240 passed（46 文件）+ `tsc -b && vite build`；boundary / layer-deps / projection-provenance / rebuild-verify 全过。
+- 真实后端端到端：`backend/tests/integration/test_project_brief_delivery_e2e.py`，API TestClient 背后的真 Kernel + 临时 SQLite + 真 `ExecuteRequested` handler，只 stub 收件箱能力与 LLM。
+- 真 LLM + 真实邮箱日用未在本会话执行（会读取真实邮件，留待用户显式试用）。
+
+### 验收矩阵覆盖
+
+| 编号 | 覆盖位置 |
+|---|---|
+| A1 / A9 | `test_brief_accept_rework_and_restart_keep_delivery_facts`（首版有来源；正文 > 1000 字符） |
+| A2 / A10 | 同上：验收后 `rebuild_all` 仍是同一版本/正文/验收状态，不重复派发 |
+| A3 | 同上：返工 → v2 → 接受 v2，旧版与返工意见保留 |
+| A4 | 同上：重复验收/返工只产生一个决定、一次派发 |
+| A5 | 同上 + `test_accept_rework_conflict_and_idempotency`（旧版验收 409） |
+| A6 | `test_compile_source_failure_is_unqualified`（来源失败不冒充合格） |
+| A7 | `test_compile_rejects_forged_model_output` + E2E A12 用例 |
+| A8 | `test_brief_retry_after_model_failure_reuses_read_sources`、`test_brief_resumes_after_exit_between_tool_and_publish`、`test_approve_recovers_after_take_before_dispatch_exit` |
+| A11 | `test_old_task_without_delivery_endpoints`、`test_old_work_without_delivery_still_reads` |
+| A12 | `test_brief_source_with_tool_instructions_stays_in_scope`（注入内容只作不可信数据，不产生额外工具调用） |
 
 ### 工作包
 
@@ -275,7 +289,7 @@ P1 的启动依据是重复使用和真实阻塞。若用户仍需大量重写�
 | T1 | 完成 |
 | T2 | 完成 |
 | T3 | 完成 |
-| T4 | 完成隔离集成与重建；未跑真 LLM 日用 |
-| T5 | docs 已同步；merge-gate 未整包跑（本机已跑后端全量 + 相关前端测试 + 静态守卫） |
+| T4 | 完成：真实后端 create → execute → 交付 → 验收/返工 → 重启回归，含中断恢复 |
+| T5 | 完成：docs 已同步；merge-gate 整包通过。真 LLM / 真实邮箱日用仍待用户显式试用（第 10 节） |
 
 P1 未做：timer/monitor 周期对比、建议待办转 Work、澄清交互、采纳率汇总。

@@ -1,10 +1,26 @@
 # P0 交付闭环 Review
 
-## 第四轮修复（R3-C，相对 3fac187）
+## 最新结论：第四轮 Review，9fc0553（2026-09-18）
 
-代码已按第三轮要求修复：批准成功后先写入 `aprdis:{approval_id}` 派发意图（含完整工具结果），再领取并删除原始恢复行；仅在 `ExecuteRequested` 已落库或意图标记 `dispatched` 后视为派发完成。进程在领取后、派发前退出时，重试从意图定位缓存结果，跳过工具并补发一次后续执行。同一审批用 asyncio 锁串行化。隔离测试覆盖领取后/派发前中断、派发后/标记前中断、并发审批。相关后端 69 passed。仍未跑完整 merge-gate / 真 LLM / 真实邮箱，不宣称完整 P0 验收通过。
+审查 `3fac187..9fc0553`，未发现新的阻塞缺陷；上轮 R3-C 可关闭。以下早期问题描述作为历史保留。
 
-## 最新：第三轮 Review，3fac187（2026-09-18）
+已核对：先持久保存 aprdis 派发意图，再删除原恢复行；重试可恢复 action/step 及完整工具结果；ExecuteRequested 绑定 approval_id，结合持久事件判断防止重复派发；当前单进程控制面下，同一事件循环按审批 ID 串行处理。
+
+本轮独立验证：交付/简报/API/执行器/计划恢复 40 passed；原有能力审批、taint、过期、执行模型及审批 API/集成回归 46 passed，共 86 passed。包含派发前硬中断、派发后标记前硬中断、并发审批回归。boundary、layer-deps、concept-growth 及本次修改文件 ruff 均通过。
+
+范围限制：未运行完整 merge-gate、真实进程 kill/restart 的浏览器 E2E、真实邮箱/LLM 日用。硬中断证据来自隔离测试的 BaseException 注入；前端本次未改动，未重复构建。本次修复 review 可通过，完整 P0 发布/日用验收仍需补齐 T4/T5 剩余证据。未修改产品代码或个人数据。
+
+---
+
+## 第四轮修复（R3-C）与 T4/T5 收口（2026-09-18）
+
+R3-C：批准成功后先写入 `aprdis:{approval_id}` 派发意图（含完整工具结果），再领取并删除原始恢复行；仅在 `ExecuteRequested` 已落库或意图标记 `dispatched` 后视为派发完成。进程在领取后、派发前退出时，重试从意图定位缓存结果，跳过工具并补发一次后续执行。同一审批用 asyncio 锁串行化。隔离测试覆盖领取后/派发前中断、派发后/标记前中断、并发审批。
+
+T4/T5：补上真实后端端到端回归 `backend/tests/integration/test_project_brief_delivery_e2e.py`（真 Kernel + 临时 SQLite + 真 `ExecuteRequested` handler，仅 stub 收件箱能力与 LLM），覆盖 A1–A5、A8–A10、A12；A8 含「模型失败后重试」与「工具成功后进程退出」两个中断窗口。过程中发现并修掉一处测试隔离缺陷：`kernel` BoundProxy 上的 monkeypatch 在 teardown 后会把上一个 Kernel 的绑定方法永久留在代理上，导致后续测试静默对着已废弃的 DB 执行能力（`backend/tests/conftest.py` 现按 `mcp_hub` 同样方式清理）。
+
+验证：`Makefile.ps1 -Task merge-gate` 通过 —— 后端 1593 passed / 9 skipped / 5 deselected，前端 240 passed + 生产构建，boundary / layer-deps / projection-provenance / rebuild-verify 全过。真 LLM 与真实邮箱日用仍未执行（需用户显式试用），计划第 10 节的日用指标尚无样本。
+
+## 第三轮 Review，3fac187（2026-09-18）
 
 本轮结论：R2-B 的 running/ExecuteRequested 窗口已补齐；R3-B 的审批结果保存及普通派发异常重试已补齐。相关后端 37 项测试通过。仍有以下 1 项 P1 恢复缺口，暂不建议宣称完整 P0 验收通过。
 
