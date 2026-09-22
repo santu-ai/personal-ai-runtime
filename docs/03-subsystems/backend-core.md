@@ -166,7 +166,8 @@ Handlers（[`handlers/`](../../backend/app/core/agents/handlers/)）：
 - 循环每 50ms tick，每 tick 处理至多 `_MAX_CONCURRENT=8` 个 item。
 - `enqueue(instance_id, actor, event, policy)` → 查 handler → 创建 ScheduledExecution → emit `ExecutionRequested`。
 - `_process_work_item` 在 `execution_scope(item.id)` 内跑 handler，使能力调用正确归属。
-- `_emit_verify` 每次写后跑 `verify_persist_matches_projection`（影子比对）。
+- `_emit_verify` 每次写后跑 `verify_persist_matches_projection`（影子比对）。`dead_letter` 置位后调用 `close_dead_lettered_domain_work`：最新 `ExecuteRequested` 的 handler 都已终态且至少一条失败时，把仍为 running 的领域 Work 收成 `failed`（`WorkItemStatusChanged`），不另开 retry 预算。
+- `kernel.expire_stale_running_leases` 是不取消在途任务、也不把剩余重试重新入队的薄事件路径。本批过期行都写成 `ExecutionFailed` 之后，终态死信走同一个收口函数；仍有未结束的 sibling handler 时不收口。RuntimeLoop 维护周期仍调用 `Scheduler.reclaim_stale_leases`。
 - 默认 `ExecutionPolicy(timeout=30s, max_retries=3, retry_delay=5s)`；`ChatRequested` 由 `policy_for_event` 覆盖为工具环超时 + `max_retries=2`（第三次崩溃仍 DLQ，见 [ADR-R011](../07-adr/ADR-R011-chat-approval-continuation.md)）。
 - `get_scheduler(kernel)` 是单例工厂。
 

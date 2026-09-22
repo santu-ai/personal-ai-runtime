@@ -37,7 +37,7 @@ Personal AI Runtime 的所有执行路径用**一套三车道语义**解释。�
 |-----------|--------|------------------|
 | Retry | Present | Lane A `_maybe_retry` + ExecutionRetried；`test_scheduler*` / policy |
 | Cancellation (mid-flight) | Present (durable) | `Scheduler.request_cancel` → ExecutionFailed before `task.cancel`；BG via WorkItemStatusChanged；`test_background_control_plane` |
-| Recovery | Present | `recover_scheduled_executions` + 没有 handler 行的 BG running→pending；普通任务若已是 running 但还没有 handler 行，补一次 `ExecuteRequested`；已结束的 handler 不重跑。失败的 handler 把仍为 running 的 Work 收成 `failed`（不另开一轮 retry 预算）。`ExecuteCompleted` 能对上同一次请求时，同步 Work 状态。interrupted 重放计入 retry 预算（超限走 ExecutionFailed / DLQ，不再重放）；scheduler/runtime_loop tests |
+| Recovery | Present | `recover_scheduled_executions` + 没有 handler 行的 BG running→pending；普通任务若已是 running 但还没有 handler 行，补一次 `ExecuteRequested`；已结束的 handler 不重跑。失败的 handler 把仍为 running 的 Work 收成 `failed`（不另开一轮 retry 预算）。`ExecuteCompleted` 能对上同一次请求时，同步 Work 状态。interrupted 重放计入 retry 预算（超限走 ExecutionFailed / DLQ，不再重放）。`kernel.expire_stale_running_leases` 在终态死信时走与 Scheduler 相同的领域 Work 收口，但不重新入队剩余重试；scheduler/runtime_loop tests |
 | Lease / multi-worker ownership | Absent / **Non-goal** | 单进程；见 [runtime-invariants.md](runtime-invariants.md) INV-W6；`check_single_process_control_plane.py` |
 | Quota | Partial | HTTP/WS rate limits；tool-loop token/iteration caps；无 per-tenant scheduler quota |
 | Backpressure | Present | `scheduler_max_pending` → `queue_full` |
