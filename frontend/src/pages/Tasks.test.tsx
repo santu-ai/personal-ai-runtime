@@ -287,6 +287,61 @@ describe("TasksPage", () => {
     });
   });
 
+  it("labels a failed task that can run again as 重新执行", async () => {
+    const closed: WorkItem = {
+      ...sampleTask,
+      status: "failed",
+      execution: {
+        steps: [{ tool: "write_file" }, { tool: "send_email" }],
+        resume_from: 0,
+        previous_output: {},
+        handler_execution: {
+          id: "wi_closed",
+          status: "failed",
+          dead_letter: true,
+          retry_count: 2,
+          handler_name: "on_execute_requested",
+          started_at: "2026-08-06T00:00:00Z",
+          completed_at: "2026-08-06T00:01:00Z",
+        },
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [closed];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(closed);
+    renderTasks("/tasks/task_1");
+
+    expect(await screen.findByText("上次执行已失败。可以重新执行。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "执行" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重新执行" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认执行" }));
+    await waitFor(() => {
+      expect(executeWorkItem).toHaveBeenCalledWith("task_1");
+    });
+  });
+
+  it("labels a failed task without a handler row as 重新执行", async () => {
+    const failed: WorkItem = {
+      ...sampleTask,
+      status: "failed",
+      execution: {
+        ...sampleTask.execution!,
+        handler_execution: null,
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [failed];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(failed);
+    renderTasks("/tasks/task_1");
+
+    expect(await screen.findByRole("button", { name: "重新执行" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "执行" })).not.toBeInTheDocument();
+  });
+
   it("creates a project brief from the form", async () => {
     vi.mocked(createProjectBrief).mockResolvedValue(briefTask);
     renderTasks("/tasks");

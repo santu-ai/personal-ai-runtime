@@ -446,6 +446,8 @@ export default function TasksPage() {
   );
   const handler = execution?.handler_execution;
   const executionFailed = handler?.status === "failed" || Boolean(handler?.dead_letter);
+  const rerun =
+    selected?.status === "failed" || (executionFailed && selected?.status === "running");
   const canExecute =
     selected &&
     !isAdoptedSuggestion(selected) &&
@@ -597,7 +599,7 @@ export default function TasksPage() {
                         )}
                         {canExecute && (
                           <Button size="sm" onClick={() => setConfirmExecute(true)} disabled={busy}>
-                            {executionFailed && selected.status === "running" ? "重新执行" : "执行"}
+                            {rerun ? "重新执行" : "执行"}
                           </Button>
                         )}
                         {canCancel && (
@@ -728,6 +730,8 @@ export default function TasksPage() {
                         ? "执行失败，尚未发布合格交付。可查看执行日志后重试。"
                         : "还没有交付结果。确认资料范围后执行任务。"}
                     </p>
+                  ) : selected.status === "failed" && canExecute ? (
+                    <p className="text-sm text-danger">上次执行已失败。可以重新执行。</p>
                   ) : executionFailed && selected.status === "running" ? (
                     <p className="text-sm text-danger">
                       上次执行已失败，任务仍显示为进行中。可以重新执行。
