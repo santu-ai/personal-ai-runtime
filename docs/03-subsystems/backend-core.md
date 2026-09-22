@@ -195,7 +195,7 @@ Scheduler 通过 `kernel.set_async_dispatcher()`（[`kernel.py`](../../backend/a
 | [`notification_channel.py`](../../backend/app/core/runtime/notification_channel.py) | 可插拔通道：`DesktopChannel`（WS 广播）、`WebhookChannel`（HTTP POST）、`NtfyChannel`（ntfy.sh）。`NotificationRouter.notify()` 扇出 |
 | [`notification_bridge.py`](../../backend/app/core/runtime/notification_bridge.py) | 同步→异步桥；`push_notification` 持久化+广播，`broadcast_event` 纯传输 |
 | [`telemetry/telemetry.py`](../../backend/app/core/telemetry/telemetry.py) | 记录每次 LLM 调用（`LLMCallRecord`）与工具调用（`ToolCallRecord`）到 `llm_calls`/`tool_calls` 表 |
-| [`world_model.py`](../../backend/app/core/agents/world_model.py) | 30 天滚动生活快照（活跃目标、近期完成、近期活动类型）。缓存；周 cron 刷新 |
+| [`world_model.py`](../../backend/app/core/agents/world_model.py) | 30 天滚动生活快照（活跃目标、近期完成、近期活动类型），并附上近 7 日与前 7 日对比（完成目标、完成任务、新邮件、采纳率，来自 `read_ports.compare_periods`，不落新表）。缓存；周 cron 刷新 |
 | [`user_profile.py`](../../backend/app/core/agents/user_profile.py) | 结构化画像（偏好/价值观/关系/健康/财务/职业），置信度评分、30 天时间衰减、冲突解决。经 `UserProfileUpdated` 事件写 |
 | [`startup_health.py`](../../backend/app/core/startup_health.py) | `run_startup_checks()` 校验存储路径、LLM 配置、认证、邮件。`enrich_with_mcp_status`、`sanitize_startup_for_public` |
 | [`rate_limit.py`](../../backend/app/core/rate_limit.py) | 内存令牌桶（按端点前缀）：`/api/chat` 30/60s、`/api/settings/llm/test` 5/60s、`/api/settings/email/test` 5/60s、`/api/inbox/poll` 10/60s、`/api/system/export` 3/60s |

@@ -8,8 +8,9 @@ claim-filtered recall).
 
 import asyncio
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
+from app.core.runtime import read_ports
 from app.product.personal_dashboard import generate_dashboard
 
 router = APIRouter(tags=["dashboard"])
@@ -27,3 +28,15 @@ async def get_dashboard():
     """
     # generate_dashboard does sync SQLite + Chroma — keep the event loop free.
     return await asyncio.to_thread(generate_dashboard)
+
+
+@router.get("/periods")
+async def period_comparison(days: int = Query(default=7, ge=1, le=30)):
+    """Compare the last N days with the previous N days.
+
+    Counts are rebuilt from existing events: completed goals, completed tasks
+    (task / action / background), recorded inbox mail, and adoption
+    (tool-suggestion grants plus memory confirmations). The split instant
+    belongs to the current window.
+    """
+    return await asyncio.to_thread(read_ports.compare_periods, days=days)

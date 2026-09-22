@@ -48,6 +48,7 @@
 | 方法 | 路径 | 认证 | 契约 | 摘要 |
 |---|---|---|---|---|
 | GET | `/api/dashboard` | auth | — | Get Dashboard |
+| GET | `/api/dashboard/periods` | auth | — | Period Comparison |
 
 ## inbox — `/api/inbox`（[`api/inbox.py`](../../backend/app/api/inbox.py)）
 

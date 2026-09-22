@@ -61,7 +61,7 @@ connectors, timeline, work_items
 | monitors | `/api/monitors` | 收件箱过滤器 CRUD、URL 变化监控 CRUD、`POST /url-monitors/check` | APP_STORAGE + 出站抓取 |
 | triggers | `/api/triggers` | CRUD | Kernel 事件 |
 | notifications | `/api/notifications` | 列表、`/{id}/read`、`/read-all` | Kernel 事件 |
-| dashboard | `/api/dashboard` | `GET /` | **只用 Kernel ABI**（一致性测试床） |
+| dashboard | `/api/dashboard` | `GET /`、`GET /periods`（近 N 日 vs 前 N 日：完成目标、完成任务、新邮件、采纳率；从既有事件重建） | **只用 Kernel ABI**（一致性测试床） |
 | system | `/api/system` | health/live/ready/info/mcp-status、export/import/encrypted、`DELETE /data` | 数据主权（含破坏性） |
 | settings_api | `/api/settings` | llm GET/PUT/test、email GET/PUT/test、prompt GET/PUT、notifications | DB 写 + 网络出口 + 文件写 |
 | telemetry_api | `/api/telemetry` | cost/summary/by-model、llm-calls、tool-calls、tool-summary、memory/stats、health、governance（`adoption`：工具建议采纳 + 记忆确认；通过/拒绝/过期读 `ApprovalGranted` / `ApprovalDenied`，`auto_allow` 与 `auto_expired` 不进采纳率） | 只读 |

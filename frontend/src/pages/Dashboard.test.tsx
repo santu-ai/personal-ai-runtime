@@ -41,7 +41,16 @@ vi.mock("../api/telemetry", () => ({
   getGovernanceSummary: vi.fn(),
 }));
 
+vi.mock("../api/system", async () => {
+  const actual = await vi.importActual<typeof import("../api/system")>("../api/system");
+  return {
+    ...actual,
+    getPeriodComparison: vi.fn(),
+  };
+});
+
 import { getGovernanceSummary } from "../api/telemetry";
+import { getPeriodComparison } from "../api/system";
 import { useDashboard } from "../hooks/useDashboard";
 import { useApprovalsQuery } from "../hooks/useApprovalsQuery";
 import { useInboxQuery } from "../hooks/useInboxQuery";
@@ -49,6 +58,7 @@ import { useGoalsQuery } from "../hooks/useGoalsQuery";
 import { useProposedMemoryCountQuery } from "../hooks/useMemoriesQuery";
 
 const mockGovernance = vi.mocked(getGovernanceSummary);
+const mockPeriodComparison = vi.mocked(getPeriodComparison);
 
 const mockUseDashboard = vi.mocked(useDashboard);
 const mockUseApprovalsQuery = vi.mocked(useApprovalsQuery);
@@ -124,6 +134,20 @@ describe("DashboardPage", () => {
       typeof useProposedMemoryCountQuery
     >);
     mockDashboardData();
+    mockPeriodComparison.mockResolvedValue({
+      days: 7,
+      current: { start: "2026-09-15T00:00:00+00:00", end: "2026-09-22T00:00:00+00:00" },
+      previous: { start: "2026-09-08T00:00:00+00:00", end: "2026-09-15T00:00:00+00:00" },
+      signals: {
+        goals_completed: { current: 2, previous: 1, delta: 1 },
+        tasks_completed: { current: 0, previous: 0, delta: 0 },
+        work_completed_untyped: { current: 0, previous: 0, delta: 0 },
+        inbox_recorded: { current: 3, previous: 1, delta: 2 },
+        adoption_decided: { current: 0, previous: 0, delta: 0 },
+        adoption_rate: { current: null, previous: null, delta: null },
+      },
+      capped: false,
+    });
     mockGovernance.mockResolvedValue({
       window_days: 7,
       tools_invoked: 0,
@@ -169,6 +193,8 @@ describe("DashboardPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("adoption-summary")).toHaveTextContent("近 7 日 67%");
     });
+    expect(screen.getByTestId("period-comparison")).toHaveTextContent("完成目标");
+    expect(screen.getByTestId("period-comparison")).toHaveTextContent("+1");
   });
 
   it("shows loading state", () => {

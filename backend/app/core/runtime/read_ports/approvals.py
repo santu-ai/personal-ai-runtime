@@ -83,18 +83,37 @@ def _suggestion_kind(event_type: str, payload: dict[str, Any] | None) -> str:
     return ""
 
 
-def summarize_suggestion_adoption(*, days: int = 7, limit: int = 500) -> dict[str, Any]:
+def summarize_suggestion_adoption(
+    *,
+    days: int = 7,
+    limit: int = 500,
+    since_ts: str | None = None,
+    until_ts: str | None = None,
+) -> dict[str, Any]:
     """User adoption of needs_user suggestions from ApprovalGranted / ApprovalDenied.
 
     One latest decision per approval id. ``ApproveCompleted`` is not used:
     that command result has ``status``, not ``decision``.
+
+    ``since_ts`` / ``until_ts`` override the rolling ``days`` window so a
+    caller can compare two closed periods. ``days`` stays on the result as
+    the nominal length of that window.
     """
-    since_ts = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+    if since_ts is None:
+        since_ts = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     granted = kernel().read_events(
-        type="ApprovalGranted", since_ts=since_ts, limit=limit, order="desc",
+        type="ApprovalGranted",
+        since_ts=since_ts,
+        until_ts=until_ts,
+        limit=limit,
+        order="desc",
     )
     denied = kernel().read_events(
-        type="ApprovalDenied", since_ts=since_ts, limit=limit, order="desc",
+        type="ApprovalDenied",
+        since_ts=since_ts,
+        until_ts=until_ts,
+        limit=limit,
+        order="desc",
     )
     latest: dict[str, tuple[tuple[int, str, int], str]] = {}
     for source_index, (event_type, events) in enumerate(

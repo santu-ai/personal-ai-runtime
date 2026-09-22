@@ -338,3 +338,218 @@ def mark_external_taint(correlation_id: str, *, reason: str) -> None:
         source="external_ingestion",
         reason=reason,
     )
+
+
+# Work completions and inbox arrivals are replayed from existing events.
+# Goal vs task comes from the work_items projection (WorkItemCreated payload
+# often has work_type; the status event usually does not).
+_TASK_WORK_TYPES = frozenset({"task", "action", "background"})
+_PERIOD_EVENT_CAP = 1000
+
+
+def _parse_ts(ts: str) -> datetime | None:
+    text = (ts or "").strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _as_utc(moment: datetime) -> datetime:
+    if moment.tzinfo is None:
+        return moment.replace(tzinfo=UTC)
+    return moment.astimezone(UTC)
+
+
+def _is_completion(event: Any) -> bool:
+    """True when this event records a work item reaching completed.
+
+    Goals complete via ``WorkItemStatusChanged``. Actions often emit
+    ``WorkItemUpdated(status=completed)`` and a follow-up ``completed_at``
+    stamp. Progress-only updates are not completions.
+    """
+    payload = getattr(event, "payload", None) or {}
+    event_type = getattr(event, "type", "")
+    status = payload.get("status")
+    if event_type == "WorkItemStatusChanged":
+        return status == "completed"
+    if event_type != "WorkItemUpdated":
+        return False
+    if status == "completed":
+        return True
+    completed_at = payload.get("completed_at")
+    return bool(completed_at) and status in (None, "completed")
+
+
+def _count_signal(current: int, previous: int) -> dict[str, int]:
+    return {"current": current, "previous": previous, "delta": current - previous}
+
+
+def _rate_signal(current: float | None, previous: float | None) -> dict[str, float | None]:
+    delta = None
+    if current is not None and previous is not None:
+        delta = current - previous
+    return {"current": current, "previous": previous, "delta": delta}
+
+
+def _work_types_for(item_ids: set[str]) -> dict[str, str]:
+    from app.core.runtime.read_ports.work import query_work_items
+
+    found: dict[str, str] = {}
+    pending = [item_id for item_id in item_ids if item_id]
+    for start in range(0, len(pending), 400):
+        rows = query_work_items(id_in=pending[start:start + 400])
+        for row in rows:
+            work_type = row.get("work_type")
+            item_id = str(row.get("id") or "")
+            if item_id and work_type:
+                found[item_id] = str(work_type)
+    return found
+
+
+def _split_completions(item_ids: set[str], types: dict[str, str]) -> dict[str, int]:
+    goals = tasks = untyped = 0
+    for item_id in item_ids:
+        kind = types.get(item_id)
+        if kind == "goal":
+            goals += 1
+        elif kind in _TASK_WORK_TYPES:
+            tasks += 1
+        else:
+            untyped += 1
+    return {
+        "goals_completed": goals,
+        "tasks_completed": tasks,
+        "work_completed_untyped": untyped,
+    }
+
+
+def compare_periods(
+    *,
+    days: int = 7,
+    limit: int = _PERIOD_EVENT_CAP,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Compare the last ``days`` with the previous ``days``.
+
+    Rebuilt from existing events only: work completions
+    (``WorkItemStatusChanged`` / ``WorkItemUpdated``), inbox arrivals
+    (``InboxEmailRecorded``), and the same adoption decisions as the trust
+    report (tool suggestions + memory claims). No new event type or table.
+
+    The split instant belongs to the current window. An item completed more
+    than once in one window counts once. Items whose projection is gone are
+    reported as ``work_completed_untyped`` instead of being guessed.
+    ``capped`` is true when a read hit ``limit`` and the counts may be short.
+    """
+    from app.core.runtime.read_ports.approvals import (
+        combine_adoption,
+        summarize_suggestion_adoption,
+    )
+    from app.core.runtime.read_ports.memory import summarize_claim_conversion
+
+    days = min(30, max(1, int(days)))
+    limit = max(1, int(limit))
+    moment = _as_utc(now or datetime.now(UTC))
+    current_start = moment - timedelta(days=days)
+    previous_start = moment - timedelta(days=days * 2)
+    previous_since = previous_start.isoformat()
+    current_until = moment.isoformat()
+    current_since = current_start.isoformat()
+    previous_until = (current_start - timedelta(microseconds=1)).isoformat()
+
+    def bucket(ts: str) -> str | None:
+        parsed = _parse_ts(ts)
+        if parsed is None:
+            return None
+        if current_start <= parsed <= moment:
+            return "current"
+        if previous_start <= parsed < current_start:
+            return "previous"
+        return None
+
+    def read_events(**filters: Any) -> list[Any]:
+        return kernel().read_events(
+            since_ts=previous_since,
+            until_ts=current_until,
+            limit=limit,
+            order="desc",
+            **filters,
+        )
+
+    work_events = read_events(types=["WorkItemStatusChanged", "WorkItemUpdated"])
+    inbox_events = read_events(type="InboxEmailRecorded")
+    capped = len(work_events) >= limit or len(inbox_events) >= limit
+
+    completions: dict[str, set[str]] = {"current": set(), "previous": set()}
+    for event in work_events:
+        if not _is_completion(event):
+            continue
+        which = bucket(str(getattr(event, "ts", "") or ""))
+        aggregate_id = str(getattr(event, "aggregate_id", "") or "")
+        if which and aggregate_id:
+            completions[which].add(aggregate_id)
+
+    types = _work_types_for(completions["current"] | completions["previous"])
+    current_work = _split_completions(completions["current"], types)
+    previous_work = _split_completions(completions["previous"], types)
+
+    inbox: dict[str, set[str]] = {"current": set(), "previous": set()}
+    for event in inbox_events:
+        which = bucket(str(getattr(event, "ts", "") or ""))
+        aggregate_id = str(getattr(event, "aggregate_id", "") or "")
+        if which and aggregate_id:
+            inbox[which].add(aggregate_id)
+
+    def adoption_for(since: str, until: str) -> dict[str, Any]:
+        nonlocal capped
+        suggestions = summarize_suggestion_adoption(
+            days=days, limit=limit, since_ts=since, until_ts=until,
+        )
+        memories = summarize_claim_conversion(
+            days=days, limit=limit, since_ts=since, until_ts=until,
+        )
+        if suggestions.get("capped") or memories.get("capped"):
+            capped = True
+        return combine_adoption(suggestions, memories)
+
+    current_adoption = adoption_for(current_since, current_until)
+    previous_adoption = adoption_for(previous_since, previous_until)
+
+    return {
+        "days": days,
+        "current": {"start": current_since, "end": current_until},
+        "previous": {"start": previous_since, "end": current_since},
+        "signals": {
+            "goals_completed": _count_signal(
+                current_work["goals_completed"], previous_work["goals_completed"],
+            ),
+            "tasks_completed": _count_signal(
+                current_work["tasks_completed"], previous_work["tasks_completed"],
+            ),
+            "work_completed_untyped": _count_signal(
+                current_work["work_completed_untyped"],
+                previous_work["work_completed_untyped"],
+            ),
+            "inbox_recorded": _count_signal(len(inbox["current"]), len(inbox["previous"])),
+            "adoption_decided": _count_signal(
+                int(current_adoption["decided"]), int(previous_adoption["decided"]),
+            ),
+            "adoption_rate": _rate_signal(
+                current_adoption.get("adoption_rate"),
+                previous_adoption.get("adoption_rate"),
+            ),
+        },
+        "adoption": {
+            "current": current_adoption,
+            "previous": previous_adoption,
+        },
+        "capped": capped,
+    }
