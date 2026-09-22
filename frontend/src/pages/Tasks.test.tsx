@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes } from "react-router-dom";
 import { renderWithRouter } from "../test-utils";
 import TasksPage from "./Tasks";
@@ -320,6 +320,63 @@ describe("TasksPage", () => {
     await waitFor(() => {
       expect(executeWorkItem).toHaveBeenCalledWith("task_1");
     });
+  });
+
+  it("keeps rerunnable failed tasks in the active group with a badge", async () => {
+    const rerunnable: WorkItem = {
+      ...sampleTask,
+      id: "failed_rerun",
+      title: "可重跑失败",
+      status: "failed",
+    };
+    const noPlan: WorkItem = {
+      ...sampleTask,
+      id: "failed_done",
+      title: "无法再执行",
+      status: "failed",
+      executable_plan: null,
+    };
+    const adopted: WorkItem = {
+      ...sampleTask,
+      id: "failed_adopted",
+      title: "失败的简报待办",
+      status: "failed",
+      executable_plan: JSON.stringify({ kind: "adopted_suggestion", steps: [] }),
+    };
+    const done: WorkItem = {
+      ...sampleTask,
+      id: "done_1",
+      title: "已完成任务",
+      status: "completed",
+    };
+    const cancelled: WorkItem = {
+      ...sampleTask,
+      id: "cancelled_1",
+      title: "已取消任务",
+      status: "cancelled",
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [rerunnable, noPlan, adopted, done, cancelled, sampleTask];
+      return [];
+    });
+    renderTasks("/tasks");
+
+    const active = await screen.findByRole("region", { name: "进行中" });
+    expect(within(active).getByText("可重跑失败")).toBeInTheDocument();
+    expect(within(active).getByText("可重新执行")).toBeInTheDocument();
+    expect(within(active).getByText("整理报告")).toBeInTheDocument();
+    expect(within(active).queryByText("无法再执行")).not.toBeInTheDocument();
+    expect(within(active).queryByText("失败的简报待办")).not.toBeInTheDocument();
+    expect(within(active).queryByText("已完成任务")).not.toBeInTheDocument();
+    expect(within(active).queryByText("已取消任务")).not.toBeInTheDocument();
+
+    const history = screen.getByRole("region", { name: "历史" });
+    expect(within(history).getByText("无法再执行")).toBeInTheDocument();
+    expect(within(history).getByText("失败的简报待办")).toBeInTheDocument();
+    expect(within(history).getByText("已完成任务")).toBeInTheDocument();
+    expect(within(history).getByText("已取消任务")).toBeInTheDocument();
+    expect(within(history).queryByText("可重新执行")).not.toBeInTheDocument();
+    expect(within(history).queryByText("可重跑失败")).not.toBeInTheDocument();
   });
 
   it("labels a failed task without a handler row as 重新执行", async () => {

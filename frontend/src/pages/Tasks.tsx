@@ -116,6 +116,10 @@ function isAdoptedSuggestion(item: WorkItem | null | undefined): boolean {
   return planObject(item)?.kind === "adopted_suggestion";
 }
 
+function isRerunnableFailed(item: WorkItem): boolean {
+  return item.status === "failed" && !isAdoptedSuggestion(item) && Boolean(item.executable_plan);
+}
+
 function taskKindLabel(item: WorkItem): string {
   if (isProjectBrief(item)) return "项目简报";
   if (isAdoptedSuggestion(item)) return "来自简报";
@@ -258,7 +262,7 @@ export default function TasksPage() {
     const active: WorkItem[] = [];
     const terminal: WorkItem[] = [];
     for (const item of items) {
-      if (ACTIVE_STATUSES.has(item.status)) active.push(item);
+      if (ACTIVE_STATUSES.has(item.status) || isRerunnableFailed(item)) active.push(item);
       else terminal.push(item);
     }
     return { active, terminal };
@@ -419,9 +423,16 @@ export default function TasksPage() {
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm text-fg-primary truncate">{item.title}</span>
-                  <span className={`text-xs shrink-0 ${statusClass(item.status)}`}>
-                    {statusLabel(item.status)}
+                  <span className="min-w-0 truncate text-sm text-fg-primary">{item.title}</span>
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    {isRerunnableFailed(item) ? (
+                      <span className="rounded-full bg-danger/15 px-1.5 py-0.5 text-xs text-danger">
+                        可重新执行
+                      </span>
+                    ) : null}
+                    <span className={`text-xs ${statusClass(item.status)}`}>
+                      {statusLabel(item.status)}
+                    </span>
                   </span>
                 </div>
                 <div className="mt-0.5 flex items-center gap-2 text-xs text-fg-tertiary">
@@ -522,11 +533,11 @@ export default function TasksPage() {
                 <p className="text-sm text-fg-tertiary">暂无其他任务</p>
               ) : (
                 <div className="space-y-6">
-                  <section>
+                  <section aria-label="进行中">
                     <p className="section-label mb-2 px-1">进行中</p>
                     {renderList(grouped.active, "没有进行中的任务")}
                   </section>
-                  <section>
+                  <section aria-label="历史">
                     <p className="section-label mb-2 px-1">历史</p>
                     {renderList(grouped.terminal, "没有历史任务")}
                   </section>

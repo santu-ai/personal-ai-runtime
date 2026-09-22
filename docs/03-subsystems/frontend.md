@@ -21,7 +21,7 @@
 | `/chat/:conversationId` | `pages/ChatPage.tsx` | 活跃会话 → `ChatView` |
 | `/goals` | `pages/Goals.tsx` | 目标列表 + 详情。与其他主页面共用 `page-shell`；窄屏选中后只显示详情，可返回列表。进度经 `goalProgressPercent`：0–1 乘 100；大于 1 视为已经是百分比，显示不超过 100 |
 | `/goals/:goalId` | `pages/Goals.tsx` | 同上，直接打开该目标详情 |
-| `/tasks` | `pages/Tasks.tsx` | 任务列表 + 详情。与目标页共用 `page-shell`；窄屏选中后只显示详情，可返回列表。可创建项目资料简报。有评审或已转任务时展示近 30 日首版采纳、返工、已转任务和平均评审耗时，以及按交付执行归因的审批次数、恢复次数和模型成本（接口值为 unavailable 时显示「未分开计」） |
+| `/tasks` | `pages/Tasks.tsx` | 任务列表 + 详情。与目标页共用 `page-shell`；窄屏选中后只显示详情，可返回列表。列表分「进行中」「历史」：失败且带 `executable_plan`、且不是简报待办的任务留在「进行中」，行上标「可重新执行」；没有计划的失败、已完成和已取消在「历史」。可创建项目资料简报。有评审或已转任务时展示近 30 日首版采纳、返工、已转任务和平均评审耗时，以及按交付执行归因的审批次数、恢复次数和模型成本（接口值为 unavailable 时显示「未分开计」） |
 | `/tasks/:taskId` | `pages/Tasks.tsx` | 同上，直接打开该任务详情：交付结果优先，可验收/返工；执行日志可折叠。状态为 failed，或仍为 running 且最新 handler 已失败或死信时，主按钮显示「重新执行」 |
 | `/inbox` | `pages/Inbox.tsx` | 未读分拣三列（重要 / 需跟进 / 可忽略）+ 最近 15 封（仅标题与发件人，未读加粗）+ 最近同步时间/结果/失败原因与重试 |
 | `/memories` | `pages/Memories.tsx` | 记忆列表 + 图谱（含 `?tab=portrait` 画像、`?tab=review` 待确认 triage：筛选/批量确认拒绝） |
