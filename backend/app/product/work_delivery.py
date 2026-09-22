@@ -1083,6 +1083,11 @@ _APPROVAL_LOOKBACK = timedelta(days=7)
 _COST_LOOKBACK = timedelta(days=1)
 _INTERRUPTION = "interrupted"
 _INTERRUPTED_BEFORE_AUDIT = "interrupted_before_audit"
+# One process start emits handler replay (Scheduler._recover) and then the
+# capability-intent audit closure (RuntimeLoop.start). 60s covers a slow
+# start. A later crash carries its own handler replay, so this window does
+# not merge distinct interruptions.
+_RECOVERY_TWIN_WINDOW = timedelta(seconds=60)
 
 
 def _event_payload(event: Any) -> dict[str, Any]:
@@ -1100,6 +1105,47 @@ def _safe_int(value: Any) -> int:
         return int(value or 0)
     except (TypeError, ValueError):
         return 0
+
+
+def _event_correlation(event: Any) -> str:
+    payload = _event_payload(event)
+    return str(event.correlation_id or payload.get("correlation_id") or "").strip()
+
+
+def _event_moment(event: Any) -> datetime | None:
+    return _metric_datetime(getattr(event, "ts", None))
+
+
+def _handler_interruption(event: Any, payload: dict[str, Any]) -> bool:
+    """Scheduler replay of one crash, not the follow-up pending enqueue."""
+    if event.type == EVENT_EXECUTION_RETRIED:
+        return (
+            payload.get("reason") == _INTERRUPTION
+            and payload.get("status") == "retrying"
+        )
+    return event.type == EVENT_EXECUTION_FAILED and payload.get("error") == _INTERRUPTION
+
+
+def _capability_twins_handler(
+    correlation: str,
+    event: Any,
+    handler_recoveries: list[tuple[str, datetime | None]],
+) -> bool:
+    """True when this audit gap is the same crash as a nearby handler replay.
+
+    ``CapabilityFailed(error=interrupted_before_audit)`` has no execution id.
+    The join is the handler correlation. Events from one ``RuntimeLoop.start``
+    sit inside ``_RECOVERY_TWIN_WINDOW``; a later unaudited call does not.
+    """
+    moment = _event_moment(event)
+    for linked, at in handler_recoveries:
+        if linked != correlation:
+            continue
+        if moment is None or at is None:
+            return True
+        if abs(moment - at) <= _RECOVERY_TWIN_WINDOW:
+            return True
+    return False
 
 
 def _execution_ids_in_window(
@@ -1141,12 +1187,15 @@ def _attribute_delivery_activity(
 
     Joins existing events only. Approvals are high-risk ``ApprovalRequested``
     rows on the execution correlation, plus ``CapabilityDenied`` rows whose
-    ``caused_by`` is that execution. Recoveries are scheduler
-    ``ExecutionRetried(reason=interrupted)`` / ``ExecutionFailed(error=interrupted)``
-    and ``CapabilityFailed(error=interrupted_before_audit)`` on the same
-    correlation. Model cost sums ``LLMCallRecorded`` with
-    ``purpose=project_brief`` and ``caused_by`` equal to the execution id.
-    Calls that omit ``caused_by`` stay unattributable.
+    ``caused_by`` is that execution. One crash recovery is one count: scheduler
+    ``ExecutionRetried(reason=interrupted, status=retrying)`` or
+    ``ExecutionFailed(error=interrupted)``, keyed by execution and attempt.
+    ``CapabilityFailed(error=interrupted_before_audit)`` on that correlation is
+    the audit-closure twin of the same start, so it does not add a second
+    recovery when it falls within ``_RECOVERY_TWIN_WINDOW`` of the replay.
+    An audit gap with no nearby handler replay still counts. Model cost sums
+    ``LLMCallRecorded`` with ``purpose=project_brief`` and ``caused_by`` equal
+    to the execution id. Calls that omit ``caused_by`` stay unattributable.
     """
     zeros = {
         "approval_interventions": 0,
@@ -1159,15 +1208,18 @@ def _attribute_delivery_activity(
     capped = False
     approvals: set[str] = set()
     correlations: set[str] = set()
+    execution_correlations: dict[str, set[str]] = {}
     recoveries = 0
     recovery_seen: set[str] = set()
+    handler_recoveries: list[tuple[str, datetime | None]] = []
 
-    def mark_recovery(key: str) -> None:
+    def mark_recovery(key: str) -> bool:
         nonlocal recoveries
         if key in recovery_seen:
-            return
+            return False
         recovery_seen.add(key)
         recoveries += 1
+        return True
 
     for execution_id in execution_ids:
         requested = kernel.read_events(
@@ -1178,12 +1230,10 @@ def _attribute_delivery_activity(
             limit=5,
         )
         for event in requested:
-            payload = _event_payload(event)
-            correlation = str(
-                event.correlation_id or payload.get("correlation_id") or "",
-            ).strip()
+            correlation = _event_correlation(event)
             if correlation:
                 correlations.add(correlation)
+                execution_correlations.setdefault(execution_id, set()).add(correlation)
 
         lifecycle = kernel.read_events(
             aggregate_type=AGGREGATE_EXECUTION,
@@ -1196,15 +1246,21 @@ def _attribute_delivery_activity(
             capped = True
         for event in lifecycle:
             payload = _event_payload(event)
-            if event.type == EVENT_EXECUTION_RETRIED:
-                if payload.get("reason") != _INTERRUPTION or payload.get("status") != "retrying":
-                    continue
-            elif payload.get("error") != _INTERRUPTION:
+            if not _handler_interruption(event, payload):
                 continue
-            mark_recovery(
+            key = (
                 f"{execution_id}:{event.type}:{_safe_int(payload.get('attempt'))}:"
-                f"{payload.get('status') or ''}",
+                f"{payload.get('status') or ''}"
             )
+            if not mark_recovery(key):
+                continue
+            linked = _event_correlation(event)
+            linked_ids = (
+                {linked} if linked else set(execution_correlations.get(execution_id, ()))
+            )
+            moment = _event_moment(event)
+            for correlation in linked_ids:
+                handler_recoveries.append((correlation, moment))
 
     for correlation in correlations:
         approval_events = kernel.read_events(
@@ -1230,6 +1286,8 @@ def _attribute_delivery_activity(
             capped = True
         for event in failed:
             if _event_payload(event).get("error") != _INTERRUPTED_BEFORE_AUDIT:
+                continue
+            if _capability_twins_handler(correlation, event, handler_recoveries):
                 continue
             mark_recovery(str(event.id))
 
