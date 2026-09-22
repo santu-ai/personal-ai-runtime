@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-09-22：前端依赖范围内 patch/minor 已升（react-query 5.103.2、vite 8.3.0、vitest 5.0.1、eslint 10.11.0 等）；跳过 typescript 7（typescript-eslint 仍要 TS 6 API）与 jsdom 30（engines 要求 Node ≥22.22.2，镜像是 node:20）。
 - 2026-09-22：`main` 已包含 #80–#85。简报自己的近 30 日首版采纳、返工、已转任务和评审耗时在 `GET /api/work-items/delivery-metrics`，任务页有评审时展示。审批次数、恢复次数和模型成本仍不能按简报归因。全局周期对比、Chat `ask_user`、工具/记忆采纳率仍是另一组指标。
 - 依赖 pin 以 `backend/requirements.txt` / `frontend/package.json` / `desktop/package.json` 为准：`openai==3.16.2`、`mcp==2.2.0`、`pypdf==6.19.0`、`cryptography==50.0.1`；前端 React 19.3 / Vite 8 / lucide-react 1.47；桌面 Electron 44。
 - 本机若用系统 `mcp` 1.x，mypy 可能误报；lock 钉 `mcp==2.2.0`，CI 用 lock。
@@ -14,6 +15,7 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
+| 2026-09-22 | 前端依赖 patch/minor：query 5.103.2、router 7.18.4、vite 8.3.0、vitest 5.0.1、eslint 10.11、prettier 3.9.8；传递依赖 brace-expansion 5.0.12、undici 7.29.1 | 未升 typescript 7 / jsdom 30 |
 | 2026-09-22 | 文档与代码对齐：重生参考表无 diff；改过期叙事（Electron/Vite/mcp pin、侧栏、WS 失效、桌面启动顺序、测试文件数） | 未改 CI 守卫 |
 | 2026-09-22 | Dependabot #69/#72/#73/#76：pypdf 6.19.0、ruff 0.16.8、openai 3.16.2、lucide-react 1.47.0 | #84，未关 Dependabot PR |
 | 2026-09-22 | 周期对比写入早安简报，并走通今日页 Playwright | #83 |
