@@ -5,7 +5,7 @@
 
 ## 当前状态
 
-- 当前分支：`main`（本地领先 origin，未推远程）
+- 当前分支：`cursor/dependabot-safe-upgrades-936d`（Dependabot #66、#68–#78 安全升级汇总，未合 main）
 - 进行中任务 / WIP：spill 已落地；ask_user 未做
 - 已知坏点 / 待办：日用库不在本机 Windows（soak 默认空库 `data/personal_ai.db`）；本机无 Telegram token，真实收发 blocked
 - 最近审阅：2026-09-01 从 deepseek-harness 对齐「模型可见 ⟺ 可重建」，用 checkpoint 替换静默截断
@@ -42,6 +42,7 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
+| 2026-09-22 | 汇总 Dependabot #66、#68–#78：backend lock 重生（alembic/openai/pypdf/mcp/ruff）；frontend react+react-dom 19.3.0 同步；desktop electron 44.4.3 / vitest 5.0.1 | 不关 Dependabot PR，不合 main |
 | 2026-09-01 | spill：超大工具结果外溢到 DATA_DIR/spills，对话行只存 preview；mcp_hub 不再 8k 静默截断 | 无新事件类型 |
 | 2026-09-01 | recorded-session：脚本 LLM + 真 Brain/Kernel 回放 text/read_file/write 审批 | 无密钥 loop 回归 |
 | 2026-09-01 | 会话压缩：超窗写 MessageAppended checkpoint，去掉静默截断；顺带修 get_history 取最旧 50 条 | 无新事件类型 |
