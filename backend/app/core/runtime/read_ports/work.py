@@ -465,7 +465,14 @@ def request_work_item_execute(item_id: str) -> dict[str, Any]:
     status = item.get("status") or "pending"
     if status in _TERMINAL_EXECUTE_STATUSES:
         raise ValueError(f"Work item already terminal ({status})")
-    if status in _BLOCKED_EXECUTE_STATUSES:
+    # A dead-lettered handler leaves the work item ``running``. That is not
+    # an in-flight execution; the user can start again.
+    handler_failed = False
+    if status == "running":
+        from app.core.runtime.runtime_loop import latest_execute_handler_failed
+
+        handler_failed = latest_execute_handler_failed(item_id)
+    if status in _BLOCKED_EXECUTE_STATUSES and not handler_failed:
         raise ValueError(
             f"Work item is {status}; wait for completion or resolve approval"
         )

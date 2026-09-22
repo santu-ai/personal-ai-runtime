@@ -435,14 +435,15 @@ export default function TasksPage() {
     ([, v]) => v !== undefined && v !== null && String(v).length > 0,
   );
   const handler = execution?.handler_execution;
+  const executionFailed = handler?.status === "failed" || Boolean(handler?.dead_letter);
   const canExecute =
     selected &&
     !isAdoptedSuggestion(selected) &&
     Boolean(selected.executable_plan) &&
-    selected.status !== "running" &&
     selected.status !== "waiting_approval" &&
     selected.status !== "cancelled" &&
-    selected.status !== "completed";
+    selected.status !== "completed" &&
+    (selected.status !== "running" || executionFailed);
   const canComplete = Boolean(
     selected && isAdoptedSuggestion(selected) && selected.status === "pending",
   );
@@ -561,7 +562,7 @@ export default function TasksPage() {
                   )}
                   {canExecute && (
                     <Button size="sm" onClick={() => setConfirmExecute(true)} disabled={busy}>
-                      执行
+                      {executionFailed && selected.status === "running" ? "重新执行" : "执行"}
                     </Button>
                   )}
                   {canCancel && (
@@ -686,9 +687,13 @@ export default function TasksPage() {
               </section>
             ) : isProjectBrief(selected) ? (
               <p className="text-sm text-fg-tertiary">
-                {selected.status === "failed"
+                {selected.status === "failed" || executionFailed
                   ? "执行失败，尚未发布合格交付。可查看执行日志后重试。"
                   : "还没有交付结果。确认资料范围后执行任务。"}
+              </p>
+            ) : executionFailed && selected.status === "running" ? (
+              <p className="text-sm text-danger">
+                上次执行已失败，任务仍显示为进行中。可以重新执行。
               </p>
             ) : null}
 

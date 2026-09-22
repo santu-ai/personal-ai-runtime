@@ -405,9 +405,19 @@ class RuntimeLoop:
     # --- Crash recovery for work items -------------------------------------------
 
     def _recover_interrupted_background_tasks(self) -> int:
-        """Recover running work whose dispatch was interrupted by restart."""
+        """Recover running work whose dispatch was interrupted by restart.
+
+        A handler that is still pending, running, or retrying stays with the
+        scheduler. A failed handler closes the work item as ``failed`` so a
+        dead-lettered run is not started again under a fresh retry budget.
+        A completed handler is not replayed; an ``ExecuteCompleted`` caused by
+        that same request can still sync the work-item status. Only a running
+        row with no handler row is re-queued (background) or given the missing
+        ``ExecuteRequested`` (planned task/action).
+        """
         from app.core.runtime.kernel.constants import (
             AGGREGATE_WORK_ITEM,
+            EVENT_EXECUTE_COMPLETED,
             EVENT_EXECUTE_REQUESTED,
             EVENT_WORK_ITEM_STATUS_CHANGED,
             EVENT_WORK_ITEM_UPDATED,
@@ -425,12 +435,6 @@ class RuntimeLoop:
 
         recovered = 0
         scheduled = kernel.read_scheduled_executions()
-        active_event_ids = {
-            item.event_id
-            for item in scheduled
-            if item.status not in {"completed", "failed"}
-        }
-        known_event_ids = {item.event_id for item in scheduled}
         for row in rows:
             work_id = row["id"]
             try:
@@ -442,13 +446,35 @@ class RuntimeLoop:
                     limit=1,
                 )
                 latest_id = events[0].id if events else None
-                if latest_id and latest_id in active_event_ids:
+                handlers = [
+                    item for item in scheduled if latest_id and item.event_id == latest_id
+                ]
+                if any(item.status not in _TERMINAL_HANDLER_STATUSES for item in handlers):
+                    continue
+                if any(item.status == "failed" for item in handlers):
+                    error = next(
+                        (str(item.error) for item in handlers if item.error),
+                        "execution_failed",
+                    )
+                    kernel.emit_event(
+                        EVENT_WORK_ITEM_STATUS_CHANGED,
+                        AGGREGATE_WORK_ITEM,
+                        work_id,
+                        payload={"status": "failed", "error": error[:500]},
+                        actor="kernel",
+                    )
+                    recovered += 1
+                    continue
+                if handlers:
+                    if _sync_completed_execute_status(
+                        work_id,
+                        latest_id or "",
+                        event_type=EVENT_EXECUTE_COMPLETED,
+                        status_event=EVENT_WORK_ITEM_STATUS_CHANGED,
+                    ):
+                        recovered += 1
                     continue
                 if row.get("work_type") != "background":
-                    # Only the gap after status=running and before a handler row.
-                    # A finished handler must not be started again.
-                    if latest_id and latest_id in known_event_ids:
-                        continue
                     if row.get("work_type") == "goal" or not row.get("executable_plan"):
                         continue
                     read_ports.ensure_work_item_execute_requested(work_id)
@@ -600,8 +626,9 @@ class RuntimeLoop:
                             actor="background",
                         )
             except asyncio.CancelledError:
-                # Shutdown cancel: leave row as running; start() recovery
-                # re-queues it as pending on next process boot.
+                # Shutdown cancel: leave the work item running. The next boot
+                # replays a still-active handler, or closes the item if that
+                # handler has already failed.
                 raise
             except Exception:
                 logger.exception("Background work item %s failed", w_id)
@@ -630,6 +657,83 @@ class RuntimeLoop:
         task: asyncio.Task[None] = asyncio.create_task(coro)
         self._bg_tasks.add(task)
         task.add_done_callback(self._bg_tasks.discard)
+
+
+_TERMINAL_HANDLER_STATUSES = frozenset({"completed", "failed"})
+_EXECUTE_COMPLETED_TO_WORK = {
+    "success": "completed",
+    "error": "failed",
+    "waiting_approval": "waiting_approval",
+    "cancelled": "cancelled",
+    "empty": "failed",
+}
+
+
+def latest_execute_handler_failed(item_id: str) -> bool:
+    """True when the newest ``ExecuteRequested`` has only terminal failed rows.
+
+    An in-flight handler blocks the answer. Used so a dead-lettered run can be
+    started again without treating a live ``running`` row as idle.
+    """
+    from app.core.runtime.kernel.constants import EVENT_EXECUTE_REQUESTED
+
+    events = kernel.read_events(
+        type=EVENT_EXECUTE_REQUESTED,
+        aggregate_type="action",
+        aggregate_id=f"exec_{item_id}",
+        order="desc",
+        limit=1,
+    )
+    if not events:
+        return False
+    event_id = events[0].id
+    rows = [
+        item
+        for item in kernel.read_scheduled_executions()
+        if item.event_id == event_id
+    ]
+    if not rows or any(item.status not in _TERMINAL_HANDLER_STATUSES for item in rows):
+        return False
+    return any(item.status == "failed" for item in rows)
+
+
+def _sync_completed_execute_status(
+    work_id: str,
+    execute_event_id: str,
+    *,
+    event_type: str,
+    status_event: str,
+) -> bool:
+    """Apply the ``ExecuteCompleted`` outcome for this request, if one exists."""
+    from app.core.runtime.kernel.constants import AGGREGATE_WORK_ITEM
+
+    if not execute_event_id:
+        return False
+    events = kernel.read_events(
+        type=event_type,
+        aggregate_type="action",
+        aggregate_id=f"exec_{work_id}",
+        order="desc",
+        limit=20,
+    )
+    matched = next(
+        (event for event in events if getattr(event, "caused_by", None) == execute_event_id),
+        None,
+    )
+    if matched is None:
+        return False
+    payload = matched.payload if isinstance(matched.payload, dict) else {}
+    work_status = _EXECUTE_COMPLETED_TO_WORK.get(str(payload.get("status") or ""))
+    if not work_status:
+        return False
+    kernel.emit_event(
+        status_event,
+        AGGREGATE_WORK_ITEM,
+        work_id,
+        payload={"status": work_status},
+        actor="kernel",
+    )
+    return True
 
 
 runtime_loop = _LazyProxy(lambda: runtime.runtime_loop)

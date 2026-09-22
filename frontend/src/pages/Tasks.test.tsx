@@ -229,6 +229,40 @@ describe("TasksPage", () => {
     });
   });
 
+  it("offers retry when a running task's handler has already failed", async () => {
+    const stuck: WorkItem = {
+      ...sampleTask,
+      status: "running",
+      execution: {
+        steps: [{ tool: "write_file" }, { tool: "send_email" }],
+        resume_from: 0,
+        previous_output: {},
+        handler_execution: {
+          id: "wi_dead",
+          status: "failed",
+          dead_letter: true,
+          retry_count: 2,
+          handler_name: "on_execute_requested",
+          started_at: "2026-08-06T00:00:00Z",
+          completed_at: "2026-08-06T00:01:00Z",
+        },
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [stuck];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(stuck);
+    renderTasks("/tasks/task_1");
+
+    expect(await screen.findByText(/上次执行已失败/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重新执行" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认执行" }));
+    await waitFor(() => {
+      expect(executeWorkItem).toHaveBeenCalledWith("task_1");
+    });
+  });
+
   it("creates a project brief from the form", async () => {
     vi.mocked(createProjectBrief).mockResolvedValue(briefTask);
     renderTasks("/tasks");
