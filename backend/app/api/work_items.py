@@ -87,6 +87,10 @@ class DeliveryDecisionRequest(BaseModel):
     idempotency_key: str | None = Field(default=None, max_length=128)
 
 
+class AdoptSuggestedActionRequest(BaseModel):
+    idempotency_key: str | None = Field(default=None, max_length=128)
+
+
 def _validate_score(name: str, value: object) -> float:
     if not isinstance(value, (int, float, str)):
         raise HTTPException(status_code=400, detail=f"{name} must be a number")
@@ -311,6 +315,32 @@ async def rework_work_delivery(item_id: str, delivery_id: str, body: DeliveryDec
             item_id,
             delivery_id,
             reason=body.reason,
+            idempotency_key=body.idempotency_key,
+            actor="user",
+        )
+    except Exception as exc:
+        raise _delivery_http_error(exc) from exc
+
+
+@router.post("/{item_id}/deliveries/{delivery_id}/actions/{action_index}/adopt")
+async def adopt_suggested_action(
+    item_id: str,
+    delivery_id: str,
+    action_index: int,
+    body: AdoptSuggestedActionRequest,
+):
+    """Turn one current suggested action into a task. Repeats return the same task."""
+    from app.product.work_delivery import adopt_suggested_action as _adopt
+
+    if action_index < 0:
+        raise HTTPException(status_code=400, detail="action_index must be >= 0")
+    if not read_ports.query_work_item(item_id):
+        raise HTTPException(status_code=404, detail="Work item not found")
+    try:
+        return _adopt(
+            item_id,
+            delivery_id,
+            action_index,
             idempotency_key=body.idempotency_key,
             actor="user",
         )

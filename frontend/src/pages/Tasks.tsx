@@ -3,11 +3,13 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
   acceptWorkDelivery,
+  adoptSuggestedAction,
   cancelWorkItem,
   createProjectBrief,
   executeWorkItem,
   getWorkDelivery,
   reworkWorkDelivery,
+  updateWorkItemStatus,
   type WorkDelivery,
   type WorkItem,
 } from "../api/client";
@@ -88,9 +90,34 @@ function formatPlanConfirmDescription(
   return `将从第 ${start} / ${steps.length} 步开始执行：\n${lines.join("\n")}`;
 }
 
+function planObject(item: WorkItem | null | undefined): Record<string, unknown> | null {
+  const raw = item?.executable_plan;
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
 function isProjectBrief(item: WorkItem | null | undefined): boolean {
-  const plan = item?.executable_plan || "";
-  return plan.includes("project_brief");
+  const plan = planObject(item);
+  if (plan?.kind === "project_brief" || plan?.kind === "adopted_suggestion") {
+    return plan.kind === "project_brief";
+  }
+  return (item?.executable_plan || "").includes("project_brief");
+}
+
+function isAdoptedSuggestion(item: WorkItem | null | undefined): boolean {
+  return planObject(item)?.kind === "adopted_suggestion";
+}
+
+function taskKindLabel(item: WorkItem): string {
+  if (isProjectBrief(item)) return "项目简报";
+  if (isAdoptedSuggestion(item)) return "来自简报";
+  if (item.work_type === "background") return "后台";
+  return "任务";
 }
 
 function newIdempotencyKey(prefix: string): string {
@@ -125,6 +152,7 @@ export default function TasksPage() {
   const [historyError, setHistoryError] = useState<string | null>(null);
   const executeInFlight = useRef(false);
   const acceptKey = useRef<string | null>(null);
+  const adoptKeys = useRef<Record<number, string>>({});
 
   const notFound =
     Boolean(urlTaskId) &&
@@ -141,6 +169,7 @@ export default function TasksPage() {
     setHistoryError(null);
     setHistoryLoading(false);
     acceptKey.current = null;
+    adoptKeys.current = {};
   }, [urlTaskId]);
 
   useEffect(() => {
@@ -278,6 +307,37 @@ export default function TasksPage() {
     }
   };
 
+  const handleAdopt = async (delivery: WorkDelivery, actionIndex: number) => {
+    if (!selected) return;
+    setBusy(true);
+    if (!adoptKeys.current[actionIndex]) {
+      adoptKeys.current[actionIndex] = newIdempotencyKey("adopt");
+    }
+    try {
+      await adoptSuggestedAction(selected.id, delivery.delivery_id, actionIndex, {
+        idempotency_key: adoptKeys.current[actionIndex],
+      });
+      invalidate();
+    } catch (err) {
+      addError(err instanceof ApiError ? err.message : "转为任务失败", "任务");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleComplete = async () => {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      await updateWorkItemStatus(selected.id, "completed");
+      invalidate();
+    } catch (err) {
+      addError(err instanceof ApiError ? err.message : "完成任务失败", "任务");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleRework = async () => {
     if (!selected) return;
     const current = selected.delivery_bundle?.current;
@@ -324,7 +384,7 @@ export default function TasksPage() {
                   </span>
                 </div>
                 <div className="mt-0.5 flex items-center gap-2 text-xs text-fg-tertiary">
-                  <span>{isProjectBrief(item) ? "项目简报" : item.work_type === "background" ? "后台" : "任务"}</span>
+                  <span>{taskKindLabel(item)}</span>
                   <span>·</span>
                   <span>{timeAgo(item.updated_at || item.created_at)}</span>
                 </div>
@@ -346,11 +406,15 @@ export default function TasksPage() {
   const handler = execution?.handler_execution;
   const canExecute =
     selected &&
+    !isAdoptedSuggestion(selected) &&
     Boolean(selected.executable_plan) &&
     selected.status !== "running" &&
     selected.status !== "waiting_approval" &&
     selected.status !== "cancelled" &&
     selected.status !== "completed";
+  const canComplete = Boolean(
+    selected && isAdoptedSuggestion(selected) && selected.status === "pending",
+  );
   const canCancel =
     selected && selected.work_type === "background" && !TERMINAL_STATUSES.has(selected.status);
   const bundle = selected?.delivery_bundle;
@@ -420,7 +484,13 @@ export default function TasksPage() {
                 <div>
                   <h2 className="text-xl font-medium text-fg-primary">{selected.title}</h2>
                   <p className="text-sm text-fg-tertiary mt-1">
-                    {isProjectBrief(selected) ? "项目资料简报" : selected.work_type === "background" ? "后台任务" : "任务"}
+                    {isProjectBrief(selected)
+                      ? "项目资料简报"
+                      : isAdoptedSuggestion(selected)
+                        ? "简报待办"
+                        : selected.work_type === "background"
+                          ? "后台任务"
+                          : "任务"}
                     {" · "}
                     <span className={statusClass(selected.status)}>
                       {statusLabel(selected.status)}
@@ -435,6 +505,11 @@ export default function TasksPage() {
                   </p>
                 </div>
                 <div className="flex gap-2 shrink-0">
+                  {canComplete && (
+                    <Button size="sm" onClick={handleComplete} disabled={busy}>
+                      完成
+                    </Button>
+                  )}
                   {canExecute && (
                     <Button size="sm" onClick={() => setConfirmExecute(true)} disabled={busy}>
                       执行
@@ -475,7 +550,11 @@ export default function TasksPage() {
                   </div>
                   {!viewingHistory && shownDelivery.review_status === "unreviewed" && (
                     <div className="flex gap-2">
-                      <Button size="sm" onClick={() => void handleAccept(shownDelivery)} disabled={busy}>
+                      <Button
+                        size="sm"
+                        onClick={() => void handleAccept(shownDelivery)}
+                        disabled={busy}
+                      >
                         验收
                       </Button>
                       <Button
@@ -489,7 +568,9 @@ export default function TasksPage() {
                     </div>
                   )}
                 </div>
-                <p className="text-sm text-fg-secondary whitespace-pre-wrap">{shownDelivery.summary}</p>
+                <p className="text-sm text-fg-secondary whitespace-pre-wrap">
+                  {shownDelivery.summary}
+                </p>
                 <pre className="text-sm text-fg-primary whitespace-pre-wrap break-words bg-surface-sunken rounded-lg p-3">
                   {shownDelivery.content || "（正在加载完整正文）"}
                 </pre>
@@ -520,11 +601,34 @@ export default function TasksPage() {
                 {shownDelivery.suggested_actions.length > 0 && (
                   <div>
                     <h4 className="text-xs font-medium text-fg-tertiary mb-1">建议待办</h4>
-                    <ul className="text-sm text-fg-secondary space-y-1">
-                      {shownDelivery.suggested_actions.map((action) => (
-                        <li key={action.title}>
-                          {action.title}
-                          {action.reason ? ` — ${action.reason}` : ""}
+                    <ul className="text-sm text-fg-secondary space-y-2">
+                      {shownDelivery.suggested_actions.map((action, index) => (
+                        <li
+                          key={`${action.title}-${index}`}
+                          className="flex items-start justify-between gap-3"
+                        >
+                          <span>
+                            {action.title}
+                            {action.reason ? ` — ${action.reason}` : ""}
+                          </span>
+                          {!viewingHistory && action.adopted_work_id ? (
+                            <Button
+                              size="sm"
+                              variant="subtle"
+                              onClick={() => navigate(`/tasks/${action.adopted_work_id}`)}
+                            >
+                              已转为任务
+                            </Button>
+                          ) : !viewingHistory ? (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => handleAdopt(shownDelivery, index)}
+                              disabled={busy}
+                            >
+                              转为任务
+                            </Button>
+                          ) : null}
                         </li>
                       ))}
                     </ul>
@@ -550,11 +654,14 @@ export default function TasksPage() {
                         className="text-sm text-insight hover:underline"
                         onClick={() =>
                           setHistoryId(
-                            row.delivery_id === currentDelivery?.delivery_id ? null : row.delivery_id,
+                            row.delivery_id === currentDelivery?.delivery_id
+                              ? null
+                              : row.delivery_id,
                           )
                         }
                       >
-                        v{row.version} · {reviewLabel(row.review_status)} · {row.summary || "无摘要"}
+                        v{row.version} · {reviewLabel(row.review_status)} ·{" "}
+                        {row.summary || "无摘要"}
                       </button>
                     </li>
                   ))}
@@ -562,7 +669,11 @@ export default function TasksPage() {
               </section>
             )}
 
-            <Disclosure title="执行日志" description="计划、步骤输出与事件" defaultOpen={!shownDelivery}>
+            <Disclosure
+              title="执行日志"
+              description="计划、步骤输出与事件"
+              defaultOpen={!shownDelivery}
+            >
               <div className="space-y-4">
                 <section className="space-y-2">
                   <h3 className="text-sm font-medium text-fg-primary">执行计划</h3>
@@ -674,7 +785,11 @@ export default function TasksPage() {
         <div className="space-y-3 text-sm">
           <label className="block space-y-1">
             <span className="text-xs text-fg-tertiary">标题</span>
-            <Input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="项目 A 简报" />
+            <Input
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              placeholder="项目 A 简报"
+            />
           </label>
           <label className="block space-y-1">
             <span className="text-xs text-fg-tertiary">目标与验收要求</span>

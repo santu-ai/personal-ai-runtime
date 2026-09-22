@@ -5,6 +5,7 @@ import { renderWithRouter } from "../test-utils";
 import TasksPage from "./Tasks";
 import {
   acceptWorkDelivery,
+  adoptSuggestedAction,
   createProjectBrief,
   executeWorkItem,
   getWorkDelivery,
@@ -26,6 +27,8 @@ vi.mock("../api/client", async (importOriginal) => {
     createProjectBrief: vi.fn(),
     acceptWorkDelivery: vi.fn().mockResolvedValue({ replayed: false }),
     reworkWorkDelivery: vi.fn().mockResolvedValue({ replayed: false }),
+    adoptSuggestedAction: vi.fn().mockResolvedValue({ replayed: false, work: { id: "todo_1" } }),
+    updateWorkItemStatus: vi.fn().mockResolvedValue({}),
   };
 });
 
@@ -187,10 +190,9 @@ describe("TasksPage", () => {
     fireEvent.change(screen.getByPlaceholderText("项目 A 简报"), {
       target: { value: "项目 A 简报" },
     });
-    fireEvent.change(
-      screen.getByPlaceholderText(/整理最近三天的邮件/),
-      { target: { value: "整理最近三天邮件" } },
-    );
+    fireEvent.change(screen.getByPlaceholderText(/整理最近三天的邮件/), {
+      target: { value: "整理最近三天邮件" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "创建" }));
     await waitFor(() => {
       expect(createProjectBrief).toHaveBeenCalled();
@@ -208,6 +210,17 @@ describe("TasksPage", () => {
     expect(await screen.findByText("有进度风险")).toBeInTheDocument();
     expect(screen.getByText(/完整正文超过预览长度/)).toBeInTheDocument();
     expect(screen.getByText("email:m1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "转为任务" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "转为任务" }));
+    await waitFor(() => {
+      expect(adoptSuggestedAction).toHaveBeenCalledWith(
+        "brief_1",
+        "d2",
+        0,
+        expect.objectContaining({ idempotency_key: expect.any(String) }),
+      );
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "验收" }));
     await waitFor(() => {

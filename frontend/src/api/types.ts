@@ -270,6 +270,7 @@ export interface WorkDeliveryAction {
   title: string;
   reason?: string;
   source_ids?: string[];
+  adopted_work_id?: string;
 }
 
 export interface WorkDelivery {
@@ -306,6 +307,15 @@ export interface WorkDeliveryDecisionResult {
   bundle: WorkDeliveryBundle;
   work?: WorkItem;
   execute_error?: string;
+}
+
+export interface AdoptSuggestedActionResult {
+  work_id: string;
+  replayed: boolean;
+  action_index: number;
+  created_work_id: string;
+  work: WorkItem;
+  bundle: WorkDeliveryBundle;
 }
 
 export interface UnreviewedDelivery {

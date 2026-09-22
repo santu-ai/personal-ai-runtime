@@ -9,7 +9,9 @@ from app.product.work_delivery import (
     DeliveryConflictError,
     DeliveryValidationError,
     accept_delivery,
+    adopt_suggested_action,
     fold_delivery_history,
+    public_bundle,
     publish_delivery,
     request_rework,
 )
@@ -333,3 +335,73 @@ def test_rework_does_not_duplicate_execute_after_marker_gap(isolated_kernel, mon
     assert replay["replayed"] is True
     assert len(k.read_events(type="ExecuteRequested", aggregate_id=f"exec_{work_id}")) == 1
     assert len(fold_delivery_history(work_id)["_dispatches"]) == 1
+
+
+def test_adopt_suggested_action_dedupes_and_survives_rebuild(isolated_kernel):
+    k, _db = isolated_kernel
+    item = _create_task()
+    work_id = item["id"]
+    actions = [
+        {"title": "核对排期", "reason": "邮件提到延期", "source_ids": ["email:1"]},
+        {"title": "确认范围", "reason": "", "source_ids": []},
+    ]
+    v1 = publish_delivery(
+        work_id,
+        content="body",
+        summary="v1",
+        sources=[{"id": "email:1", "type": "email", "title": "延期"}],
+        suggested_actions=actions,
+        execution_id="exec-adopt",
+    )
+    v2 = publish_delivery(
+        work_id,
+        content="body-v2",
+        summary="v2",
+        sources=[],
+        suggested_actions=actions,
+        execution_id="exec-adopt-2",
+    )
+
+    with pytest.raises(DeliveryConflictError):
+        adopt_suggested_action(work_id, v1["delivery_id"], 0, idempotency_key="old")
+    with pytest.raises(DeliveryValidationError):
+        adopt_suggested_action(work_id, v2["delivery_id"], 5)
+
+    first = adopt_suggested_action(work_id, v2["delivery_id"], 0, idempotency_key="adopt-0")
+    assert first["replayed"] is False
+    child_id = first["work"]["id"]
+    assert first["work"]["title"] == "核对排期"
+    assert first["work"]["parent_work_id"] == work_id
+    assert first["work"]["status"] == "pending"
+    assert "adopted_suggestion" in first["work"]["executable_plan"]
+    assert "邮件提到延期" in first["work"]["description"]
+
+    again = adopt_suggested_action(work_id, v2["delivery_id"], 0, idempotency_key="adopt-other")
+    assert again["replayed"] is True
+    assert again["work"]["id"] == child_id
+    assert len(read_ports.get_sub_work_items(work_id)) == 1
+
+    with pytest.raises(DeliveryConflictError, match="幂等键"):
+        adopt_suggested_action(work_id, v2["delivery_id"], 1, idempotency_key="adopt-0")
+
+    orphan_plan = (
+        '{"kind":"adopted_suggestion","source_work_id":"%s",'
+        '"delivery_id":"%s","action_index":1,"source_ids":[]}'
+    ) % (work_id, v2["delivery_id"])
+    orphan = read_ports.create_work_item(
+        "确认范围",
+        work_type="task",
+        parent_work_id=work_id,
+        executable_plan=orphan_plan,
+    )
+    recovered = adopt_suggested_action(work_id, v2["delivery_id"], 1, idempotency_key="adopt-1")
+    assert recovered["replayed"] is True
+    assert recovered["work"]["id"] == orphan["id"]
+    assert len(read_ports.get_sub_work_items(work_id)) == 2
+
+    k.rebuild_all()
+    bundle = public_bundle(work_id)
+    adopted = bundle["current"]["suggested_actions"]
+    assert adopted[0]["adopted_work_id"] == child_id
+    assert adopted[1]["adopted_work_id"] == orphan["id"]
+    assert read_ports.query_work_item(child_id)["title"] == "核对排期"

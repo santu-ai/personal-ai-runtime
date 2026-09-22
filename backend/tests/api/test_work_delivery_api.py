@@ -104,3 +104,38 @@ def test_old_task_without_delivery_endpoints(client):
     assert r.json()["current"] is None
     missing = client.get(f"/api/work-items/{work_id}/deliveries/nope")
     assert missing.status_code == 404
+
+
+def test_adopt_suggested_action_returns_same_task(client):
+    created = client.post("/api/work-items/project-brief", json={
+        "title": "简报",
+        "objective": "列出变化",
+    })
+    work_id = created.json()["id"]
+    published = publish_delivery(
+        work_id,
+        content="full",
+        summary="v1",
+        sources=[],
+        suggested_actions=[{"title": "核对排期", "reason": "延期", "source_ids": []}],
+        execution_id="e-adopt",
+    )
+    path = (
+        f"/api/work-items/{work_id}/deliveries/{published['delivery_id']}"
+        "/actions/0/adopt"
+    )
+    first = client.post(path, json={"idempotency_key": "adopt-1"})
+    assert first.status_code == 200, first.text
+    body = first.json()
+    assert body["replayed"] is False
+    assert body["work"]["title"] == "核对排期"
+    assert body["bundle"]["current"]["suggested_actions"][0]["adopted_work_id"] == body["work"]["id"]
+
+    second = client.post(path, json={"idempotency_key": "adopt-1"})
+    assert second.status_code == 200
+    assert second.json()["replayed"] is True
+    assert second.json()["work"]["id"] == body["work"]["id"]
+
+    listed = client.get(f"/api/work-items/?parent_work_id={work_id}")
+    assert listed.status_code == 200
+    assert [row["id"] for row in listed.json()] == [body["work"]["id"]]

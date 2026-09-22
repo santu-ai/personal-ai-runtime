@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 PAYLOAD_DELIVERY_PUBLISHED = "delivery_published"
 PAYLOAD_DELIVERY_DECISION = "delivery_decision"
 PAYLOAD_REWORK_DISPATCHED = "rework_dispatched"
+PAYLOAD_ACTION_ADOPTED = "suggested_action_adopted"
+ADOPTED_SUGGESTION_KIND = "adopted_suggestion"
 REVIEW_UNREVIEWED = "unreviewed"
 REVIEW_ACCEPTED = "accepted"
 REVIEW_CHANGES_REQUESTED = "changes_requested"
@@ -115,6 +117,7 @@ def fold_delivery_history(work_id: str) -> dict[str, Any]:
     deliveries: list[dict[str, Any]] = []
     decisions: list[dict[str, Any]] = []
     dispatches: list[dict[str, Any]] = []
+    adoptions: list[dict[str, Any]] = []
     by_id: dict[str, dict[str, Any]] = {}
 
     for event in _read_work_events(work_id):
@@ -138,6 +141,12 @@ def fold_delivery_history(work_id: str) -> dict[str, Any]:
             row.setdefault("event_id", event.id)
             row.setdefault("event_seq", event.seq)
             dispatches.append(row)
+        adopted = payload.get(PAYLOAD_ACTION_ADOPTED)
+        if isinstance(adopted, dict) and adopted.get("created_work_id"):
+            row = dict(adopted)
+            row.setdefault("event_id", event.id)
+            row.setdefault("event_seq", event.seq)
+            adoptions.append(row)
 
     latest_by_delivery: dict[str, dict[str, Any]] = {}
     by_idempotency: dict[str, dict[str, Any]] = {}
@@ -188,6 +197,8 @@ def fold_delivery_history(work_id: str) -> dict[str, Any]:
         "_decisions": decisions,
         "_dispatches": dispatches,
         "_by_idempotency": by_idempotency,
+        "_adoptions": adoptions,
+        "_by_adoption_key": _adoption_idempotency_index(adoptions),
         "_current_id": current_id,
     }
 
@@ -225,6 +236,74 @@ def _public_delivery(
     return out
 
 
+def _coerce_action_index(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _adoption_idempotency_index(adoptions: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    indexed: dict[str, dict[str, Any]] = {}
+    for row in adoptions:
+        key = str(row.get("idempotency_key") or "").strip()
+        if key:
+            indexed[key] = row
+    return indexed
+
+
+def _live_adopted_indexes(adoptions: list[dict[str, Any]], delivery_id: str) -> dict[int, str]:
+    """Latest still-existing child work for each suggestion on one delivery."""
+    grouped: dict[int, list[str]] = {}
+    for row in adoptions:
+        if str(row.get("delivery_id") or "") != delivery_id:
+            continue
+        index = _coerce_action_index(row.get("action_index"))
+        if index is None:
+            continue
+        created = str(row.get("created_work_id") or "").strip()
+        if created:
+            grouped.setdefault(index, []).append(created)
+    live: dict[int, str] = {}
+    for index, work_ids in grouped.items():
+        for created in reversed(work_ids):
+            if read_ports.query_work_item(created):
+                live[index] = created
+                break
+    return live
+
+
+def _annotate_adoptions(delivery: dict[str, Any] | None, adopted: dict[int, str]) -> None:
+    if not delivery or not adopted:
+        return
+    actions: list[dict[str, Any]] = []
+    for index, action in enumerate(delivery.get("suggested_actions") or []):
+        row = dict(action) if isinstance(action, dict) else {"title": str(action)}
+        work_id = adopted.get(index)
+        if work_id:
+            row["adopted_work_id"] = work_id
+        actions.append(row)
+    delivery["suggested_actions"] = actions
+
+
+def _annotate_bundle(bundle: dict[str, Any], adoptions: list[dict[str, Any]]) -> dict[str, Any]:
+    current = bundle.get("current")
+    if isinstance(current, dict):
+        _annotate_adoptions(
+            current,
+            _live_adopted_indexes(adoptions, str(current.get("delivery_id") or "")),
+        )
+    for row in bundle.get("deliveries") or []:
+        if isinstance(row, dict):
+            _annotate_adoptions(
+                row,
+                _live_adopted_indexes(adoptions, str(row.get("delivery_id") or "")),
+            )
+    return bundle
+
+
 def get_delivery(work_id: str, delivery_id: str) -> dict[str, Any]:
     folded = fold_delivery_history(work_id)
     row = folded["_by_id"].get(delivery_id)
@@ -244,17 +323,22 @@ def get_delivery(work_id: str, delivery_id: str) -> dict[str, Any]:
     public = _public_delivery(row, review_status=status, include_content=True)
     assert public is not None
     public["latest_decision"] = latest
+    _annotate_adoptions(
+        public,
+        _live_adopted_indexes(folded.get("_adoptions") or [], delivery_id),
+    )
     return public
 
 
 def public_bundle(work_id: str) -> dict[str, Any]:
     folded = fold_delivery_history(work_id)
-    return {
+    bundle = {
         "work_id": work_id,
         "deliveries": folded["deliveries"],
         "current": folded["current"],
         "current_review_status": folded["current_review_status"],
     }
+    return _annotate_bundle(bundle, folded.get("_adoptions") or [])
 
 
 def publish_delivery(
@@ -325,6 +409,222 @@ def publish_delivery(
         )
         assert public is not None
         return public
+
+
+def _adoption_plan(
+    *,
+    source_work_id: str,
+    delivery_id: str,
+    action_index: int,
+    source_ids: list[str],
+) -> str:
+    return json.dumps(
+        {
+            "kind": ADOPTED_SUGGESTION_KIND,
+            "source_work_id": source_work_id,
+            "delivery_id": delivery_id,
+            "action_index": action_index,
+            "source_ids": source_ids,
+        },
+        ensure_ascii=False,
+    )
+
+
+def _matching_adopted_child(
+    source_work_id: str,
+    delivery_id: str,
+    action_index: int,
+) -> dict[str, Any] | None:
+    for child in read_ports.get_sub_work_items(source_work_id):
+        plan = parse_plan(child.get("executable_plan"))
+        if plan.get("kind") != ADOPTED_SUGGESTION_KIND:
+            continue
+        if str(plan.get("source_work_id") or "") != source_work_id:
+            continue
+        if str(plan.get("delivery_id") or "") != delivery_id:
+            continue
+        child_index = _coerce_action_index(plan.get("action_index"))
+        if child_index is None or child_index != action_index:
+            continue
+        return child
+    return None
+
+
+def _adoption_matches(prior: dict[str, Any], *, delivery_id: str, action_index: int) -> bool:
+    if str(prior.get("delivery_id") or "") != delivery_id:
+        return False
+    return _coerce_action_index(prior.get("action_index")) == action_index
+
+
+def _record_adoption(
+    work_id: str,
+    *,
+    delivery_id: str,
+    action_index: int,
+    title: str,
+    created_work_id: str,
+    idempotency_key: str,
+    actor: str,
+) -> dict[str, Any]:
+    body = {
+        "delivery_id": delivery_id,
+        "action_index": action_index,
+        "title": title,
+        "created_work_id": created_work_id,
+        "idempotency_key": idempotency_key or None,
+        "created_at": _now(),
+    }
+    kernel.emit_event(
+        EVENT_WORK_ITEM_UPDATED,
+        AGGREGATE_WORK_ITEM,
+        work_id,
+        payload={PAYLOAD_ACTION_ADOPTED: body},
+        actor=actor,
+    )
+    return body
+
+
+def _adoption_result(
+    work_id: str,
+    *,
+    replayed: bool,
+    action_index: int,
+    created_work_id: str,
+    adoption: dict[str, Any] | None,
+) -> dict[str, Any]:
+    work = read_ports.query_work_item(created_work_id)
+    return {
+        "work_id": work_id,
+        "replayed": replayed,
+        "action_index": action_index,
+        "created_work_id": created_work_id,
+        "adoption": adoption,
+        "work": work,
+        "bundle": public_bundle(work_id),
+    }
+
+
+def adopt_suggested_action(
+    work_id: str,
+    delivery_id: str,
+    action_index: int,
+    *,
+    idempotency_key: str | None = None,
+    actor: str = "user",
+) -> dict[str, Any]:
+    """Turn one current-delivery suggestion into a child task.
+
+    The same delivery index always returns the existing task. A repeated
+    idempotency key for a different index is a conflict. The child is an
+    ordinary Work item; the link is a ``WorkItemUpdated`` payload, not a new
+    event type or table.
+    """
+    if action_index < 0:
+        raise DeliveryValidationError("action_index must be >= 0")
+    parent = read_ports.query_work_item(work_id)
+    if parent is None:
+        raise DeliveryNotFoundError(work_id)
+
+    key = str(idempotency_key or "").strip()
+    with _work_lock(work_id):
+        folded = fold_delivery_history(work_id)
+        if key:
+            prior = folded.get("_by_adoption_key", {}).get(key)
+            if prior is not None:
+                if not _adoption_matches(prior, delivery_id=delivery_id, action_index=action_index):
+                    raise DeliveryConflictError(
+                        "幂等键已用于不同的建议待办",
+                        code="idempotency_conflict",
+                    )
+                created = str(prior.get("created_work_id") or "")
+                if read_ports.query_work_item(created):
+                    return _adoption_result(
+                        work_id,
+                        replayed=True,
+                        action_index=action_index,
+                        created_work_id=created,
+                        adoption=prior,
+                    )
+
+        row = _require_current_delivery(folded, delivery_id)
+        actions = list(row.get("suggested_actions") or [])
+        if action_index >= len(actions) or not isinstance(actions[action_index], dict):
+            raise DeliveryValidationError("suggested action index is out of range")
+        action = actions[action_index]
+        title = str(action.get("title") or "").strip()
+        if not title:
+            raise DeliveryValidationError("suggested action has no title")
+        title = title[:500]
+        source_ids = [
+            str(sid).strip()
+            for sid in (action.get("source_ids") or [])
+            if str(sid).strip()
+        ]
+
+        live = _live_adopted_indexes(folded.get("_adoptions") or [], delivery_id)
+        existing_id = live.get(action_index)
+        child = read_ports.query_work_item(existing_id) if existing_id else None
+        if child is None:
+            child = _matching_adopted_child(work_id, delivery_id, action_index)
+        if child is not None:
+            created_id = str(child["id"])
+            already = existing_id == created_id
+            adoption = None
+            if not already:
+                adoption = _record_adoption(
+                    work_id,
+                    delivery_id=delivery_id,
+                    action_index=action_index,
+                    title=title,
+                    created_work_id=created_id,
+                    idempotency_key=key,
+                    actor=actor,
+                )
+            return _adoption_result(
+                work_id,
+                replayed=True,
+                action_index=action_index,
+                created_work_id=created_id,
+                adoption=adoption,
+            )
+
+        reason = str(action.get("reason") or "").strip()
+        version = int(row.get("version") or 0)
+        lines = [line for line in (reason,) if line]
+        if source_ids:
+            lines.append("来源：" + "、".join(source_ids))
+        parent_title = str(parent.get("title") or "简报")
+        lines.append(f"采纳自《{parent_title}》交付 v{version}")
+        child = read_ports.create_work_item(
+            title,
+            description="\n".join(lines)[:20000],
+            work_type="task",
+            parent_work_id=work_id,
+            status="pending",
+            executable_plan=_adoption_plan(
+                source_work_id=work_id,
+                delivery_id=delivery_id,
+                action_index=action_index,
+                source_ids=source_ids,
+            ),
+        )
+        read_ports.bump_parent_activity(work_id)
+        adoption = _record_adoption(
+            work_id,
+            delivery_id=delivery_id,
+            action_index=action_index,
+            title=title,
+            created_work_id=str(child["id"]),
+            idempotency_key=key,
+            actor=actor,
+        )
+        return _adoption_result(
+            work_id,
+            replayed=False,
+            action_index=action_index,
+            created_work_id=str(child["id"]),
+            adoption=adoption,
+        )
 
 
 def _require_current_delivery(

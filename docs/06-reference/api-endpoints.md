@@ -200,6 +200,7 @@
 | GET | `/api/work-items/{item_id}/deliveries` | auth | — | List Work Deliveries |
 | GET | `/api/work-items/{item_id}/deliveries/{delivery_id}` | auth | — | Get Work Delivery |
 | POST | `/api/work-items/{item_id}/deliveries/{delivery_id}/accept` | auth | — | Accept Work Delivery |
+| POST | `/api/work-items/{item_id}/deliveries/{delivery_id}/actions/{action_index}/adopt` | auth | — | Adopt Suggested Action |
 | POST | `/api/work-items/{item_id}/deliveries/{delivery_id}/rework` | auth | — | Rework Work Delivery |
 | GET | `/api/work-items/{item_id}/events` | auth | — | Get Events |
 | POST | `/api/work-items/{item_id}/execute` | auth | — | Execute Work Item |

@@ -5,8 +5,8 @@
 
 ## 当前状态
 
-- 当前分支：`main`（本地简报提交正在接到已合入 Dependabot #66、#68-#78 的 origin/main）
-- 进行中任务 / WIP：项目资料简报 MVP 已落地（交办/交付/验收/返工）；spill 已落地；ask_user 未做；P0 审查项 R1–R6 / R2-B / R3-B / R3-C 全部已修，T4/T5 收口（merge-gate 通过），只差真 LLM / 真实邮箱日用
+- 当前分支：`main`（已接到含 Dependabot #66、#68-#78 的 origin/main）
+- 进行中任务 / WIP：项目资料简报 P0 已落地；P1 已做「建议待办转为任务」（去重、重建后仍在）。未做：周期对比、澄清交互、采纳率汇总。ask_user 未做。真 LLM / 真实邮箱日用仍待试用
 - 已知坏点 / 待办：日用库不在本机 Windows（soak 默认空库 `data/personal_ai.db`）；本机无 Telegram token，真实收发 blocked
 - 最近审阅：2026-09-01 从 deepseek-harness 对齐「模型可见 ⟺ 可重建」，用 checkpoint 替换静默截断
 - **本机 git**：Windows 提交走 `git -c core.hooksPath=.githooks commit -F`；venv 放 PATH 以免 pre-commit mypy 用到系统 `mcp`
@@ -44,6 +44,7 @@
 |---|---|---|
 | 2026-09-22 | 汇总 Dependabot #66、#68–#78：backend lock 重生（alembic/openai/pypdf/mcp/ruff）；frontend react+react-dom 19.3.0 同步；desktop electron 44.4.3 / vitest 5.0.1 | 已合入 main |
 | 2026-09-18 | R3-C：审批恢复领取后、ExecuteRequested 前保留 `aprdis:` 派发意图，进程退出仍可跳过工具并补派发 | 无新事件类型；未推远程；未跑 merge-gate |
+| 2026-09-22 | 当前交付的建议待办可转为子任务；同一下标重复请求返回同一任务，删除后可再转 | 无新事件类型；后端 1597 passed；未推远程 |
 | 2026-09-18 | 简报交付真实后端端到端回归（A1–A5/A8–A10/A12）；修 `kernel` 代理 monkeypatch 跨测试泄漏 | merge-gate 通过：后端 1593 passed、前端 240 passed + 构建；未推远程 |
 | 2026-09-18 | R3-C：审批恢复领取后、ExecuteRequested 前保留 `aprdis:` 派发意图，进程退出仍可跳过工具并补派发 | 无新事件类型；未推远程 |
 | 2026-09-17 | 可验收任务助手 MVP：项目资料简报创建/执行/来源校验、版本化交付验收与返工 | 无新事件类型；交付在 WorkItemUpdated payload；未推远程 |
@@ -109,6 +110,10 @@
 | 2026-08-05 | P0：删休眠子系统；执行可信/白名单；ADR-R017 | commit `fddafb3` |
 
 ## 备注
+
+- 2026-09-22：建议待办可从当前交付转为子任务（`suggested_action_adopted` + 普通 WorkItemCreated）。重复下标不新建；旧版本 409。后端 1597 passed / 9 skipped / 6 deselected；前端 Tasks 测试与 tsc 通过。未跑浏览器日用，未推远程。
+
+- 2026-09-22：核对任务交付 MVP plan 与 HEAD ba22930；P0 开发已落地，剩余真实 LLM/邮箱日用及两周至少 10 项评审、四项 P1；现有 E2E 用 rebuild_all/BaseException 验证恢复，未证明真实进程重启或交付导出/导入闭环。本轮静态核对，未运行测试。
 
 - 2026-09-18：四审 `9fc0553` 未发现新阻塞缺陷，R3-C 关闭；后端相关 86 passed，boundary/layer-deps/concept-growth 与修改文件 ruff 通过；本次修复 review 通过，完整 merge-gate/真实重启 E2E/日用尚未验证，报告已更新。
 

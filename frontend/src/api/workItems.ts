@@ -3,6 +3,7 @@
  */
 import { API_BASE, request } from "./core";
 import type {
+  AdoptSuggestedActionResult,
   CreateProjectBriefPayload,
   UnreviewedDelivery,
   WorkDelivery,
@@ -105,10 +106,7 @@ export async function getWorkDeliveries(itemId: string): Promise<WorkDeliveryBun
   return request<WorkDeliveryBundle>(`${API_BASE}/work-items/${itemId}/deliveries`);
 }
 
-export async function getWorkDelivery(
-  itemId: string,
-  deliveryId: string,
-): Promise<WorkDelivery> {
+export async function getWorkDelivery(itemId: string, deliveryId: string): Promise<WorkDelivery> {
   return request<WorkDelivery>(`${API_BASE}/work-items/${itemId}/deliveries/${deliveryId}`);
 }
 
@@ -138,6 +136,28 @@ export async function reworkWorkDelivery(
       body: JSON.stringify(body),
     },
   );
+}
+
+export async function adoptSuggestedAction(
+  itemId: string,
+  deliveryId: string,
+  actionIndex: number,
+  body: { idempotency_key?: string } = {},
+): Promise<AdoptSuggestedActionResult> {
+  return request<AdoptSuggestedActionResult>(
+    `${API_BASE}/work-items/${itemId}/deliveries/${deliveryId}/actions/${actionIndex}/adopt`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+}
+
+export async function updateWorkItemStatus(itemId: string, status: string): Promise<WorkItem> {
+  return request<WorkItem>(`${API_BASE}/work-items/${itemId}/status`, {
+    method: "POST",
+    body: JSON.stringify({ status }),
+  });
 }
 
 export async function listUnreviewedDeliveries(): Promise<UnreviewedDelivery[]> {

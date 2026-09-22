@@ -249,6 +249,7 @@ P1 的启动依据是重复使用和真实阻塞。若用户仍需大量重写�
 | GET | `/api/work-items/{id}/deliveries/{delivery_id}` | 指定版本全文 |
 | POST | `/api/work-items/{id}/deliveries/{delivery_id}/accept` | 验收 |
 | POST | `/api/work-items/{id}/deliveries/{delivery_id}/rework` | 返工（理由必填） |
+| POST | `/api/work-items/{id}/deliveries/{delivery_id}/actions/{index}/adopt` | 将当前版本的一条建议待办转为子任务；重复请求返回同一任务 |
 
 错误：404 未找到；400 校验失败（含空返工理由）；409 版本冲突。旧任务无交付时列表 `current=null`，执行行为不变。
 
@@ -292,4 +293,4 @@ P1 的启动依据是重复使用和真实阻塞。若用户仍需大量重写�
 | T4 | 完成：真实后端 create → execute → 交付 → 验收/返工 → 重启回归，含中断恢复 |
 | T5 | 完成：docs 已同步；merge-gate 整包通过。真 LLM / 真实邮箱日用仍待用户显式试用（第 10 节） |
 
-P1 未做：timer/monitor 周期对比、建议待办转 Work、澄清交互、采纳率汇总。
+P1 进行中：建议待办可转为现有 Work，同一交付下标重复请求返回同一任务（2026-09-22）。仍未做：timer/monitor 周期对比、澄清交互、采纳率汇总。
