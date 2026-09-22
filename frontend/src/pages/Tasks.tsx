@@ -132,6 +132,14 @@ function formatAcceptanceRate(metrics: DeliveryMetrics): string {
   return `${percent}%（${metrics.first_version_accepted_tasks}/${metrics.first_reviewed_tasks}）`;
 }
 
+function formatAttributedCount(value: number | "unavailable", label: string): string {
+  return value === "unavailable" ? `${label}未分开计` : `${label} ${value}`;
+}
+
+function formatAttributedCost(value: number | "unavailable"): string {
+  return value === "unavailable" ? "模型成本未分开计" : `模型成本 $${value.toFixed(4)}`;
+}
+
 function hasDeliveryMetrics(metrics: DeliveryMetrics | null): metrics is DeliveryMetrics {
   return Boolean(metrics && (metrics.reviewed_tasks > 0 || metrics.adopted_action_count > 0));
 }
@@ -480,7 +488,13 @@ export default function TasksPage() {
                 ? ` · 平均评审 ${metrics.average_review_latency_hours} 小时`
                 : ""}
             </p>
-            <p className="text-xs text-fg-tertiary">审批、恢复和模型成本还不能按简报分开计</p>
+            <p className="text-xs text-fg-tertiary">
+              {formatAttributedCount(metrics.attribution.approval_interventions, "审批")}
+              {" · "}
+              {formatAttributedCount(metrics.attribution.recovery_interventions, "恢复")}
+              {" · "}
+              {formatAttributedCost(metrics.attribution.llm_cost)}
+            </p>
             {metrics.capped ? (
               <p className="text-xs text-warning">窗口内事件较多，统计可能不完整</p>
             ) : null}

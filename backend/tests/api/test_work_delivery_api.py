@@ -161,3 +161,6 @@ def test_delivery_metrics_endpoint_reports_project_brief_reviews(client):
     assert body["reviewed_tasks"] == 1
     assert body["first_version_acceptance_rate"] == 1.0
     assert body["items"][0]["work_id"] == created["id"]
+    assert body["attribution"]["approval_interventions"] == 0
+    assert body["attribution"]["recovery_interventions"] == 0
+    assert body["attribution"]["llm_cost"] == 0.0

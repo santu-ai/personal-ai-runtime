@@ -537,7 +537,32 @@ def validate_model_brief(
     }
 
 
-async def _complete_brief_json(prompt: str) -> str:
+def _correlation_for_execution(execution_id: str | None) -> str | None:
+    """Correlation shared by the handler run that owns this execution id."""
+    if not execution_id:
+        return None
+    from app.core.runtime.kernel.constants import (
+        AGGREGATE_EXECUTION,
+        EVENT_EXECUTION_REQUESTED,
+    )
+    from app.core.runtime.kernel_instance import kernel
+
+    events = kernel.read_events(
+        type=EVENT_EXECUTION_REQUESTED,
+        aggregate_type=AGGREGATE_EXECUTION,
+        aggregate_id=execution_id,
+        order="desc",
+        limit=1,
+    )
+    if not events:
+        return None
+    event = events[0]
+    payload = event.payload if isinstance(event.payload, dict) else {}
+    correlation = str(event.correlation_id or payload.get("correlation_id") or "").strip()
+    return correlation or None
+
+
+async def _complete_brief_json(prompt: str, *, execution_id: str | None = None) -> str:
     from app.core.agents.brain_llm_ops import complete_text_with_failover
 
     messages = [
@@ -556,6 +581,8 @@ async def _complete_brief_json(prompt: str) -> str:
         actor="executor",
         temperature=0.2,
         max_tokens=2500,
+        correlation_id=_correlation_for_execution(execution_id),
+        caused_by=execution_id or None,
     )
     return content
 
@@ -726,7 +753,10 @@ async def compile_project_brief_delivery(
     )
     complete = llm_complete or _complete_brief_json
     try:
-        raw = await complete(prompt)
+        if complete is _complete_brief_json:
+            raw = await _complete_brief_json(prompt, execution_id=execution_id)
+        else:
+            raw = await complete(prompt)
         parsed = _extract_json(raw)
         brief = validate_model_brief(
             parsed,

@@ -443,7 +443,9 @@ def test_delivery_metrics_track_first_acceptance_rework_and_adoption(isolated_ke
     assert metrics["rework_count"] == 1
     assert metrics["adopted_action_count"] == 1
     assert metrics["average_review_latency_hours"] is not None
-    assert metrics["attribution"]["llm_cost"] == "unavailable"
+    assert metrics["attribution"]["approval_interventions"] == 0
+    assert metrics["attribution"]["recovery_interventions"] == 0
+    assert metrics["attribution"]["llm_cost"] == 0.0
     by_title = {row["title"]: row for row in metrics["items"]}
     assert by_title["首版通过"]["first_review_accepted_v1"] is True
     assert by_title["返工通过"]["reworks"] == 1
@@ -466,3 +468,185 @@ def test_unreviewed_delivery_is_not_hidden_by_newer_ordinary_tasks(isolated_kern
         and row["delivery_id"] == delivery["delivery_id"]
         for row in rows
     )
+
+
+def test_delivery_metrics_attribute_approvals_recoveries_and_cost(isolated_kernel):
+    kernel, _db = isolated_kernel
+    execution_id = "exec-brief-1"
+    kernel.emit_event(
+        "ExecutionRequested",
+        "execution",
+        execution_id,
+        payload={"execution_id": execution_id, "correlation_id": "corr-brief-1"},
+        correlation_id="corr-brief-1",
+    )
+    kernel.emit_event(
+        "CapabilityDenied",
+        "capability",
+        "cap_check_inbox",
+        payload={
+            "name": "check_inbox",
+            "reason": "deferred",
+            "approval_id": "apr_denied",
+        },
+        caused_by=execution_id,
+        correlation_id="corr-brief-1",
+    )
+    kernel.emit_event(
+        "ApprovalRequested",
+        "approval",
+        "apr_corr",
+        payload={"action": "read_file", "risk": "high"},
+        correlation_id="corr-brief-1",
+    )
+    kernel.emit_event(
+        "ApprovalRequested",
+        "approval",
+        "apr_low",
+        payload={"action": "read_file", "risk": "low"},
+        correlation_id="corr-brief-1",
+    )
+    kernel.emit_event(
+        "ExecutionRetried",
+        "execution",
+        execution_id,
+        payload={
+            "execution_id": execution_id,
+            "attempt": 1,
+            "reason": "interrupted",
+            "status": "retrying",
+        },
+        correlation_id="corr-brief-1",
+    )
+    kernel.emit_event(
+        "ExecutionRetried",
+        "execution",
+        execution_id,
+        payload={
+            "execution_id": execution_id,
+            "attempt": 1,
+            "reason": "interrupted",
+            "status": "pending",
+        },
+        correlation_id="corr-brief-1",
+    )
+    kernel.emit_event(
+        "ExecutionRetried",
+        "execution",
+        execution_id,
+        payload={
+            "execution_id": execution_id,
+            "attempt": 2,
+            "reason": "Timeout after 30s",
+            "status": "retrying",
+        },
+        correlation_id="corr-brief-1",
+    )
+    kernel.emit_event(
+        "CapabilityFailed",
+        "capability",
+        "cap_check_inbox",
+        payload={"name": "check_inbox", "error": "interrupted_before_audit"},
+        correlation_id="corr-brief-1",
+    )
+    kernel.emit_event(
+        "LLMCallRecorded",
+        "llm_call",
+        "llm_brief",
+        payload={
+            "purpose": "project_brief",
+            "cost": 0.0125,
+            "success": True,
+        },
+        caused_by=execution_id,
+        correlation_id="corr-brief-1",
+    )
+    kernel.emit_event(
+        "LLMCallRecorded",
+        "llm_call",
+        "llm_chat",
+        payload={"purpose": "chat", "cost": 9.0, "success": True},
+        caused_by="exec-other",
+    )
+    kernel.emit_event(
+        "LLMCallRecorded",
+        "llm_call",
+        "llm_other_brief",
+        payload={"purpose": "project_brief", "cost": 3.0, "success": True},
+        caused_by="exec-other",
+    )
+    kernel.emit_event(
+        "CapabilityDenied",
+        "capability",
+        "cap_other",
+        payload={"name": "write_file", "reason": "deferred", "approval_id": "apr_other"},
+        caused_by="exec-other",
+    )
+
+    task = _create_task("可归因简报")
+    published = publish_delivery(
+        task["id"], content="v1", summary="v1", sources=[], execution_id=execution_id,
+    )
+    accept_delivery(task["id"], published["delivery_id"], idempotency_key="attr-accept")
+
+    metrics = summarize_delivery_metrics(days=30)
+    assert metrics["attribution"]["approval_interventions"] == 2
+    assert metrics["attribution"]["recovery_interventions"] == 2
+    assert metrics["attribution"]["llm_cost"] == 0.0125
+    assert metrics["capped"] is False
+
+
+def test_unlinked_brief_cost_stays_unavailable(isolated_kernel):
+    kernel, _db = isolated_kernel
+    kernel.emit_event(
+        "LLMCallRecorded",
+        "llm_call",
+        "llm_legacy",
+        payload={"purpose": "project_brief", "cost": 1.5, "success": True},
+    )
+    task = _create_task("旧成本简报")
+    published = publish_delivery(
+        task["id"], content="v1", summary="v1", sources=[], execution_id="exec-legacy",
+    )
+    accept_delivery(task["id"], published["delivery_id"], idempotency_key="legacy-accept")
+
+    metrics = summarize_delivery_metrics(days=30)
+    assert metrics["attribution"]["approval_interventions"] == 0
+    assert metrics["attribution"]["llm_cost"] == "unavailable"
+
+
+def test_unreviewed_scan_pages_past_newer_updates(isolated_kernel, monkeypatch):
+    kernel, _db = isolated_kernel
+    brief = _create_task("埋在更新后面的简报")
+    delivery = publish_delivery(
+        brief["id"], content="body", summary="summary", sources=[],
+        execution_id="buried",
+    )
+    for index in range(250):
+        kernel.emit_event(
+            "WorkItemUpdated",
+            "work_item",
+            f"noise-{index}",
+            payload={"progress": 0.2},
+            actor="user",
+        )
+
+    limits: list[int | None] = []
+    original = kernel.read_events
+
+    def wrapped(*args, **kwargs):
+        if (
+            kwargs.get("type") == "WorkItemUpdated"
+            and kwargs.get("aggregate_id") is None
+            and kwargs.get("order") == "desc"
+        ):
+            limits.append(kwargs.get("limit"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(kernel, "read_events", wrapped)
+    rows = list_unreviewed_deliveries(limit=20)
+
+    assert limits
+    assert all(limit == 200 for limit in limits)
+    assert len(limits) >= 2
+    assert any(row["work_id"] == brief["id"] and row["delivery_id"] == delivery["delivery_id"] for row in rows)

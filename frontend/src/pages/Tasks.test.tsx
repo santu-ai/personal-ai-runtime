@@ -192,8 +192,8 @@ describe("TasksPage", () => {
       adopted_action_count: 1,
       average_review_latency_hours: 1.5,
       attribution: {
-        approval_interventions: "unavailable",
-        recovery_interventions: "unavailable",
+        approval_interventions: 2,
+        recovery_interventions: 1,
         llm_cost: "unavailable",
       },
       capped: false,
@@ -204,6 +204,7 @@ describe("TasksPage", () => {
     expect(await screen.findByText("近 30 日简报")).toBeInTheDocument();
     expect(screen.getByText("首版采纳 50%（1/2）")).toBeInTheDocument();
     expect(screen.getByText(/返工 1 · 已转任务 1 · 平均评审 1.5 小时/)).toBeInTheDocument();
+    expect(screen.getByText("审批 2 · 恢复 1 · 模型成本未分开计")).toBeInTheDocument();
   });
 
   it("renders empty tasks shell", async () => {

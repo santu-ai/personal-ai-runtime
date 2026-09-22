@@ -273,6 +273,8 @@ async def complete_text_with_failover(
     temperature: float | None = None,
     max_tokens: int | None = None,
     actor: str = "api",
+    correlation_id: str | None = None,
+    caused_by: str | None = None,
 ) -> tuple[str, str]:
     """Text-only completion routed through primary + fallback providers.
 
@@ -334,6 +336,8 @@ async def complete_text_with_failover(
                     price_per_completion_token=getattr(provider, "price_per_completion_token", 0.0),
                     purpose=purpose,
                     actor=actor,
+                    correlation_id=correlation_id,
+                    caused_by=caused_by,
                 )
                 return content, provider.name
             errors.append(f"{provider.name}(empty response)")
@@ -351,6 +355,8 @@ async def complete_text_with_failover(
                 )[:500],
                 purpose=purpose,
                 actor=actor,
+                correlation_id=correlation_id,
+                caused_by=caused_by,
             )
             logger.warning(
                 "complete_text_with_failover provider %s failed: %s",

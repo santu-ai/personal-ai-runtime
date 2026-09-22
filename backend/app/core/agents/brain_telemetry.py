@@ -36,6 +36,8 @@ def record_llm_outcome(
     actor: str = "brain",
     prompt_hash: str | None = None,
     message_count: int | None = None,
+    correlation_id: str | None = None,
+    caused_by: str | None = None,
 ) -> None:
     """Record success or failure of an LLM call (chat, memory_extract, …)."""
     llm_latency = (time.time() - llm_start) * 1000
@@ -67,6 +69,8 @@ def record_llm_outcome(
             f"llm_{time.monotonic_ns()}",
             payload=payload,
             actor=actor,
+            correlation_id=correlation_id,
+            caused_by=caused_by,
         )
     except Exception:
         logger.warning("Failed to record LLMCallRecorded (%s)", purpose, exc_info=True)

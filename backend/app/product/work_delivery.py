@@ -19,8 +19,16 @@ from typing import Any
 
 from app.core.runtime import read_ports
 from app.core.runtime.kernel.constants import (
+    AGGREGATE_EXECUTION,
     AGGREGATE_WORK_ITEM,
+    EVENT_APPROVAL_REQUESTED,
+    EVENT_CAPABILITY_DENIED,
+    EVENT_CAPABILITY_FAILED,
     EVENT_EXECUTE_REQUESTED,
+    EVENT_EXECUTION_FAILED,
+    EVENT_EXECUTION_REQUESTED,
+    EVENT_EXECUTION_RETRIED,
+    EVENT_LLM_CALL_RECORDED,
     EVENT_WORK_ITEM_UPDATED,
 )
 from app.core.runtime.kernel_instance import kernel
@@ -976,42 +984,83 @@ def _complete_rework_dispatch(
         return result
 
 
+# Each read stays inside Kernel's limit. Pages stop once the inbox is full.
+# If that window is entirely newer non-delivery updates, fall back to a bounded
+# task-row scan so an older unreviewed brief is not dropped.
+_UNREVIEWED_PAGE_SIZE = 200
+_UNREVIEWED_MAX_PAGES = 25
+_UNREVIEWED_TASK_SCAN = 1000
+
+
+def _unreviewed_delivery_row(work_id: str, item: dict[str, Any]) -> dict[str, Any] | None:
+    if item.get("work_type") != "task":
+        return None
+    if not is_project_brief_plan(item.get("executable_plan")):
+        return None
+    folded = fold_delivery_history(work_id)
+    current = folded["current"]
+    if not current or folded["current_review_status"] != REVIEW_UNREVIEWED:
+        return None
+    return {
+        "work_id": work_id,
+        "title": item.get("title") or "",
+        "delivery_id": current.get("delivery_id"),
+        "version": current.get("version"),
+        "summary": current.get("summary") or "",
+        "updated_at": item.get("updated_at"),
+    }
+
+
 def list_unreviewed_deliveries(*, limit: int = 20) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
-    events = kernel.read_events(
-        type=EVENT_WORK_ITEM_UPDATED,
-        aggregate_type=AGGREGATE_WORK_ITEM,
-        order="desc",
+    limit = max(1, int(limit))
+    truncated = True
+    for page in range(_UNREVIEWED_MAX_PAGES):
+        events = kernel.read_events(
+            type=EVENT_WORK_ITEM_UPDATED,
+            aggregate_type=AGGREGATE_WORK_ITEM,
+            order="desc",
+            limit=_UNREVIEWED_PAGE_SIZE,
+            offset=page * _UNREVIEWED_PAGE_SIZE,
+        )
+        if len(events) < _UNREVIEWED_PAGE_SIZE:
+            truncated = False
+        for event in events:
+            if not isinstance((event.payload or {}).get(PAYLOAD_DELIVERY_PUBLISHED), dict):
+                continue
+            work_id = str(event.aggregate_id)
+            if work_id in seen:
+                continue
+            seen.add(work_id)
+            item = read_ports.query_work_item(work_id)
+            if not item:
+                continue
+            row = _unreviewed_delivery_row(work_id, item)
+            if row is None:
+                continue
+            out.append(row)
+            if len(out) >= limit:
+                return out
+        if not truncated:
+            break
+    if not truncated or len(out) >= limit:
+        return out
+    tasks = read_ports.query_work_items(
+        work_type="task",
+        order="created_at_desc",
+        limit=_UNREVIEWED_TASK_SCAN,
     )
-    for event in events:
-        work_id = str(event.aggregate_id)
-        if not isinstance((event.payload or {}).get(PAYLOAD_DELIVERY_PUBLISHED), dict):
-            continue
-        if work_id in seen:
-            continue
-        seen.add(work_id)
-        item = read_ports.query_work_item(work_id)
-        if not item or item.get("work_type") != "task":
-            continue
-        if not is_project_brief_plan(item.get("executable_plan")):
-            continue
-        folded = fold_delivery_history(work_id)
-        current = folded["current"]
-        if not current:
-            continue
-        if folded["current_review_status"] != REVIEW_UNREVIEWED:
-            continue
-        out.append({
-            "work_id": work_id,
-            "title": item.get("title") or "",
-            "delivery_id": current.get("delivery_id"),
-            "version": current.get("version"),
-            "summary": current.get("summary") or "",
-            "updated_at": item.get("updated_at"),
-        })
+    for item in tasks:
         if len(out) >= limit:
             break
+        work_id = str(item.get("id") or "")
+        if not work_id or work_id in seen:
+            continue
+        seen.add(work_id)
+        row = _unreviewed_delivery_row(work_id, item)
+        if row is not None:
+            out.append(row)
     return out
 
 
@@ -1030,6 +1079,221 @@ def _metric_datetime(value: Any) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
+_APPROVAL_LOOKBACK = timedelta(days=7)
+_COST_LOOKBACK = timedelta(days=1)
+_INTERRUPTION = "interrupted"
+_INTERRUPTED_BEFORE_AUDIT = "interrupted_before_audit"
+
+
+def _event_payload(event: Any) -> dict[str, Any]:
+    raw = getattr(event, "payload", None)
+    return raw if isinstance(raw, dict) else {}
+
+
+def _time_in_window(value: Any, since: datetime, moment: datetime) -> bool:
+    at = _metric_datetime(value)
+    return bool(at and since <= at <= moment)
+
+
+def _safe_int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _execution_ids_in_window(
+    folded: dict[str, Any],
+    *,
+    since: datetime,
+    moment: datetime,
+) -> tuple[set[str], datetime | None]:
+    """Execution ids for deliveries published or reviewed inside the window."""
+    reviewed = {
+        str(row.get("delivery_id") or "")
+        for row in (folded.get("_decisions") or [])
+        if _time_in_window(row.get("created_at"), since, moment)
+    }
+    ids: set[str] = set()
+    earliest: datetime | None = None
+    for delivery in (folded.get("_by_id") or {}).values():
+        created = _metric_datetime(delivery.get("created_at"))
+        published = bool(created and since <= created <= moment)
+        delivery_id = str(delivery.get("delivery_id") or "")
+        if not published and delivery_id not in reviewed:
+            continue
+        execution_id = str(delivery.get("execution_id") or "").strip()
+        if execution_id:
+            ids.add(execution_id)
+        if created and (earliest is None or created < earliest):
+            earliest = created
+    return ids, earliest
+
+
+def _attribute_delivery_activity(
+    execution_ids: set[str],
+    *,
+    earliest: datetime | None,
+    until: datetime,
+    limit: int,
+) -> tuple[dict[str, Any], bool]:
+    """Count approvals, crash recoveries, and model cost for known executions.
+
+    Joins existing events only. Approvals are high-risk ``ApprovalRequested``
+    rows on the execution correlation, plus ``CapabilityDenied`` rows whose
+    ``caused_by`` is that execution. Recoveries are scheduler
+    ``ExecutionRetried(reason=interrupted)`` / ``ExecutionFailed(error=interrupted)``
+    and ``CapabilityFailed(error=interrupted_before_audit)`` on the same
+    correlation. Model cost sums ``LLMCallRecorded`` with
+    ``purpose=project_brief`` and ``caused_by`` equal to the execution id.
+    Calls that omit ``caused_by`` stay unattributable.
+    """
+    zeros = {
+        "approval_interventions": 0,
+        "recovery_interventions": 0,
+        "llm_cost": 0.0,
+    }
+    if not execution_ids:
+        return zeros, False
+
+    capped = False
+    approvals: set[str] = set()
+    correlations: set[str] = set()
+    recoveries = 0
+    recovery_seen: set[str] = set()
+
+    def mark_recovery(key: str) -> None:
+        nonlocal recoveries
+        if key in recovery_seen:
+            return
+        recovery_seen.add(key)
+        recoveries += 1
+
+    for execution_id in execution_ids:
+        requested = kernel.read_events(
+            type=EVENT_EXECUTION_REQUESTED,
+            aggregate_type=AGGREGATE_EXECUTION,
+            aggregate_id=execution_id,
+            order="desc",
+            limit=5,
+        )
+        for event in requested:
+            payload = _event_payload(event)
+            correlation = str(
+                event.correlation_id or payload.get("correlation_id") or "",
+            ).strip()
+            if correlation:
+                correlations.add(correlation)
+
+        lifecycle = kernel.read_events(
+            aggregate_type=AGGREGATE_EXECUTION,
+            aggregate_id=execution_id,
+            types=[EVENT_EXECUTION_RETRIED, EVENT_EXECUTION_FAILED],
+            order="asc",
+            limit=limit,
+        )
+        if len(lifecycle) >= limit:
+            capped = True
+        for event in lifecycle:
+            payload = _event_payload(event)
+            if event.type == EVENT_EXECUTION_RETRIED:
+                if payload.get("reason") != _INTERRUPTION or payload.get("status") != "retrying":
+                    continue
+            elif payload.get("error") != _INTERRUPTION:
+                continue
+            mark_recovery(
+                f"{execution_id}:{event.type}:{_safe_int(payload.get('attempt'))}:"
+                f"{payload.get('status') or ''}",
+            )
+
+    for correlation in correlations:
+        approval_events = kernel.read_events(
+            type=EVENT_APPROVAL_REQUESTED,
+            correlation_id=correlation,
+            order="asc",
+            limit=limit,
+        )
+        if len(approval_events) >= limit:
+            capped = True
+        for event in approval_events:
+            if _event_payload(event).get("risk") != "high":
+                continue
+            approvals.add(str(event.aggregate_id))
+
+        failed = kernel.read_events(
+            type=EVENT_CAPABILITY_FAILED,
+            correlation_id=correlation,
+            order="asc",
+            limit=limit,
+        )
+        if len(failed) >= limit:
+            capped = True
+        for event in failed:
+            if _event_payload(event).get("error") != _INTERRUPTED_BEFORE_AUDIT:
+                continue
+            mark_recovery(str(event.id))
+
+    approval_since = (earliest or until) - _APPROVAL_LOOKBACK
+    denied = kernel.read_events(
+        type=EVENT_CAPABILITY_DENIED,
+        since_ts=approval_since.isoformat(),
+        until_ts=until.isoformat(),
+        order="desc",
+        limit=limit,
+    )
+    if len(denied) >= limit:
+        capped = True
+    for event in denied:
+        if str(event.caused_by or "") not in execution_ids:
+            continue
+        approval_id = str(_event_payload(event).get("approval_id") or "").strip()
+        if approval_id:
+            approvals.add(approval_id)
+
+    cost_since = (earliest or until) - _COST_LOOKBACK
+    llm_events = kernel.read_events(
+        type=EVENT_LLM_CALL_RECORDED,
+        since_ts=cost_since.isoformat(),
+        until_ts=until.isoformat(),
+        order="desc",
+        limit=limit,
+    )
+    if len(llm_events) >= limit:
+        capped = True
+    linked_cost = 0.0
+    unlinked = False
+    for event in llm_events:
+        payload = _event_payload(event)
+        if payload.get("purpose") != "project_brief" or not payload.get("success", True):
+            continue
+        caused = str(event.caused_by or "").strip()
+        if not caused:
+            unlinked = True
+            continue
+        if caused not in execution_ids:
+            continue
+        try:
+            linked_cost += float(payload.get("cost") or 0)
+        except (TypeError, ValueError):
+            continue
+
+    if capped or unlinked:
+        cost_value: Any = "unavailable"
+    else:
+        cost_value = round(linked_cost, 6)
+    if capped:
+        approval_value: Any = "unavailable"
+        recovery_value: Any = "unavailable"
+    else:
+        approval_value = len(approvals)
+        recovery_value = recoveries
+    return {
+        "approval_interventions": approval_value,
+        "recovery_interventions": recovery_value,
+        "llm_cost": cost_value,
+    }, capped
+
+
 def summarize_delivery_metrics(
     *,
     days: int = 30,
@@ -1038,11 +1302,12 @@ def summarize_delivery_metrics(
 ) -> dict[str, Any]:
     """Summarize project-brief review outcomes from existing Work events.
 
-    The first-version rate follows the plan's product metric: tasks whose
-    first review accepted delivery v1 / tasks whose first review happened in
-    the window. Costs, approvals and crash recoveries cannot currently be
-    attributed to one delivery, so the response marks them unavailable rather
-    than inventing precision.
+    The first-version rate is tasks whose first review accepted delivery v1
+    divided by tasks whose first review happened in the window. Approval count,
+    crash-recovery count, and model cost are joined from the delivery's
+    ``execution_id`` onto existing correlation and execution events. Model cost
+    stays ``unavailable`` when a ``project_brief`` call in the lookback has no
+    ``caused_by``, or when a read hits its cap.
     """
     days = min(365, max(1, int(days)))
     limit = max(1, int(limit))
@@ -1073,13 +1338,14 @@ def summarize_delivery_metrics(
     reworks = adopted_actions = 0
     review_latency_hours: list[float] = []
     per_work: list[dict[str, Any]] = []
+    folded_by_work: dict[str, dict[str, Any]] = {}
 
     def in_window(row: dict[str, Any]) -> bool:
-        at = _metric_datetime(row.get("created_at"))
-        return bool(at and since <= at <= moment)
+        return _time_in_window(row.get("created_at"), since, moment)
 
     for work_id in sorted(work_ids):
         folded = fold_delivery_history(work_id)
+        folded_by_work[work_id] = folded
         decisions = list(folded.get("_decisions") or [])
         decisions.sort(key=lambda row: int(row.get("event_seq") or 0))
         current_decisions = [row for row in decisions if in_window(row)]
@@ -1145,6 +1411,29 @@ def summarize_delivery_metrics(
         })
 
     per_work.sort(key=lambda row: (not row["accepted"], row["title"], row["work_id"]))
+    for event in recent:
+        payload = event.payload if isinstance(event.payload, dict) else {}
+        if not isinstance(payload.get(PAYLOAD_DELIVERY_PUBLISHED), dict):
+            continue
+        published_id = str(event.aggregate_id)
+        if published_id not in folded_by_work:
+            folded_by_work[published_id] = fold_delivery_history(published_id)
+
+    execution_ids: set[str] = set()
+    earliest: datetime | None = None
+    for folded in folded_by_work.values():
+        ids, folded_earliest = _execution_ids_in_window(
+            folded, since=since, moment=moment,
+        )
+        execution_ids.update(ids)
+        if folded_earliest and (earliest is None or folded_earliest < earliest):
+            earliest = folded_earliest
+    attribution, attribution_capped = _attribute_delivery_activity(
+        execution_ids,
+        earliest=earliest,
+        until=moment,
+        limit=limit,
+    )
     return {
         "window_days": days,
         "reviewed_tasks": reviewed_tasks,
@@ -1160,12 +1449,8 @@ def summarize_delivery_metrics(
             round(sum(review_latency_hours) / len(review_latency_hours), 2)
             if review_latency_hours else None
         ),
-        "attribution": {
-            "approval_interventions": "unavailable",
-            "recovery_interventions": "unavailable",
-            "llm_cost": "unavailable",
-        },
-        "capped": len(recent) >= limit,
+        "attribution": attribution,
+        "capped": len(recent) >= limit or attribution_capped,
         "cap_limit": limit,
         "items": per_work,
     }
