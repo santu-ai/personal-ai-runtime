@@ -190,8 +190,12 @@ def test_morning_brief_test_endpoint(client: TestClient, monkeypatch):
     assert data["persisted"] is False
     assert "brief" in data
     assert data["brief"].startswith("早安！")
+    assert "近 7 日 vs 前 7 日" in data["brief"]
+    assert "完成目标" in data["brief"]
+    assert "采纳率" in data["brief"]
     assert "steps_ms" in data
     assert "goals" in data["steps_ms"]
+    assert "periods" in data["steps_ms"]
 
 
 def test_morning_brief_test_persist_uses_dated_title(client: TestClient, monkeypatch):

@@ -270,6 +270,148 @@ test.describe("Chat approval flow", () => {
     await page.getByRole("button", { name: "取消" }).click();
     await expect(page.getByText(/建议：写入文件/)).not.toBeVisible({ timeout: 5000 });
   });
+
+  test("ask_user card sends the typed answer and continues the chat", async ({ page }) => {
+    let resolveBody: Record<string, unknown> | null = null;
+    await installMocks(page, (router) => {
+      router.handler(`/api/chat/conversations/${CONV_ID}/messages`, async (route) => {
+        if (route.request().method() === "GET") {
+          await route.fulfill({ json: [] });
+          return;
+        }
+        const sse =
+          'data: {"type":"confirmation_required","tool_name":"ask_user","tool_args":{"question":"你想先看哪一周？","context":"用来对比完成情况"},"approval_id":"ap-ask-1","tool_call_id":"tc-ask-1"}\n\n' +
+          'data: {"type":"done"}\n\n';
+        await route.fulfill({
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+          body: sse,
+        });
+      });
+      router.handler("/api/chat/approvals/ap-ask-1/resolve", async (route) => {
+        resolveBody = route.request().postDataJSON() as Record<string, unknown>;
+        await route.fulfill({
+          json: {
+            status: "approved",
+            result: '{"status":"answered","answer":"最近三天"}',
+            assistant_message: "好，按最近三天继续。",
+          },
+        });
+      });
+    });
+
+    await page.goto(`/chat/${CONV_ID}`);
+    await page.getByPlaceholder(/输入消息/).fill("帮我对比一下");
+    await page.getByRole("button", { name: "发送" }).click();
+    await expect(page.getByRole("heading", { name: "需要你补充一点信息" })).toBeVisible({
+      timeout: 10000,
+    });
+    // RiskCard also repeats the question in its summary and raw args.
+    await expect(page.locator("p:not([title])", { hasText: "你想先看哪一周？" })).toHaveText(
+      "你想先看哪一周？",
+    );
+    await expect(page.locator("p:not([title])", { hasText: "用来对比完成情况" })).toHaveText(
+      "用来对比完成情况",
+    );
+    const sendAnswer = page.getByRole("button", { name: "发送回答" });
+    await expect(sendAnswer).toBeDisabled();
+    await page.getByRole("textbox", { name: "你的回答" }).fill("最近三天");
+    await expect(sendAnswer).toBeEnabled();
+    await sendAnswer.click();
+    await expect(page.getByText("好，按最近三天继续。")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText("需要你补充一点信息")).not.toBeVisible();
+    expect(resolveBody).toMatchObject({
+      decision: "approve",
+      tool_name: "ask_user",
+      answer: "最近三天",
+      conv_id: CONV_ID,
+      tool_call_id: "tc-ask-1",
+    });
+  });
+
+  test("cancelling ask_user clears the card without an answer", async ({ page }) => {
+    let resolveBody: Record<string, unknown> | null = null;
+    await installMocks(page, (router) => {
+      router.handler(`/api/chat/conversations/${CONV_ID}/messages`, async (route) => {
+        if (route.request().method() === "GET") {
+          await route.fulfill({ json: [] });
+          return;
+        }
+        const sse =
+          'data: {"type":"confirmation_required","tool_name":"ask_user","tool_args":{"question":"要不要先定范围？"},"approval_id":"ap-ask-2","tool_call_id":"tc-ask-2"}\n\n' +
+          'data: {"type":"done"}\n\n';
+        await route.fulfill({
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+          body: sse,
+        });
+      });
+      router.handler("/api/chat/approvals/ap-ask-2/resolve", async (route) => {
+        resolveBody = route.request().postDataJSON() as Record<string, unknown>;
+        await route.fulfill({ json: { status: "denied" } });
+      });
+    });
+
+    await page.goto(`/chat/${CONV_ID}`);
+    await page.getByPlaceholder(/输入消息/).fill("帮我对比一下");
+    await page.getByRole("button", { name: "发送" }).click();
+    await expect(page.getByText("需要你补充一点信息")).toBeVisible({ timeout: 10000 });
+    await page.getByRole("button", { name: "取消" }).click();
+    await expect(page.getByText("需要你补充一点信息")).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByText("已拒绝「ask_user」，没有执行该操作。")).toBeVisible();
+    expect(resolveBody).toMatchObject({
+      decision: "deny",
+      tool_name: "ask_user",
+    });
+    expect(resolveBody && "answer" in resolveBody).toBe(false);
+  });
+});
+
+test.describe("Today period comparison", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("onboarding_done", "1"));
+  });
+
+  test("renders comparison fields from the periods endpoint", async ({ page }) => {
+    let requested = "";
+    await installMocks(page, (router) => {
+      router.handler("/api/dashboard/periods", async (route) => {
+        requested = route.request().url();
+        await route.fulfill({
+          json: {
+            days: 7,
+            current: { start: "2026-09-15T00:00:00+00:00", end: "2026-09-22T00:00:00+00:00" },
+            previous: { start: "2026-09-08T00:00:00+00:00", end: "2026-09-15T00:00:00+00:00" },
+            signals: {
+              goals_completed: { current: 4, previous: 1, delta: 3 },
+              tasks_completed: { current: 2, previous: 2, delta: 0 },
+              work_completed_untyped: { current: 0, previous: 0, delta: 0 },
+              inbox_recorded: { current: 9, previous: 12, delta: -3 },
+              adoption_decided: { current: 6, previous: 4, delta: 2 },
+              adoption_rate: { current: 0.5, previous: 0.25, delta: 0.25 },
+            },
+            capped: true,
+          },
+        });
+      });
+    });
+
+    await page.goto("/dashboard", { waitUntil: "networkidle" });
+    const card = page.getByTestId("period-comparison");
+    await expect(card).toBeVisible({ timeout: 10000 });
+    await expect(card).toContainText("近 7 日 vs 前 7 日");
+    await expect(card).toContainText("完成目标");
+    await expect(card).toContainText("+3");
+    await expect(card).toContainText("完成任务");
+    await expect(card).toContainText("持平");
+    await expect(card).toContainText("新邮件");
+    await expect(card).toContainText("-3");
+    await expect(card).toContainText("50%");
+    await expect(card).toContainText("+25 个百分点");
+    await expect(card).toContainText("近 7 日 6 次拍板 / 前 7 日 4 次");
+    await expect(card).toContainText("这段时间事件较多，数字可能不完整");
+    expect(requested).toContain("/api/dashboard/periods?days=7");
+  });
 });
 
 test.describe("Error handling", () => {

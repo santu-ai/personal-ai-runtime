@@ -5,7 +5,7 @@
 
 ## 当前状态
 
-- 当前状态（2026-09-22）：周期对比在今日页（近 7 日 vs 前 7 日：完成目标、完成任务、新邮件、采纳率；`GET /api/dashboard/periods`）。无新事件类型。真 LLM / 真实邮箱日用仍待试用
+- 当前状态（2026-09-22）：ask_user 与今日周期对比已有 Playwright 路径；早安简报正文带同一 `compare_periods` 的近 7 日 delta。无新事件类型。真 LLM / 真实邮箱日用仍待试用
 - 已知坏点 / 待办：日用库不在本机 Windows（soak 默认空库 `data/personal_ai.db`）；本机无 Telegram token，真实收发 blocked
 - 最近审阅：2026-09-01 从 deepseek-harness 对齐「模型可见 ⟺ 可重建」，用 checkpoint 替换静默截断
 - **本机 git**：Windows 提交走 `git -c core.hooksPath=.githooks commit -F`；venv 放 PATH 以免 pre-commit mypy 用到系统 `mcp`

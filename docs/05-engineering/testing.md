@@ -149,7 +149,8 @@ CI 报告用 `--cov-report=term-missing` 让缺失部分可见，开发者按需
 
 - **导航/页面**：侧栏+导航、goals 渲染 `学习 Rust`、memories 渲染 `用户喜欢喝咖啡`、dashboard 显示「今天」三栏（含停滞目标进「今天要做」）、settings 显示 `导出全部数据`+`数据主权`、approvals 空 state `暂无待审批`。
 - **聊天流**：`/chat/:id` 输入框 placeholder `输入消息`、`发送` 按钮。
-- **聊天审批流**（headline）：mock SSE 流返回 `confirmation_required`（工具 `write_file`、`approval_id=ap-e2e-1`），断言 `确认写入文件` 对话框出现，点 `确认执行`，断言对话框在 `/api/chat/approvals/ap-e2e-1/resolve` 返回 approved 后消失；另一测试点 `取消` 验证 deny。
+- **聊天审批流**（headline）：mock SSE 流返回 `confirmation_required`（工具 `write_file`、`approval_id=ap-e2e-1`），断言 `确认写入文件` 对话框出现，点 `确认执行`，断言对话框在 `/api/chat/approvals/ap-e2e-1/resolve` 返回 approved 后消失；另一测试点 `取消` 验证 deny。`ask_user` 澄清卡需先输入文本再点 `发送回答`，请求体带 `answer`，续写文案出现后卡片消失；点 `取消` 则 `decision=deny` 且不带回答，卡片清除。
+- **今日周期对比**：mock `GET /api/dashboard/periods`，断言今日页卡片展示完成目标、完成任务、新邮件、采纳率及 delta。
 - **可信闭环**（[`e2e/trust-loops.spec.ts`](../../frontend/e2e/trust-loops.spec.ts)）：首页发送进对话、重载后恢复待审批卡、收件箱失败后重试同步、确认 proposed 记忆后出现在聊天上下文、会话 A 确认→会话 B 召回→更新后会话 C 只用新事实、工作台三栏与提醒区不重复同一实体。
 - **连续审批**（[`e2e/chat-approval.spec.ts`](../../frontend/e2e/chat-approval.spec.ts)）：首次确认后若后端返回下一审批，无需另发消息即可再次确认；切换会话不会串走确认卡，回到原会话可从待审批列表恢复。
 - **错误处理**：telemetry 端点 500 时 dashboard 显示 `重试`。
