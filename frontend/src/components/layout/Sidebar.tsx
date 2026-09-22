@@ -50,6 +50,26 @@ const KNOWLEDGE_NAV: NavItem[] = [
 const SYSTEM_NAV: NavItem[] = [{ path: "/settings", label: "设置", icon: Settings }];
 
 const COLLAPSE_KEY = "sidebar_collapsed";
+const NARROW_QUERY = "(max-width: 767px)";
+
+function viewportIsNarrow(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+  return window.matchMedia(NARROW_QUERY).matches;
+}
+
+/** Phone-width viewports keep the icon rail so the page shell still has room. */
+function useNarrowViewport() {
+  const [narrow, setNarrow] = useState(viewportIsNarrow);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia(NARROW_QUERY);
+    const apply = () => setNarrow(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+  return narrow;
+}
 
 interface SidebarProps {
   conversations: Array<{ id: string; title: string; summary?: string | null }>;
@@ -159,6 +179,9 @@ export default function Sidebar({
     }
   }, [collapsed]);
 
+  const narrow = useNarrowViewport();
+  const compact = collapsed || narrow;
+
   const badgeFor = (key: BadgeKey) => {
     if (key === "approvals") return approvalCount;
     if (key === "inbox") return inboxCount;
@@ -169,39 +192,41 @@ export default function Sidebar({
   return (
     <aside
       className={`${
-        collapsed ? "w-[4.25rem]" : "w-60"
+        compact ? "w-[4.25rem]" : "w-60"
       } bg-surface-sidebar border-r border-border-subtle flex flex-col shrink-0 transition-[width] duration-200 ease-out`}
-      data-collapsed={collapsed ? "true" : "false"}
+      data-collapsed={compact ? "true" : "false"}
     >
-      <div
-        className={`border-b border-border-subtle flex items-center gap-2 ${
-          collapsed ? "px-2 py-3 justify-center" : "px-3 py-3"
-        }`}
-      >
-        {!collapsed && (
-          <div className="min-w-0 flex-1">
-            <h1 className="text-sm font-semibold tracking-tight text-fg-primary leading-tight">
-              Personal AI
-            </h1>
-            <p className="text-[11px] text-fg-tertiary mt-0.5 truncate">本地第二大脑</p>
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={() => setCollapsed((v) => !v)}
-          className="rounded-md p-1.5 text-fg-tertiary hover:bg-surface-hover hover:text-fg-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-          aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
-          title={collapsed ? "展开侧栏" : "收起侧栏"}
+      {!narrow && (
+        <div
+          className={`border-b border-border-subtle flex items-center gap-2 ${
+            compact ? "px-2 py-3 justify-center" : "px-3 py-3"
+          }`}
         >
-          {collapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
-        </button>
-      </div>
+          {!compact && (
+            <div className="min-w-0 flex-1">
+              <h1 className="text-sm font-semibold tracking-tight text-fg-primary leading-tight">
+                Personal AI
+              </h1>
+              <p className="text-[11px] text-fg-tertiary mt-0.5 truncate">本地第二大脑</p>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setCollapsed((v) => !v)}
+            className="rounded-md p-1.5 text-fg-tertiary hover:bg-surface-hover hover:text-fg-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+            aria-label={compact ? "展开侧栏" : "收起侧栏"}
+            title={compact ? "展开侧栏" : "收起侧栏"}
+          >
+            {compact ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
+          </button>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden">
         <NavGroup
           label="概览"
           items={OVERVIEW_NAV}
-          collapsed={collapsed}
+          collapsed={compact}
           badgeFor={badgeFor}
           proposedCount={proposedCount}
           pathname={location.pathname}
@@ -210,7 +235,7 @@ export default function Sidebar({
         <NavGroup
           label="任务"
           items={WORK_NAV}
-          collapsed={collapsed}
+          collapsed={compact}
           badgeFor={badgeFor}
           proposedCount={proposedCount}
           pathname={location.pathname}
@@ -219,13 +244,13 @@ export default function Sidebar({
         <NavGroup
           label="知识"
           items={KNOWLEDGE_NAV}
-          collapsed={collapsed}
+          collapsed={compact}
           badgeFor={badgeFor}
           proposedCount={proposedCount}
           pathname={location.pathname}
         />
 
-        {onChatPage && !collapsed && (
+        {onChatPage && !compact && (
           <>
             <div className="mx-3 border-t border-border-subtle/80" />
             <div className="px-2 pt-3 pb-1">
@@ -274,7 +299,7 @@ export default function Sidebar({
           </>
         )}
 
-        {onChatPage && collapsed && (
+        {onChatPage && compact && (
           <div className="px-2 py-2">
             <button
               type="button"
@@ -293,14 +318,14 @@ export default function Sidebar({
         <NavGroup
           label="系统"
           items={SYSTEM_NAV}
-          collapsed={collapsed}
+          collapsed={compact}
           badgeFor={badgeFor}
           proposedCount={proposedCount}
           pathname={location.pathname}
         />
         {footer && isValidElement(footer)
           ? cloneElement(footer as React.ReactElement<{ compact?: boolean }>, {
-              compact: collapsed,
+              compact: compact,
             })
           : footer}
       </div>

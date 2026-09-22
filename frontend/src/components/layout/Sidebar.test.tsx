@@ -112,6 +112,26 @@ describe("Sidebar", () => {
     expect(onDeleteChat).toHaveBeenCalledWith("c1");
   });
 
+  it("keeps an icon rail on a narrow viewport", () => {
+    const original = window.matchMedia;
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: String(query).includes("max-width"),
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })) as unknown as typeof window.matchMedia;
+    try {
+      renderSidebar();
+      expect(screen.queryByText("Personal AI")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "收起侧栏" })).not.toBeInTheDocument();
+      const aside = document.querySelector("aside");
+      expect(aside).toHaveAttribute("data-collapsed", "true");
+      expect(aside).toHaveClass("w-[4.25rem]");
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
   it("sends memories nav to the review tab when claims are pending", () => {
     proposedCountState.data = 2;
     renderSidebar();

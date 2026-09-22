@@ -19,8 +19,8 @@
 |---|---|---|
 | `/`（index） | `pages/ChatPage.tsx` | 聊天首页（无会话）→ `ChatHome` |
 | `/chat/:conversationId` | `pages/ChatPage.tsx` | 活跃会话 → `ChatView` |
-| `/goals` | `pages/Goals.tsx` | 目标列表 + 详情 |
-| `/goals/:goalId` | `pages/Goals.tsx` | 目标详情 |
+| `/goals` | `pages/Goals.tsx` | 目标列表 + 详情。与其他主页面共用 `page-shell`；窄屏选中后只显示详情，可返回列表。进度按 0–1 比例显示为百分比 |
+| `/goals/:goalId` | `pages/Goals.tsx` | 同上，直接打开该目标详情 |
 | `/tasks` | `pages/Tasks.tsx` | 后台/可执行任务列表，可创建项目资料简报；有评审时展示近 30 日首版采纳、返工和已转任务 |
 | `/tasks/:taskId` | `pages/Tasks.tsx` | 任务详情：交付结果优先，可验收/返工；执行日志可折叠 |
 | `/inbox` | `pages/Inbox.tsx` | 未读分拣三列（重要 / 需跟进 / 可忽略）+ 最近 15 封（仅标题与发件人，未读加粗）+ 最近同步时间/结果/失败原因与重试 |
@@ -139,13 +139,13 @@ types.ts       ← 共享 TS 接口
 - 分组「任务」：`/goals`「目标」、`/tasks`「任务」、`/inbox`「收件箱」、`/approvals`「审批」（角标：收件箱未读、待审批）
 - 分组「知识」：`/memories`「记忆」、`/timeline`「时间线」。待确认记忆角标大于 0 时，「记忆」链到 `/memories?tab=review`
 - 分组「系统」：`/settings`「设置」；底部通知铃
-- 侧栏可收起（`localStorage.sidebar_collapsed`）；会话列表只在 chat 路由且展开时显示
+- 侧栏可收起（`localStorage.sidebar_collapsed`）；会话列表只在 chat 路由且展开时显示。视口窄于 `md`（768px）时强制保持图标栏宽度，不改已保存的收起偏好，避免主内容被 240px 侧栏挤没
 
 ## Layout
 
 [`frontend/src/Layout.tsx`](../../frontend/src/Layout.tsx) 渲染：
 
-1. `<Sidebar>`（左 256px）含会话列表 + 导航。
+1. `<Sidebar>`（展开 240px / 收起或窄屏 68px）含会话列表 + 导航。
 2. Banner 覆盖层：(a) 后端需认证但未配 token，(b) 后端不可用。
 3. Toast 栈（右上）：WS 实时通知 + `useErrorStore` 错误 toast。
 4. `<main>` 含 `<Suspense>` + `<ErrorBoundary>` 包 `<Outlet />`。

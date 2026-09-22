@@ -5,6 +5,7 @@ import { useInvalidateGoals } from "../../hooks/useGoalsQuery";
 import { createGoalAction, updateGoalAction, decomposeGoal, ApiError } from "../../api/client";
 import Badge from "../ui/Badge";
 import Button from "../ui/Button";
+import { goalProgressPercent } from "../../utils/goalProgress";
 import { isStagnant } from "../../utils/timeUtils";
 import { Sparkles } from "lucide-react";
 
@@ -83,12 +84,14 @@ export default function GoalDetailPanel({
     setSuggestedSteps([]);
   };
 
+  const progressPct = Math.round(goalProgressPercent(goal.progress));
+
   return (
     <div className="max-w-2xl">
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-fg-primary">{goal.title}</h2>
-          <div className="flex items-center gap-2 mt-2">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-xl font-semibold tracking-tight text-fg-primary">{goal.title}</h2>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <Badge
               tone={goal.status === "active" || goal.status === "completed" ? "success" : "default"}
             >
@@ -98,15 +101,15 @@ export default function GoalDetailPanel({
               <Badge tone="warning">已停滞</Badge>
             )}
           </div>
-          <div className="mt-3 h-2 bg-surface-overlay rounded-full overflow-hidden max-w-xs">
+          <div className="mt-3 h-2 max-w-xs overflow-hidden rounded-full bg-surface-overlay">
             <div
-              className="h-full bg-insight rounded-full transition-all"
-              style={{ width: `${Math.min(goal.progress, 100)}%` }}
+              className="h-full rounded-full bg-insight transition-all"
+              style={{ width: `${progressPct}%` }}
             />
           </div>
-          <p className="text-xs text-fg-tertiary mt-1">进度 {goal.progress}%</p>
+          <p className="mt-1 text-xs text-fg-tertiary">进度 {progressPct}%</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button size="sm" onClick={() => onStartChat(goal)}>
             就此目标对话
           </Button>
