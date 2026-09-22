@@ -19,7 +19,7 @@ invoke_capability(name, args, actor, correlation_id,
 1. 解析 Principal（`identity_resolver.resolve(actor)`）。
 2. 执行归属校验：`agent:*` / `scheduler` / `executor` / `background` 类 actor 必须绑定 `execution_id`，否则拒绝（见下文）。
 3. 调用 `capability_governance.decide(...)` 走 3-gate。
-4. decision 为 allow 且工具属 write-class 时，先把调用意图写入 APP_STORAGE `plan_resumes`（键 `cap_intent:{id}`），再执行工具；审计事件落库后清除。进程在「副作用 → 审计事件」窗口内死亡时，RuntimeLoop 启动清扫为遗留意图补发 `CapabilityFailed(error=interrupted_before_audit)`（见 [ADR-R017](../07-adr/ADR-R017-execution-trustworthiness.md) E-10）。
+4. decision 为 allow 且工具属 write-class 时，先把调用意图写入 APP_STORAGE `plan_resumes`（键 `cap_intent:{id}`），再执行工具；审计事件落库后清除。进程在「副作用 → 审计事件」窗口内死亡时，RuntimeLoop 启动清扫为遗留意图补发 `CapabilityFailed(error=interrupted_before_audit)`。意图行记下当时的 `execution_id`（并作为 `caused_by`）和 handler `retry_count`，补发事件原样带上，恢复计数按同一次中断对齐（见 [ADR-R017](../07-adr/ADR-R017-execution-trustworthiness.md) E-10）。
 5. 根据 decision 发出 `CapabilityDenied`（含 deferred）/ `CapabilityInvoked` / `CapabilityFailed` 事件。`invoke_capability` 返回 `outcome`：`success` / `approval_required` / `authorization_failure` / `tool_not_found` / `tool_timeout` / `tool_execution_failure` / `tool_invalid_result` / `internal_error`。工具 handler 失败必须是 `CapabilityFailed`，不得记成 success。
 6. 若工具属外部摄入类，成功后 `taint_registry.mark(correlation_id)`。
 

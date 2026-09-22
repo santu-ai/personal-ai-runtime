@@ -434,6 +434,21 @@ def capability_intent_key(invocation_id: str) -> str:
     return f"{CAPABILITY_INTENT_PREFIX}{invocation_id}"
 
 
+def _running_retry_count(kernel: Any, execution_id: str) -> int | None:
+    """Lane A 行上、调用进行中的 ``retry_count``。没有行时返回 None。"""
+    try:
+        row = kernel.read_scheduled_execution(execution_id)
+    except Exception:
+        logger.debug("capability intent retry_count lookup failed", exc_info=True)
+        return None
+    if row is None:
+        return None
+    try:
+        return int(row.retry_count)
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
 def record_capability_intent(
     invocation_id: str,
     *,
@@ -441,6 +456,9 @@ def record_capability_intent(
     args_summary: str,
     actor: str,
     correlation_id: str | None = None,
+    execution_id: str | None = None,
+    caused_by: str | None = None,
+    retry_count: int | None = None,
     db: Any | None = None,
     kernel: Any | None = None,
 ) -> None:
@@ -449,20 +467,38 @@ def record_capability_intent(
     审计事件（CapabilityInvoked / CapabilityFailed）落库后由
     :func:`clear_capability_intent` 清除；进程在窗口内死亡时，遗留行由
     启动清扫补发 ``CapabilityFailed(error=interrupted_before_audit)``。
+
+    ``execution_id`` 缺省时取当前 ``execution_scope``。``caused_by`` 缺省为
+    该执行 id，与 ``invoke_capability`` 把执行 id 写入 ``caused_by`` 的约定
+    一致。``retry_count`` 缺省读该执行的投影行，供恢复计数按同一次中断对齐。
     """
     if not invocation_id:
         return
+    from app.core.runtime.execution import get_current_execution_id
+
+    resolved_execution = str(execution_id or "").strip()
+    if not resolved_execution:
+        resolved_execution = str(get_current_execution_id() or "").strip()
+    resolved_caused = str(caused_by or "").strip() or resolved_execution
+    resolved_retry = retry_count
+    if resolved_retry is None and resolved_execution and kernel is not None:
+        resolved_retry = _running_retry_count(kernel, resolved_execution)
+    previous: dict[str, Any] = {
+        "name": name,
+        "args_summary": args_summary,
+        "actor": actor,
+        "correlation_id": correlation_id or "",
+        "execution_id": resolved_execution,
+        "caused_by": resolved_caused,
+    }
+    if resolved_retry is not None:
+        previous["retry_count"] = int(resolved_retry)
     register_plan_resume(
         capability_intent_key(invocation_id),
         PlanResume(
             kind="execute",
             resume_from=0,
-            previous_output={
-                "name": name,
-                "args_summary": args_summary,
-                "actor": actor,
-                "correlation_id": correlation_id or "",
-            },
+            previous_output=previous,
         ),
         db=db,
         kernel=kernel,

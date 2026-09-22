@@ -1083,11 +1083,6 @@ _APPROVAL_LOOKBACK = timedelta(days=7)
 _COST_LOOKBACK = timedelta(days=1)
 _INTERRUPTION = "interrupted"
 _INTERRUPTED_BEFORE_AUDIT = "interrupted_before_audit"
-# One process start emits handler replay (Scheduler._recover) and then the
-# capability-intent audit closure (RuntimeLoop.start). 60s covers a slow
-# start. A later crash carries its own handler replay, so this window does
-# not merge distinct interruptions.
-_RECOVERY_TWIN_WINDOW = timedelta(seconds=60)
 
 
 def _event_payload(event: Any) -> dict[str, Any]:
@@ -1112,10 +1107,6 @@ def _event_correlation(event: Any) -> str:
     return str(event.correlation_id or payload.get("correlation_id") or "").strip()
 
 
-def _event_moment(event: Any) -> datetime | None:
-    return _metric_datetime(getattr(event, "ts", None))
-
-
 def _handler_interruption(event: Any, payload: dict[str, Any]) -> bool:
     """Scheduler replay of one crash, not the follow-up pending enqueue."""
     if event.type == EVENT_EXECUTION_RETRIED:
@@ -1126,26 +1117,46 @@ def _handler_interruption(event: Any, payload: dict[str, Any]) -> bool:
     return event.type == EVENT_EXECUTION_FAILED and payload.get("error") == _INTERRUPTION
 
 
-def _capability_twins_handler(
-    correlation: str,
-    event: Any,
-    handler_recoveries: list[tuple[str, datetime | None]],
-) -> bool:
-    """True when this audit gap is the same crash as a nearby handler replay.
+def _audit_execution_id(event: Any) -> str:
+    payload = _event_payload(event)
+    return str(getattr(event, "caused_by", None) or payload.get("execution_id") or "").strip()
 
-    ``CapabilityFailed(error=interrupted_before_audit)`` has no execution id.
-    The join is the handler correlation. Events from one ``RuntimeLoop.start``
-    sit inside ``_RECOVERY_TWIN_WINDOW``; a later unaudited call does not.
+
+def _audit_retry_count(payload: dict[str, Any]) -> int | None:
+    if "retry_count" not in payload or payload.get("retry_count") is None:
+        return None
+    try:
+        return int(payload["retry_count"])
+    except (TypeError, ValueError):
+        return None
+
+
+def _audit_twins_recovery(
+    event: Any,
+    *,
+    handler_slots: set[tuple[str, int, str]],
+    handler_correlations: set[str],
+) -> bool:
+    """True when this audit gap is the same crash as a handler replay.
+
+    Closures stamped at intent time carry the in-flight ``retry_count``.
+    Scheduler replay emits ``ExecutionRetried(attempt=retry_count+1)``;
+    a budget-exhausted ``ExecutionFailed(error=interrupted)`` keeps
+    ``attempt == retry_count``. Events that predate that stamp stay twins
+    of any handler replay on the same correlation.
     """
-    moment = _event_moment(event)
-    for linked, at in handler_recoveries:
-        if linked != correlation:
-            continue
-        if moment is None or at is None:
-            return True
-        if abs(moment - at) <= _RECOVERY_TWIN_WINDOW:
-            return True
-    return False
+    execution_id = _audit_execution_id(event)
+    if execution_id:
+        recorded = _audit_retry_count(_event_payload(event))
+        if recorded is None:
+            return any(slot[0] == execution_id for slot in handler_slots)
+        return (execution_id, recorded + 1, "retry") in handler_slots or (
+            execution_id,
+            recorded,
+            "fail",
+        ) in handler_slots
+    correlation = _event_correlation(event)
+    return bool(correlation) and correlation in handler_correlations
 
 
 def _execution_ids_in_window(
@@ -1190,10 +1201,11 @@ def _attribute_delivery_activity(
     ``caused_by`` is that execution. One crash recovery is one count: scheduler
     ``ExecutionRetried(reason=interrupted, status=retrying)`` or
     ``ExecutionFailed(error=interrupted)``, keyed by execution and attempt.
-    ``CapabilityFailed(error=interrupted_before_audit)`` on that correlation is
-    the audit-closure twin of the same start, so it does not add a second
-    recovery when it falls within ``_RECOVERY_TWIN_WINDOW`` of the replay.
-    An audit gap with no nearby handler replay still counts. Model cost sums
+    ``CapabilityFailed(error=interrupted_before_audit)`` stamped with that
+    execution and the in-flight ``retry_count`` is the audit-closure twin of
+    the same attempt, so it does not add a second recovery. An audit gap with
+    no matching handler replay still counts. Events without the stamp stay
+    twins of a handler replay on the same correlation. Model cost sums
     ``LLMCallRecorded`` with ``purpose=project_brief`` and ``caused_by`` equal
     to the execution id. Calls that omit ``caused_by`` stay unattributable.
     """
@@ -1211,7 +1223,8 @@ def _attribute_delivery_activity(
     execution_correlations: dict[str, set[str]] = {}
     recoveries = 0
     recovery_seen: set[str] = set()
-    handler_recoveries: list[tuple[str, datetime | None]] = []
+    handler_slots: set[tuple[str, int, str]] = set()
+    handler_correlations: set[str] = set()
 
     def mark_recovery(key: str) -> bool:
         nonlocal recoveries
@@ -1254,13 +1267,14 @@ def _attribute_delivery_activity(
             )
             if not mark_recovery(key):
                 continue
+            attempt = _safe_int(payload.get("attempt"))
+            kind = "retry" if event.type == EVENT_EXECUTION_RETRIED else "fail"
+            handler_slots.add((execution_id, attempt, kind))
             linked = _event_correlation(event)
             linked_ids = (
                 {linked} if linked else set(execution_correlations.get(execution_id, ()))
             )
-            moment = _event_moment(event)
-            for correlation in linked_ids:
-                handler_recoveries.append((correlation, moment))
+            handler_correlations.update(linked_ids)
 
     for correlation in correlations:
         approval_events = kernel.read_events(
@@ -1285,11 +1299,26 @@ def _attribute_delivery_activity(
         if len(failed) >= limit:
             capped = True
         for event in failed:
-            if _event_payload(event).get("error") != _INTERRUPTED_BEFORE_AUDIT:
+            payload = _event_payload(event)
+            if payload.get("error") != _INTERRUPTED_BEFORE_AUDIT:
                 continue
-            if _capability_twins_handler(correlation, event, handler_recoveries):
+            audit_execution = _audit_execution_id(event)
+            if audit_execution and audit_execution not in execution_ids:
                 continue
-            mark_recovery(str(event.id))
+            if _audit_twins_recovery(
+                event,
+                handler_slots=handler_slots,
+                handler_correlations=handler_correlations,
+            ):
+                continue
+            recorded_retry = _audit_retry_count(payload)
+            if audit_execution and recorded_retry is not None:
+                audit_key = f"audit:{audit_execution}:{recorded_retry}"
+            elif audit_execution:
+                audit_key = f"audit:{audit_execution}"
+            else:
+                audit_key = str(event.id)
+            mark_recovery(audit_key)
 
     approval_since = (earliest or until) - _APPROVAL_LOOKBACK
     denied = kernel.read_events(
@@ -1363,8 +1392,10 @@ def summarize_delivery_metrics(
     The first-version rate is tasks whose first review accepted delivery v1
     divided by tasks whose first review happened in the window. Approval count,
     crash-recovery count, and model cost are joined from the delivery's
-    ``execution_id`` onto existing correlation and execution events. Model cost
-    stays ``unavailable`` when a ``project_brief`` call in the lookback has no
+    ``execution_id`` onto existing correlation and execution events. An
+    ``interrupted_before_audit`` closure twins the handler replay of the same
+    attempt via ``retry_count``, not a clock window. Model cost stays
+    ``unavailable`` when a ``project_brief`` call in the lookback has no
     ``caused_by``, or when a read hits its cap.
     """
     days = min(365, max(1, int(days)))
