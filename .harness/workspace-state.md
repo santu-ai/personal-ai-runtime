@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-09-22：Batch 8：调度器把本次执行打成终态死信（超时、重试预算耗尽、租约回收、启动时 interrupted 超限）后，立刻用与启动恢复相同的判定把仍为 running 的领域 Work 收成 `failed`（`WorkItemStatusChanged`）。不新开 retry 预算，不新增事件类型。进程死在这两条事件之间时，下次启动仍走原恢复。
 - 2026-09-22：Batch 7 文档对齐 #88–#93：任务页写出审批/恢复/模型成本与「重新执行」；`_recover` 预算耗尽走 `ExecutionFailed` 死信。未改守卫脚本。
 - 2026-09-22：`CapabilityFailed(error=interrupted_before_audit)` 带上调用当时的 `execution_id` / `caused_by` / `retry_count`。简报恢复次数按同一次中断对齐，不再用 60 秒窗口。没有这些字段的旧事件仍按 correlation 并入已有 handler replay。
 - 2026-09-22：任务页改用与目标页相同的 `page-shell`：整页滚动，宽屏列表+详情，窄屏选中后只留详情并可返回列表。交付指标、执行、验收和返工仍在。窄于 md 的侧栏保持图标栏。
