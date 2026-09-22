@@ -59,7 +59,7 @@ export default function Dialog({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 backdrop-blur-[2px]"
       onClick={onCancel}
       role="presentation"
     >
@@ -70,10 +70,10 @@ export default function Dialog({
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
-        className="bg-surface-raised border border-border-strong rounded-xl p-6 max-w-md w-full mx-4 shadow-xl outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+        className="bg-surface-raised border border-border-subtle rounded-xl p-5 max-w-md w-full mx-4 shadow-overlay outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 id={titleId} className="text-lg font-semibold text-fg-primary">
+        <h3 id={titleId} className="text-base font-semibold tracking-tight text-fg-primary">
           {title}
         </h3>
         {description && (
@@ -82,7 +82,7 @@ export default function Dialog({
           </p>
         )}
         {children ? <div className="mt-4">{children}</div> : null}
-        <div className="flex justify-end gap-2 mt-6">
+        <div className="flex justify-end gap-2 mt-5">
           <Button type="button" variant="secondary" size="sm" onClick={onCancel}>
             {cancelLabel}
           </Button>

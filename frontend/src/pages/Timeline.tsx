@@ -105,7 +105,7 @@ export default function TimelinePage() {
           <div className="text-fg-secondary mb-4">{msg}</div>
           <button
             onClick={() => void refetch()}
-            className="px-4 py-2 bg-surface-overlay hover:bg-border-strong text-white rounded-lg text-sm transition-colors"
+            className="rounded-md bg-insight-strong px-4 py-2 text-sm text-fg-on-accent transition-colors hover:bg-insight"
           >
             重试
           </button>
@@ -115,12 +115,12 @@ export default function TimelinePage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6">
-      <div className="max-w-2xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+    <div className="page-shell">
+      <div className="page-container-narrow">
+        <div className="page-header mb-6">
           <div>
-            <h2 className="text-xl font-semibold text-fg-primary">人生时间线</h2>
-            <p className="text-sm text-fg-tertiary mt-0.5">你的 AI 记录的一切</p>
+            <h2 className="page-title">人生时间线</h2>
+            <p className="page-subtitle">你的 AI 记录的一切</p>
           </div>
         </div>
 

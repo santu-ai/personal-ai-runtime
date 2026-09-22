@@ -20,6 +20,8 @@ import { useMemoriesGroupedQuery, useProposedMemoryCountQuery } from "../hooks/u
 import { queryKeys } from "../hooks/useWsInvalidationBridge";
 import { PortraitPanel } from "./Portrait";
 import Dialog from "../components/ui/Dialog";
+import PageHeader from "../components/ui/PageHeader";
+import SegmentedControl from "../components/ui/SegmentedControl";
 import MemoryGraphView from "../components/memories/MemoryGraphView";
 import MemoryListItem, {
   CATEGORY_LABELS,
@@ -274,71 +276,43 @@ export default function MemoriesPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-6">
-      <div className="max-w-4xl mx-auto space-y-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold mb-2 text-fg-primary">AI 对你的理解</h2>
-            <p className="text-sm text-fg-tertiary">
+    <div className="page-shell">
+      <div className="page-container space-y-6">
+        <PageHeader
+          title="AI 对你的理解"
+          description={
+            <>
               这些是我从我们的对话中记住的。{memories.length > 0 && `共 ${memories.length} 条。`}
               {proposedTotal > 0 && (
                 <span className="text-warning"> 其中 {proposedTotal} 条待你确认。</span>
               )}
               每一条都让我更好地帮助你。
-            </p>
-          </div>
-          <div className="flex gap-1 bg-surface-overlay rounded-lg p-1">
-            <button
-              onClick={() => setViewMode("list")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
-                viewMode === "list"
-                  ? "bg-border-strong text-white"
-                  : "text-fg-secondary hover:text-fg-primary"
-              }`}
-            >
-              <List size={14} />
-              列表
-            </button>
-            <button
-              onClick={() => setViewMode("review")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
-                viewMode === "review"
-                  ? "bg-border-strong text-white"
-                  : "text-fg-secondary hover:text-fg-primary"
-              }`}
-            >
-              <ClipboardCheck size={14} />
-              待确认
-              {proposedTotal > 0 && (
-                <span className="ml-1 text-[10px] min-w-[1.1rem] h-4 px-1 rounded-full bg-warning/20 text-warning flex items-center justify-center">
-                  {proposedTotal > 99 ? "99+" : proposedTotal}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setViewMode("graph")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
-                viewMode === "graph"
-                  ? "bg-border-strong text-white"
-                  : "text-fg-secondary hover:text-fg-primary"
-              }`}
-            >
-              <Network size={14} />
-              图谱
-            </button>
-            <button
-              onClick={() => setViewMode("portrait")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
-                viewMode === "portrait"
-                  ? "bg-border-strong text-white"
-                  : "text-fg-secondary hover:text-fg-primary"
-              }`}
-            >
-              <User size={14} />
-              画像
-            </button>
-          </div>
-        </div>
+            </>
+          }
+          actions={
+            <SegmentedControl
+              aria-label="记忆视图"
+              value={viewMode}
+              onChange={setViewMode}
+              options={[
+                { value: "list", label: "列表", icon: <List size={14} /> },
+                {
+                  value: "review",
+                  label: "待确认",
+                  icon: <ClipboardCheck size={14} />,
+                  badge:
+                    proposedTotal > 0 ? (
+                      <span className="ml-0.5 text-[10px] min-w-[1.1rem] h-4 px-1 rounded-full bg-warning/20 text-warning flex items-center justify-center">
+                        {proposedTotal > 99 ? "99+" : proposedTotal}
+                      </span>
+                    ) : undefined,
+                },
+                { value: "graph", label: "图谱", icon: <Network size={14} /> },
+                { value: "portrait", label: "画像", icon: <User size={14} /> },
+              ]}
+            />
+          }
+        />
 
         {viewMode === "portrait" ? (
           <PortraitPanel compact />

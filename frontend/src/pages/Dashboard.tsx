@@ -21,6 +21,8 @@ import {
   mergeLiveAndServerNotifications,
 } from "../components/dashboard/todayBuckets";
 import { Shield, AlertCircle, Radar } from "lucide-react";
+import Button from "../components/ui/Button";
+import PageHeader from "../components/ui/PageHeader";
 
 function getDateString(): string {
   const d = new Date();
@@ -86,17 +88,16 @@ export default function DashboardPage() {
   // ── Trust tab ──
   if (tab === "trust") {
     return (
-      <div className="flex-1 overflow-y-auto p-4 md:p-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-fg-primary">信任</h2>
-            <button
-              onClick={() => setTab("today")}
-              className="px-3 py-1.5 text-xs bg-surface-overlay hover:bg-border-strong text-fg-secondary rounded-lg transition-colors"
-            >
-              ← 返回今日
-            </button>
-          </div>
+      <div className="page-shell">
+        <div className="page-container">
+          <PageHeader
+            title="信任"
+            actions={
+              <Button variant="secondary" size="sm" onClick={() => setTab("today")}>
+                ← 返回今日
+              </Button>
+            }
+          />
           <TrustReportPanel compact />
         </div>
       </div>
@@ -106,17 +107,16 @@ export default function DashboardPage() {
   // ── Monitors tab ──
   if (tab === "monitors") {
     return (
-      <div className="flex-1 overflow-y-auto p-4 md:p-6">
-        <div className="max-w-3xl mx-auto">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-fg-primary">监控</h2>
-            <button
-              onClick={() => setTab("today")}
-              className="px-3 py-1.5 text-xs bg-surface-overlay hover:bg-border-strong text-fg-secondary rounded-lg transition-colors"
-            >
-              ← 返回今日
-            </button>
-          </div>
+      <div className="page-shell">
+        <div className="page-container-narrow">
+          <PageHeader
+            title="监控"
+            actions={
+              <Button variant="secondary" size="sm" onClick={() => setTab("today")}>
+                ← 返回今日
+              </Button>
+            }
+          />
           <MonitorsPanel />
         </div>
       </div>
@@ -126,8 +126,8 @@ export default function DashboardPage() {
   // ── Loading ──
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-fg-secondary animate-pulse">加载中...</div>
+      <div className="flex flex-1 items-center justify-center">
+        <div className="animate-pulse text-fg-secondary">加载中...</div>
       </div>
     );
   }
@@ -135,72 +135,54 @@ export default function DashboardPage() {
   // ── Error ──
   if (error) {
     return (
-      <div className="flex-1 flex items-center justify-center">
+      <div className="flex flex-1 items-center justify-center">
         <div className="text-center">
-          <div className="text-fg-tertiary mb-2">
+          <div className="mb-2 text-fg-tertiary">
             <AlertCircle size={32} className="mx-auto mb-2" />
           </div>
-          <div className="text-fg-secondary mb-4">{error}</div>
-          <button
-            onClick={refresh}
-            className="px-4 py-2 bg-surface-overlay hover:bg-border-strong text-white rounded-lg text-sm transition-colors"
-          >
-            重试
-          </button>
+          <div className="mb-4 text-fg-secondary">{error}</div>
+          <Button onClick={refresh}>重试</Button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6">
-      <div className="max-w-5xl mx-auto">
-        {/* ── Header ── */}
-        <div className="flex items-center justify-between mb-5">
-          <div>
-            <h2 className="text-xl font-semibold text-fg-primary">今天</h2>
-            <p className="text-sm text-fg-tertiary mt-0.5">{getDateString()}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={refresh}
-              className="px-3 py-1.5 text-xs bg-surface-overlay hover:bg-border-strong text-fg-secondary rounded-lg transition-colors"
-            >
-              刷新
-            </button>
-            <button
-              onClick={() => setTab("monitors")}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-surface-overlay hover:bg-border-strong text-fg-secondary rounded-lg transition-colors"
-            >
-              <Radar size={13} />
-              监控
-            </button>
-            <button
-              onClick={() => setTab("trust")}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs bg-surface-overlay hover:bg-border-strong text-fg-secondary rounded-lg transition-colors"
-            >
-              <Shield size={13} />
-              信任
-            </button>
-          </div>
-        </div>
+    <div className="page-shell">
+      <div className="page-container">
+        <PageHeader
+          title="今天"
+          description={getDateString()}
+          actions={
+            <>
+              <Button variant="secondary" size="sm" onClick={refresh}>
+                刷新
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => setTab("monitors")}>
+                <Radar size={13} />
+                监控
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => setTab("trust")}>
+                <Shield size={13} />
+                信任
+              </Button>
+            </>
+          }
+        />
 
         <AdoptionSummaryCard onOpen={() => setTab("trust")} />
 
         <PeriodComparisonCard />
 
-        {/* ── 今天最值得处理的（动态主卡区）── */}
         <TodayActions buckets={todayBuckets} />
 
         {dashboard?.execution_trust && <ExecutionTrustPanel trust={dashboard.execution_trust} />}
 
-        {/* ── AI 给你的提醒 ── */}
         <RemindersPanel
           notifications={todayBuckets.reminders}
           onNotificationClick={handleNotificationClick}
         />
 
-        {/* ── 运行状况（高级视图，默认折叠）── */}
         <HealthPanel
           cost={cost}
           tools={tools}

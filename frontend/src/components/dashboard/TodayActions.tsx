@@ -63,8 +63,8 @@ export default function TodayActions({ buckets }: TodayActionsProps) {
 
   if (empty) {
     return (
-      <div className="bg-surface-raised border border-border-subtle rounded-xl p-10 text-center mb-6">
-        <p className="text-fg-secondary font-medium mb-1">今天暂无紧急事项</p>
+      <div className="mb-5 rounded-lg border border-border-subtle bg-surface-raised p-10 text-center shadow-sm">
+        <p className="mb-1 font-medium text-fg-secondary">今天暂无紧急事项</p>
         <p className="text-sm text-fg-tertiary">
           {leftoverGoalCount > 0
             ? `还有 ${leftoverGoalCount} 个进行中目标，可从目标页查看`
@@ -84,11 +84,11 @@ export default function TodayActions({ buckets }: TodayActionsProps) {
   }
 
   return (
-    <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-3">
-      <section className="bg-surface-raised border border-border-subtle rounded-xl p-4">
-        <div className="flex items-center gap-2 mb-3">
+    <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-3">
+      <section className="rounded-lg border border-border-subtle bg-surface-raised p-4 shadow-sm">
+        <div className="mb-3 flex items-center gap-2">
           <ShieldCheck size={16} className="text-warning" />
-          <h3 className="text-sm font-semibold text-fg-primary">需要你决定</h3>
+          <h3 className="text-sm font-semibold tracking-tight text-fg-primary">需要你决定</h3>
           <span className="ml-auto text-xs text-fg-tertiary">{decide.length}</span>
         </div>
         {decide.length === 0 ? (
@@ -106,10 +106,10 @@ export default function TodayActions({ buckets }: TodayActionsProps) {
         )}
       </section>
 
-      <section className="bg-surface-raised border border-border-subtle rounded-xl p-4">
-        <div className="flex items-center gap-2 mb-3">
+      <section className="rounded-lg border border-border-subtle bg-surface-raised p-4 shadow-sm">
+        <div className="mb-3 flex items-center gap-2">
           <Target size={16} className="text-warning" />
-          <h3 className="text-sm font-semibold text-fg-primary">今天要做</h3>
+          <h3 className="text-sm font-semibold tracking-tight text-fg-primary">今天要做</h3>
           <span className="ml-auto text-xs text-fg-tertiary">{doItems.length}</span>
         </div>
         {doItems.length === 0 ? (
@@ -134,10 +134,10 @@ export default function TodayActions({ buckets }: TodayActionsProps) {
         )}
       </section>
 
-      <section className="bg-surface-raised border border-border-subtle rounded-xl p-4">
-        <div className="flex items-center gap-2 mb-3">
+      <section className="rounded-lg border border-border-subtle bg-surface-raised p-4 shadow-sm">
+        <div className="mb-3 flex items-center gap-2">
           <CheckCircle2 size={16} className="text-success" />
-          <h3 className="text-sm font-semibold text-fg-primary">AI 已处理</h3>
+          <h3 className="text-sm font-semibold tracking-tight text-fg-primary">AI 已处理</h3>
           <span className="ml-auto text-xs text-fg-tertiary">{handled.length}</span>
         </div>
         {handled.length === 0 ? (

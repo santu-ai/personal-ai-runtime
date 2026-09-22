@@ -81,7 +81,7 @@ export default function Layout() {
 
   return (
     <LiveNotificationContext.Provider value={liveNotifications}>
-      <div className="flex h-screen bg-surface-base text-fg-primary">
+      <div className="flex h-screen bg-surface-app text-fg-primary font-sans">
         <Sidebar
           conversations={conversations}
           activeConversationId={activeConversationId}
@@ -91,71 +91,74 @@ export default function Layout() {
           footer={<NotificationBell />}
         />
 
-        {authRequired && !isAuthConfigured() && (
-          <div className="fixed top-0 left-64 right-0 z-50 px-4 py-2">
-            <NoticeBanner
-              tone="warning"
-              title="后端已启用认证，请在 .env 中设置 VITE_AUTH_TOKEN（与 AUTH_TOKEN 保持一致）后重启前端"
-              className="rounded-none border-x-0"
-              testId="auth-banner"
-            />
-          </div>
-        )}
+        <div className="relative flex min-w-0 flex-1 flex-col">
+          {authRequired && !isAuthConfigured() && (
+            <div className="absolute inset-x-0 top-0 z-50 px-3 pt-2">
+              <NoticeBanner
+                tone="warning"
+                title="后端已启用认证，请在 .env 中设置 VITE_AUTH_TOKEN（与 AUTH_TOKEN 保持一致）后重启前端"
+                testId="auth-banner"
+              />
+            </div>
+          )}
 
-        {backendUnavailable && (
-          <div className="fixed top-0 left-64 right-0 z-50 px-4 py-2">
-            <NoticeBanner
-              tone="danger"
-              title="无法连接到后端服务，请确认后端已启动"
-              className="rounded-none border-x-0"
-              testId="backend-banner"
-            />
-          </div>
-        )}
+          {backendUnavailable && (
+            <div className="absolute inset-x-0 top-0 z-50 px-3 pt-2">
+              <NoticeBanner
+                tone="danger"
+                title="无法连接到后端服务，请确认后端已启动"
+                testId="backend-banner"
+              />
+            </div>
+          )}
 
-        <div className="fixed bottom-20 right-4 z-50 space-y-2 max-w-sm" data-testid="notice-stack">
-          {errors.map((err) => (
-            <ToastCard
-              key={err.id}
-              tone="danger"
-              title={err.source ? `[${err.source}] 错误` : "错误"}
-              body={err.message}
-              onDismiss={() => dismissError(err.id)}
-            />
-          ))}
-          {toasts.map((t) => (
-            <ToastCard
-              key={t.id}
-              tone="insight"
-              title={t.title}
-              body={t.content}
-              onClick={() =>
-                setToastDetail({
-                  id: t.id,
-                  type: t.type,
-                  title: t.title,
-                  content: t.content,
-                  created_at: t.created_at,
-                })
-              }
-              onDismiss={() => dismissToast(t.id)}
-            />
-          ))}
-        </div>
-
-        <main className="flex-1 flex flex-col min-w-0">
-          <Suspense
-            fallback={
-              <div className="flex-1 flex items-center justify-center text-fg-secondary animate-pulse">
-                加载中…
-              </div>
-            }
+          <div
+            className="fixed bottom-20 right-4 z-50 max-w-sm space-y-2"
+            data-testid="notice-stack"
           >
-            <ErrorBoundary>
-              <Outlet />
-            </ErrorBoundary>
-          </Suspense>
-        </main>
+            {errors.map((err) => (
+              <ToastCard
+                key={err.id}
+                tone="danger"
+                title={err.source ? `[${err.source}] 错误` : "错误"}
+                body={err.message}
+                onDismiss={() => dismissError(err.id)}
+              />
+            ))}
+            {toasts.map((t) => (
+              <ToastCard
+                key={t.id}
+                tone="insight"
+                title={t.title}
+                body={t.content}
+                onClick={() =>
+                  setToastDetail({
+                    id: t.id,
+                    type: t.type,
+                    title: t.title,
+                    content: t.content,
+                    created_at: t.created_at,
+                  })
+                }
+                onDismiss={() => dismissToast(t.id)}
+              />
+            ))}
+          </div>
+
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface-app">
+            <Suspense
+              fallback={
+                <div className="flex flex-1 items-center justify-center text-fg-secondary animate-pulse">
+                  加载中…
+                </div>
+              }
+            >
+              <ErrorBoundary>
+                <Outlet />
+              </ErrorBoundary>
+            </Suspense>
+          </main>
+        </div>
 
         <Dialog
           open={!!deleteTarget}

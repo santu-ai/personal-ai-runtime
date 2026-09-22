@@ -14,6 +14,8 @@ import { useCapabilityPolicyQuery } from "../hooks/useSettingsQuery";
 import Button from "../components/ui/Button";
 import Badge from "../components/ui/Badge";
 import Card from "../components/ui/Card";
+import PageHeader from "../components/ui/PageHeader";
+import { TextArea } from "../components/ui/Input";
 import RiskCard from "../components/approval/RiskCard";
 import { canContinueApproval } from "./approvals/canContinue";
 import type { CapabilityPolicy } from "../api/settings";
@@ -128,29 +130,29 @@ export default function ApprovalsPage() {
   const refreshing = loading || isFetching;
 
   return (
-    <div className="flex-1 overflow-y-auto p-6">
-      <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-2xl font-semibold text-fg-primary">审批管理</h2>
-            <p className="text-sm text-fg-tertiary mt-1">管理所有需要人工确认的高风险操作</p>
-            <p className="text-xs text-fg-disabled mt-1">
-              对话来源的审批可「批准并续写」：执行工具并生成一次回复后打开对话。
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {approvals.length > 0 && <Badge tone="warning">{approvals.length} 条待处理</Badge>}
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => void refetch()}
-              disabled={refreshing}
-            >
-              <RefreshCw size={14} className={`inline mr-1 ${refreshing ? "animate-spin" : ""}`} />
-              刷新
-            </Button>
-          </div>
-        </div>
+    <div className="page-shell">
+      <div className="page-container">
+        <PageHeader
+          title="审批管理"
+          description="管理所有需要人工确认的高风险操作"
+          actions={
+            <>
+              {approvals.length > 0 && <Badge tone="warning">{approvals.length} 条待处理</Badge>}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => void refetch()}
+                disabled={refreshing}
+              >
+                <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+                刷新
+              </Button>
+            </>
+          }
+        />
+        <p className="-mt-3 mb-5 text-xs text-fg-disabled">
+          对话来源的审批可「批准并续写」：执行工具并生成一次回复后打开对话。
+        </p>
 
         {loading && approvals.length === 0 ? (
           <div className="flex items-center justify-center py-20 text-fg-tertiary">
@@ -234,9 +236,9 @@ function ApprovalCard({
           <p className="text-sm text-fg-primary whitespace-pre-wrap">
             {question || "助手需要你的回答才能继续。"}
           </p>
-          <textarea
+          <TextArea
             aria-label="你的回答"
-            className="w-full min-h-20 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm"
+            className="w-full"
             maxLength={8000}
             value={draft}
             placeholder="输入回答，助手会带着它继续"
@@ -244,26 +246,27 @@ function ApprovalCard({
           />
         </div>
       )}
-      <button
+      <Button
+        size="sm"
         onClick={() => (isAskUser ? onApprove(answer) : onApprove())}
         disabled={resolving || (isAskUser && !answer)}
-        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-surface-overlay hover:bg-border-strong text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         title={
           isAskUser ? "发送回答并继续对话" : canContinue ? "批准、续写回复并打开对话" : "批准此操作"
         }
       >
         {canContinue || isAskUser ? <MessageSquare size={14} /> : <Check size={14} />}
         {isAskUser ? "发送回答" : canContinue ? "批准并续写" : "批准"}
-      </button>
-      <button
+      </Button>
+      <Button
+        size="sm"
+        variant="secondary"
         onClick={onReject}
         disabled={resolving}
-        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-transparent hover:bg-surface-overlay text-fg-secondary border border-border-subtle disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         title={isAskUser ? "取消这次澄清" : "拒绝此操作"}
       >
         <X size={14} />
         {isAskUser ? "取消" : "拒绝"}
-      </button>
+      </Button>
     </RiskCard>
   );
 }

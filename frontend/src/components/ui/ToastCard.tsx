@@ -41,7 +41,7 @@ export default function ToastCard({ tone = "neutral", title, body, onDismiss, on
             e.stopPropagation();
             onDismiss();
           }}
-          className="absolute top-2 right-2 text-fg-tertiary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+          className="absolute top-2 right-2 rounded-md p-0.5 text-fg-tertiary hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
           aria-label="关闭"
         >
           <X size={14} />

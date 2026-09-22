@@ -1,10 +1,10 @@
-import { useState, type InputHTMLAttributes } from "react";
+import { useState, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { Eye, EyeOff } from "lucide-react";
 
 const DEFAULT_MASKED = "••••••••";
 
-const baseInput =
-  "bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary placeholder:text-fg-tertiary outline-none transition-colors focus:border-focus-ring disabled:opacity-50 disabled:cursor-not-allowed";
+export const inputBaseClass =
+  "bg-surface-overlay border border-border-subtle rounded-md px-3 py-2 text-sm text-fg-primary placeholder:text-fg-tertiary outline-none transition-colors focus:border-focus-ring focus:ring-1 focus:ring-focus-ring/40 disabled:opacity-50 disabled:cursor-not-allowed";
 
 interface PasswordInputProps extends InputHTMLAttributes<HTMLInputElement> {
   /** True when value is a server-side masked placeholder, not the real secret. */
@@ -20,7 +20,21 @@ export function Input({
 }: React.InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }) {
   return (
     <input
-      className={`${baseInput} ${invalid ? "border-danger focus:border-danger" : ""} ${className}`}
+      className={`${inputBaseClass} ${invalid ? "border-danger focus:border-danger focus:ring-danger/30" : ""} ${className}`}
+      aria-invalid={invalid || undefined}
+      {...props}
+    />
+  );
+}
+
+export function TextArea({
+  invalid = false,
+  className = "",
+  ...props
+}: TextareaHTMLAttributes<HTMLTextAreaElement> & { invalid?: boolean }) {
+  return (
+    <textarea
+      className={`${inputBaseClass} min-h-20 resize-y ${invalid ? "border-danger focus:border-danger focus:ring-danger/30" : ""} ${className}`}
       aria-invalid={invalid || undefined}
       {...props}
     />
@@ -53,8 +67,8 @@ export function PasswordInput({
         type={inputType}
         value={inputValue}
         placeholder={inputPlaceholder}
-        className={`w-full ${baseInput} pl-3 pr-10 ${
-          invalid ? "border-danger focus:border-danger" : ""
+        className={`w-full ${inputBaseClass} pl-3 pr-10 ${
+          invalid ? "border-danger focus:border-danger focus:ring-danger/30" : ""
         } ${className}`}
         aria-invalid={invalid || undefined}
         {...props}
@@ -63,7 +77,7 @@ export function PasswordInput({
         type="button"
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => setVisible((v) => !v)}
-        className="absolute right-2 top-1/2 -translate-y-1/2 z-10 p-1.5 rounded text-fg-tertiary hover:text-fg-secondary hover:bg-surface-overlay/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+        className="absolute right-2 top-1/2 -translate-y-1/2 z-10 p-1.5 rounded-md text-fg-tertiary hover:text-fg-secondary hover:bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         aria-label={visible ? "隐藏密码" : "显示密码"}
         title={masked && !visible ? "已保存的密钥无法查看原文" : visible ? "隐藏" : "显示明文"}
       >

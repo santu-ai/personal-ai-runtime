@@ -189,10 +189,10 @@ export default function ChatHome() {
     <div className="flex-1 flex flex-col min-h-0">
       <div className="flex-1 overflow-y-auto p-6">
         <div className="max-w-2xl mx-auto space-y-5">
-          <div className="text-center pt-6 pb-2">
-            <Brain size={36} strokeWidth={1.5} className="mx-auto mb-3 text-insight" />
-            <h2 className="text-2xl font-semibold text-fg-primary">{greeting}</h2>
-            <p className="text-fg-tertiary mt-2 text-sm">{subtitle}</p>
+          <div className="space-y-5 pt-8 pb-2 text-center">
+            <Brain size={32} strokeWidth={1.5} className="mx-auto mb-3 text-insight" />
+            <h2 className="text-2xl font-semibold tracking-tight text-fg-primary">{greeting}</h2>
+            <p className="mt-2 text-sm text-fg-tertiary">{subtitle}</p>
           </div>
 
           <ProposedMemoryBanner className="rounded-xl border border-insight/30" />
@@ -232,7 +232,7 @@ export default function ChatHome() {
 
           {lastConversation && (
             <div
-              className="bg-surface-raised border border-border-subtle rounded-xl p-4 hover:border-border-strong transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+              className="cursor-pointer rounded-lg border border-border-subtle bg-surface-raised p-4 shadow-sm transition-colors hover:border-border-strong hover:bg-surface-hover/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               onClick={() => handleContinueConversation(lastConversation)}
             >
               <div className="flex items-center gap-2 mb-1">
@@ -251,8 +251,8 @@ export default function ChatHome() {
           )}
         </div>
       </div>
-      <div className="border-t border-border-subtle p-4 shrink-0">
-        <div className="max-w-2xl mx-auto">
+      <div className="border-t border-border-subtle bg-surface-app/80 p-4 shrink-0 backdrop-blur-sm">
+        <div className="mx-auto max-w-2xl">
           <ChatComposer value={input} onChange={setInput} onSend={handleSend} inputRef={inputRef} />
         </div>
       </div>

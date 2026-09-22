@@ -6,13 +6,13 @@ export const STATUS_TONE: Record<
   { surface: string; title: string; body: string; icon: string }
 > = {
   danger: {
-    surface: "border-danger/40 bg-danger/5",
+    surface: "border-danger/35 bg-danger/8",
     title: "text-danger",
     body: "text-fg-secondary",
     icon: "text-danger",
   },
   warning: {
-    surface: "border-warning/40 bg-warning/10",
+    surface: "border-warning/35 bg-warning/10",
     title: "text-warning",
     body: "text-fg-secondary",
     icon: "text-warning",
@@ -30,7 +30,7 @@ export const STATUS_TONE: Record<
     icon: "text-success",
   },
   neutral: {
-    surface: "border-border-subtle bg-surface-raised",
+    surface: "border-border-subtle bg-surface-raised shadow-sm",
     title: "text-fg-primary",
     body: "text-fg-secondary",
     icon: "text-fg-tertiary",

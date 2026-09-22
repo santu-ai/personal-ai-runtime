@@ -12,7 +12,12 @@ import {
 import NotificationDetailModal from "../notifications/NotificationDetailModal";
 import { notificationPreview } from "../../utils/notificationUtils";
 
-export default function NotificationBell() {
+interface Props {
+  /** Icon-only mode when the sidebar is collapsed. */
+  compact?: boolean;
+}
+
+export default function NotificationBell({ compact = false }: Props) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Notification | null>(null);
   const { data: notifications = [], refetch } = useNotificationsQuery(15);
@@ -26,8 +31,6 @@ export default function NotificationBell() {
       }
     }
     if (open) {
-      // Use setTimeout to let the current event finish before attaching,
-      // so the mousedown that opened the dropdown doesn't also close it.
       const t = setTimeout(() => {
         document.addEventListener("mousedown", handleClickOutside);
       }, 0);
@@ -65,7 +68,7 @@ export default function NotificationBell() {
 
   return (
     <>
-      <div className="relative px-3 pb-2" ref={dropdownRef}>
+      <div className="relative px-2 pb-2" ref={dropdownRef}>
         <button
           type="button"
           aria-expanded={open}
@@ -76,31 +79,43 @@ export default function NotificationBell() {
               return !wasOpen;
             });
           }}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-fg-secondary hover:bg-surface-overlay/50 hover:text-fg-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+          className={`nav-item nav-item-idle ${compact ? "justify-center px-0" : ""}`}
           aria-label="通知"
+          title={compact ? "通知" : undefined}
         >
-          <Bell size={18} />
-          <span>通知</span>
-          {unread > 0 && (
-            <span className="ml-auto bg-insight text-white text-xs px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-              {unread}
-            </span>
+          <span className="relative">
+            <Bell size={16} strokeWidth={1.75} />
+            {compact && unread > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-insight" />
+            )}
+          </span>
+          {!compact && (
+            <>
+              <span>通知</span>
+              {unread > 0 && (
+                <span className="ml-auto bg-insight text-fg-on-accent text-[10px] font-medium px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center">
+                  {unread > 99 ? "99+" : unread}
+                </span>
+              )}
+            </>
           )}
         </button>
 
         {open && (
           <div
-            className="absolute bottom-full left-2 right-2 mb-1 bg-surface-raised border border-border-strong rounded-xl shadow-xl max-h-64 overflow-y-auto z-50"
+            className={`absolute bottom-full mb-1 bg-surface-raised border border-border-subtle rounded-lg shadow-overlay max-h-72 overflow-y-auto z-50 ${
+              compact ? "left-0 w-72" : "left-2 right-2"
+            }`}
             role="dialog"
             aria-label="最近通知"
           >
-            <div className="flex items-center justify-between px-3 py-2 border-b border-border-subtle">
-              <span className="text-xs text-fg-tertiary">最近通知</span>
+            <div className="flex items-center justify-between px-3 py-2 border-b border-border-subtle sticky top-0 bg-surface-raised">
+              <span className="text-xs font-medium text-fg-tertiary">最近通知</span>
               {unread > 0 && (
                 <button
                   type="button"
                   onClick={handleMarkAllRead}
-                  className="text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+                  className="text-xs text-fg-secondary hover:text-fg-primary rounded-md px-1 py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 >
                   全部已读
                 </button>
@@ -114,14 +129,14 @@ export default function NotificationBell() {
                   key={n.id}
                   type="button"
                   onClick={() => handleOpenDetail(n)}
-                  className={`w-full text-left p-3 hover:bg-surface-overlay border-b border-border-subtle last:border-0 ${
+                  className={`w-full text-left px-3 py-2.5 hover:bg-surface-hover border-b border-border-subtle last:border-0 transition-colors ${
                     n.read ? "opacity-60" : ""
                   }`}
                 >
                   <p className={`text-sm ${n.read ? "text-fg-secondary" : "text-fg-primary"}`}>
                     {n.title}
                   </p>
-                  <p className="text-xs text-fg-tertiary mt-1 line-clamp-2">
+                  <p className="text-xs text-fg-tertiary mt-0.5 line-clamp-2">
                     {notificationPreview(n.content)}
                   </p>
                 </button>

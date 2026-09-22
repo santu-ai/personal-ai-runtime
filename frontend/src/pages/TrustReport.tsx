@@ -96,14 +96,14 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
   return (
     <div className={compact ? "" : "h-full overflow-y-auto"}>
       {!compact && (
-        <div className="p-6 border-b border-border-subtle">
+        <div className="border-b border-border-subtle p-6">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-insight/20 flex items-center justify-center">
-              <Shield size={24} className="text-insight" />
+            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-insight/15">
+              <Shield size={22} className="text-insight" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-fg-primary">信任报告</h1>
-              <p className="text-sm text-fg-secondary mt-1">
+              <h1 className="page-title text-xl">信任报告</h1>
+              <p className="mt-1 text-sm text-fg-secondary">
                 了解 AI 如何使用你的数据，确保一切可审计、可追溯
               </p>
             </div>

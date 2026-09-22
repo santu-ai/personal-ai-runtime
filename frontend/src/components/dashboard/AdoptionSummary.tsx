@@ -37,7 +37,9 @@ export function AdoptionSummaryView({
       )}
     </>
   );
-  const className = `mb-6 w-full rounded-xl border px-4 py-3 text-left ${tone.surface}`;
+  const className = `mb-5 w-full rounded-lg border px-4 py-3.5 text-left transition-colors ${tone.surface} ${
+    onOpen ? "hover:border-border-strong cursor-pointer" : ""
+  }`;
   if (!onOpen) {
     return (
       <section data-testid="adoption-summary" className={className}>

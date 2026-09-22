@@ -24,7 +24,7 @@ export default function NoticeBanner({
   const t = STATUS_TONE[tone];
   return (
     <div
-      className={`rounded-xl border px-4 py-3 ${t.surface} ${className}`.trim()}
+      className={`rounded-lg border px-4 py-3 ${t.surface} ${className}`.trim()}
       data-testid={testId}
       role="status"
     >

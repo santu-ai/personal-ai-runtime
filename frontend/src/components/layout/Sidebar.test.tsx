@@ -66,11 +66,19 @@ describe("Sidebar", () => {
     expect(screen.getByText("周末计划")).toBeInTheDocument();
   });
 
+  it("shows grouped nav labels", () => {
+    renderSidebar();
+    expect(screen.getByText("概览", { selector: "p" })).toBeInTheDocument();
+    expect(screen.getByText("任务", { selector: "p" })).toBeInTheDocument();
+    expect(screen.getByText("知识")).toBeInTheDocument();
+    expect(screen.getByText("系统")).toBeInTheDocument();
+  });
+
   it("shows data nav on chat route so destinations stay reachable", () => {
     renderSidebar();
     expect(screen.getByText("目标")).toBeInTheDocument();
     expect(screen.getByText("收件箱")).toBeInTheDocument();
-    expect(screen.getByText("概览")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "概览" })).toBeInTheDocument();
   });
 
   it("shows data nav items on non-chat route", () => {

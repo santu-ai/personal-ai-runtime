@@ -10,6 +10,7 @@ import Button from "../components/ui/Button";
 import Badge from "../components/ui/Badge";
 import Spinner from "../components/ui/Spinner";
 import Disclosure from "../components/ui/Disclosure";
+import PageHeader from "../components/ui/PageHeader";
 import LlmConfigCard from "../components/settings/LlmConfigCard";
 import EmailConfigCard from "../components/settings/EmailConfigCard";
 import DataSovereigntyCard from "../components/settings/DataSovereigntyCard";
@@ -73,29 +74,29 @@ export default function SettingsPage() {
   const mcpServers = mcpStatus?.enabled ? (mcpStatus.servers ?? []) : [];
 
   return (
-    <div className="flex-1 overflow-y-auto p-6">
-      <div className="max-w-3xl mx-auto space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-fg-primary">设置</h2>
-            <p className="text-sm text-fg-tertiary mt-1">LLM、邮箱与数据管理</p>
-          </div>
-          <Badge
-            tone={
-              health?.status === "ok"
-                ? "success"
+    <div className="page-shell">
+      <div className="page-container-narrow space-y-4">
+        <PageHeader
+          title="设置"
+          description="LLM、邮箱与数据管理"
+          actions={
+            <Badge
+              tone={
+                health?.status === "ok"
+                  ? "success"
+                  : health?.status === "degraded"
+                    ? "warning"
+                    : "danger"
+              }
+            >
+              {health?.status === "ok"
+                ? "运行正常"
                 : health?.status === "degraded"
-                  ? "warning"
-                  : "danger"
-            }
-          >
-            {health?.status === "ok"
-              ? "运行正常"
-              : health?.status === "degraded"
-                ? "降级"
-                : health?.status || "未知"}
-          </Badge>
-        </div>
+                  ? "降级"
+                  : health?.status || "未知"}
+            </Badge>
+          }
+        />
 
         {llm && (
           <Disclosure title="LLM 配置" defaultOpen>

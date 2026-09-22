@@ -3,17 +3,17 @@
 exports[`UI component snapshots > Badge tones 1`] = `
 <div>
   <span
-    class="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-surface-overlay text-fg-secondary "
+    class="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full bg-surface-overlay text-fg-secondary border border-border-subtle/60 "
   >
     默认
   </span>
   <span
-    class="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-success/15 text-success "
+    class="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full bg-success/12 text-success border border-success/20 "
   >
     成功
   </span>
   <span
-    class="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full bg-warning/15 text-warning "
+    class="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full bg-warning/12 text-warning border border-warning/20 "
   >
     警告
   </span>
@@ -22,7 +22,7 @@ exports[`UI component snapshots > Badge tones 1`] = `
 
 exports[`UI component snapshots > Button danger sm 1`] = `
 <button
-  class="inline-flex items-center justify-center rounded-lg font-medium transition-colors px-3 py-1.5 text-xs gap-1.5 bg-danger hover:bg-danger/90 text-white disabled:bg-surface-overlay disabled:text-fg-disabled focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base disabled:cursor-not-allowed "
+  class="inline-flex items-center justify-center rounded-md font-medium transition-colors px-3 py-1.5 text-xs gap-1.5 bg-danger hover:bg-danger/90 text-fg-on-accent shadow-sm disabled:bg-surface-overlay disabled:text-fg-disabled disabled:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-app disabled:cursor-not-allowed "
 >
   删除
 </button>
@@ -30,7 +30,7 @@ exports[`UI component snapshots > Button danger sm 1`] = `
 
 exports[`UI component snapshots > Button primary 1`] = `
 <button
-  class="inline-flex items-center justify-center rounded-lg font-medium transition-colors px-4 py-2 text-sm gap-2 bg-insight hover:bg-insight/90 text-white disabled:bg-surface-overlay disabled:text-fg-disabled focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base disabled:cursor-not-allowed "
+  class="inline-flex items-center justify-center rounded-md font-medium transition-colors px-3.5 py-2 text-sm gap-2 bg-insight-strong hover:bg-insight text-fg-on-accent shadow-sm disabled:bg-surface-overlay disabled:text-fg-disabled disabled:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-app disabled:cursor-not-allowed "
 >
   保存
 </button>
@@ -38,7 +38,7 @@ exports[`UI component snapshots > Button primary 1`] = `
 
 exports[`UI component snapshots > Card 1`] = `
 <div
-  class="border rounded-xl bg-surface-raised border-border-subtle p-4 "
+  class="border rounded-lg bg-surface-raised border-border-subtle shadow-sm p-4 "
 >
   <p>
     内容
@@ -48,23 +48,23 @@ exports[`UI component snapshots > Card 1`] = `
 
 exports[`UI component snapshots > EmptyState 1`] = `
 <div
-  class="flex flex-col items-center justify-center py-12 text-center"
+  class="flex flex-col items-center justify-center py-14 text-center"
 >
   <h3
-    class="text-lg font-medium text-fg-primary"
+    class="text-base font-medium tracking-tight text-fg-primary"
   >
     暂无数据
   </h3>
   <p
-    class="text-sm text-fg-tertiary mt-2 max-w-sm"
+    class="mt-2 max-w-sm text-sm text-fg-tertiary"
   >
     创建第一个目标开始使用
   </p>
   <div
-    class="mt-6"
+    class="mt-5"
   >
     <button
-      class="inline-flex items-center justify-center rounded-lg font-medium transition-colors px-4 py-2 text-sm gap-2 bg-insight hover:bg-insight/90 text-white disabled:bg-surface-overlay disabled:text-fg-disabled focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base disabled:cursor-not-allowed "
+      class="inline-flex items-center justify-center rounded-md font-medium transition-colors px-3.5 py-2 text-sm gap-2 bg-insight-strong hover:bg-insight text-fg-on-accent shadow-sm disabled:bg-surface-overlay disabled:text-fg-disabled disabled:shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-app disabled:cursor-not-allowed "
     >
       新建
     </button>

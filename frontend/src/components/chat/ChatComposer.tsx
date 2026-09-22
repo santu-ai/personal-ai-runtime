@@ -1,5 +1,8 @@
 import { useEffect, useCallback } from "react";
+import { Send, Square } from "lucide-react";
 import VoiceInput from "./VoiceInput";
+import Button from "../ui/Button";
+import Spinner from "../ui/Spinner";
 
 interface ChatComposerProps {
   value: string;
@@ -50,7 +53,7 @@ export default function ChatComposer({
   };
 
   return (
-    <div className="flex gap-3 items-end bg-surface-raised rounded-xl border border-border-strong focus-within:border-focus-ring transition-colors p-3">
+    <div className="flex items-end gap-2 rounded-xl border border-border-subtle bg-surface-raised p-2.5 shadow-sm transition-colors focus-within:border-focus-ring focus-within:ring-1 focus-within:ring-focus-ring/30">
       <VoiceInput onTranscript={handleVoiceTranscript} disabled={disabled} />
       <textarea
         ref={inputRef}
@@ -61,46 +64,33 @@ export default function ChatComposer({
         placeholder={placeholder}
         rows={1}
         disabled={disabled}
-        className="flex-1 bg-transparent border-none outline-none resize-none text-fg-primary placeholder:text-fg-tertiary min-h-[24px] max-h-[200px] py-1"
+        className="min-h-[28px] max-h-[200px] flex-1 resize-none border-none bg-transparent py-1.5 text-sm text-fg-primary outline-none placeholder:text-fg-tertiary"
       />
-      <button
+      <Button
         type="button"
+        size="sm"
+        variant={cancelling ? "danger" : "primary"}
         onClick={cancelling ? onCancel : onSend}
         disabled={actionDisabled}
-        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
-          actionDisabled
-            ? "bg-surface-overlay/50 text-fg-secondary cursor-not-allowed"
-            : cancelling
-              ? "bg-danger hover:bg-danger/90 text-white"
-              : "bg-insight hover:bg-insight/90 disabled:bg-surface-overlay disabled:text-fg-disabled text-white"
-        }`}
+        className="shrink-0"
       >
         {cancelling ? (
-          "取消生成"
+          <>
+            <Square size={12} fill="currentColor" />
+            取消生成
+          </>
         ) : disabled ? (
-          <span className="flex items-center gap-2">
-            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-                fill="none"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-              />
-            </svg>
+          <>
+            <Spinner size="sm" />
             思考中
-          </span>
+          </>
         ) : (
-          "发送"
+          <>
+            <Send size={14} />
+            发送
+          </>
         )}
-      </button>
+      </Button>
     </div>
   );
 }

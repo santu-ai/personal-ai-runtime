@@ -457,11 +457,11 @@ export default function TasksPage() {
 
   return (
     <div className="flex-1 flex min-h-0">
-      <aside className="w-72 shrink-0 border-r border-border-subtle overflow-y-auto p-4 space-y-6">
+      <aside className="w-72 shrink-0 border-r border-border-subtle bg-surface-sidebar/40 overflow-y-auto p-4 space-y-6">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <h1 className="text-lg font-medium text-fg-primary">任务</h1>
-            <p className="text-xs text-fg-tertiary mt-1">交办、交付与验收</p>
+            <h1 className="page-title text-lg">任务</h1>
+            <p className="page-subtitle">交办、交付与验收</p>
           </div>
           <Button size="sm" onClick={() => setShowCreate(true)}>
             新建简报
