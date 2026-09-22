@@ -147,6 +147,23 @@ def test_validate_rejects_forged_ids_in_body_even_without_findings():
         )
 
 
+def test_validate_accepts_source_id_before_chinese_punctuation():
+    result = validate_model_brief(
+        {
+            "summary": "排期变化（来源：file:a28233aad0de）。",
+            "content": "支付联调延期（file:a28233aad0de），需重新确认排期。",
+            "findings": [{
+                "text": "支付联调延期",
+                "source_ids": ["file:a28233aad0de"],
+            }],
+        },
+        allowed_ids={"file:a28233aad0de"},
+        criteria=["每条关键结论附来源"],
+        source_notes=[],
+    )
+    assert result["qualified"] is True
+
+
 def test_validate_empty_findings_with_sources_is_unqualified():
     result = validate_model_brief(
         {

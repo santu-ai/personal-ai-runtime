@@ -293,4 +293,4 @@ P1 的启动依据是重复使用和真实阻塞。若用户仍需大量重写�
 | T4 | 完成：真实后端 create → execute → 交付 → 验收/返工 → 重启回归，含中断恢复 |
 | T5 | 完成：docs 已同步；merge-gate 整包通过。真 LLM / 真实邮箱日用仍待用户显式试用（第 10 节） |
 
-P1：建议待办可转为现有 Work，同一交付下标重复请求返回同一任务（2026-09-22）。周期对比（`GET /api/dashboard/periods`）、澄清交互（`ask_user`，ADR-R011）、采纳率汇总（`GET /api/telemetry/governance`）已在 main。
+P1：建议待办可转为现有 Work，同一交付下标重复请求返回同一任务。简报自己的首版采纳、返工、已转任务和评审耗时见 `GET /api/work-items/delivery-metrics`。全局周期对比（`GET /api/dashboard/periods`）、Chat 澄清（`ask_user`，ADR-R011）和工具/记忆采纳率（`GET /api/telemetry/governance`）是另一组指标。审批次数、恢复次数和模型成本仍不能按单份简报归因。

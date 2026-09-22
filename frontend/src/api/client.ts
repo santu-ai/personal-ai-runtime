@@ -42,6 +42,8 @@ export type {
   WorkDeliveryReviewStatus,
   UnreviewedDelivery,
   CreateProjectBriefPayload,
+  DeliveryMetrics,
+  DeliveryMetricsItem,
   Approval,
   EnrichedApproval,
   DataSovereignty,
@@ -102,6 +104,7 @@ export {
   adoptSuggestedAction,
   updateWorkItemStatus,
   listUnreviewedDeliveries,
+  getDeliveryMetrics,
 } from "./workItems";
 
 // Inbox

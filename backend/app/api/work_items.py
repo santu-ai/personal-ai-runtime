@@ -196,6 +196,14 @@ async def list_unreviewed_deliveries(limit: int = Query(20, ge=1, le=50)):
     return _list(limit=limit)
 
 
+@router.get("/delivery-metrics")
+async def delivery_metrics(days: int = Query(30, ge=1, le=365)):
+    """Project-brief acceptance, rework, adoption and review-latency metrics."""
+    from app.product.work_delivery import summarize_delivery_metrics
+
+    return summarize_delivery_metrics(days=days)
+
+
 def _execution_snapshot(item_id: str, item: dict) -> dict:
     """Delegate to read_ports (keeps api/ off deep runtime imports)."""
     return read_ports.work_item_execution_snapshot(item_id, item)

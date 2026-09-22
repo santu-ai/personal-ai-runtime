@@ -21,7 +21,7 @@
 | `/chat/:conversationId` | `pages/ChatPage.tsx` | 活跃会话 → `ChatView` |
 | `/goals` | `pages/Goals.tsx` | 目标列表 + 详情 |
 | `/goals/:goalId` | `pages/Goals.tsx` | 目标详情 |
-| `/tasks` | `pages/Tasks.tsx` | 后台/可执行任务列表，可创建项目资料简报 |
+| `/tasks` | `pages/Tasks.tsx` | 后台/可执行任务列表，可创建项目资料简报；有评审时展示近 30 日首版采纳、返工和已转任务 |
 | `/tasks/:taskId` | `pages/Tasks.tsx` | 任务详情：交付结果优先，可验收/返工；执行日志可折叠 |
 | `/inbox` | `pages/Inbox.tsx` | 未读分拣三列（重要 / 需跟进 / 可忽略）+ 最近 15 封（仅标题与发件人，未读加粗）+ 最近同步时间/结果/失败原因与重试 |
 | `/memories` | `pages/Memories.tsx` | 记忆列表 + 图谱（含 `?tab=portrait` 画像、`?tab=review` 待确认 triage：筛选/批量确认拒绝） |

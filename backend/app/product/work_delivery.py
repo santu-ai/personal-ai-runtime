@@ -14,7 +14,7 @@ import json
 import logging
 import threading
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.core.runtime import read_ports
@@ -999,3 +999,159 @@ def list_unreviewed_deliveries(*, limit: int = 20) -> list[dict[str, Any]]:
         if len(out) >= limit:
             break
     return out
+
+
+def _metric_datetime(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def summarize_delivery_metrics(
+    *,
+    days: int = 30,
+    limit: int = 5000,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Summarize project-brief review outcomes from existing Work events.
+
+    The first-version rate follows the plan's product metric: tasks whose
+    first review accepted delivery v1 / tasks whose first review happened in
+    the window. Costs, approvals and crash recoveries cannot currently be
+    attributed to one delivery, so the response marks them unavailable rather
+    than inventing precision.
+    """
+    days = min(365, max(1, int(days)))
+    limit = max(1, int(limit))
+    moment = now or datetime.now(UTC)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    moment = moment.astimezone(UTC)
+    since = moment - timedelta(days=days)
+    recent = kernel.read_events(
+        type=EVENT_WORK_ITEM_UPDATED,
+        aggregate_type=AGGREGATE_WORK_ITEM,
+        since_ts=since.isoformat(),
+        until_ts=moment.isoformat(),
+        order="desc",
+        limit=limit,
+    )
+    work_ids = {
+        str(event.aggregate_id)
+        for event in recent
+        if isinstance(event.payload or {}, dict)
+        and (
+            isinstance((event.payload or {}).get(PAYLOAD_DELIVERY_DECISION), dict)
+            or isinstance((event.payload or {}).get(PAYLOAD_ACTION_ADOPTED), dict)
+        )
+    }
+
+    reviewed_tasks = accepted_tasks = first_reviewed = first_accepted = 0
+    reworks = adopted_actions = 0
+    review_latency_hours: list[float] = []
+    per_work: list[dict[str, Any]] = []
+
+    def in_window(row: dict[str, Any]) -> bool:
+        at = _metric_datetime(row.get("created_at"))
+        return bool(at and since <= at <= moment)
+
+    for work_id in sorted(work_ids):
+        folded = fold_delivery_history(work_id)
+        decisions = list(folded.get("_decisions") or [])
+        decisions.sort(key=lambda row: int(row.get("event_seq") or 0))
+        current_decisions = [row for row in decisions if in_window(row)]
+        current_adoptions = [
+            row for row in (folded.get("_adoptions") or []) if in_window(row)
+        ]
+        if not current_decisions and not current_adoptions:
+            continue
+
+        accepted = [
+            row for row in current_decisions
+            if row.get("decision") == DECISION_ACCEPTED
+        ]
+        changes = [
+            row for row in current_decisions
+            if row.get("decision") == DECISION_CHANGES_REQUESTED
+        ]
+        if current_decisions:
+            reviewed_tasks += 1
+        if accepted:
+            accepted_tasks += 1
+        reworks += len(changes)
+        adopted_actions += len(current_adoptions)
+
+        first = decisions[0] if decisions else None
+        first_is_current = first is not None and in_window(first)
+        raw_version = first.get("delivery_version") if first_is_current and first is not None else None
+        version_number = raw_version if isinstance(raw_version, int) and not isinstance(raw_version, bool) else 0
+        first_was_accepted = bool(
+            first_is_current
+            and first is not None
+            and first.get("decision") == DECISION_ACCEPTED
+            and version_number == 1
+        )
+        if first_is_current:
+            first_reviewed += 1
+        if first_was_accepted:
+            first_accepted += 1
+
+        latencies: list[float] = []
+        deliveries = folded.get("_by_id") or {}
+        for decision in current_decisions:
+            delivery = deliveries.get(str(decision.get("delivery_id") or "")) or {}
+            published_at = _metric_datetime(delivery.get("created_at"))
+            decided_at = _metric_datetime(decision.get("created_at"))
+            if published_at and decided_at and decided_at >= published_at:
+                hours = (decided_at - published_at).total_seconds() / 3600
+                latencies.append(hours)
+                review_latency_hours.append(hours)
+
+        item = read_ports.query_work_item(work_id) or {}
+        per_work.append({
+            "work_id": work_id,
+            "title": item.get("title") or "",
+            "reviews": len(current_decisions),
+            "accepted": bool(accepted),
+            "first_review_accepted_v1": first_was_accepted,
+            "reworks": len(changes),
+            "adopted_actions": len(current_adoptions),
+            "average_review_latency_hours": (
+                round(sum(latencies) / len(latencies), 2) if latencies else None
+            ),
+        })
+
+    per_work.sort(key=lambda row: (not row["accepted"], row["title"], row["work_id"]))
+    return {
+        "window_days": days,
+        "reviewed_tasks": reviewed_tasks,
+        "accepted_tasks": accepted_tasks,
+        "first_reviewed_tasks": first_reviewed,
+        "first_version_accepted_tasks": first_accepted,
+        "first_version_acceptance_rate": (
+            first_accepted / first_reviewed if first_reviewed else None
+        ),
+        "rework_count": reworks,
+        "adopted_action_count": adopted_actions,
+        "average_review_latency_hours": (
+            round(sum(review_latency_hours) / len(review_latency_hours), 2)
+            if review_latency_hours else None
+        ),
+        "attribution": {
+            "approval_interventions": "unavailable",
+            "recovery_interventions": "unavailable",
+            "llm_cost": "unavailable",
+        },
+        "capped": len(recent) >= limit,
+        "cap_limit": limit,
+        "items": per_work,
+    }

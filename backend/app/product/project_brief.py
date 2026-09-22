@@ -34,7 +34,7 @@ DEFAULT_CRITERIA = (
 )
 
 _JSON_FENCE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
-_SOURCE_ID_RE = re.compile(r"\b(?:email|file):[^\s\]\)\}\"'`]+")
+_SOURCE_ID_RE = re.compile(r"\b(?:email|file):[A-Za-z0-9][A-Za-z0-9._@<>+=/-]*")
 PROGRAMMATIC_CRITERIA = frozenset(DEFAULT_CRITERIA)
 
 

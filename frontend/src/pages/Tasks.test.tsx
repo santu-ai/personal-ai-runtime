@@ -8,6 +8,7 @@ import {
   adoptSuggestedAction,
   createProjectBrief,
   executeWorkItem,
+  getDeliveryMetrics,
   getWorkDelivery,
   getWorkItem,
   listWorkItems,
@@ -29,6 +30,25 @@ vi.mock("../api/client", async (importOriginal) => {
     reworkWorkDelivery: vi.fn().mockResolvedValue({ replayed: false }),
     adoptSuggestedAction: vi.fn().mockResolvedValue({ replayed: false, work: { id: "todo_1" } }),
     updateWorkItemStatus: vi.fn().mockResolvedValue({}),
+    getDeliveryMetrics: vi.fn().mockResolvedValue({
+      window_days: 30,
+      reviewed_tasks: 0,
+      accepted_tasks: 0,
+      first_reviewed_tasks: 0,
+      first_version_accepted_tasks: 0,
+      first_version_acceptance_rate: null,
+      rework_count: 0,
+      adopted_action_count: 0,
+      average_review_latency_hours: null,
+      attribution: {
+        approval_interventions: "unavailable",
+        recovery_interventions: "unavailable",
+        llm_cost: "unavailable",
+      },
+      capped: false,
+      cap_limit: 5000,
+      items: [],
+    }),
   };
 });
 
@@ -158,6 +178,32 @@ describe("TasksPage", () => {
     });
     vi.mocked(getWorkItem).mockResolvedValue(sampleTask);
     vi.mocked(getWorkDelivery).mockResolvedValue(historyFull);
+  });
+
+  it("shows project-brief review metrics for the recent window", async () => {
+    vi.mocked(getDeliveryMetrics).mockResolvedValue({
+      window_days: 30,
+      reviewed_tasks: 2,
+      accepted_tasks: 2,
+      first_reviewed_tasks: 2,
+      first_version_accepted_tasks: 1,
+      first_version_acceptance_rate: 0.5,
+      rework_count: 1,
+      adopted_action_count: 1,
+      average_review_latency_hours: 1.5,
+      attribution: {
+        approval_interventions: "unavailable",
+        recovery_interventions: "unavailable",
+        llm_cost: "unavailable",
+      },
+      capped: false,
+      cap_limit: 5000,
+      items: [],
+    });
+    renderTasks("/tasks");
+    expect(await screen.findByText("近 30 日简报")).toBeInTheDocument();
+    expect(screen.getByText("首版采纳 50%（1/2）")).toBeInTheDocument();
+    expect(screen.getByText(/返工 1 · 已转任务 1 · 平均评审 1.5 小时/)).toBeInTheDocument();
   });
 
   it("renders empty tasks shell", async () => {

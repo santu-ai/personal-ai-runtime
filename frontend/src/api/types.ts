@@ -327,6 +327,37 @@ export interface UnreviewedDelivery {
   updated_at?: string;
 }
 
+export interface DeliveryMetricsItem {
+  work_id: string;
+  title: string;
+  reviews: number;
+  accepted: boolean;
+  first_review_accepted_v1: boolean;
+  reworks: number;
+  adopted_actions: number;
+  average_review_latency_hours: number | null;
+}
+
+export interface DeliveryMetrics {
+  window_days: number;
+  reviewed_tasks: number;
+  accepted_tasks: number;
+  first_reviewed_tasks: number;
+  first_version_accepted_tasks: number;
+  first_version_acceptance_rate: number | null;
+  rework_count: number;
+  adopted_action_count: number;
+  average_review_latency_hours: number | null;
+  attribution: {
+    approval_interventions: "unavailable" | string;
+    recovery_interventions: "unavailable" | string;
+    llm_cost: "unavailable" | string;
+  };
+  capped: boolean;
+  cap_limit: number;
+  items: DeliveryMetricsItem[];
+}
+
 export interface CreateProjectBriefPayload {
   title: string;
   objective: string;

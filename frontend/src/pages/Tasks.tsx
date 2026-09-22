@@ -7,10 +7,12 @@ import {
   cancelWorkItem,
   createProjectBrief,
   executeWorkItem,
+  getDeliveryMetrics,
   getWorkDelivery,
   reworkWorkDelivery,
   updateWorkItemStatus,
   type WorkDelivery,
+  type DeliveryMetrics,
   type WorkItem,
 } from "../api/client";
 import { useErrorStore } from "../stores/errorStore";
@@ -124,6 +126,16 @@ function newIdempotencyKey(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function formatAcceptanceRate(metrics: DeliveryMetrics): string {
+  if (metrics.first_version_acceptance_rate == null) return "尚无首次评审";
+  const percent = Math.round(metrics.first_version_acceptance_rate * 100);
+  return `${percent}%（${metrics.first_version_accepted_tasks}/${metrics.first_reviewed_tasks}）`;
+}
+
+function hasDeliveryMetrics(metrics: DeliveryMetrics | null): metrics is DeliveryMetrics {
+  return Boolean(metrics && (metrics.reviewed_tasks > 0 || metrics.adopted_action_count > 0));
+}
+
 export default function TasksPage() {
   const { taskId: urlTaskId } = useParams();
   const navigate = useNavigate();
@@ -150,6 +162,8 @@ export default function TasksPage() {
   const [historyFull, setHistoryFull] = useState<WorkDelivery | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [metrics, setMetrics] = useState<DeliveryMetrics | null>(null);
+  const [metricsRefresh, setMetricsRefresh] = useState(0);
   const executeInFlight = useRef(false);
   const acceptKey = useRef<string | null>(null);
   const adoptKeys = useRef<Record<number, string>>({});
@@ -216,6 +230,20 @@ export default function TasksPage() {
       addError(detailError instanceof ApiError ? detailError.message : "加载任务详情失败", "任务");
     }
   }, [detailError, addError]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getDeliveryMetrics(30)
+      .then((value) => {
+        if (!cancelled) setMetrics(value);
+      })
+      .catch(() => {
+        if (!cancelled) setMetrics(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [metricsRefresh]);
 
   const grouped = useMemo(() => {
     const active: WorkItem[] = [];
@@ -300,6 +328,7 @@ export default function TasksPage() {
         idempotency_key: acceptKey.current,
       });
       invalidate();
+      setMetricsRefresh((value) => value + 1);
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "验收失败", "任务");
     } finally {
@@ -318,6 +347,7 @@ export default function TasksPage() {
         idempotency_key: adoptKeys.current[actionIndex],
       });
       invalidate();
+      setMetricsRefresh((value) => value + 1);
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "转为任务失败", "任务");
     } finally {
@@ -351,6 +381,7 @@ export default function TasksPage() {
       setReworkOpen(false);
       setReworkReason("");
       invalidate();
+      setMetricsRefresh((value) => value + 1);
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "返工失败", "任务");
     } finally {
@@ -436,6 +467,24 @@ export default function TasksPage() {
             新建简报
           </Button>
         </div>
+        {hasDeliveryMetrics(metrics) && (
+          <section className="rounded-lg border border-border-subtle px-3 py-2 space-y-1">
+            <h2 className="text-xs font-medium text-fg-tertiary">
+              近 {metrics.window_days} 日简报
+            </h2>
+            <p className="text-sm text-fg-primary">首版采纳 {formatAcceptanceRate(metrics)}</p>
+            <p className="text-xs text-fg-secondary">
+              返工 {metrics.rework_count} · 已转任务 {metrics.adopted_action_count}
+              {metrics.average_review_latency_hours != null
+                ? ` · 平均评审 ${metrics.average_review_latency_hours} 小时`
+                : ""}
+            </p>
+            <p className="text-xs text-fg-tertiary">审批、恢复和模型成本还不能按简报分开计</p>
+            {metrics.capped ? (
+              <p className="text-xs text-warning">窗口内事件较多，统计可能不完整</p>
+            ) : null}
+          </section>
+        )}
         {isLoading ? (
           <p className="text-sm text-fg-tertiary">加载中…</p>
         ) : items.length === 0 ? (

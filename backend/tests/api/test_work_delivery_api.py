@@ -139,3 +139,25 @@ def test_adopt_suggested_action_returns_same_task(client):
     listed = client.get(f"/api/work-items/?parent_work_id={work_id}")
     assert listed.status_code == 200
     assert [row["id"] for row in listed.json()] == [body["work"]["id"]]
+
+
+def test_delivery_metrics_endpoint_reports_project_brief_reviews(client):
+    created = client.post("/api/work-items/project-brief", json={
+        "title": "指标简报", "objective": "列出变化",
+    }).json()
+    delivery = publish_delivery(
+        created["id"], content="full", summary="v1", sources=[],
+        execution_id="metric-api",
+    )
+    accepted = client.post(
+        f"/api/work-items/{created['id']}/deliveries/{delivery['delivery_id']}/accept",
+        json={"idempotency_key": "metric-api-accept"},
+    )
+    assert accepted.status_code == 200
+
+    response = client.get("/api/work-items/delivery-metrics?days=30")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["reviewed_tasks"] == 1
+    assert body["first_version_acceptance_rate"] == 1.0
+    assert body["items"][0]["work_id"] == created["id"]

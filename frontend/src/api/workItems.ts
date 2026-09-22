@@ -5,6 +5,7 @@ import { API_BASE, request } from "./core";
 import type {
   AdoptSuggestedActionResult,
   CreateProjectBriefPayload,
+  DeliveryMetrics,
   UnreviewedDelivery,
   WorkDelivery,
   WorkDeliveryBundle,
@@ -162,6 +163,10 @@ export async function updateWorkItemStatus(itemId: string, status: string): Prom
 
 export async function listUnreviewedDeliveries(): Promise<UnreviewedDelivery[]> {
   return request<UnreviewedDelivery[]>(`${API_BASE}/work-items/unreviewed-deliveries`);
+}
+
+export async function getDeliveryMetrics(days = 30): Promise<DeliveryMetrics> {
+  return request<DeliveryMetrics>(`${API_BASE}/work-items/delivery-metrics?days=${days}`);
 }
 
 /** List work items with work_type=goal. */

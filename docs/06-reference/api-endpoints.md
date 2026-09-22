@@ -190,6 +190,7 @@
 |---|---|---|---|---|
 | GET | `/api/work-items/` | auth | — | List Work Items |
 | POST | `/api/work-items/` | auth | — | Create Work Item |
+| GET | `/api/work-items/delivery-metrics` | auth | — | Delivery Metrics |
 | POST | `/api/work-items/project-brief` | auth | — | Create Project Brief |
 | GET | `/api/work-items/unreviewed-deliveries` | auth | — | List Unreviewed Deliveries |
 | DELETE | `/api/work-items/{item_id}` | auth | — | Delete Work Item |

@@ -5,7 +5,7 @@
 
 ## 当前状态
 
-- 2026-09-22：`main` 已包含 #80–#84。建议采纳（今日页 + 信任页，`GET /api/telemetry/governance`）、`ask_user` 澄清续写（ADR-R011，不计入采纳率）、周期对比（`GET /api/dashboard/periods`，今日页 + 早安简报正文）都已落地。无新事件类型。
+- 2026-09-22：`main` 已包含 #80–#85。简报自己的近 30 日首版采纳、返工、已转任务和评审耗时在 `GET /api/work-items/delivery-metrics`，任务页有评审时展示。审批次数、恢复次数和模型成本仍不能按简报归因。全局周期对比、Chat `ask_user`、工具/记忆采纳率仍是另一组指标。
 - 依赖 pin 以 `backend/requirements.txt` / `frontend/package.json` / `desktop/package.json` 为准：`openai==3.16.2`、`mcp==2.2.0`、`pypdf==6.19.0`、`cryptography==50.0.1`；前端 React 19.3 / Vite 8 / lucide-react 1.47；桌面 Electron 44。
 - 本机若用系统 `mcp` 1.x，mypy 可能误报；lock 钉 `mcp==2.2.0`，CI 用 lock。
 - 仍待用户试用：真 LLM、真实邮箱日用。无 Telegram token 时真实收发仍 blocked。soak 默认空库 `data/personal_ai.db`，日用库不在仓库里。
@@ -22,6 +22,10 @@
 | 2026-09-22 | 采纳率汇总工具建议与记忆确认；治理计数读 ApprovalGranted/Denied | #80 |
 
 ## 备注
+
+- 2026-09-22：简报交付指标 `GET /api/work-items/delivery-metrics` 与任务页近 30 日摘要已接上。首版采纳 = 窗口内首次评审且接受 v1 的任务 / 窗口内完成首次评审的任务。来源编号在中文标点前不再被截进 id。审批、恢复、模型成本仍标 unavailable。
+
+- 2026-09-22：复核 HEAD `7f5b33b`：相关后端 39 / 前端 57 测试及生产构建通过，boundary/layer-deps/concept-growth/dependency-sync 通过；本机已安装依赖落后于新 lock，未跑完整 merge-gate。原 plan 的建议转 Work 已实现；周期对比目前为全局指标、ask_user 为 Chat 续写、采纳率为工具审批+记忆确认，尚不能等同项目简报周期交付/澄清/首版采纳及成本闭环。真邮箱日用仍待验证；本会话另有两份未提交验证测试，真模型试验超时未定位。
 
 - dogfood 周记格式见 `docs/05-engineering/development.md`。
 - DLQ 人工重放：`python -m scripts.replay_dead_letters [--limit N] [--dry-run]`

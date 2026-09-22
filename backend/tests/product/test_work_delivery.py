@@ -14,6 +14,7 @@ from app.product.work_delivery import (
     public_bundle,
     publish_delivery,
     request_rework,
+    summarize_delivery_metrics,
 )
 
 
@@ -405,3 +406,44 @@ def test_adopt_suggested_action_dedupes_and_survives_rebuild(isolated_kernel):
     assert adopted[0]["adopted_work_id"] == child_id
     assert adopted[1]["adopted_work_id"] == orphan["id"]
     assert read_ports.query_work_item(child_id)["title"] == "核对排期"
+
+
+def test_delivery_metrics_track_first_acceptance_rework_and_adoption(isolated_kernel):
+    first = _create_task("首版通过")
+    first_v1 = publish_delivery(
+        first["id"], content="v1", summary="v1", sources=[], execution_id="metric-1",
+    )
+    accept_delivery(first["id"], first_v1["delivery_id"], idempotency_key="metric-a1")
+
+    revised = _create_task("返工通过")
+    revised_v1 = publish_delivery(
+        revised["id"], content="v1", summary="v1", sources=[], execution_id="metric-2",
+    )
+    request_rework(
+        revised["id"], revised_v1["delivery_id"], reason="补风险",
+        idempotency_key="metric-r1", dispatch=False,
+    )
+    revised_v2 = publish_delivery(
+        revised["id"], content="v2", summary="v2", sources=[],
+        suggested_actions=[{"title": "确认排期", "reason": "延期", "source_ids": []}],
+        execution_id="metric-3",
+    )
+    accept_delivery(revised["id"], revised_v2["delivery_id"], idempotency_key="metric-a2")
+    adopt_suggested_action(
+        revised["id"], revised_v2["delivery_id"], 0, idempotency_key="metric-adopt",
+    )
+
+    metrics = summarize_delivery_metrics(days=30)
+    assert metrics["reviewed_tasks"] == 2
+    assert metrics["accepted_tasks"] == 2
+    assert metrics["first_reviewed_tasks"] == 2
+    assert metrics["first_version_accepted_tasks"] == 1
+    assert metrics["first_version_acceptance_rate"] == 0.5
+    assert metrics["rework_count"] == 1
+    assert metrics["adopted_action_count"] == 1
+    assert metrics["average_review_latency_hours"] is not None
+    assert metrics["attribution"]["llm_cost"] == "unavailable"
+    by_title = {row["title"]: row for row in metrics["items"]}
+    assert by_title["首版通过"]["first_review_accepted_v1"] is True
+    assert by_title["返工通过"]["reworks"] == 1
+    assert by_title["返工通过"]["adopted_actions"] == 1
