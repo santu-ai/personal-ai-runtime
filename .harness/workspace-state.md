@@ -41,7 +41,7 @@
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
-| 2026-09-22 | 周期对比：近 7 日 vs 前 7 日，读既有完成/收件/采纳事件；今日页展示 | 无新事件类型；`GET /api/dashboard/periods` |
+| 2026-09-22 | 周期对比：近 7 日 vs 前 7 日，读既有完成/收件/采纳事件；今日页展示 | 无新事件类型；merge-gate 通过：后端 1620 passed / 3 skipped / 5 deselected，前端 254 passed + 构建 |
 | 2026-09-22 | `ask_user`：模型提问、用户文本回答回到同一 Chat 工具环；取消写入 denied 并不调 LLM | 无新事件类型；后端 1615 passed；前端 249 passed + 构建；澄清不计入采纳率 |
 | 2026-09-22 | 采纳率：今日页 + 信任页汇总工具建议与记忆确认；治理计数改读 ApprovalGranted/Denied | 无新事件类型；已合入 main |
 | 2026-09-22 | 汇总 Dependabot #66、#68–#78：backend lock 重生（alembic/openai/pypdf/mcp/ruff）；frontend react+react-dom 19.3.0 同步；desktop electron 44.4.3 / vitest 5.0.1 | 已合入 main |
