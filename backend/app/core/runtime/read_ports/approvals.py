@@ -71,6 +71,11 @@ def _suggestion_kind(event_type: str, payload: dict[str, Any] | None) -> str:
     so they stay out of the adoption rate.
     """
     reason = str((payload or {}).get("reason") or "")
+    action = str((payload or {}).get("action") or "")
+    # Clarification replies reuse ApprovalGranted/Denied but are not tool-suggestion
+    # adoptions. Keep them out of the adoption rate.
+    if action == "ask_user" or reason == "user_reply":
+        return ""
     if event_type == "ApprovalGranted":
         return "auto_allowed" if reason == "auto_allow" else "adopted"
     if event_type == "ApprovalDenied":

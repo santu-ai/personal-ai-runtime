@@ -52,6 +52,11 @@ interface ToolLabel {
 // Falls back to common-sense patterns for unknown tools.
 const TOOL_LABELS: Record<string, ToolLabel> = {
   // ── builtin ──
+  ask_user: {
+    label: "向你确认",
+    icon: MessageSquare,
+    describeArgs: (a) => String(a.question || "需要你的回答"),
+  },
   get_current_time: { label: "获取当前时间", icon: Clock },
   read_file: {
     label: "读取文件",

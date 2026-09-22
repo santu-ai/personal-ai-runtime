@@ -111,20 +111,35 @@ export function useApprovalFlow(conversationId: string) {
   }, [conversationId]);
 
   const confirm = useCallback(
-    async (setMessages: SetMessages, onError?: (msg: string, source: string) => void) => {
+    async (
+      setMessages: SetMessages,
+      onError?: (msg: string, source: string) => void,
+      answer?: string,
+    ) => {
       if (!pendingConfirmation) return;
       const pc = pendingConfirmation;
       setPendingConfirmation(null);
 
       try {
-        const res = await resolveApproval(
-          pc.approvalId,
-          "approve",
-          pc.toolCall.function_name,
-          JSON.parse(pc.toolCall.arguments || "{}"),
-          conversationId,
-          pc.toolCall.id,
-        );
+        const toolArgs = JSON.parse(pc.toolCall.arguments || "{}") as Record<string, unknown>;
+        const res = answer
+          ? await resolveApproval(
+              pc.approvalId,
+              "approve",
+              pc.toolCall.function_name,
+              toolArgs,
+              conversationId,
+              pc.toolCall.id,
+              answer,
+            )
+          : await resolveApproval(
+              pc.approvalId,
+              "approve",
+              pc.toolCall.function_name,
+              toolArgs,
+              conversationId,
+              pc.toolCall.id,
+            );
         if (res.status === "resume_failed" || res.retryable) {
           setPendingConfirmation(pc);
           onError?.(res.error || "续写失败，可再试一次", "审批");

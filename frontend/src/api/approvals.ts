@@ -34,6 +34,7 @@ export async function resolveApproval(
   toolArgs: Record<string, unknown>,
   convId: string,
   toolCallId: string,
+  answer?: string,
 ): Promise<{
   status: string;
   result?: string;
@@ -55,6 +56,7 @@ export async function resolveApproval(
       tool_args: toolArgs,
       conv_id: convId,
       tool_call_id: toolCallId,
+      ...(answer ? { answer } : {}),
     }),
   });
 }

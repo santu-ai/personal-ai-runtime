@@ -1,3 +1,4 @@
+import { useState } from "react";
 import Button from "../ui/Button";
 import RiskCard from "../approval/RiskCard";
 import { useCapabilityPolicyQuery } from "../../hooks/useSettingsQuery";
@@ -8,8 +9,19 @@ import type { ToolCall } from "./types";
 
 interface Props {
   toolCall: ToolCall;
-  onConfirm: () => void;
+  onConfirm: (answer?: string) => void;
   onDeny: () => void;
+}
+
+const ANSWER_MAX = 8000;
+
+function parseToolArgs(raw: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(raw || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 interface SuggestionCopy {
@@ -102,8 +114,14 @@ function suggestionFor(
 
 export default function ConfirmationDialog({ toolCall, onConfirm, onDeny }: Props) {
   const { data: policy } = useCapabilityPolicyQuery();
-  const riskLevel = getRiskLevelFromPolicy(toolCall.function_name, policy);
-  const suggestion = suggestionFor(toolCall.function_name, policy);
+  const isAskUser = toolCall.function_name === "ask_user";
+  const riskLevel = isAskUser ? "low" : getRiskLevelFromPolicy(toolCall.function_name, policy);
+  const suggestion = isAskUser ? undefined : suggestionFor(toolCall.function_name, policy);
+  const args = parseToolArgs(toolCall.arguments);
+  const question = typeof args.question === "string" ? args.question : "";
+  const context = typeof args.context === "string" ? args.context : "";
+  const [draft, setDraft] = useState("");
+  const answer = draft.trim();
 
   return (
     <RiskCard
@@ -112,20 +130,53 @@ export default function ConfirmationDialog({ toolCall, onConfirm, onDeny }: Prop
       riskLevel={riskLevel}
       policy={policy}
       variant="inline"
-      title={suggestion?.title}
+      title={isAskUser ? "需要你补充一点信息" : suggestion?.title}
     >
       <div className="w-full space-y-2">
-        <p className="text-xs text-fg-tertiary">
-          {suggestion?.hint ?? "确认后将执行工具并继续当前对话"}
-        </p>
-        <div className="flex gap-2">
-          <Button size="sm" onClick={onConfirm}>
-            {suggestion?.confirm ?? "确认执行"}
-          </Button>
-          <Button size="sm" variant="secondary" onClick={onDeny}>
-            取消
-          </Button>
-        </div>
+        {isAskUser ? (
+          <>
+            <p className="text-sm text-fg-primary whitespace-pre-wrap">
+              {question || "助手需要你的回答才能继续。"}
+            </p>
+            {context ? <p className="text-xs text-fg-tertiary whitespace-pre-wrap">{context}</p> : null}
+            <textarea
+              aria-label="你的回答"
+              className="w-full min-h-20 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm"
+              maxLength={ANSWER_MAX}
+              value={draft}
+              placeholder="输入回答，助手会带着它继续"
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && answer) {
+                  event.preventDefault();
+                  onConfirm(answer);
+                }
+              }}
+            />
+            <div className="flex gap-2">
+              <Button size="sm" disabled={!answer} onClick={() => onConfirm(answer)}>
+                发送回答
+              </Button>
+              <Button size="sm" variant="secondary" onClick={onDeny}>
+                取消
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-fg-tertiary">
+              {suggestion?.hint ?? "确认后将执行工具并继续当前对话"}
+            </p>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => onConfirm()}>
+                {suggestion?.confirm ?? "确认执行"}
+              </Button>
+              <Button size="sm" variant="secondary" onClick={onDeny}>
+                取消
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     </RiskCard>
   );

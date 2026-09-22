@@ -6,6 +6,7 @@ from collections.abc import Callable
 
 from app.core.harness.builtin_registration.common import BuiltinToolSpec, _register_specs
 from app.core.harness.builtin_registration.specs_core import (
+    _clarify_specs,
     _filesystem_specs,
     _git_specs,
     _shell_specs,
@@ -40,6 +41,7 @@ _CATEGORY_BUILDERS: dict[str, Callable[[], list[BuiltinToolSpec]]] = {
     "shell": _shell_specs,
     "git": _git_specs,
     "goals": _goals_specs,
+    "clarify": _clarify_specs,
     # Advanced (opt-in)
     "telegram": _telegram_specs,
     "clipboard_ocr": _clipboard_ocr_specs,

@@ -27,6 +27,8 @@ class ResolveApprovalRequest(BaseModel):
     tool_args: dict = Field(default_factory=dict)
     conv_id: str = ""
     tool_call_id: str = ""
+    # Free-text reply for ask_user. Ignored for every other tool.
+    answer: str = Field(default="", max_length=8000)
 
 
 class ExportRequest(BaseModel):

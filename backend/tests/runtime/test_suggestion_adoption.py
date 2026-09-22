@@ -74,6 +74,22 @@ def test_suggestion_adoption_keeps_latest_decision_per_approval(fake_kernel):
     assert result["adoption_rate"] == 0
 
 
+def test_suggestion_adoption_ignores_ask_user_replies(fake_kernel):
+    fake_kernel.events_by_type["ApprovalGranted"] = [
+        _ev("clarified", {"action": "ask_user", "reason": "user_reply"}, 1),
+        _ev("write", {"action": "write_file", "reason": "pre_approved"}, 2),
+    ]
+    fake_kernel.events_by_type["ApprovalDenied"] = [
+        _ev("cancelled", {"action": "ask_user", "reason": "user_denied"}, 3),
+    ]
+
+    result = approvals_port.summarize_suggestion_adoption(days=7)
+
+    assert result["adopted"] == 1
+    assert result["rejected"] == 0
+    assert result["decided"] == 1
+
+
 def test_suggestion_adoption_empty_window_has_null_rate(fake_kernel):
     result = approvals_port.summarize_suggestion_adoption(days=7)
     assert result["decided"] == 0

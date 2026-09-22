@@ -48,30 +48,41 @@ export default function ApprovalsPage() {
     }
   }, [error, addError]);
 
-  const handleApprove = async (item: EnrichedApproval) => {
+  const handleApprove = async (item: EnrichedApproval, answer?: string) => {
     setResolving((prev) => new Set(prev).add(item.id));
     try {
       const convId = item.conversation_id || "";
       const toolCallId = item.tool_call_id || "";
       const canContinue = canContinueApproval(item);
+      const isAskUser = item.action === "ask_user";
 
-      if (canContinue) {
-        // P3: 对话来源 — 走 chat resolve，触发 one-shot 续写后跳转对话
+      if (canContinue || isAskUser) {
+        // 对话来源走 chat resolve，触发同一工具环续写。ask_user 必须带文本回答。
         const args = parseParams(item.params) || {};
-        const res = await resolveApproval(
-          item.id,
-          "approve",
-          item.action || "",
-          args,
-          convId,
-          toolCallId,
-        );
+        const res = answer
+          ? await resolveApproval(
+              item.id,
+              "approve",
+              item.action || "",
+              args,
+              convId,
+              toolCallId,
+              answer,
+            )
+          : await resolveApproval(
+              item.id,
+              "approve",
+              item.action || "",
+              args,
+              convId,
+              toolCallId,
+            );
         if (res.status === "resume_failed" || res.retryable) {
           addError(res.error || "续写失败，可再试一次", "审批");
           return;
         }
         invalidateApprovals();
-        navigate(`/chat/${convId}`);
+        if (convId) navigate(`/chat/${convId}`);
         return;
       }
 
@@ -92,10 +103,22 @@ export default function ApprovalsPage() {
     }
   };
 
-  const handleReject = async (id: string) => {
-    setResolving((prev) => new Set(prev).add(id));
+  const handleReject = async (item: EnrichedApproval) => {
+    setResolving((prev) => new Set(prev).add(item.id));
     try {
-      await rejectApproval(id, "手动拒绝");
+      if (canContinueApproval(item) || item.action === "ask_user") {
+        const args = parseParams(item.params) || {};
+        await resolveApproval(
+          item.id,
+          "deny",
+          item.action || "",
+          args,
+          item.conversation_id || "",
+          item.tool_call_id || "",
+        );
+      } else {
+        await rejectApproval(item.id, "手动拒绝");
+      }
       invalidateApprovals();
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "拒绝操作失败";
@@ -103,7 +126,7 @@ export default function ApprovalsPage() {
     } finally {
       setResolving((prev) => {
         const n = new Set(prev);
-        n.delete(id);
+        n.delete(item.id);
         return n;
       });
     }
@@ -157,8 +180,8 @@ export default function ApprovalsPage() {
                 item={item}
                 policy={policy}
                 resolving={resolving.has(item.id)}
-                onApprove={() => handleApprove(item)}
-                onReject={() => handleReject(item.id)}
+                onApprove={(answer) => handleApprove(item, answer)}
+                onReject={() => handleReject(item)}
               />
             ))}
           </div>
@@ -178,13 +201,21 @@ function ApprovalCard({
   item: EnrichedApproval;
   policy?: CapabilityPolicy;
   resolving: boolean;
-  onApprove: () => void;
+  onApprove: (answer?: string) => void;
   onReject: () => void;
 }) {
   const isExpiringSoon = item.expires_at
     ? new Date(item.expires_at).getTime() - Date.now() < 3600000
     : false;
   const canContinue = canContinueApproval(item);
+  const isAskUser = item.action === "ask_user";
+  const [draft, setDraft] = useState("");
+  const answer = draft.trim();
+  const question = (() => {
+    const params = parseParams(item.params);
+    const raw = params?.question;
+    return typeof raw === "string" ? raw : "";
+  })();
 
   return (
     <RiskCard
@@ -192,6 +223,8 @@ function ApprovalCard({
       args={item.params ?? "{}"}
       variant="panel"
       policy={policy}
+      riskLevel={isAskUser ? "low" : undefined}
+      title={isAskUser ? "需要你补充一点信息" : undefined}
       source={{
         flowLabel: item.flow_label || item.flow_type,
         proposedBy: item.proposed_by ?? undefined,
@@ -203,23 +236,38 @@ function ApprovalCard({
       }}
       expiringSoon={isExpiringSoon}
     >
+      {isAskUser && (
+        <div className="w-full basis-full space-y-2">
+          <p className="text-sm text-fg-primary whitespace-pre-wrap">
+            {question || "助手需要你的回答才能继续。"}
+          </p>
+          <textarea
+            aria-label="你的回答"
+            className="w-full min-h-20 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm"
+            maxLength={8000}
+            value={draft}
+            placeholder="输入回答，助手会带着它继续"
+            onChange={(event) => setDraft(event.target.value)}
+          />
+        </div>
+      )}
       <button
-        onClick={onApprove}
-        disabled={resolving}
+        onClick={() => (isAskUser ? onApprove(answer) : onApprove())}
+        disabled={resolving || (isAskUser && !answer)}
         className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-surface-overlay hover:bg-border-strong text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-        title={canContinue ? "批准、续写回复并打开对话" : "批准此操作"}
+        title={isAskUser ? "发送回答并继续对话" : canContinue ? "批准、续写回复并打开对话" : "批准此操作"}
       >
-        {canContinue ? <MessageSquare size={14} /> : <Check size={14} />}
-        {canContinue ? "批准并续写" : "批准"}
+        {canContinue || isAskUser ? <MessageSquare size={14} /> : <Check size={14} />}
+        {isAskUser ? "发送回答" : canContinue ? "批准并续写" : "批准"}
       </button>
       <button
         onClick={onReject}
         disabled={resolving}
         className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-transparent hover:bg-surface-overlay text-fg-secondary border border-border-subtle disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-        title="拒绝此操作"
+        title={isAskUser ? "取消这次澄清" : "拒绝此操作"}
       >
         <X size={14} />
-        拒绝
+        {isAskUser ? "取消" : "拒绝"}
       </button>
     </RiskCard>
   );

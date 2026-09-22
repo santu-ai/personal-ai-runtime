@@ -15,6 +15,7 @@ from app.core.harness.builtin_registration.register import (
     register_mesh_tools,
 )
 from app.core.harness.builtin_registration.specs_core import (
+    _clarify_specs,
     _filesystem_specs,
     _git_specs,
     _shell_specs,
@@ -35,6 +36,7 @@ __all__ = [
     "BuiltinToolSpec",
     "_CATEGORY_BUILDERS",
     "_calendar_specs",
+    "_clarify_specs",
     "_clipboard_ocr_specs",
     "_computer_use_specs",
     "_email_specs",

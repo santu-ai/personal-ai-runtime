@@ -179,7 +179,7 @@ LLM provider 增删后调 `llm_router.reload()` 重建。
 三个桶：
 
 - **auto_allow**（28 个）：`read_file`、`web_search`、`list_calendar_events`、`check_inbox`、`git_status`/`log`/`diff`、`computer_screenshot`/`move`/`scroll`、`voice_tts`/`stt` 等。
-- **needs_user**（9 个）：`apply_patch`、`write_file`、`add_calendar_event`、`send_email`、`shell_exec`、`telegram_send`、`computer_click`/`type`/`key`。
+- **needs_user**（17 个）：`apply_patch`、`write_file`、`add_calendar_event`、`send_email`、`shell_exec`、`telegram_send`、`computer_*` 控制类、目标写入，以及 `ask_user`（澄清）。完整名单以 [tool-catalog.md](../06-reference/tool-catalog.md) 为准。
 - **forbidden**：空。
 
 ### `backend/mcp_config.json`

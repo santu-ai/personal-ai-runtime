@@ -59,7 +59,7 @@ flowchart TB
 
    当前策略：
    - **auto_allow**（只读/搜索/观察工具）：`read_file`、`web_search`、`list_calendar_events`、`check_inbox`、`git_status`/`log`/`diff`、`computer_screen_size`、`voice_tts`/`stt` 等。
-   - **needs_user**（变更工具，需审批）：`apply_patch`、`write_file`、`add_calendar_event`、`send_email`、`shell_exec`、`telegram_send`、全部 `computer_*` 控制类工具（click/type/move/scroll/key/screenshot）。
+   - **needs_user**（变更工具，需审批）：`apply_patch`、`write_file`、`add_calendar_event`、`send_email`、`shell_exec`、`telegram_send`、全部 `computer_*` 控制类工具（click/type/move/scroll/key/screenshot）、目标写入工具，以及 `ask_user`（澄清提问，不产生宿主副作用，但走同一审批门）。
    - **forbidden**：空。
 
    > **权威性**：`policy_events` 是 3-gate 治理查询的唯一事实来源；`ToolDef.requires_confirmation`（[`mcp_hub.py`](../../backend/app/core/harness/mcp_hub.py)）仅是缺少策略行时的兜底默认。两者一致性由 [`scripts/check_capability_policy_consistency.py`](../../backend/scripts/check_capability_policy_consistency.py) 在 CI 中强制。
@@ -74,7 +74,7 @@ flowchart TB
 - `expire_stale_approvals` — 24h TTL，TOCTOU 安全的原子 UPDATE（[`governance_ops.py`](../../backend/app/core/runtime/kernel/governance_ops.py)）。RuntimeLoop 每 100 tick（~10s）调用一次。
 - `grant_approval` / `deny_approval` — 用户在 UI 或 `/api/approvals/{id}/approve|reject` 处理。
 
-审批通过后，工具调用经 `submit_command("ApproveRequested")` 走 Kernel ABI 重新执行；若存在 `chat_ckpt:{correlation_id}`，把 tool result 接到 checkpoint 并恢复原 Chat 工具环（可再次弹出需确认工具，受 `max_tool_iterations` 约束）。无 checkpoint 时回退到 tools-free 的 `Brain.continue_after_tool_result`。用户拒绝时不调用 LLM：把 `status=denied` 的 tool result 与一句说明写入会话，并清除 checkpoint。Chat 工具环中途崩溃时，checkpoint 保存 messages、taint 与 tool_calls，Scheduler interrupt 重放同一 `ChatRequested` 时续跑并恢复污染标记；若仍在等待审批则不调用 LLM。产品契约见 [ADR-R011](../07-adr/ADR-R011-chat-approval-continuation.md) 与 [execution-model.md](execution-model.md) 控制面表。审批 HTTP 端点见 [03-subsystems/backend-api.md](../03-subsystems/backend-api.md)。
+审批通过后，工具调用经 `submit_command("ApproveRequested")` 走 Kernel ABI 重新执行；若存在 `chat_ckpt:{correlation_id}`，把 tool result 接到 checkpoint 并恢复原 Chat 工具环（可再次弹出需确认工具，受 `max_tool_iterations` 约束）。`ask_user` 不重新执行能力：批准时把用户的自由文本写成 `status=answered` 的 tool result，再走同一条 checkpoint 续写。无 checkpoint 时回退到 tools-free 的 `Brain.continue_after_tool_result`。用户拒绝或取消澄清时不调用 LLM：把 `status=denied` 的 tool result 与一句说明写入会话，并清除 checkpoint。澄清的批准/取消不计入建议采纳率。Chat 工具环中途崩溃时，checkpoint 保存 messages、taint 与 tool_calls，Scheduler interrupt 重放同一 `ChatRequested` 时续跑并恢复污染标记；若仍在等待审批则不调用 LLM。产品契约见 [ADR-R011](../07-adr/ADR-R011-chat-approval-continuation.md) 与 [execution-model.md](execution-model.md) 控制面表。审批 HTTP 端点见 [03-subsystems/backend-api.md](../03-subsystems/backend-api.md)。
 
 ## Taint 追踪（防提示注入）
 

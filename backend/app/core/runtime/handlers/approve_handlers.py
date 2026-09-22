@@ -104,10 +104,52 @@ def _execute_requested_for_approval(kernel: object, action_id: str, approval_id:
     return False
 
 
-def _denied_user_note(tool_name: str) -> str:
+def _ask_user_args(kernel: Any, approval_id: str, tool_args: dict | None) -> dict:
+    """Keep the original question when the deny payload omitted tool args."""
+    from app.core.harness.builtin_tools.ask_user import question_from_args
+
+    args = dict(tool_args or {})
+    if question_from_args(args):
+        return args
+    try:
+        rows = kernel.query_state("approvals", id=approval_id, limit=1)
+    except Exception:
+        logger.debug("ask_user approval lookup failed", exc_info=True)
+        return args
+    if not rows:
+        return args
+    raw = rows[0].get("params") or "{}"
+    try:
+        recorded = json.loads(raw) if isinstance(raw, str) else dict(raw)
+    except (json.JSONDecodeError, TypeError):
+        return args
+    if isinstance(recorded, dict) and question_from_args(recorded):
+        args.setdefault("question", recorded.get("question"))
+        if recorded.get("context") and "context" not in args:
+            args["context"] = recorded.get("context")
+    return args
+
+
+def _denied_user_note(tool_name: str, tool_args: dict | None = None) -> str:
+    if tool_name == "ask_user":
+        from app.core.harness.builtin_tools.ask_user import cancelled_note, question_from_args
+
+        return cancelled_note(question_from_args(tool_args))
     if tool_name:
         return f"已拒绝「{tool_name}」，没有执行该操作。"
     return "已拒绝该操作。"
+
+
+def _denied_tool_content(tool_name: str, tool_args: dict | None) -> str:
+    if tool_name == "ask_user":
+        from app.core.harness.builtin_tools.ask_user import cancelled_result, question_from_args
+
+        return cancelled_result(question_from_args(tool_args))
+    return json.dumps({
+        "status": "denied",
+        "reason": "user_denied",
+        "tool_name": tool_name,
+    })
 
 
 def _persist_denied_chat_turn(
@@ -115,6 +157,7 @@ def _persist_denied_chat_turn(
     tool_call_id: str,
     tool_name: str,
     correlation_id: str | None,
+    tool_args: dict | None = None,
 ) -> str:
     """Record the denied tool call in the conversation without calling the LLM.
 
@@ -129,15 +172,11 @@ def _persist_denied_chat_turn(
         correlation_id=correlation_id or None,
     )
     conversation.save_tool_result(
-        json.dumps({
-            "status": "denied",
-            "reason": "user_denied",
-            "tool_name": tool_name,
-        }),
+        _denied_tool_content(tool_name, tool_args),
         tool_call_id,
         tool_name=tool_name,
     )
-    note = _denied_user_note(tool_name)
+    note = _denied_user_note(tool_name, tool_args)
     conversation.save_assistant_message(note)
     return note
 
@@ -153,6 +192,7 @@ async def on_approve_requested(ctx: "ExecutionContext", event: "Event") -> None:
     tool_args = event.payload.get("tool_args", {})
     conv_id = event.payload.get("conv_id", "")
     tool_call_id = event.payload.get("tool_call_id", "")
+    user_answer = str(event.payload.get("user_answer") or "")
 
     if not approval_id:
         ctx.emit(
@@ -171,6 +211,7 @@ async def on_approve_requested(ctx: "ExecutionContext", event: "Event") -> None:
             tool_args=tool_args,
             conv_id=conv_id,
             tool_call_id=tool_call_id,
+            user_answer=user_answer,
         )
 
 
@@ -185,7 +226,11 @@ async def _on_approve_requested_locked(
     tool_args: dict,
     conv_id: str,
     tool_call_id: str,
+    user_answer: str = "",
 ) -> None:
+    if tool_name == "ask_user":
+        tool_args = _ask_user_args(kernel, approval_id, tool_args)
+
     pending_resume = peek_plan_resume(approval_id, kernel=kernel)
     if pending_resume is None:
         pending_resume = load_approval_dispatch_intent(approval_id, kernel=kernel)
@@ -203,7 +248,8 @@ async def _on_approve_requested_locked(
     if decision == "deny":
         take_plan_resume(approval_id, kernel=kernel)  # drop any queued plan resume
         clear_approval_dispatch_intent(approval_id, kernel=kernel)
-        kernel.deny_approval(approval_id, action=tool_name, actor="user", reason="user_denied")
+        deny_reason = "user_cancelled" if tool_name == "ask_user" else "user_denied"
+        kernel.deny_approval(approval_id, action=tool_name, actor="user", reason=deny_reason)
         assistant_message = ""
         from app.core.runtime.plan_resume import clear_chat_checkpoint_for_approval
 
@@ -213,7 +259,7 @@ async def _on_approve_requested_locked(
         if conv_id and tool_call_id:
             try:
                 assistant_message = _persist_denied_chat_turn(
-                    conv_id, tool_call_id, tool_name, chat_corr,
+                    conv_id, tool_call_id, tool_name, chat_corr, tool_args,
                 )
             except Exception as exc:
                 logger.warning("Approve: persist denied chat turn failed: %s", exc)
@@ -230,7 +276,54 @@ async def _on_approve_requested_locked(
         )
         return
 
-    if cached_plan_result is not None:
+    if tool_name == "ask_user":
+        from app.core.harness.builtin_tools.ask_user import (
+            ANSWER_MAX_CHARS,
+            answered_result,
+            question_from_args,
+        )
+
+        answer = user_answer.strip()
+        if not answer or len(answer) > ANSWER_MAX_CHARS:
+            ctx.emit(
+                "ApproveCompleted", "approval", f"approve_{approval_id}",
+                payload={
+                    "status": "error",
+                    "error": "ask_user requires a non-empty answer",
+                    "approval_id": approval_id,
+                },
+                caused_by=event.id,
+            )
+            return
+        try:
+            rows = kernel.query_state("approvals", id=approval_id, limit=1)
+        except Exception:
+            rows = []
+        if not rows or rows[0].get("status") != "pending":
+            status = rows[0].get("status") if rows else "missing"
+            ctx.emit(
+                "ApproveCompleted", "approval", f"approve_{approval_id}",
+                payload={
+                    "status": "error",
+                    "error": f"Approval not pending: {status}",
+                    "approval_id": approval_id,
+                },
+                caused_by=event.id,
+            )
+            return
+        question = question_from_args(tool_args)
+        kernel.grant_approval(
+            approval_id,
+            action=tool_name,
+            actor="user",
+            reason="user_reply",
+            correlation_id=ctx.correlation_id,
+        )
+        cap_result = {
+            "status": "success",
+            "result": answered_result(question, answer),
+        }
+    elif cached_plan_result is not None:
         cap_result = {"status": "success", "result": cached_plan_result}
     else:
         cap_result = await kernel.invoke_capability(
@@ -270,7 +363,14 @@ async def _on_approve_requested_locked(
         row = conversation.save_tool_result(
             result_str, tool_call_id, tool_name=tool_name,
         )
-        if cap_result["status"] == "success" and chat_corr and is_write_class_tool(tool_name):
+        # ask_user is needs_user (so it pauses) but the reply is not a host
+        # mutation. Caching it would swallow a later question with the same text.
+        if (
+            cap_result["status"] == "success"
+            and chat_corr
+            and tool_name != "ask_user"
+            and is_write_class_tool(tool_name)
+        ):
             try:
                 record_chat_tool_success(
                     chat_corr, tool_name, tool_args, result_str, kernel=kernel,

@@ -300,8 +300,8 @@ export default function ChatView({ conversationId }: Props) {
     await dispatchSend(trimmed);
   }, [input, dispatchSend]);
 
-  const handleConfirm = useCallback(async () => {
-    await confirm(setMessages, addError);
+  const handleConfirm = useCallback(async (answer?: string) => {
+    await confirm(setMessages, addError, answer);
   }, [confirm, setMessages, addError]);
 
   const handleDeny = useCallback(async () => {
