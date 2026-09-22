@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-09-22：Batch 7 文档对齐 #88–#93：任务页写出审批/恢复/模型成本与「重新执行」；`_recover` 预算耗尽走 `ExecutionFailed` 死信。未改守卫脚本。
 - 2026-09-22：`CapabilityFailed(error=interrupted_before_audit)` 带上调用当时的 `execution_id` / `caused_by` / `retry_count`。简报恢复次数按同一次中断对齐，不再用 60 秒窗口。没有这些字段的旧事件仍按 correlation 并入已有 handler replay。
 - 2026-09-22：任务页改用与目标页相同的 `page-shell`：整页滚动，宽屏列表+详情，窄屏选中后只留详情并可返回列表。交付指标、执行、验收和返工仍在。窄于 md 的侧栏保持图标栏。
 - 2026-09-22：Batch 1：执行 handler 已失败时，仍显示 running 的任务会在启动时收成 failed，不再把后台任务重新排队绕过死信；任务页可对死信中的进行中任务重新执行。
