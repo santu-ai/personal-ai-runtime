@@ -53,3 +53,10 @@ def bind_inbox_poll_applier(fn) -> None:
     from app.core.runtime.runtime_container import runtime
 
     runtime.bind_inbox_poll_applier(fn)
+
+
+def bind_work_delivery_compiler(fn) -> None:
+    """在 RuntimeContainer 上注册 Product 项目简报编译器（ABI）。"""
+    from app.core.runtime.runtime_container import runtime
+
+    runtime.bind_work_delivery_compiler(fn)

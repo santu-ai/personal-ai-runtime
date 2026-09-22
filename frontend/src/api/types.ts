@@ -239,6 +239,103 @@ export interface WorkItem {
   events?: WorkItemEvent[];
   children?: WorkItem[];
   execution?: WorkItemExecution;
+  delivery_bundle?: WorkDeliveryBundle;
+}
+
+export type WorkDeliveryReviewStatus = "unreviewed" | "accepted" | "changes_requested";
+
+export interface WorkDeliverySource {
+  id: string;
+  type: string;
+  title: string;
+  locator?: string;
+  retrieved_at?: string;
+  content_hash?: string;
+}
+
+export interface WorkDeliveryCheck {
+  criterion: string;
+  result: "pass" | "fail" | "needs_review" | string;
+  programmatic?: boolean;
+  detail?: string;
+}
+
+export interface WorkDeliveryFinding {
+  text: string;
+  kind?: string;
+  source_ids?: string[];
+}
+
+export interface WorkDeliveryAction {
+  title: string;
+  reason?: string;
+  source_ids?: string[];
+  adopted_work_id?: string;
+}
+
+export interface WorkDelivery {
+  delivery_id: string;
+  version: number;
+  contract_version: number;
+  execution_id?: string | null;
+  created_at?: string;
+  summary: string;
+  content?: string;
+  content_length?: number;
+  limitations: string[];
+  suggested_actions: WorkDeliveryAction[];
+  sources: WorkDeliverySource[];
+  checks: WorkDeliveryCheck[];
+  findings: WorkDeliveryFinding[];
+  supersedes_delivery_id?: string | null;
+  schema_version: number;
+  qualified: boolean;
+  review_status: WorkDeliveryReviewStatus;
+}
+
+export interface WorkDeliveryBundle {
+  work_id: string;
+  deliveries: WorkDelivery[];
+  current: WorkDelivery | null;
+  current_review_status: WorkDeliveryReviewStatus | null;
+}
+
+export interface WorkDeliveryDecisionResult {
+  work_id: string;
+  replayed: boolean;
+  decision: Record<string, unknown>;
+  bundle: WorkDeliveryBundle;
+  work?: WorkItem;
+  execute_error?: string;
+}
+
+export interface AdoptSuggestedActionResult {
+  work_id: string;
+  replayed: boolean;
+  action_index: number;
+  created_work_id: string;
+  work: WorkItem;
+  bundle: WorkDeliveryBundle;
+}
+
+export interface UnreviewedDelivery {
+  work_id: string;
+  title: string;
+  delivery_id: string;
+  version: number;
+  summary: string;
+  updated_at?: string;
+}
+
+export interface CreateProjectBriefPayload {
+  title: string;
+  objective: string;
+  source_scope?: {
+    timezone?: string;
+    email?: { enabled?: boolean; query?: string; days?: number; limit?: number };
+    files?: Array<{ path: string; label?: string }>;
+  };
+  acceptance_criteria?: string[];
 }
 
 export interface Approval {

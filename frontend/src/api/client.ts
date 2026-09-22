@@ -35,6 +35,13 @@ export type {
   WorkItemType,
   WorkItem,
   WorkItemEvent,
+  AdoptSuggestedActionResult,
+  WorkDelivery,
+  WorkDeliveryBundle,
+  WorkDeliveryDecisionResult,
+  WorkDeliveryReviewStatus,
+  UnreviewedDelivery,
+  CreateProjectBriefPayload,
   Approval,
   EnrichedApproval,
   DataSovereignty,
@@ -86,6 +93,14 @@ export {
   executeWorkItem,
   cancelWorkItem,
   decomposeWorkItem,
+  createProjectBrief,
+  getWorkDeliveries,
+  getWorkDelivery,
+  acceptWorkDelivery,
+  reworkWorkDelivery,
+  adoptSuggestedAction,
+  updateWorkItemStatus,
+  listUnreviewedDeliveries,
 } from "./workItems";
 
 // Inbox

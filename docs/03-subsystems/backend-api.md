@@ -55,7 +55,7 @@ connectors, timeline, work_items
 |---|---|---|---|
 | chat | `/api/chat` | 会话 CRUD、`POST /conversations/{id}/messages`（**SSE**）、`POST /chat/approvals/{id}/resolve` | Kernel 事件 + LLM + 工具执行 |
 | memory | `/api/memory` | memories CRUD、search、ratify/reject/contest、portrait、graph | Kernel 事件 + Chroma |
-| work_items | `/api/work-items` | 统一 goal/task/action CRUD、`include=`、`decompose` | Kernel 事件 + LLM |
+| work_items | `/api/work-items` | 统一 goal/task/action CRUD、`include=`、`decompose`、项目简报创建、交付列表/验收/返工 | Kernel 事件 + LLM |
 | approvals | `/api/approvals` | 列表、`/{id}/approve`、`/{id}/reject` | `submit_command("ApproveRequested")` + 工具执行 |
 | inbox | `/api/inbox` | 列表默认 `status=all`（邮箱全量）；`status=pending` 为未读分拣；`/poll`（IMAP）、`/digest`、状态更新 | 网络出口 + Kernel 事件 |
 | monitors | `/api/monitors` | 收件箱过滤器 CRUD、URL 变化监控 CRUD、`POST /url-monitors/check` | APP_STORAGE + 出站抓取 |
@@ -117,6 +117,8 @@ connectors, timeline, work_items
 | 数据主权（`Kernel.snapshot`/`restore`/`erase`） | Kernel 内置方法（[`kernel_sovereignty.py`](../../backend/app/core/runtime/kernel/kernel_sovereignty.py)） | 数据主权：`snapshot()`/`restore()`/`erase()`；删 SQLite + vector 目录并重建；export_all/import_all 由 `/api/system/*` 路由直接调用 Kernel |
 | [`encrypted_sync.py`](../../backend/app/product/encrypted_sync.py) | `encrypt_snapshot`/`decrypt_snapshot` + `EncryptedSyncError` | AES-GCM + Argon2id（V2）；blob 布局 `[4B magic 'PAES'][1B version=2][16B salt][12B nonce][zlib+AES-GCM ciphertext]` base64；`BLOB_FORMAT = "encrypted_snapshot_v2"`；最小密码 8 字符 |
 | [`personal_dashboard.py`](../../backend/app/product/personal_dashboard.py) | `generate_dashboard` + 5 个 `_widget_*` | 一致性测试床：每个 widget 仅用 Kernel ABI / `read_ports`（`query_state`/`read_events`/`recall_memories_for_context`），零 SQL、零文件、零 ChromaDB 直访；记忆 widget 排除 proposed/rejected/contested |
+| [`work_delivery.py`](../../backend/app/product/work_delivery.py) | `publish_delivery` / `accept_delivery` / `request_rework` / `adopt_suggested_action` | 交付版本、验收/返工，以及把当前建议待办转成子任务：折叠 `WorkItemUpdated` payload，不新增事件类型或投影表 |
+| [`project_brief.py`](../../backend/app/product/project_brief.py) | `create_project_brief_work` / `compile_project_brief_delivery` | 项目资料简报模板：来源收集、引用校验、发布完整交付；经 RuntimeContainer 绑定给 ExecuteRequested |
 
 ## 直接访问 DB 的端点
 

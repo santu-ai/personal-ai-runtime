@@ -7,6 +7,7 @@ cancel_check / progress-stream semantics (INV-W5).
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -102,6 +103,26 @@ def _progress_ratio(completed_steps: int, total_steps: int) -> float:
     return _PROGRESS_BASE + (
         _PROGRESS_RANGE * max(completed_steps, 0) / max(total_steps, 1)
     )
+
+
+def _plan_object(plan_raw: Any) -> dict[str, Any]:
+    if isinstance(plan_raw, dict):
+        return plan_raw
+    if not isinstance(plan_raw, str) or not plan_raw.strip():
+        return {}
+    try:
+        obj = json.loads(plan_raw)
+    except json.JSONDecodeError:
+        return {}
+    return obj if isinstance(obj, dict) else {}
+
+
+def _is_project_brief_plan(plan_raw: Any) -> bool:
+    plan = _plan_object(plan_raw)
+    if plan.get("kind") == "project_brief":
+        return True
+    contract = plan.get("contract")
+    return isinstance(contract, dict) and contract.get("output_kind") == "project_brief"
 
 
 def _finalize_cancelled(
@@ -252,7 +273,8 @@ async def on_execute_requested(ctx: "ExecutionContext", event: "Event") -> None:
         )
         return
 
-    if not steps:
+    is_brief = _is_project_brief_plan(action.get("executable_plan"))
+    if not steps and not is_brief:
         _sync_work_item_status(ctx, event, action_id, "failed")
         _emit_execute_completed(
             ctx,
@@ -267,14 +289,17 @@ async def on_execute_requested(ctx: "ExecutionContext", event: "Event") -> None:
         return
 
     try:
-        outcome = await _run_work_plan(
-            steps=steps,
-            event=event,
-            ctx=ctx,
-            action_id=action_id,
-            actor=actor,
-            cancel_check=cancel_check if is_background else None,
-        )
+        if steps:
+            outcome = await _run_work_plan(
+                steps=steps,
+                event=event,
+                ctx=ctx,
+                action_id=action_id,
+                actor=actor,
+                cancel_check=cancel_check if is_background else None,
+            )
+        else:
+            outcome = PlanRunOutcome(stopped_reason="completed")
     except Exception:
         if is_background and cancel_check():
             _finalize_cancelled(
@@ -320,12 +345,41 @@ async def on_execute_requested(ctx: "ExecutionContext", event: "Event") -> None:
     )
     wi_status = _EXEC_STATUS_TO_WI.get(status)
 
+    if is_brief and outcome.stopped_reason == "completed":
+        from app.core.runtime.runtime_container import runtime
+
+        compile_brief = runtime.work_delivery_compiler
+        if compile_brief is None:
+            status = "error"
+            wi_status = "failed"
+            outcome = PlanRunOutcome(
+                results=outcome.results,
+                stopped_reason="failed",
+                previous_output=outcome.previous_output,
+            )
+            compile_error = "project brief compiler not bound"
+        else:
+            compiled = await compile_brief(
+                action_id,
+                outcome,
+                execution_id=ctx.execution_id,
+                actor=actor,
+            )
+            if not compiled.get("ok"):
+                status = "error"
+                wi_status = "failed"
+                compile_error = str(compiled.get("error") or "brief compile failed")
+            else:
+                compile_error = None
+    else:
+        compile_error = None
+
     if is_background and wi_status in (
         "waiting_approval", "failed", "completed",
     ):
         progress_value = (
             1.0 if wi_status == "completed"
-            else _progress_ratio(outcome.completed_steps, len(steps))
+            else _progress_ratio(outcome.completed_steps, len(steps) or 1)
         )
         _emit_work_item_progress(ctx, event, action_id, progress_value)
 
@@ -341,6 +395,13 @@ async def on_execute_requested(ctx: "ExecutionContext", event: "Event") -> None:
                     action.get("title", "") or "",
                 )
 
+    extra: dict[str, Any] = {}
+    if outcome.stopped_reason == "pending":
+        extra["approval_id"] = outcome.pending_approval_id
+        extra["next_resume_from"] = outcome.next_resume_from
+    if compile_error:
+        extra["error"] = compile_error
+
     _emit_execute_completed(
         ctx,
         event,
@@ -350,8 +411,5 @@ async def on_execute_requested(ctx: "ExecutionContext", event: "Event") -> None:
         completed_steps=outcome.completed_steps,
         resume_from=resume_from,
         results=[r.preview() for r in outcome.results],
-        **({
-            "approval_id": outcome.pending_approval_id,
-            "next_resume_from": outcome.next_resume_from,
-        } if outcome.stopped_reason == "pending" else {}),
+        **extra,
     )

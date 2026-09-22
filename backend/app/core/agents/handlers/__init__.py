@@ -5,9 +5,9 @@ Capability orchestration handlers live in ``app.core.runtime.handlers``;
 importing this package also registers them (single bootstrap entry).
 """
 
-# Product inbox binds its poll applier into RuntimeContainer (R1).
-# Runtime handlers register @subscribe; relative chat handlers follow.
+# Product inbox + project-brief compiler bind into RuntimeContainer (R1).
 import app.product.inbox as _product_inbox  # noqa: F401
+import app.product.project_brief as _product_brief  # noqa: F401
 from app.core.runtime import handlers as _runtime_handlers  # noqa: F401
 
 from . import (

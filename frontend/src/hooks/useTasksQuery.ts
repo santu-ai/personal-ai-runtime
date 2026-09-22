@@ -27,7 +27,7 @@ export function useTasksQuery() {
 export function useTaskDetailQuery(itemId: string | undefined) {
   return useQuery<WorkItem>({
     queryKey: [...queryKeys.tasks, itemId, "detail"] as const,
-    queryFn: () => getWorkItem(itemId!, "execution,events"),
+    queryFn: () => getWorkItem(itemId!, "execution,events,deliveries"),
     enabled: Boolean(itemId),
     staleTime: 5_000,
     refetchInterval: (query) => {

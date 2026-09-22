@@ -5,8 +5,7 @@
 
 ## 当前状态
 
-- 当前状态（2026-09-22）：建议采纳率汇总已落地（今日页 + 信任页，无新事件类型）；ask_user、澄清交互、周期对比未做
-- 进行中任务 / WIP：spill / checkpoint / recorded-session 已在 main
+- 当前状态（2026-09-22）：项目资料简报 P0 与建议待办转任务已在 main；建议采纳率汇总在本分支（今日页 + 信任页，无新事件类型）。未做：周期对比、澄清交互、ask_user。真 LLM / 真实邮箱日用仍待试用
 - 已知坏点 / 待办：日用库不在本机 Windows（soak 默认空库 `data/personal_ai.db`）；本机无 Telegram token，真实收发 blocked
 - 最近审阅：2026-09-01 从 deepseek-harness 对齐「模型可见 ⟺ 可重建」，用 checkpoint 替换静默截断
 - **本机 git**：Windows 提交走 `git -c core.hooksPath=.githooks commit -F`；venv 放 PATH 以免 pre-commit mypy 用到系统 `mcp`
@@ -43,6 +42,11 @@
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
 | 2026-09-22 | 采纳率：今日页 + 信任页汇总工具建议与记忆确认；治理计数改读 ApprovalGranted/Denied | 无新事件类型；ask_user 仍未做 |
+| 2026-09-22 | 汇总 Dependabot #66、#68–#78：backend lock 重生（alembic/openai/pypdf/mcp/ruff）；frontend react+react-dom 19.3.0 同步；desktop electron 44.4.3 / vitest 5.0.1 | 已合入 main |
+| 2026-09-22 | 当前交付的建议待办可转为子任务；同一下标重复请求返回同一任务，删除后可再转 | 无新事件类型；后端 1597 passed；未推远程 |
+| 2026-09-18 | 简报交付真实后端端到端回归（A1–A5/A8–A10/A12）；修 `kernel` 代理 monkeypatch 跨测试泄漏 | merge-gate 通过：后端 1593 passed、前端 240 passed + 构建；未推远程 |
+| 2026-09-18 | R3-C：审批恢复领取后、ExecuteRequested 前保留 `aprdis:` 派发意图，进程退出仍可跳过工具并补派发 | 无新事件类型；未推远程 |
+| 2026-09-17 | 可验收任务助手 MVP：项目资料简报创建/执行/来源校验、版本化交付验收与返工 | 无新事件类型；交付在 WorkItemUpdated payload；未推远程 |
 | 2026-09-01 | spill：超大工具结果外溢到 DATA_DIR/spills，对话行只存 preview；mcp_hub 不再 8k 静默截断 | 无新事件类型 |
 | 2026-09-01 | recorded-session：脚本 LLM + 真 Brain/Kernel 回放 text/read_file/write 审批 | 无密钥 loop 回归 |
 | 2026-09-01 | 会话压缩：超窗写 MessageAppended checkpoint，去掉静默截断；顺带修 get_history 取最旧 50 条 | 无新事件类型 |
@@ -106,6 +110,21 @@
 
 ## 备注
 
+- 2026-09-22：建议待办可从当前交付转为子任务（`suggested_action_adopted` + 普通 WorkItemCreated）。重复下标不新建；旧版本 409。后端 1597 passed / 9 skipped / 6 deselected；前端 Tasks 测试与 tsc 通过。未跑浏览器日用，未推远程。
+
+- 2026-09-22：核对任务交付 MVP plan 与 HEAD ba22930；P0 开发已落地，剩余真实 LLM/邮箱日用及两周至少 10 项评审、四项 P1；现有 E2E 用 rebuild_all/BaseException 验证恢复，未证明真实进程重启或交付导出/导入闭环。本轮静态核对，未运行测试。
+
+- 2026-09-18：四审 `9fc0553` 未发现新阻塞缺陷，R3-C 关闭；后端相关 86 passed，boundary/layer-deps/concept-growth 与修改文件 ruff 通过；本次修复 review 通过，完整 merge-gate/真实重启 E2E/日用尚未验证，报告已更新。
+
+- 2026-09-18：R3-C 已修（`aprdis:` 派发意图覆盖领取后/派发前进程退出）；T4/T5 收口，merge-gate 整包通过；真 LLM / 真实邮箱日用待用户试用。
+
 - dogfood 记录约定（周记格式）仍见 `docs/05-engineering/development.md` §自用检查。
 - DLQ 人工重放：`python -m scripts.replay_dead_letters [--limit N] [--dry-run]`
 - 开发期 Alembic squash SOP：`.harness/task-recipes.md` §9
+- 2026-09-09：对照企业 Agent 平台 V5 产品需求完成静态差异评审；关键差距为正式交付验收、Workspace 动态授权、不可变能力版本、业务预算及隔离执行；未修改代码、未运行测试。
+- 2026-09-09：基于企业 Agent V5 产品与技术文档，交付桌面 Agent-Studio-Prototype/index.html 独立交互原型；含任务创建/验收/返工、协作与模型页面，Chromium 主流程及移动布局验证通过，未修改项目应用代码。
+- 2026-09-17：完成项目静态分析（架构、Work API/任务页、上下文压缩与 spill、W35/W36 日用记录）；建议优先做可验收的个人任务闭环，以邮件/资料简报与待办验证价值；未修改应用代码、未运行测试，建议尚未作为产品决策执行。
+- 2026-09-17：交付 `.harness/plan-task-delivery-mvp.md`，包含 T0 持久化验证、T1–T5 开发分工、版本验收/返工契约、12 项验收场景与 agent 交接提示；仅文档，待其他 agent 开发。
+- 2026-09-17：按该计划完成 T0–T4：项目简报任务、event_log 承载的交付/验收、结果优先任务页；隔离测试与重建通过；真 LLM 日用未跑。
+- 2026-09-17：3fa88f5 复核 R2-B/R3-B 已修（ExecuteRequested 才算派发；审批写入完整步骤缓存）。
+- 2026-09-17：二审 `3fa88f5`：build 通过、前端 11 passed、后端相关 33 passed；仍复现 R2-B（running 后尚未派发却补写成功标记）与 R3-B（审批工具结果未入完整缓存）两项 P1，报告已追加；未改产品代码。

@@ -492,6 +492,35 @@ def request_work_item_execute(item_id: str) -> dict[str, Any]:
     return updated
 
 
+def ensure_work_item_execute_requested(item_id: str) -> dict[str, Any]:
+    """Emit ``ExecuteRequested`` when status is already ``running``.
+
+    Recovers the window after ``WorkItemStatusChanged(running)`` and before
+    ``ExecuteRequested``. Does not change Work status or replay plan steps.
+    """
+    from app.core.runtime.kernel.constants import EVENT_EXECUTE_REQUESTED
+
+    item = query_work_item(item_id)
+    if item is None:
+        raise KeyError(item_id)
+    status = item.get("status") or "pending"
+    if status != "running":
+        raise ValueError(
+            f"Work item must be running to ensure execute requested (status={status})"
+        )
+    kernel().emit_event(
+        EVENT_EXECUTE_REQUESTED,
+        "action",
+        f"exec_{item_id}",
+        payload={"action_id": item_id},
+        actor="user",
+    )
+    updated = query_work_item(item_id)
+    if updated is None:
+        raise RuntimeError("Work item missing after execute request")
+    return updated
+
+
 def work_item_execution_snapshot(item_id: str, item: dict[str, Any] | None = None) -> dict[str, Any]:
     """Aggregate plan steps + progress + Lane-A execution row for the Tasks UI."""
     import json
@@ -536,4 +565,11 @@ def work_item_execution_snapshot(item_id: str, item: dict[str, Any] | None = Non
         "previous_output": previous_output,
         "handler_execution": handler,
     }
+
+
+def reset_work_item_plan_progress(item_id: str) -> None:
+    """Clear operational plan resume/progress so a rework run starts from step 0."""
+    from app.core.runtime.plan_resume import clear_plan_resumes_for_work_item
+
+    clear_plan_resumes_for_work_item(item_id, kernel=kernel())
 

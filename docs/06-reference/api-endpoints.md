@@ -189,12 +189,19 @@
 |---|---|---|---|---|
 | GET | `/api/work-items/` | auth | — | List Work Items |
 | POST | `/api/work-items/` | auth | — | Create Work Item |
+| POST | `/api/work-items/project-brief` | auth | — | Create Project Brief |
+| GET | `/api/work-items/unreviewed-deliveries` | auth | — | List Unreviewed Deliveries |
 | DELETE | `/api/work-items/{item_id}` | auth | — | Delete Work Item |
 | GET | `/api/work-items/{item_id}` | auth | — | Get Work Item |
 | PATCH | `/api/work-items/{item_id}` | auth | — | Update Work Item |
 | POST | `/api/work-items/{item_id}/cancel` | auth | — | Cancel Work Item |
 | GET | `/api/work-items/{item_id}/children` | auth | — | Get Children |
 | POST | `/api/work-items/{item_id}/decompose` | auth | — | Decompose Work Item |
+| GET | `/api/work-items/{item_id}/deliveries` | auth | — | List Work Deliveries |
+| GET | `/api/work-items/{item_id}/deliveries/{delivery_id}` | auth | — | Get Work Delivery |
+| POST | `/api/work-items/{item_id}/deliveries/{delivery_id}/accept` | auth | — | Accept Work Delivery |
+| POST | `/api/work-items/{item_id}/deliveries/{delivery_id}/actions/{action_index}/adopt` | auth | — | Adopt Suggested Action |
+| POST | `/api/work-items/{item_id}/deliveries/{delivery_id}/rework` | auth | — | Rework Work Delivery |
 | GET | `/api/work-items/{item_id}/events` | auth | — | Get Events |
 | POST | `/api/work-items/{item_id}/execute` | auth | — | Execute Work Item |
 | POST | `/api/work-items/{item_id}/status` | auth | — | Update Status |

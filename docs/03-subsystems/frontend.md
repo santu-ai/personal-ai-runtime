@@ -21,8 +21,8 @@
 | `/chat/:conversationId` | `pages/ChatPage.tsx` | 活跃会话 → `ChatView` |
 | `/goals` | `pages/Goals.tsx` | 目标列表 + 详情 |
 | `/goals/:goalId` | `pages/Goals.tsx` | 目标详情 |
-| `/tasks` | `pages/Tasks.tsx` | 后台/可执行任务列表 |
-| `/tasks/:taskId` | `pages/Tasks.tsx` | 任务详情（plan / 进度 / 最近一步输出 / 执行前确认） |
+| `/tasks` | `pages/Tasks.tsx` | 后台/可执行任务列表，可创建项目资料简报 |
+| `/tasks/:taskId` | `pages/Tasks.tsx` | 任务详情：交付结果优先，可验收/返工；执行日志可折叠 |
 | `/inbox` | `pages/Inbox.tsx` | 未读分拣三列（重要 / 需跟进 / 可忽略）+ 最近 15 封（仅标题与发件人，未读加粗）+ 最近同步时间/结果/失败原因与重试 |
 | `/memories` | `pages/Memories.tsx` | 记忆列表 + 图谱（含 `?tab=portrait` 画像、`?tab=review` 待确认 triage：筛选/批量确认拒绝） |
 | `/dashboard` | `pages/Dashboard.tsx` | 「今天」工作台：三栏「需要你决定 / 今天要做 / AI 已处理」+ 无法进栏的导流提醒（`?tab=trust` 信任报告、`?tab=monitors` 收件箱/网页监控） |

@@ -3,32 +3,45 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { Route, Routes } from "react-router-dom";
 import { renderWithRouter } from "../test-utils";
 import TasksPage from "./Tasks";
-import { executeWorkItem, getWorkItem, listWorkItems } from "../api/client";
+import {
+  acceptWorkDelivery,
+  adoptSuggestedAction,
+  createProjectBrief,
+  executeWorkItem,
+  getWorkDelivery,
+  getWorkItem,
+  listWorkItems,
+  type WorkDelivery,
+  type WorkItem,
+} from "../api/client";
 
-vi.mock("../api/client", () => ({
-  listWorkItems: vi.fn(),
-  getWorkItem: vi.fn(),
-  executeWorkItem: vi.fn().mockResolvedValue({}),
-  cancelWorkItem: vi.fn(),
-  ApiError: class extends Error {
-    status: number;
-    constructor(message: string, status: number) {
-      super(message);
-      this.status = status;
-    }
-  },
-}));
+vi.mock("../api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/client")>();
+  return {
+    ...actual,
+    listWorkItems: vi.fn(),
+    getWorkItem: vi.fn(),
+    getWorkDelivery: vi.fn(),
+    executeWorkItem: vi.fn().mockResolvedValue({}),
+    cancelWorkItem: vi.fn(),
+    createProjectBrief: vi.fn(),
+    acceptWorkDelivery: vi.fn().mockResolvedValue({ replayed: false }),
+    reworkWorkDelivery: vi.fn().mockResolvedValue({ replayed: false }),
+    adoptSuggestedAction: vi.fn().mockResolvedValue({ replayed: false, work: { id: "todo_1" } }),
+    updateWorkItemStatus: vi.fn().mockResolvedValue({}),
+  };
+});
 
 vi.mock("../stores/errorStore", () => ({
   useErrorStore: (selector: (s: { addError: () => void }) => unknown) =>
     selector({ addError: vi.fn() }),
 }));
 
-const sampleTask = {
+const sampleTask: WorkItem = {
   id: "task_1",
   title: "整理报告",
   description: null,
-  work_type: "task" as const,
+  work_type: "task",
   parent_work_id: null,
   status: "pending",
   priority: 0,
@@ -52,6 +65,80 @@ const sampleTask = {
   },
 };
 
+const currentDelivery: WorkDelivery = {
+  delivery_id: "d2",
+  version: 2,
+  contract_version: 1,
+  summary: "有进度风险",
+  content: "完整正文超过预览长度".repeat(20),
+  limitations: ["仅覆盖最近三天"],
+  suggested_actions: [{ title: "核对排期" }],
+  sources: [{ id: "email:m1", type: "email", title: "延期邮件" }],
+  checks: [],
+  findings: [],
+  schema_version: 1,
+  qualified: true,
+  review_status: "unreviewed",
+};
+
+const historySummary: WorkDelivery = {
+  delivery_id: "d1",
+  version: 1,
+  contract_version: 1,
+  summary: "第一版摘要",
+  content_length: 42,
+  limitations: [],
+  suggested_actions: [],
+  sources: [],
+  checks: [],
+  findings: [],
+  schema_version: 1,
+  qualified: true,
+  review_status: "changes_requested",
+};
+
+const historyFull: WorkDelivery = {
+  ...historySummary,
+  content: "历史版本完整正文甲",
+};
+
+const currentSummary: WorkDelivery = {
+  delivery_id: "d2",
+  version: 2,
+  contract_version: 1,
+  summary: "有进度风险",
+  content_length: 200,
+  limitations: [],
+  suggested_actions: [],
+  sources: [],
+  checks: [],
+  findings: [],
+  schema_version: 1,
+  qualified: true,
+  review_status: "unreviewed",
+};
+
+const briefTask: WorkItem = {
+  ...sampleTask,
+  id: "brief_1",
+  title: "项目 A 简报",
+  description: "整理最近三天邮件",
+  executable_plan: JSON.stringify({ kind: "project_brief", steps: [] }),
+  status: "completed",
+  execution: {
+    steps: [{ tool: "check_inbox" }],
+    resume_from: 1,
+    previous_output: { step_0_output: "truncated" },
+    handler_execution: null,
+  },
+  delivery_bundle: {
+    work_id: "brief_1",
+    current_review_status: "unreviewed",
+    current: currentDelivery,
+    deliveries: [historySummary, currentSummary],
+  },
+};
+
 function renderTasks(path: string) {
   return renderWithRouter(
     <Routes>
@@ -70,19 +157,20 @@ describe("TasksPage", () => {
       return [];
     });
     vi.mocked(getWorkItem).mockResolvedValue(sampleTask);
+    vi.mocked(getWorkDelivery).mockResolvedValue(historyFull);
   });
 
   it("renders empty tasks shell", async () => {
     vi.mocked(listWorkItems).mockResolvedValue([]);
     renderTasks("/tasks");
     expect(await screen.findByText("暂无任务")).toBeInTheDocument();
-    expect(screen.getByText("后台与可执行任务")).toBeInTheDocument();
+    expect(screen.getByText("交办、交付与验收")).toBeInTheDocument();
   });
 
   it("shows previous_output and asks for plan confirmation before execute", async () => {
     renderTasks("/tasks/task_1");
 
-    expect(await screen.findByText("最近一步输出")).toBeInTheDocument();
+    expect(await screen.findByText("最近一步输出（预览）")).toBeInTheDocument();
     expect(screen.getByText("wrote draft")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "执行" }));
@@ -93,5 +181,72 @@ describe("TasksPage", () => {
     await waitFor(() => {
       expect(executeWorkItem).toHaveBeenCalledWith("task_1");
     });
+  });
+
+  it("creates a project brief from the form", async () => {
+    vi.mocked(createProjectBrief).mockResolvedValue(briefTask);
+    renderTasks("/tasks");
+    fireEvent.click(screen.getByRole("button", { name: "新建简报" }));
+    fireEvent.change(screen.getByPlaceholderText("项目 A 简报"), {
+      target: { value: "项目 A 简报" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/整理最近三天的邮件/), {
+      target: { value: "整理最近三天邮件" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "创建" }));
+    await waitFor(() => {
+      expect(createProjectBrief).toHaveBeenCalled();
+    });
+  });
+
+  it("shows full delivery first and accepts the current version", async () => {
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [briefTask];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(briefTask);
+    renderTasks("/tasks/brief_1");
+
+    expect(await screen.findByText("有进度风险")).toBeInTheDocument();
+    expect(screen.getByText(/完整正文超过预览长度/)).toBeInTheDocument();
+    expect(screen.getByText("email:m1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "转为任务" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "转为任务" }));
+    await waitFor(() => {
+      expect(adoptSuggestedAction).toHaveBeenCalledWith(
+        "brief_1",
+        "d2",
+        0,
+        expect.objectContaining({ idempotency_key: expect.any(String) }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "验收" }));
+    await waitFor(() => {
+      expect(acceptWorkDelivery).toHaveBeenCalledWith(
+        "brief_1",
+        "d2",
+        expect.objectContaining({ idempotency_key: expect.any(String) }),
+      );
+    });
+  });
+
+  it("loads full history version content by delivery id", async () => {
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [briefTask];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(briefTask);
+    vi.mocked(getWorkDelivery).mockResolvedValue(historyFull);
+    renderTasks("/tasks/brief_1");
+
+    expect(await screen.findByText("完整正文超过预览长度".repeat(20))).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /v1 · 已要求返工/ }));
+    await waitFor(() => {
+      expect(getWorkDelivery).toHaveBeenCalledWith("brief_1", "d1");
+    });
+    expect(await screen.findByText("历史版本完整正文甲")).toBeInTheDocument();
+    expect(screen.queryByText("完整正文超过预览长度".repeat(20))).not.toBeInTheDocument();
   });
 });

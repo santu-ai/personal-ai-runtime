@@ -190,6 +190,82 @@ def take_plan_resume(
     return PlanResume.from_row(row)
 
 
+def approval_dispatch_key(approval_id: str) -> str:
+    return f"aprdis:{approval_id}"
+
+
+def save_approval_dispatch_intent(
+    approval_id: str,
+    resume: PlanResume,
+    *,
+    result: str,
+    dispatched: bool = False,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> None:
+    """Persist resume coordinates until ExecuteRequested is confirmed."""
+    if not approval_id:
+        return
+    step_index = max(int(resume.resume_from) - 1, 0)
+    prev = dict(resume.previous_output or {})
+    prev["result"] = result
+    prev["status"] = "success"
+    prev["step"] = step_index
+    prev["dispatched"] = bool(dispatched)
+    register_plan_resume(
+        approval_dispatch_key(approval_id),
+        PlanResume(
+            kind="execute",
+            resume_from=int(resume.resume_from),
+            previous_output=prev,
+            action_id=resume.action_id,
+            task_id=resume.task_id,
+            plan_json=resume.plan_json,
+        ),
+        db=db,
+        kernel=kernel,
+    )
+
+
+def load_approval_dispatch_intent(
+    approval_id: str,
+    *,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> PlanResume | None:
+    if not approval_id:
+        return None
+    return peek_plan_resume(
+        approval_dispatch_key(approval_id), db=db, kernel=kernel,
+    )
+
+
+def clear_approval_dispatch_intent(
+    approval_id: str,
+    *,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> None:
+    if not approval_id:
+        return
+    take_plan_resume(approval_dispatch_key(approval_id), db=db, kernel=kernel)
+
+
+def dispatch_intent_result(resume: PlanResume | None) -> str | None:
+    if resume is None or not resume.previous_output:
+        return None
+    if resume.previous_output.get("status") != "success":
+        return None
+    result = resume.previous_output.get("result")
+    return result if isinstance(result, str) else None
+
+
+def dispatch_intent_is_done(resume: PlanResume | None) -> bool:
+    if resume is None or not resume.previous_output:
+        return False
+    return bool(resume.previous_output.get("dispatched"))
+
+
 def clear_plan_resumes_for_work_item(
     work_item_id: str,
     *,
@@ -219,6 +295,8 @@ def clear_plan_resumes(*, db: Any | None = None) -> None:
 # Synthetic approval_id keys keep zero new tables / event types:
 #   progress:{action_id}              — last completed step_index + output
 #   idem:{correlation_id}:{step}      — successful step result for replay skip
+#   stepres:{action_id}:{step}        — full step result for compile after resume
+#   aprdis:{approval_id}              — approve→execute dispatch intent until emit confirms
 #   chat_ckpt:{correlation_id}        — Chat tool-loop messages for interrupt replay
 
 
@@ -228,6 +306,10 @@ def progress_key(action_id: str) -> str:
 
 def idempotency_key(correlation_id: str, step_index: int) -> str:
     return f"idem:{correlation_id}:{int(step_index)}"
+
+
+def action_step_key(action_id: str, step_index: int) -> str:
+    return f"stepres:{action_id}:{int(step_index)}"
 
 
 def save_plan_progress(
@@ -274,20 +356,27 @@ def record_step_success(
     db: Any | None = None,
     kernel: Any | None = None,
 ) -> None:
-    """Record a successful step under ``idempotency_key`` (E-1)."""
-    if not correlation_id:
-        return
-    register_plan_resume(
-        idempotency_key(correlation_id, step_index),
-        PlanResume(
-            kind="execute",
-            resume_from=int(step_index) + 1,
-            previous_output={"result": result, "status": "success"},
-            action_id=action_id or "",
-        ),
-        db=db,
-        kernel=kernel,
+    """Record a successful step under correlation and action keys (E-1)."""
+    row = PlanResume(
+        kind="execute",
+        resume_from=int(step_index) + 1,
+        previous_output={"result": result, "status": "success"},
+        action_id=action_id or "",
     )
+    if correlation_id:
+        register_plan_resume(
+            idempotency_key(correlation_id, step_index),
+            row,
+            db=db,
+            kernel=kernel,
+        )
+    if action_id:
+        register_plan_resume(
+            action_step_key(action_id, step_index),
+            row,
+            db=db,
+            kernel=kernel,
+        )
 
 
 def lookup_step_success(
@@ -302,6 +391,22 @@ def lookup_step_success(
         return None
     row = peek_plan_resume(
         idempotency_key(correlation_id, step_index), db=db, kernel=kernel,
+    )
+    return _success_result(row)
+
+
+def lookup_action_step_success(
+    action_id: str,
+    step_index: int,
+    *,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> str | None:
+    """Return cached full step result keyed by work/action id (survives new correlation)."""
+    if not action_id:
+        return None
+    row = peek_plan_resume(
+        action_step_key(action_id, step_index), db=db, kernel=kernel,
     )
     return _success_result(row)
 
