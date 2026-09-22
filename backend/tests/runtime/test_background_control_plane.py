@@ -10,7 +10,10 @@ from app.core.runtime.execution import (
     clear_all_cancels,
     is_execution_cancelled,
 )
-from app.core.runtime.execution_events import emit_execution_requested
+from app.core.runtime.execution_events import (
+    emit_execution_completed,
+    emit_execution_requested,
+)
 from app.core.runtime.handlers.plan_runner import run_plan_steps
 from app.core.runtime.kernel.constants import (
     AGGREGATE_WORK_ITEM,
@@ -49,7 +52,6 @@ def _create_running(kernel, work_id: str = "t1") -> None:
             "title": "x",
             "description": "",
             "work_type": "background",
-            "parent_work_id": None,
             "parent_work_id": None,
             "status": "pending",
             "priority": 0,
@@ -108,6 +110,88 @@ def test_recover_skips_waiting_approval(kernel, monkeypatch):
     assert loop._recover_interrupted_background_tasks() == 0
     rows = kernel.query_state("work_items", id="wa", limit=1)
     assert rows[0]["status"] == "waiting_approval"
+
+
+def test_recover_running_task_missing_execute_dispatch(kernel, monkeypatch):
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    kernel.emit_event(
+        EVENT_WORK_ITEM_CREATED,
+        AGGREGATE_WORK_ITEM,
+        "task-gap",
+        payload={
+            "title": "task",
+            "work_type": "task",
+            "status": "running",
+            "executable_plan": '{"steps":[{"tool":"read_file"}]}',
+        },
+        actor="user",
+    )
+    monkeypatch.setattr("app.core.runtime.runtime_loop.kernel", kernel)
+    monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", kernel)
+    monkeypatch.setattr("app.core.runtime.read_ports.work.kernel", lambda: kernel)
+
+    loop = RuntimeLoop()
+    assert loop._recover_interrupted_background_tasks() == 1
+    events = kernel.read_events(
+        type="ExecuteRequested", aggregate_id="exec_task-gap",
+    )
+    assert len(events) == 1
+
+
+def test_recover_running_task_with_scheduled_execution_is_idempotent(kernel, monkeypatch):
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    kernel.emit_event(
+        EVENT_WORK_ITEM_CREATED, AGGREGATE_WORK_ITEM, "scheduled",
+        payload={
+            "title": "task",
+            "work_type": "task",
+            "status": "running",
+            "executable_plan": '{"steps":[{"tool":"read_file"}]}',
+        },
+        actor="user",
+    )
+    trigger = kernel.emit_event(
+        "ExecuteRequested", "action", "exec_scheduled",
+        payload={"action_id": "scheduled"}, actor="user",
+    )
+    item = ScheduledExecution(event_id=trigger.id, event_seq=trigger.seq or 0)
+    emit_execution_requested(kernel, item, "user")
+    monkeypatch.setattr("app.core.runtime.runtime_loop.kernel", kernel)
+    monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", kernel)
+    monkeypatch.setattr("app.core.runtime.read_ports.work.kernel", lambda: kernel)
+
+    assert RuntimeLoop()._recover_interrupted_background_tasks() == 0
+    assert len(kernel.read_events(type="ExecuteRequested", aggregate_id="exec_scheduled")) == 1
+
+
+def test_recover_does_not_redispatch_finished_task(kernel, monkeypatch):
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    kernel.emit_event(
+        EVENT_WORK_ITEM_CREATED, AGGREGATE_WORK_ITEM, "finished",
+        payload={
+            "title": "task",
+            "work_type": "task",
+            "status": "running",
+            "executable_plan": '{"steps":[{"tool":"read_file"}]}',
+        },
+        actor="user",
+    )
+    trigger = kernel.emit_event(
+        "ExecuteRequested", "action", "exec_finished",
+        payload={"action_id": "finished"}, actor="user",
+    )
+    item = ScheduledExecution(event_id=trigger.id, event_seq=trigger.seq or 0)
+    emit_execution_requested(kernel, item, "user")
+    emit_execution_completed(kernel, item)
+    monkeypatch.setattr("app.core.runtime.runtime_loop.kernel", kernel)
+    monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", kernel)
+    monkeypatch.setattr("app.core.runtime.read_ports.work.kernel", lambda: kernel)
+
+    assert RuntimeLoop()._recover_interrupted_background_tasks() == 0
+    assert len(kernel.read_events(type="ExecuteRequested", aggregate_id="exec_finished")) == 1
 
 
 @pytest.mark.asyncio

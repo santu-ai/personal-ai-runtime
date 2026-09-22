@@ -65,11 +65,13 @@ class RuntimeLoop:
             self._dirty = False
         if self._running:
             return
+        from app.core.runtime.agent_scheduler import ensure_scheduler
+        await ensure_scheduler(kernel)
         self._running = True
         recovered = self._recover_interrupted_background_tasks()
         if recovered:
             logger.info(
-                "RuntimeLoop: re-queued %d interrupted background task(s)",
+                "RuntimeLoop: recovered %d interrupted work item(s)",
                 recovered,
             )
         interrupted_caps = self._reconcile_interrupted_capability_intents()
@@ -400,30 +402,21 @@ class RuntimeLoop:
         registry = get_reaction_registry()
         await asyncio.to_thread(registry.evaluate_cycle, kernel)
 
-    # --- Crash recovery for background work items --------------------------------
+    # --- Crash recovery for work items -------------------------------------------
 
     def _recover_interrupted_background_tasks(self) -> int:
-        """Reset durable ``running`` background work items to ``pending`` after restart.
-
-        RuntimeLoop marks rows ``running`` before fire-and-forget dispatch.
-        Process death / shutdown cancel leaves them stuck: maintenance only
-        polls ``pending``, and Lane A ``Scheduler._recover`` does **not**
-        touch ``work_items(work_type=background)``. Re-queue via status event
-        so the next maintenance tick can dispatch again (at-least-once).
-
-        ``waiting_approval`` is left alone (plan_resume + approval still apply).
-        """
+        """Recover running work whose dispatch was interrupted by restart."""
         from app.core.runtime.kernel.constants import (
             AGGREGATE_WORK_ITEM,
+            EVENT_EXECUTE_REQUESTED,
             EVENT_WORK_ITEM_STATUS_CHANGED,
             EVENT_WORK_ITEM_UPDATED,
         )
 
         try:
             rows = read_ports.query_work_items(
-                work_type="background",
                 status="running",
-                limit=100,
+                limit=5000,
                 order="created_at_asc",
             )
         except Exception:
@@ -431,9 +424,36 @@ class RuntimeLoop:
             return 0
 
         recovered = 0
+        scheduled = kernel.read_scheduled_executions()
+        active_event_ids = {
+            item.event_id
+            for item in scheduled
+            if item.status not in {"completed", "failed"}
+        }
+        known_event_ids = {item.event_id for item in scheduled}
         for row in rows:
             work_id = row["id"]
             try:
+                events = kernel.read_events(
+                    type=EVENT_EXECUTE_REQUESTED,
+                    aggregate_type="action",
+                    aggregate_id=f"exec_{work_id}",
+                    order="desc",
+                    limit=1,
+                )
+                latest_id = events[0].id if events else None
+                if latest_id and latest_id in active_event_ids:
+                    continue
+                if row.get("work_type") != "background":
+                    # Only the gap after status=running and before a handler row.
+                    # A finished handler must not be started again.
+                    if latest_id and latest_id in known_event_ids:
+                        continue
+                    if row.get("work_type") == "goal" or not row.get("executable_plan"):
+                        continue
+                    read_ports.ensure_work_item_execute_requested(work_id)
+                    recovered += 1
+                    continue
                 kernel.emit_event(
                     EVENT_WORK_ITEM_STATUS_CHANGED,
                     AGGREGATE_WORK_ITEM,
@@ -453,7 +473,7 @@ class RuntimeLoop:
                 recovered += 1
             except Exception:
                 logger.exception(
-                    "Failed to re-queue interrupted background work item %s", work_id
+                    "Failed to recover interrupted work item %s", work_id
                 )
         return recovered
 

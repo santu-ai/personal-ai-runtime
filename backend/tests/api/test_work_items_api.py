@@ -98,6 +98,32 @@ def test_status_transition(client):
     assert r.json()["status"] == "running"
 
 
+def test_execution_detail_uses_scheduler_record_for_trigger_event(client):
+    from app.core.runtime.execution_events import emit_execution_requested
+    from app.core.runtime.kernel_instance import kernel
+    from app.core.runtime.scheduled_execution import ScheduledExecution
+
+    created = client.post(
+        "/api/work-items/", json={"title": "Tracked", "work_type": "task"},
+    ).json()
+    trigger = kernel.emit_event(
+        "ExecuteRequested", "action", f"exec_{created['id']}",
+        payload={"action_id": created["id"]}, actor="user",
+    )
+    scheduled = ScheduledExecution(
+        event_id=trigger.id,
+        event_seq=trigger.seq or 0,
+        event_type=trigger.type,
+        handler_name="on_execute_requested",
+    )
+    emit_execution_requested(kernel, scheduled, "user")
+
+    response = client.get(f"/api/work-items/{created['id']}?include=execution")
+
+    assert response.status_code == 200
+    assert response.json()["execution"]["handler_execution"]["id"] == scheduled.id
+
+
 def test_user_complete_from_pending_returns_200(client):
     """pending → completed is the user mark-done shortcut (Goals checkbox)."""
     create = client.post("/api/work-items/", json={
@@ -431,4 +457,3 @@ def test_patch_rejects_invalid_status_vocabulary(client):
     r = client.patch(f"/api/work-items/{tid}", json={"status": "running"})
     assert r.status_code == 200
     assert r.json()["status"] == "running"
-

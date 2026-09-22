@@ -545,8 +545,22 @@ def work_item_execution_snapshot(item_id: str, item: dict[str, Any] | None = Non
     resume_from = int(progress.resume_from) if progress is not None else 0
     previous_output = dict(progress.previous_output or {}) if progress else {}
 
-    exec_id = f"exec_{item_id}"
-    scheduled = kernel().read_scheduled_execution(exec_id)
+    execute_events = kernel().read_events(
+        type="ExecuteRequested",
+        aggregate_type="action",
+        aggregate_id=f"exec_{item_id}",
+        order="desc",
+    )
+    event_ids = {event.id for event in execute_events}
+    scheduled = max(
+        (
+            row
+            for row in kernel().read_scheduled_executions()
+            if row.event_id in event_ids
+        ),
+        key=lambda row: (row.event_seq, row.created_at),
+        default=None,
+    )
     handler: dict[str, Any] | None = None
     if scheduled is not None:
         handler = {
@@ -572,4 +586,3 @@ def reset_work_item_plan_progress(item_id: str) -> None:
     from app.core.runtime.plan_resume import clear_plan_resumes_for_work_item
 
     clear_plan_resumes_for_work_item(item_id, kernel=kernel())
-

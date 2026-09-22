@@ -977,19 +977,33 @@ def _complete_rework_dispatch(
 
 
 def list_unreviewed_deliveries(*, limit: int = 20) -> list[dict[str, Any]]:
-    items = read_ports.list_work_items(work_type="task", limit=100)
     out: list[dict[str, Any]] = []
-    for item in items:
+    seen: set[str] = set()
+    events = kernel.read_events(
+        type=EVENT_WORK_ITEM_UPDATED,
+        aggregate_type=AGGREGATE_WORK_ITEM,
+        order="desc",
+    )
+    for event in events:
+        work_id = str(event.aggregate_id)
+        if not isinstance((event.payload or {}).get(PAYLOAD_DELIVERY_PUBLISHED), dict):
+            continue
+        if work_id in seen:
+            continue
+        seen.add(work_id)
+        item = read_ports.query_work_item(work_id)
+        if not item or item.get("work_type") != "task":
+            continue
         if not is_project_brief_plan(item.get("executable_plan")):
             continue
-        folded = fold_delivery_history(item["id"])
+        folded = fold_delivery_history(work_id)
         current = folded["current"]
         if not current:
             continue
         if folded["current_review_status"] != REVIEW_UNREVIEWED:
             continue
         out.append({
-            "work_id": item["id"],
+            "work_id": work_id,
             "title": item.get("title") or "",
             "delivery_id": current.get("delivery_id"),
             "version": current.get("version"),

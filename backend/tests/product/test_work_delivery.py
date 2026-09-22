@@ -11,6 +11,7 @@ from app.product.work_delivery import (
     accept_delivery,
     adopt_suggested_action,
     fold_delivery_history,
+    list_unreviewed_deliveries,
     public_bundle,
     publish_delivery,
     request_rework,
@@ -447,3 +448,21 @@ def test_delivery_metrics_track_first_acceptance_rework_and_adoption(isolated_ke
     assert by_title["首版通过"]["first_review_accepted_v1"] is True
     assert by_title["返工通过"]["reworks"] == 1
     assert by_title["返工通过"]["adopted_actions"] == 1
+
+
+def test_unreviewed_delivery_is_not_hidden_by_newer_ordinary_tasks(isolated_kernel):
+    brief = _create_task("较早的待评审简报")
+    delivery = publish_delivery(
+        brief["id"], content="body", summary="summary", sources=[],
+        execution_id="older-unreviewed",
+    )
+    for index in range(101):
+        read_ports.create_work_item(f"普通任务 {index}", work_type="task")
+
+    rows = list_unreviewed_deliveries(limit=20)
+
+    assert any(
+        row["work_id"] == brief["id"]
+        and row["delivery_id"] == delivery["delivery_id"]
+        for row in rows
+    )

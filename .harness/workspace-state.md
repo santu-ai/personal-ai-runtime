@@ -26,6 +26,8 @@
 
 ## 备注
 
+- 2026-09-23：补上 review 的三处缺口：普通任务 running 但还没有 handler 行时补 `ExecuteRequested`（已结束的 handler 不重跑）；执行快照按触发事件匹配调度行；待评审简报按交付事件查找，不再被最新 100 个普通任务挡住。相关测试 51 passed。
+
 - 2026-09-22：简报交付指标 `GET /api/work-items/delivery-metrics` 与任务页近 30 日摘要已接上。首版采纳 = 窗口内首次评审且接受 v1 的任务 / 窗口内完成首次评审的任务。来源编号在中文标点前不再被截进 id。审批、恢复、模型成本仍标 unavailable。
 
 - 2026-09-22：复核 HEAD `7f5b33b`：相关后端 39 / 前端 57 测试及生产构建通过，boundary/layer-deps/concept-growth/dependency-sync 通过；本机已安装依赖落后于新 lock，未跑完整 merge-gate。原 plan 的建议转 Work 已实现；周期对比目前为全局指标、ask_user 为 Chat 续写、采纳率为工具审批+记忆确认，尚不能等同项目简报周期交付/澄清/首版采纳及成本闭环。真邮箱日用仍待验证；本会话另有两份未提交验证测试，真模型试验超时未定位。

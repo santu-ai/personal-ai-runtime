@@ -37,7 +37,7 @@ Personal AI Runtime 的所有执行路径用**一套三车道语义**解释。�
 |-----------|--------|------------------|
 | Retry | Present | Lane A `_maybe_retry` + ExecutionRetried；`test_scheduler*` / policy |
 | Cancellation (mid-flight) | Present (durable) | `Scheduler.request_cancel` → ExecutionFailed before `task.cancel`；BG via WorkItemStatusChanged；`test_background_control_plane` |
-| Recovery | Present | `recover_scheduled_executions` + BG running→pending；interrupted 重放计入 retry 预算（超限走 ExecutionFailed / DLQ，不再重放）；scheduler/runtime_loop tests |
+| Recovery | Present | `recover_scheduled_executions` + BG running→pending；普通任务若已是 running 但还没有 handler 行，补一次 `ExecuteRequested`；已结束的 handler 不重跑。interrupted 重放计入 retry 预算（超限走 ExecutionFailed / DLQ，不再重放）；scheduler/runtime_loop tests |
 | Lease / multi-worker ownership | Absent / **Non-goal** | 单进程；见 [runtime-invariants.md](runtime-invariants.md) INV-W6；`check_single_process_control_plane.py` |
 | Quota | Partial | HTTP/WS rate limits；tool-loop token/iteration caps；无 per-tenant scheduler quota |
 | Backpressure | Present | `scheduler_max_pending` → `queue_full` |
@@ -57,7 +57,7 @@ Personal AI Runtime 的所有执行路径用**一套三车道语义**解释。�
 | Concept | Create | Start | End | Retry | Recover | Destroy/GC |
 |---------|--------|-------|-----|-------|---------|------------|
 | **ScheduledExecution** | ExecutionRequested | ExecutionStarted | Completed/Failed | ExecutionRetried (Lane A) | running→retrying→pending | Soft-prune terminal rows (`handler_executions_retention_days`) |
-| **WorkItem** | WorkItemCreated | StatusChanged(running) 或用户 pending→completed | completed/cancelled | Domain re-open: failed→pending、completed→pending | BG running→pending | Domain delete events |
+| **WorkItem** | WorkItemCreated | StatusChanged(running) 或用户 pending→completed | completed/cancelled | Domain re-open: failed→pending、completed→pending | BG running→pending；有计划的 task 在 running 且无 handler 行时补 `ExecuteRequested` | Domain delete events |
 | **PlanResume** | register on pending approval | — | take on approve/deny | — | SQLite durable | clear on cancel/deny/expire |
 | **Chat tool loop** | ChatRequested | Brain.chat_stream | ChatCompleted / confirmation_required | Lane A `max_retries=2` | `chat_ckpt:{correlation_id}` on interrupt replay | — |
 
