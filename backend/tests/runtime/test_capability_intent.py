@@ -115,6 +115,8 @@ def test_stale_intent_reconciled_on_startup(isolated_kernel):
     assert len(matched) == 1
     assert matched[0].actor == "brain"
     assert matched[0].correlation_id == "corr-dead"
+    assert matched[0].caused_by is None
+    assert "execution_id" not in matched[0].payload
 
     # 行已消费——二次清扫幂等为 0。
     assert _intent_rows(db) == []
@@ -139,6 +141,113 @@ def test_take_stale_capability_intents_returns_payload(isolated_kernel):
     assert intent["args_summary"] == "{'command': 'ls'}"
     assert intent["actor"] == "user"
     assert intent["correlation_id"] == ""
+    assert intent["execution_id"] == ""
+    assert intent["caused_by"] == ""
+    assert "retry_count" not in intent
     assert intent["intent_key"] == f"{CAPABILITY_INTENT_PREFIX}dead-2"
     # 已被取走。
     assert take_stale_capability_intents(kernel=k) == []
+
+
+def test_intent_stamps_execution_scope_and_retry_count(isolated_kernel):
+    """进行中的 Lane A 执行把 execution_id / retry_count 写进意图行。"""
+    from app.core.runtime.execution import execution_scope
+
+    k, _db = isolated_kernel
+    execution_id = "exec-intent"
+    k.emit_event(
+        "ExecutionRequested",
+        "execution",
+        execution_id,
+        payload={
+            "execution_id": execution_id,
+            "correlation_id": "corr-intent",
+            "handler_name": "on_execute_requested",
+        },
+        correlation_id="corr-intent",
+    )
+    k.emit_event(
+        "ExecutionStarted",
+        "execution",
+        execution_id,
+        payload={"execution_id": execution_id, "attempt": 1},
+        correlation_id="corr-intent",
+    )
+    k.emit_event(
+        "ExecutionRetried",
+        "execution",
+        execution_id,
+        payload={
+            "execution_id": execution_id,
+            "attempt": 2,
+            "reason": "interrupted",
+            "status": "retrying",
+        },
+        correlation_id="corr-intent",
+    )
+
+    with execution_scope(execution_id):
+        record_capability_intent(
+            "dead-scope",
+            name="write_file",
+            args_summary="{}",
+            actor="executor",
+            correlation_id="corr-intent",
+            kernel=k,
+        )
+
+    intents = take_stale_capability_intents(kernel=k)
+    assert len(intents) == 1
+    assert intents[0]["execution_id"] == execution_id
+    assert intents[0]["caused_by"] == execution_id
+    assert intents[0]["retry_count"] == 2
+
+
+def test_explicit_execution_id_overrides_scope(isolated_kernel):
+    """显式 execution_id 优先于当前 scope；没有投影行时不编造 retry_count。"""
+    from app.core.runtime.execution import execution_scope
+
+    k, _db = isolated_kernel
+    with execution_scope("exec-scope"):
+        record_capability_intent(
+            "dead-explicit",
+            name="send_email",
+            args_summary="{}",
+            actor="brain",
+            correlation_id="corr-explicit",
+            execution_id="exec-explicit",
+            kernel=k,
+        )
+    intents = take_stale_capability_intents(kernel=k)
+    assert intents[0]["execution_id"] == "exec-explicit"
+    assert intents[0]["caused_by"] == "exec-explicit"
+    assert "retry_count" not in intents[0]
+
+
+def test_reconcile_copies_attribution_onto_capability_failed(isolated_kernel):
+    """启动清扫把意图上的归属原样写到 CapabilityFailed。"""
+    from app.core.runtime import runtime_loop as rl_mod
+
+    k, _db = isolated_kernel
+    record_capability_intent(
+        "dead-copy",
+        name="write_file",
+        args_summary="{}",
+        actor="executor",
+        correlation_id="corr-copy",
+        execution_id="exec-copy",
+        retry_count=0,
+        kernel=k,
+    )
+    loop = rl_mod.RuntimeLoop()
+    assert loop._reconcile_interrupted_capability_intents() == 1
+    failed = k.read_events(type="CapabilityFailed")
+    matched = [
+        e for e in failed
+        if e.payload.get("error") == "interrupted_before_audit"
+    ]
+    assert len(matched) == 1
+    assert matched[0].caused_by == "exec-copy"
+    assert matched[0].payload["execution_id"] == "exec-copy"
+    assert matched[0].payload["retry_count"] == 0
+    assert matched[0].correlation_id == "corr-copy"

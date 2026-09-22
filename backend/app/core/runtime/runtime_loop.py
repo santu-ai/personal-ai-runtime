@@ -511,7 +511,9 @@ class RuntimeLoop:
         在两者之间死亡时意图行残留——外部副作用**可能已发生**但
         event_log 无记录。启动时补发 ``CapabilityFailed(error=
         interrupted_before_audit)`` 使审计闭合（复用现有事件类型，
-        零新增词汇）。
+        零新增词汇）。意图里的 ``execution_id`` 写入 ``caused_by`` 与
+        payload，``retry_count`` 记下调用进行中的尝试，恢复计数据此对齐
+        同一次中断。
         """
         from app.core.runtime.kernel.constants import EVENT_CAPABILITY_FAILED
         from app.core.runtime.plan_resume import take_stale_capability_intents
@@ -525,18 +527,30 @@ class RuntimeLoop:
         recorded = 0
         for intent in intents:
             name = str(intent.get("name") or "")
+            execution_id = str(intent.get("execution_id") or "").strip()
+            caused_by = str(intent.get("caused_by") or "").strip() or execution_id
+            payload: dict[str, object] = {
+                "name": name,
+                "error": "interrupted_before_audit",
+                "args_summary": str(intent.get("args_summary") or ""),
+                "latency_ms": 0,
+            }
+            if execution_id:
+                payload["execution_id"] = execution_id
+            raw_retry = intent.get("retry_count")
+            if raw_retry is not None:
+                try:
+                    payload["retry_count"] = int(raw_retry)
+                except (TypeError, ValueError):
+                    pass
             try:
                 kernel.emit_event(
                     EVENT_CAPABILITY_FAILED,
                     "capability",
                     f"cap_{name}",
-                    payload={
-                        "name": name,
-                        "error": "interrupted_before_audit",
-                        "args_summary": str(intent.get("args_summary") or ""),
-                        "latency_ms": 0,
-                    },
+                    payload=payload,
                     actor=str(intent.get("actor") or "kernel"),
+                    caused_by=caused_by or None,
                     correlation_id=intent.get("correlation_id") or None,
                 )
                 recorded += 1

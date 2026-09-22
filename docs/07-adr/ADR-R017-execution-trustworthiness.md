@@ -20,7 +20,7 @@
 7. **E-7** Scheduler 非阻塞填槽  
 8. **E-8** 背景任务超时 → failed（非挂起）  
 9. **E-9** TimerFired emit-first 等控制面顺序约束  
-10. **E-10** Capability 双写窗口：write-class 调用前持久化意图 `cap_intent:{id}`，审计事件落库后清除；遗留意图由 RuntimeLoop 启动清扫补发 `CapabilityFailed(error=interrupted_before_audit)`（`governance_ops.invoke_capability` / `runtime_loop._reconcile_interrupted_capability_intents`；`test_capability_intent.py`）  
+10. **E-10** Capability 双写窗口：write-class 调用前持久化意图 `cap_intent:{id}`（含当时的 `execution_id`、`caused_by` 与 handler `retry_count`），审计事件落库后清除；遗留意图由 RuntimeLoop 启动清扫补发 `CapabilityFailed(error=interrupted_before_audit)`，事件带上同一归属（`plan_resume.record_capability_intent` / `runtime_loop._reconcile_interrupted_capability_intents`；`test_capability_intent.py`）  
 11. **E-11** chat 工具环幂等：`idem:{correlation_id}:chat:{digest}`（工具名 + 规范化参数哈希），中断重放时 write-class 调用复用已记录结果，不重复外部副作用（`tool_dispatcher.py`；`test_tool_dispatcher_unit.py`）  
 
 触 Event / 投影面时：**零新增事件类型**，扩展 payload / APP_STORAGE 合成键。
