@@ -26,7 +26,7 @@
 
 ## 配置
 
-[`main.js:37-84`](../../desktop/main.js)：
+[`main.js`](../../desktop/main.js) 模块加载处的配置常量：
 
 ```
 WEB_URL      = process.env.WEB_URL      || ""    # 空则自动解析
@@ -47,8 +47,8 @@ AUTH_TOKEN   = process.env.AUTH_TOKEN   || ""
 
 **Python 运行时**：
 
-- **Windows 打包版**：`prebuild.js` 通过 [`bundle-python.js`](../../desktop/bundle-python.js) 捆绑 embeddable CPython 3.12 + `requirements.txt` 到 `extraResources/python/`；`main.js` 优先使用捆绑的 `python.exe`。
-- **开发 / 非 Windows**：`resolvePythonCommand()` 在非打包模式下**优先**仓库根 `.venv`（其次 `backend/.venv`），再回退 `py -3.12` / `python` / `python3`。必须使用 `make install` / `requirements.lock` 安装的依赖（`mcp==2.2.0`）；系统 Python 若仍是 1.x 会导致 MCP 测试收集失败。
+- **未打包**：`resolvePythonCommand()` 优先仓库根 `.venv`（其次 `backend/.venv`），再按平台回退 `py -3.12` / `python` / `python3`。必须使用 `make install` / `requirements.lock` 安装的依赖（现行 `mcp==2.2.0`）；系统 Python 若仍是 mcp 1.x 会导致 MCP 测试收集失败。
+- **Windows 打包版**：`prebuild.js` 通过 [`bundle-python.js`](../../desktop/bundle-python.js) 捆绑 embeddable CPython 3.12 + `requirements.txt` 到 `extraResources/python/`；`main.js` 在打包且该文件存在时优先使用捆绑的 `python.exe`。
 - **数据目录**：spawn 时注入 `DATA_DIR` / `VECTOR_DIR` / `SQLITE_PATH` 到 `%APPDATA%/Personal AI Runtime/data`（`app.getPath("userData")`），避免写入只读安装目录。
 - **依赖探测**：启动前执行 `import uvicorn, chromadb`；失败时弹出 `dialog.showErrorBox` 并指引运行 [`install.bat`](../../install.bat)（Windows）或 `install.sh`。
 
@@ -70,27 +70,27 @@ stdio = ["ignore", "pipe", "pipe"]
 
 ## 窗口管理
 
-- `createMainWindow()`（[`main.js:135-172`](../../desktop/main.js)）：1200×800，最小 800×600，`nodeIntegration: false`、`contextIsolation: true`、`preload: preload.js`、`frame: true`，`ready-to-show` 前隐藏。关闭 → 隐藏（驻留托盘），除非正在退出。
-- `createMiniWindow()`（[`main.js:174-206`](../../desktop/main.js)）：600×500 无边框、置顶、跳过任务栏的「快捷对话」弹窗（Alt+Space），失焦关闭。
+- `createMainWindow()`（[`main.js`](../../desktop/main.js)）：1200×800，最小 800×600，`nodeIntegration: false`、`contextIsolation: true`、`preload: preload.js`、`frame: true`，`ready-to-show` 前隐藏。关闭 → 隐藏（驻留托盘），除非正在退出。
+- `createMiniWindow()`（[`main.js`](../../desktop/main.js)）：600×500 无边框、置顶、跳过任务栏的「快捷对话」弹窗（Alt+Space），失焦关闭。
 
 ## 系统托盘
 
-`createTray()`（[`main.js:208-290`](../../desktop/main.js)）：图标来自 `desktop/icon.png`（缺失回退空 16×16）；上下文菜单：打开 / 快捷对话（Alt+Space）/ 重启或启动后端 / 开机自启（复选框）/ 关于 / 退出。
+`createTray()`（[`main.js`](../../desktop/main.js)）：图标来自 `desktop/icon.png`（缺失回退空 16×16）；上下文菜单：打开 / 快捷对话（Alt+Space）/ 重启或启动后端 / 开机自启（复选框）/ 关于 / 退出。
 
 ## 全局快捷键
 
-`registerGlobalShortcuts()`（[`main.js:292-300`](../../desktop/main.js)）：
+`registerGlobalShortcuts()`（[`main.js`](../../desktop/main.js)）：
 
 - `Alt+Space` → 打开 mini window。
 - `Alt+Shift+I` → `quickCapture()`：显示主窗口并 `postMessage({ type: 'quick-capture' })` 到 renderer。
 
 ## 原生通知
 
-`showNotification()`（[`main.js:316-329`](../../desktop/main.js)）：用 Electron `Notification`；点击把主窗口带到前台。
+`showNotification()`（[`main.js`](../../desktop/main.js)）：用 Electron `Notification`；点击把主窗口带到前台。
 
 ## 应用生命周期
 
-[`main.js:333-380`](../../desktop/main.js)：`whenReady` 时提示开机自启同意（首次运行），然后 `startBackend()` + `createMainWindow()` + `createTray()` + `registerGlobalShortcuts()` + `connectWebSocket()`。`window-all-closed` 是 no-op（驻留托盘）。`before-quit` 注销快捷键并停后端。
+[`main.js`](../../desktop/main.js) 的 `app.whenReady`：先调用 `registerAppProtocol()` 与 `installApiProxy()`（未打包时两者直接返回），再提示开机自启同意（首次运行），然后 `startBackend()`、`waitForBackendReady()`、`createMainWindow()`、`createTray()`、`registerGlobalShortcuts()`、`connectWebSocket()`。`window-all-closed` 是 no-op（驻留托盘）。`before-quit` 注销快捷键、断开 WebSocket，并等待后端停完再退出。
 
 ## WebSocket
 
@@ -138,13 +138,13 @@ electron-builder 配置：
 
 ## 自定义协议与 API 代理（生产模式）
 
-生产模式下 `registerAppProtocol()`（[`main.js:95-112`](../../desktop/main.js)）注册 `app://` scheme（通过 `registerSchemesAsPrivileged` 声明为 standard/secure/supportFetchAPI/stream）。`protocol.handle("app", ...)` 把请求映射到 `frontend-dist/` 下的文件，对不存在路径做 SPA fallback（返回 `index.html`）。
+生产模式下 `registerAppProtocol()`（[`main.js`](../../desktop/main.js)）注册 `app://` scheme（通过 `registerSchemesAsPrivileged` 声明为 standard/secure/supportFetchAPI/stream）。`protocol.handle("app", ...)` 把请求映射到 `frontend-dist/` 下的文件；缺失、越界或目录路径经 [`runtimePaths.js`](../../desktop/runtimePaths.js) 的 `resolveFrontendFile` 回退到 `index.html`。未打包时该函数直接返回。
 
-`installApiProxy()`（[`main.js:114-130`](../../desktop/main.js)）用 `session.defaultSession.webRequest.onBeforeRequest` 把 `/api/*` 和 `/ws*` 重定向到 `http://127.0.0.1:<BACKEND_PORT>`，使前端相对路径 `API_BASE="/api"` 无需修改即可工作。
+`installApiProxy()`（[`main.js`](../../desktop/main.js)）仅在打包后启用，用 `session.defaultSession.webRequest.onBeforeRequest` 把 `/api/*` 和 `/ws*` 重定向到 `http://127.0.0.1:<BACKEND_PORT>`，使前端相对路径 `API_BASE="/api"` 无需修改即可工作。
 
 ## 运行模式总结
 
 | 场景 | 行为 |
 |---|---|
 | 开发（`make dev` + `make desktop`） | uvicorn 与 vite 各自前台运行；Electron 加载 `http://127.0.0.1:5173`，探测到 8000 端口已有后端则复用；`app://` 协议与 webRequest 代理不启用 |
-| 打包发行（`npm run build`） | `prebuild.js` 构建前端并复制到 `desktop/frontend-dist/`；electron-builder 把 backend 源码 + frontend-dist 一起打入；运行时 Electron 注册 `app://` 协议服务前端，spawn 系统 python3 跑后端，`/api` 与 `/ws` 经 webRequest 转发；**离线可用** |
+| 打包发行（`npm run build`） | `prebuild.js` 构建前端并复制到 `desktop/frontend-dist/`；electron-builder 把 backend 源码 + frontend-dist 一起打入；运行时 Electron 注册 `app://` 协议服务前端，按 `resolvePythonCommand()` 启动后端（Windows 打包优先捆绑的 `python.exe`），`/api` 与 `/ws` 经 webRequest 转发；**离线可用** |

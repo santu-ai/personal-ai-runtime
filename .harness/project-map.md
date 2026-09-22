@@ -27,6 +27,9 @@
 | LLM 出口审计 | `backend/app/core/runtime/egress/egress_gate.py` |
 | MCP 网格 | `backend/app/core/harness/mcp_mesh.py`、`mcp_lifecycle.py` |
 | 监控（收件箱/URL） | `backend/app/product/inbox_monitors.py`、`url_monitors.py`；API `api/monitors.py`；UI `MonitorsPanel`；SOP：[task-recipes.md](task-recipes.md) §10 |
+| 采纳率 | `read_ports` 的 suggestion/claim 汇总；`GET /api/telemetry/governance`；今日页 `AdoptionSummary` 与信任页 |
+| 周期对比 | `read_ports.compare_periods`；`GET /api/dashboard/periods`；今日页 `PeriodComparison`；早安简报 `product/morning_brief.py` |
+| 澄清 `ask_user` | `capability_policy.json` 的 `needs_user`；ADR-R011 checkpoint；`ConfirmationDialog` 与审批页 |
 
 ## docs 指针
 

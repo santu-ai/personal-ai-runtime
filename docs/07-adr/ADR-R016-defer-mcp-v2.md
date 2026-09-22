@@ -7,7 +7,9 @@
 | Evidence | mcp v2 迁移指南（`py.sdk.modelcontextprotocol.io/v2/migration/`）；本地 dry-run 依赖链可解析；`ClientSession`/`stdio_client`/`StdioServerParameters` 公共 API 表面不变，owner-task 模式兼容 |
 | Consequences + | 获得 2026-07-28 spec 对齐与新 API；依赖链可验证安装；工具错误经 `MCPError` 原文回传供 LLM 自纠 |
 | Consequences − | v1.x 进入纯维护期；外部仍走 v1 协议的 stdio server 依赖 v2 client 的 `mode='auto'` 回退握手；`requirements.lock` 新增 `httpx2`/`mcp-types`/`truststore`/`PyJWT` |
-| Still valid? | N/A（决策已执行） |
+| Still valid? | N/A（决策已执行；补丁号随后续依赖升级变化） |
+
+**现行 pin**（2026-09-22）：[`backend/requirements.txt`](../../backend/requirements.txt) 与 [`backend/pyproject.toml`](../../backend/pyproject.toml) 为 `mcp==2.2.0`。本记录冻结的是迁入 mcp 2 的 API 适配（snake_case、`MCPServer`、`MCPError`），不冻结补丁号。
 
 **迁移要点**（已落地）：
 1. `tool.inputSchema` → `tool.input_schema`；`result.isError` → `result.is_error`（保留 `is_error` 分支以兼容 v1 协议外部 server）

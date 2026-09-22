@@ -10,6 +10,6 @@
 | [ADR-R012](ADR-R012-god-subsystem-budgets.md) | God façade 与子系统 LOC 分项预算（G2） |
 | [ADR-R014](ADR-R014-handler-executions-soft-prune.md) | handler_executions 终端态 soft-prune（维护特权） |
 | [ADR-R015](ADR-R015-policy-register-idempotent.md) | Policy 注册幂等：MCP stop/start 不 revoke+recreate |
-| [ADR-R016](ADR-R016-defer-mcp-v2.md) | 迁移至 mcp 2.0.0 |
+| [ADR-R016](ADR-R016-defer-mcp-v2.md) | 迁移至 mcp 2.x（现行 pin `mcp==2.2.0`） |
 | [ADR-R017](ADR-R017-execution-trustworthiness.md) | 执行可信化（幂等/进度/DLQ/lease，零新事件类型） |
 | [ADR-R018](ADR-R018-telegram-scoped-consent.md) | Telegram 本地 long-polling 与逐回复 scoped consent |

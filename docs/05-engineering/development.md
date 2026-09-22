@@ -52,7 +52,7 @@ make install
 make dev
 ```
 
-[`Makefile:25-30`](../../Makefile) 行为：
+[`Makefile`](../../Makefile) 的 `dev` 目标行为：
 
 1. 后台启 `cd backend && python3 -m uvicorn app.main:app --reload --port 8000`。
 2. 跑 [`scripts/wait_for_health.sh`](../../scripts/wait_for_health.sh) 轮询 `http://localhost:8000/api/system/health`（每秒一次，最多 60s）。
