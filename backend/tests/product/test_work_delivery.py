@@ -550,6 +550,13 @@ def test_delivery_metrics_attribute_approvals_recoveries_and_cost(isolated_kerne
         correlation_id="corr-brief-1",
     )
     kernel.emit_event(
+        "CapabilityFailed",
+        "capability",
+        "cap_write_file",
+        payload={"name": "write_file", "error": "interrupted_before_audit"},
+        correlation_id="corr-brief-1",
+    )
+    kernel.emit_event(
         "LLMCallRecorded",
         "llm_call",
         "llm_brief",
@@ -591,9 +598,162 @@ def test_delivery_metrics_attribute_approvals_recoveries_and_cost(isolated_kerne
 
     metrics = summarize_delivery_metrics(days=30)
     assert metrics["attribution"]["approval_interventions"] == 2
-    assert metrics["attribution"]["recovery_interventions"] == 2
+    # One crash: retrying replay plus the audit-gap twins on the same correlation.
+    assert metrics["attribution"]["recovery_interventions"] == 1
     assert metrics["attribution"]["llm_cost"] == 0.0125
     assert metrics["capped"] is False
+
+
+def _accept_metric_brief(title: str, execution_id: str) -> None:
+    task = _create_task(title)
+    published = publish_delivery(
+        task["id"], content="v1", summary="v1", sources=[], execution_id=execution_id,
+    )
+    accept_delivery(task["id"], published["delivery_id"], idempotency_key=f"accept-{execution_id}")
+
+
+def test_distinct_interrupt_attempts_stay_separate_recoveries(isolated_kernel):
+    kernel, _db = isolated_kernel
+    execution_id = "exec-two-crashes"
+    kernel.emit_event(
+        "ExecutionRequested",
+        "execution",
+        execution_id,
+        payload={"execution_id": execution_id, "correlation_id": "corr-two"},
+        correlation_id="corr-two",
+    )
+    for attempt in (1, 2):
+        kernel.emit_event(
+            "ExecutionRetried",
+            "execution",
+            execution_id,
+            payload={
+                "execution_id": execution_id,
+                "attempt": attempt,
+                "reason": "interrupted",
+                "status": "retrying",
+            },
+            correlation_id="corr-two",
+        )
+    kernel.emit_event(
+        "CapabilityFailed",
+        "capability",
+        "cap_check_inbox",
+        payload={"name": "check_inbox", "error": "interrupted_before_audit"},
+        correlation_id="corr-two",
+    )
+    _accept_metric_brief("两次中断", execution_id)
+
+    metrics = summarize_delivery_metrics(days=30)
+    assert metrics["attribution"]["recovery_interventions"] == 2
+
+
+def test_dead_lettered_interruption_pairs_with_audit_gap(isolated_kernel):
+    kernel, _db = isolated_kernel
+    execution_id = "exec-dead-letter"
+    kernel.emit_event(
+        "ExecutionRequested",
+        "execution",
+        execution_id,
+        payload={"execution_id": execution_id, "correlation_id": "corr-dlq"},
+        correlation_id="corr-dlq",
+    )
+    kernel.emit_event(
+        "ExecutionFailed",
+        "execution",
+        execution_id,
+        payload={
+            "execution_id": execution_id,
+            "attempt": 3,
+            "error": "interrupted",
+            "terminal": True,
+            "dead_letter": True,
+        },
+        correlation_id="corr-dlq",
+    )
+    kernel.emit_event(
+        "CapabilityFailed",
+        "capability",
+        "cap_check_inbox",
+        payload={"name": "check_inbox", "error": "interrupted_before_audit"},
+        correlation_id="corr-dlq",
+    )
+    _accept_metric_brief("预算耗尽", execution_id)
+
+    metrics = summarize_delivery_metrics(days=30)
+    assert metrics["attribution"]["recovery_interventions"] == 1
+
+
+def test_audit_gap_without_handler_replay_counts_as_recovery(isolated_kernel):
+    kernel, _db = isolated_kernel
+    execution_id = "exec-audit-only"
+    kernel.emit_event(
+        "ExecutionRequested",
+        "execution",
+        execution_id,
+        payload={"execution_id": execution_id, "correlation_id": "corr-audit"},
+        correlation_id="corr-audit",
+    )
+    kernel.emit_event(
+        "CapabilityFailed",
+        "capability",
+        "cap_check_inbox",
+        payload={"name": "check_inbox", "error": "interrupted_before_audit"},
+        correlation_id="corr-audit",
+    )
+    _accept_metric_brief("只有审计缺口", execution_id)
+
+    metrics = summarize_delivery_metrics(days=30)
+    assert metrics["attribution"]["recovery_interventions"] == 1
+
+
+def test_audit_gap_outside_twin_window_counts_separately(isolated_kernel, monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    import app.core.runtime.kernel.event as event_mod
+
+    class _ShiftedDatetime(datetime):
+        shift = timedelta(0)
+
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.now(tz or UTC) + cls.shift
+
+    monkeypatch.setattr(event_mod, "datetime", _ShiftedDatetime)
+    kernel, _db = isolated_kernel
+    execution_id = "exec-later-gap"
+    kernel.emit_event(
+        "ExecutionRequested",
+        "execution",
+        execution_id,
+        payload={"execution_id": execution_id, "correlation_id": "corr-later"},
+        correlation_id="corr-later",
+    )
+    kernel.emit_event(
+        "ExecutionRetried",
+        "execution",
+        execution_id,
+        payload={
+            "execution_id": execution_id,
+            "attempt": 1,
+            "reason": "interrupted",
+            "status": "retrying",
+        },
+        correlation_id="corr-later",
+    )
+    _ShiftedDatetime.shift = timedelta(seconds=61)
+    kernel.emit_event(
+        "CapabilityFailed",
+        "capability",
+        "cap_check_inbox",
+        payload={"name": "check_inbox", "error": "interrupted_before_audit"},
+        correlation_id="corr-later",
+    )
+    _ShiftedDatetime.shift = timedelta(0)
+    _accept_metric_brief("稍后的审计缺口", execution_id)
+
+    metrics = summarize_delivery_metrics(days=30)
+    assert metrics["attribution"]["recovery_interventions"] == 2
 
 
 def test_unlinked_brief_cost_stays_unavailable(isolated_kernel):
