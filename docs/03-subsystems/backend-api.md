@@ -64,7 +64,7 @@ connectors, timeline, work_items
 | dashboard | `/api/dashboard` | `GET /` | **只用 Kernel ABI**（一致性测试床） |
 | system | `/api/system` | health/live/ready/info/mcp-status、export/import/encrypted、`DELETE /data` | 数据主权（含破坏性） |
 | settings_api | `/api/settings` | llm GET/PUT/test、email GET/PUT/test、prompt GET/PUT、notifications | DB 写 + 网络出口 + 文件写 |
-| telemetry_api | `/api/telemetry` | cost/summary/by-model、llm-calls、tool-calls、tool-summary、memory/stats、health | 只读 |
+| telemetry_api | `/api/telemetry` | cost/summary/by-model、llm-calls、tool-calls、tool-summary、memory/stats、health、governance（`adoption`：工具建议采纳 + 记忆确认；通过/拒绝/过期读 `ApprovalGranted` / `ApprovalDenied`，`auto_allow` 与 `auto_expired` 不进采纳率） | 只读 |
 | timeline | `/api/timeline` | `/events`（分页 + 中文标签） | 只读 event_log |
 | connectors | `/api/connectors` | 列表、详情、test、registry、install、uninstall | 可能进程间/网络 + 文件写 |
 

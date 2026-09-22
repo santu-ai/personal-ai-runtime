@@ -29,6 +29,36 @@ export async function getHealth(): Promise<HealthSnapshot> {
   return request<HealthSnapshot>(`${API_BASE}/telemetry/health`);
 }
 
+export interface SuggestionAdoption {
+  days: number;
+  adopted: number;
+  rejected: number;
+  expired: number;
+  auto_allowed: number;
+  decided: number;
+  adoption_rate: number | null;
+}
+
+export interface MemoryAdoption {
+  ratified: number;
+  rejected: number;
+  auto_expired: number;
+  proposed_open: number;
+  decided: number;
+  conversion_rate: number | null;
+}
+
+/** Tool-suggestion grants plus memory ratifications in one window. */
+export interface AdoptionSummary {
+  days: number;
+  suggestions: SuggestionAdoption;
+  memories: MemoryAdoption;
+  adopted: number;
+  rejected: number;
+  decided: number;
+  adoption_rate: number | null;
+}
+
 export interface GovernanceSummary {
   window_days: number;
   tools_invoked: number;
@@ -41,6 +71,7 @@ export interface GovernanceSummary {
   taint_elevated: number;
   by_tool: Record<string, number>;
   denied_tools: Record<string, number>;
+  adoption?: AdoptionSummary;
 }
 
 export async function getGovernanceSummary(days = 7): Promise<GovernanceSummary> {

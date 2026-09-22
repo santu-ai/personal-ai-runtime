@@ -29,6 +29,7 @@ export const queryKeys = {
   mcpRegistry: ["mcpRegistry"] as const,
   conversations: ["conversations"] as const,
   notifications: ["notifications"] as const,
+  governance: ["telemetry", "governance"] as const,
 } as const;
 
 // Lightweight pub/sub so useNotifications (which owns the WS) can forward
@@ -61,6 +62,7 @@ export function applyWsInvalidation(qc: QueryClient, raw: unknown): void {
       invalidate(qc, queryKeys.portrait);
       invalidate(qc, queryKeys.trustReport);
       invalidate(qc, queryKeys.timeline);
+      invalidate(qc, queryKeys.governance);
       break;
     case "goal_changed":
       invalidate(qc, queryKeys.goals);
@@ -75,6 +77,7 @@ export function applyWsInvalidation(qc: QueryClient, raw: unknown): void {
       invalidate(qc, queryKeys.tasks);
       invalidate(qc, queryKeys.trustReport);
       invalidate(qc, queryKeys.dashboard);
+      invalidate(qc, queryKeys.governance);
       break;
     case "notification": {
       invalidate(qc, queryKeys.notifications);
