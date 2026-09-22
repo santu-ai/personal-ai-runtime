@@ -61,8 +61,8 @@ connectors, timeline, work_items
 | monitors | `/api/monitors` | 收件箱过滤器 CRUD、URL 变化监控 CRUD、`POST /url-monitors/check` | APP_STORAGE + 出站抓取 |
 | triggers | `/api/triggers` | CRUD | Kernel 事件 |
 | notifications | `/api/notifications` | 列表、`/{id}/read`、`/read-all` | Kernel 事件 |
-| dashboard | `/api/dashboard` | `GET /`、`GET /periods`（近 N 日 vs 前 N 日：完成目标、完成任务、新邮件、采纳率；从既有事件重建） | **只用 Kernel ABI**（一致性测试床） |
-| system | `/api/system` | health/live/ready/info/mcp-status、export/import/encrypted、`DELETE /data` | 数据主权（含破坏性） |
+| dashboard | `/api/dashboard` | `GET /`、`GET /periods?days=`（1–30，默认 7；近 N 日 vs 前 N 日：完成目标、完成任务、新邮件、采纳率；投影缺失的完成记 `work_completed_untyped`；从既有事件重建） | **只用 Kernel ABI**（一致性测试床） |
+| system | `/api/system` | health/live/ready/info/mcp-status、export/import/encrypted、`DELETE /data`、`POST /morning-brief/test`（诊断生成早安简报，正文含同一周期对比） | 数据主权（含破坏性）+ 诊断 |
 | settings_api | `/api/settings` | llm GET/PUT/test、email GET/PUT/test、prompt GET/PUT、notifications | DB 写 + 网络出口 + 文件写 |
 | telemetry_api | `/api/telemetry` | cost/summary/by-model、llm-calls、tool-calls、tool-summary、memory/stats、health、governance（`adoption`：工具建议采纳 + 记忆确认；通过/拒绝/过期读 `ApprovalGranted` / `ApprovalDenied`，`auto_allow` 与 `auto_expired` 不进采纳率） | 只读 |
 | timeline | `/api/timeline` | `/events`（分页 + 中文标签） | 只读 event_log |
@@ -119,6 +119,7 @@ connectors, timeline, work_items
 | [`personal_dashboard.py`](../../backend/app/product/personal_dashboard.py) | `generate_dashboard` + 5 个 `_widget_*` | 一致性测试床：每个 widget 仅用 Kernel ABI / `read_ports`（`query_state`/`read_events`/`recall_memories_for_context`），零 SQL、零文件、零 ChromaDB 直访；记忆 widget 排除 proposed/rejected/contested |
 | [`work_delivery.py`](../../backend/app/product/work_delivery.py) | `publish_delivery` / `accept_delivery` / `request_rework` / `adopt_suggested_action` | 交付版本、验收/返工，以及把当前建议待办转成子任务：折叠 `WorkItemUpdated` payload，不新增事件类型或投影表 |
 | [`project_brief.py`](../../backend/app/product/project_brief.py) | `create_project_brief_work` / `compile_project_brief_delivery` | 项目资料简报模板：来源收集、引用校验、发布完整交付；经 RuntimeContainer 绑定给 ExecuteRequested |
+| [`morning_brief.py`](../../backend/app/product/morning_brief.py) | `generate_morning_brief` | 08:00 cron 与 `POST /api/system/morning-brief/test` 共用。通知按本地日期分桶；正文附 `read_ports.compare_periods(days=7)`，该段失败时降级为「获取失败」 |
 
 ## 直接访问 DB 的端点
 

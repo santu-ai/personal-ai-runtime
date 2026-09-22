@@ -7,7 +7,7 @@
 ```mermaid
 flowchart TB
     subgraph L1[层 1 · 单元/集成]
-        Pytest[backend/tests/<br/>~157 文件]
+        Pytest[backend/tests/<br/>202 个 test_*.py]
         FE[frontend vitest]
     end
 
@@ -36,7 +36,7 @@ flowchart TB
 | `api/` | API 覆盖冒烟（`test_api_coverage.py`） |
 | `integration/` | FastAPI TestClient + Kernel：approval flow、auth、b2/b3 审计、dashboard、goals/settings/system/timeline/trigger API |
 | `product/` | 基于 Kernel 的产品层：dashboard、encrypted_sync、inbox、notifications |
-| `runtime/` | kernel/执行/治理核心（~111 文件） |
+| `runtime/` | kernel/执行/治理核心（133 个 `test_*.py`） |
 
 顶层还有：`test_context_policy.py`、`test_context_assembler.py`、`test_core_tier_fragments.py`、`test_pipeline_integration.py`、`test_prompt_artifact.py`、`test_policy_coverage.py`、`test_fragment_registry_audit.py`、`test_fragment_read_boundary.py`、`test_mail_fragment_collect.py`、`test_version.py`。
 
@@ -179,7 +179,7 @@ vitest，**不需要 Electron 已安装**。读 `main.js` 源码，字符串 `to
 
 ### 前端单元（vitest）
 
-`auth.test.ts`、`api/client.test.ts`，hook 测试（`useChatMessages` 切会话竞态、`useNotifications` 指数退避重连），组件测试（`Button/Input/Dialog/Sidebar/MessageItem/ToolCallDisplay/ContextPanel/ConfirmationDialog/ChatView/ProposedMemoryBanner/todayBuckets/ui.snapshots`），页面测试（`Dashboard/Inbox/Memories/Goals/Settings/Portrait/TrustReport`），以及 `sw.test.ts`（API 不进 Cache Storage）与 `viteConfig.test.ts`。后两者使用 Node `fs`/`vm`，`tsconfig.json` 将其排除出 `tsc --noEmit`，由 Vitest 执行。运行：`make test-frontend`（含 `tsc --noEmit`）。
+`auth.test.ts`、`api/client.test.ts`，hook 测试（`useChatMessages` 切会话竞态、`useNotifications` 指数退避重连），组件测试（`Button/Input/Dialog/Sidebar/MessageItem/ToolCallDisplay/ContextPanel/ConfirmationDialog/ChatView/ProposedMemoryBanner/AdoptionSummary/PeriodComparison/todayBuckets/ui.snapshots`），页面测试（`Dashboard/Inbox/Memories/Goals/Tasks/Approvals/Timeline/Settings/Portrait/TrustReport/ChatPage`），以及 `sw.test.ts`（API 不进 Cache Storage）与 `viteConfig.test.ts`。后两者使用 Node `fs`/`vm`，`tsconfig.json` 将其排除出 `tsc --noEmit`，由 Vitest 执行。运行：`make test-frontend`（含 `tsc --noEmit`）。
 
 ## Soak 测试（Execution 契约 §3）
 

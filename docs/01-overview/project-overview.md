@@ -10,7 +10,7 @@ Personal AI Runtime 是一个**本地优先、单用户、事件溯源**的个�
 |---|---|---|---|
 | 后端 | [`backend/`](../../backend/) | Python 3.12 · FastAPI · SQLite(WAL) · ChromaDB | `app.main:app` |
 | 前端 | [`frontend/`](../../frontend/) | React 19 · Vite · TanStack Query · Zustand · Tailwind v4 | `src/main.tsx` |
-| 桌面端 | [`desktop/`](../../desktop/) | Electron 43 | `main.js` |
+| 桌面端 | [`desktop/`](../../desktop/) | Electron 44 | `main.js` |
 
 后端是核心：所有个人数据（目标、记忆、对话、收件箱、审批、知识库）都存储在本机 SQLite 与 ChromaDB 中，由一个**事件溯源内核（Kernel）**统一写入。前端是 SPA，通过 HTTP `/api/*` 与 SSE/WebSocket 与后端通信。桌面端是 Electron 包装，负责 spawn 后端进程、加载前端、提供托盘与全局快捷键。
 
@@ -82,6 +82,8 @@ personal-ai-runtime/
 代码中可观察到的、文档需明确标注的现状：
 
 - `desktop/preload.js` 不向渲染进程暴露任何 IPC 绑定。渲染进程通过 HTTP/SSE/WebSocket 直连后端；桌面原生行为（托盘、全局快捷键、WebSocket→系统通知）由 main 进程处理（[`desktop/main.js`](../../desktop/main.js)）。
+- 今日页展示近 7 日建议采纳（`GET /api/telemetry/governance`）以及近 7 日与前 7 日对比（`GET /api/dashboard/periods`：完成目标、完成任务、新邮件、采纳率；投影缺失的完成另计 `work_completed_untyped`）。早安简报正文使用同一 `read_ports.compare_periods`。
+- `ask_user` 走同一审批门。自由文本回答回到同一 Chat 工具环；取消写入 denied tool result，不调用 LLM，也不计入采纳率。见 [ADR-R011](../07-adr/ADR-R011-chat-approval-continuation.md)。
 
 ## 下一步
 

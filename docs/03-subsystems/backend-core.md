@@ -124,7 +124,7 @@ cron 表达式解析 `_next_cron_fire(cron_expr, from_ts)`（[`runtime_loop.py`]
 
 | 名称 | Cron | 触发 |
 |---|---|---|
-| morning_brief | 每天 08:00 | `TimerFired` → `handler_name=morning_brief`。应用内通知按本地日期分桶（title `早安简报 - YYYY-MM-DD` + `dedup_key=morning_brief:{date}`），避免 `create_notification` 的 type+title 幂等把次日简报折叠进昨日同一行。通知正文含同一 `read_ports.compare_periods` 的近 7 日对比（完成目标、完成任务、新邮件、采纳率）；该段读取失败时降级为「获取失败」，不中断简报 |
+| morning_brief | 每天 08:00 | `TimerFired` → `handler_name=morning_brief`。应用内通知按本地日期分桶（title `早安简报 - YYYY-MM-DD` + `dedup_key=morning_brief:{date}`），避免 `create_notification` 的 type+title 幂等把次日简报折叠进昨日同一行。通知正文含同一 `read_ports.compare_periods` 的近 7 日对比（完成目标、完成任务、新邮件、采纳率；投影缺失的完成仅在非零时写入 `work_completed_untyped`）；该段读取失败时降级为「获取失败」，不中断简报 |
 | deadline_alert | 每天 09:00 | `TimerFired` → `handler_name=deadline_alert`。对 1/3 天后到期的目标发 `goal_deadline` 通知；`dedup_key=deadline_alert:{goal_id}:{date}`，避免固定 title「Deadline 预警」把跨目标/跨天折叠进同一行 |
 | trigger_evaluation | 每 30 分钟 | trigger_evaluation |
 | memory_decay | 每天 03:00 | memory_decay |
@@ -195,7 +195,7 @@ Scheduler 通过 `kernel.set_async_dispatcher()`（[`kernel.py`](../../backend/a
 | [`notification_channel.py`](../../backend/app/core/runtime/notification_channel.py) | 可插拔通道：`DesktopChannel`（WS 广播）、`WebhookChannel`（HTTP POST）、`NtfyChannel`（ntfy.sh）。`NotificationRouter.notify()` 扇出 |
 | [`notification_bridge.py`](../../backend/app/core/runtime/notification_bridge.py) | 同步→异步桥；`push_notification` 持久化+广播，`broadcast_event` 纯传输 |
 | [`telemetry/telemetry.py`](../../backend/app/core/telemetry/telemetry.py) | 记录每次 LLM 调用（`LLMCallRecord`）与工具调用（`ToolCallRecord`）到 `llm_calls`/`tool_calls` 表 |
-| [`world_model.py`](../../backend/app/core/agents/world_model.py) | 30 天滚动生活快照（活跃目标、近期完成、近期活动类型），并附上近 7 日与前 7 日对比（完成目标、完成任务、新邮件、采纳率，来自 `read_ports.compare_periods`，不落新表）。缓存；周 cron 刷新 |
+| [`world_model.py`](../../backend/app/core/agents/world_model.py) | 30 天滚动生活快照（活跃目标、近期完成、近期活动类型），并附上近 7 日与前 7 日对比（提示词行只写完成目标、完成任务、新邮件、采纳率，来自 `read_ports.compare_periods`，不落新表）。缓存；周 cron 刷新 |
 | [`user_profile.py`](../../backend/app/core/agents/user_profile.py) | 结构化画像（偏好/价值观/关系/健康/财务/职业），置信度评分、30 天时间衰减、冲突解决。经 `UserProfileUpdated` 事件写 |
 | [`startup_health.py`](../../backend/app/core/startup_health.py) | `run_startup_checks()` 校验存储路径、LLM 配置、认证、邮件。`enrich_with_mcp_status`、`sanitize_startup_for_public` |
 | [`rate_limit.py`](../../backend/app/core/rate_limit.py) | 内存令牌桶（按端点前缀）：`/api/chat` 30/60s、`/api/settings/llm/test` 5/60s、`/api/settings/email/test` 5/60s、`/api/inbox/poll` 10/60s、`/api/system/export` 3/60s |

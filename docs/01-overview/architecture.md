@@ -143,6 +143,8 @@ sequenceDiagram
     API-->>FE: SSE done
 ```
 
+`needs_user` 中的 `ask_user` 走同一 `confirmation_required`。用户提交自由文本后，结果写回 `chat_ckpt:{correlation_id}` 并继续同一工具环；取消只写入 denied tool result，不调用 LLM，也不计入建议采纳率。今日页的采纳率与周期对比、早安简报里的近 7 日 delta，都从既有审批/记忆/完成/收件事件重建，不新增事件类型。详见 [capability-governance.md](../02-concepts/capability-governance.md)、[backend-api.md](../03-subsystems/backend-api.md) 与 [ADR-R011](../07-adr/ADR-R011-chat-approval-continuation.md)。
+
 详细说明见 [03-subsystems/backend-core.md](../03-subsystems/backend-core.md)。
 
 ## 子系统边界

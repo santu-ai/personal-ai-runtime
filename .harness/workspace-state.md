@@ -5,129 +5,25 @@
 
 ## 当前状态
 
-- 当前状态（2026-09-22）：ask_user 与今日周期对比已有 Playwright 路径；早安简报正文带同一 `compare_periods` 的近 7 日 delta。无新事件类型。真 LLM / 真实邮箱日用仍待试用
-- 已知坏点 / 待办：日用库不在本机 Windows（soak 默认空库 `data/personal_ai.db`）；本机无 Telegram token，真实收发 blocked
-- 最近审阅：2026-09-01 从 deepseek-harness 对齐「模型可见 ⟺ 可重建」，用 checkpoint 替换静默截断
-- **本机 git**：Windows 提交走 `git -c core.hooksPath=.githooks commit -F`；venv 放 PATH 以免 pre-commit mypy 用到系统 `mcp`
-- **本机 typecheck 假阳性**：本机若用系统 `mcp` 1.12.4 会误报；lock 钉 2.0.0，CI 不受影响
-- **P0（2026-08-30 已修）**：云端聊天曾被出口门一律拒绝（提示词里的 `Memories` 被当成个人上下文）。现只认 `memory_id:` 与 `MEMORY_CONTEXT_MARKER`
-- **本机 DeepSeek key**：2026-08-31 本会话 `deepseek-v4-flash` ping 成功，W35 dogfood 真 LLM 已跑通
-- **本机后端**：`127.0.0.1:8000`，本轮 dogfood 用 `backend/data/personal_ai.db`（`MCP_EXTERNAL_ENABLED=false`）
+- 2026-09-22：`main` 已包含 #80–#84。建议采纳（今日页 + 信任页，`GET /api/telemetry/governance`）、`ask_user` 澄清续写（ADR-R011，不计入采纳率）、周期对比（`GET /api/dashboard/periods`，今日页 + 早安简报正文）都已落地。无新事件类型。
+- 依赖 pin 以 `backend/requirements.txt` / `frontend/package.json` / `desktop/package.json` 为准：`openai==3.16.2`、`mcp==2.2.0`、`pypdf==6.19.0`、`cryptography==50.0.1`；前端 React 19.3 / Vite 8 / lucide-react 1.47；桌面 Electron 44。
+- 本机若用系统 `mcp` 1.x，mypy 可能误报；lock 钉 `mcp==2.2.0`，CI 用 lock。
+- 仍待用户试用：真 LLM、真实邮箱日用。无 Telegram token 时真实收发仍 blocked。soak 默认空库 `data/personal_ai.db`，日用库不在仓库里。
 
-## 本机环境
-
-### Windows（2026-08-31 本会话）
-
-- 仓库根 `.venv`（PowerShell 5.1）；命令走 `Makefile.ps1`，不用 bash `&&` / heredoc
-- 未跟踪过程笔记：`.agent-work/`（非架构 SSOT，未纳入提交）
-- 已快进 `main`：`fe72d31` → `e05452f`，随后合入 12 个 Dependabot（lock 已重生）
-- 本机 venv 已装：mypy 2.3.1 / ruff 0.16.4 / tiktoken 0.14.0 / pypdf 6.16.1 / uvicorn 0.52.4
-
-### macOS Intel x86_64, 13.7.8 — 2026-08-16 主开发接手
-
-- venv：`backend/.venv`（Python 3.12.10）；frontend/desktop 已 `npm ci`
-- **cryptography 例外**：PyPI 49.0.0 无 Intel macOS wheel，本机 venv 装的是 **45.0.6**（universal2 wheel，API 兼容，测试全绿）；仓库 lock 仍是 49.0.0。本机勿跑 `make install`（会重装 49.0.0 失败）；若正式降级需走三步锁文件纪律（requirements.txt + pyproject.toml → dependency-sync → lockfile）
-- **SENSITIVE_OPS_LOCAL=false** 已写入根目录 `.env`：`_SENSITIVE_PATTERNS` 含 `/Users/` 正则，macOS 本机路径会误触发 high risk（Linux CI 不受影响）；5 个测试（test_taint 1 + eval/benchmarks 4）依赖此设置
-- 基线：`make test-backend` 等价 1411 passed / 3 skipped / 4 deselected；boundary / layer-deps / concept-growth 全过
-- 根目录 `.env` 已配置真实 DeepSeek key；Gmail 已写入运行时 settings（R2 Inbox 通）
-
-## 产品观察（后续规划候选）
-
-- Wave B 续：Telegram 双向网关（W36 已落地 Product 网关；真机收发仍 blocked）
-- 可选：proposed 过期自动拒绝（W36 已落地 ClaimRejected auto_expired）
-- God Object（`query_builder`/`main`/`mcp_mesh`/`agent_scheduler`）受概念压缩约束，不能无配对拆文件；优先单文件内 helper（见 conventions）。
-
-## 近期改动日志
+## 近期合并
 
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
-| 2026-09-22 | 汇总剩余 Dependabot #69/#72/#73/#76：pypdf 6.19.0、ruff 0.16.8、openai 3.16.2、lucide-react 1.47.0；backend lock 重生 | 无应用代码；merge-gate 通过；未关 Dependabot PR |
-| 2026-09-22 | 周期对比：近 7 日 vs 前 7 日，读既有完成/收件/采纳事件；今日页展示 | 无新事件类型；merge-gate 通过：后端 1620 passed / 3 skipped / 5 deselected，前端 254 passed + 构建 |
-| 2026-09-22 | `ask_user`：模型提问、用户文本回答回到同一 Chat 工具环；取消写入 denied 并不调 LLM | 无新事件类型；后端 1615 passed；前端 249 passed + 构建；澄清不计入采纳率 |
-| 2026-09-22 | 采纳率：今日页 + 信任页汇总工具建议与记忆确认；治理计数改读 ApprovalGranted/Denied | 无新事件类型；已合入 main |
-| 2026-09-22 | 汇总 Dependabot #66、#68–#78：backend lock 重生（alembic/openai/pypdf/mcp/ruff）；frontend react+react-dom 19.3.0 同步；desktop electron 44.4.3 / vitest 5.0.1 | 已合入 main |
-| 2026-09-22 | 当前交付的建议待办可转为子任务；同一下标重复请求返回同一任务，删除后可再转 | 无新事件类型；后端 1597 passed；未推远程 |
-| 2026-09-18 | 简报交付真实后端端到端回归（A1–A5/A8–A10/A12）；修 `kernel` 代理 monkeypatch 跨测试泄漏 | merge-gate 通过：后端 1593 passed、前端 240 passed + 构建；未推远程 |
-| 2026-09-18 | R3-C：审批恢复领取后、ExecuteRequested 前保留 `aprdis:` 派发意图，进程退出仍可跳过工具并补派发 | 无新事件类型；未推远程 |
-| 2026-09-17 | 可验收任务助手 MVP：项目资料简报创建/执行/来源校验、版本化交付验收与返工 | 无新事件类型；交付在 WorkItemUpdated payload；未推远程 |
-| 2026-09-01 | spill：超大工具结果外溢到 DATA_DIR/spills，对话行只存 preview；mcp_hub 不再 8k 静默截断 | 无新事件类型 |
-| 2026-09-01 | recorded-session：脚本 LLM + 真 Brain/Kernel 回放 text/read_file/write 审批 | 无密钥 loop 回归 |
-| 2026-09-01 | 会话压缩：超窗写 MessageAppended checkpoint，去掉静默截断；顺带修 get_history 取最旧 50 条 | 无新事件类型 |
-| 2026-08-31 | W35 dogfood：Memory 两轮 pass、今天 30 秒 pass；Chat 审批后续写接回同一工具环 | 三次提交：test(dogfood)/feat(chat)/feat(frontend)；未推远程 |
-| 2026-08-31 | CI：gitleaks 放行 RFC WebSocket 样例、harness 门 66、tsc 排除 Node 测试 | 跟进剩余问题收口 |
-| 2026-08-31 | 核心产品闭环：会话级待确认、Claim 替代链、抽取只信用户、「今天」三栏去重 | 本会话，待推远程 |
-| 2026-08-31 | 合入 12 个 Dependabot：backend mypy/pypdf/ruff/tiktoken/uvicorn；desktop electron/vitest；frontend eslint/lucide/vite/plugin-react/vitest；重生 backend+desktop lock | 本地 `fc62cc2`，待推远程 |
-| 2026-08-31 | Windows 快进拉取 origin/main（`fe72d31` → `e05452f`，3 commits） | 工作区干净对齐远程 |
-| 2026-08-30 | 修 `docs-links`：mcp-harness.md 不再把 gitignored 的 `mcp_config.local.json` 写成带路径引用（该文件按定义不存在于任何干净检出，CI backend job 自 `fe72d31` 起一直失败） | 本提交 |
-| 2026-08-30 | 出口分类器只认渲染出的个人内容（`memory_id:` / `MEMORY_CONTEXT_MARKER`），不再匹配提示词里的 `memories`；补 `ALLOW_CLOUD_PERSONAL_DATA_EGRESS` 到 `.env.example` / configuration.md / security.md | `0efa174` |
-| 2026-08-30 | 记忆：抽取按用户原话接地；召回带 `created_at` 并按时间倒序 | `de8421d` |
-| 2026-08-30 | macOS 快进拉取 origin/main（`21918cb` → `fe72d31`，37 commits）；本机 8/17 dogfood 并回周记 | 工作区干净对齐远程 |
-| 2026-08-19 | 本地 MCP 默认读 `backend/mcp_config.local.json`（不再只看 DATA_DIR），TAPD/Tushare 重新进 mesh | 本机文件一直在 backend/，运行时读错路径 |
-| 2026-08-19 | deadline_alert 按目标+本地日期分桶（`goal_deadline` + dedup_key），避免固定 title 折叠 | 接 morning-brief 同根因 |
-| 2026-08-19 | 早安简报按本地日期分桶（title + dedup_key），避免次日 persist 被 type+title 幂等吞掉 | 8/19 08:00 TimerFired 已跑、无新通知行 |
-| 2026-08-18 | 按 W34-R2 dogfood 收口：标识符更新不被近义去重吞掉；完成步骤不再写 proposed；inbox 默认 all；简报同时报邮箱总数与未读 | 本提交 |
-| 2026-08-18 | W34-R2 dogfood：冷启动后再跑；Chat/Work/Desktop/Inbox pass，Memory fail（HENGSHAN 被 TIANSHAN 近义去重吞掉） | 记录在 `.harness/dogfood/2026-W34.md`，进程仍在跑 |
-| 2026-08-18 | W34-R1 dogfood：冷启动后端/Vite/Electron；Chat/Memory/Work/Desktop/Inbox 全 pass（暗号 TIANSHAN-DF-W34-0818） | 记录在 `.harness/dogfood/2026-W34.md`，无代码改动 |
-| 2026-08-18 | 闭环：retrying→in_retry；CI/venv MCP smoke；LLM 遥测+egress 脱敏；监控 CAS/通知去重/连接器 DATA_DIR/SSE 取消；输入上限；lazy markdown 与桌面路径单测 | merge-gate 等价通过 |
-| 2026-08-17 | 执行信任汇总并入 `read_ports/events.py`（不新增 runtime 文件）；审批恢复要求会话/tool-call 身份 | 本提交未推送 |
-| 2026-08-17 | 记忆转化率按记忆 ID 的最新 Claim 决策去重；新增执行信任读端口测试和产品边界守卫 | 后端全量 1450 passed / 9 skipped / 5 deselected；lint、boundary 通过 |
-| 2026-08-17 | 修复审批恢复的会话/tool-call 身份误匹配；执行信任汇总下沉到 read_ports；修复前端 ES2020 类型错误 | merge-gate 全部通过：1447 backend / 203 frontend tests，build、boundary、layer-deps、projection-provenance、rebuild-verify OK |
-| 2026-08-17 | 统一 NoticeBanner/ToastCard；Chat 重载恢复审批卡；trust-loops e2e 覆盖首页发送/审批恢复/inbox 重试/proposed 确认 | 本提交未推送 |
-| 2026-08-17 | 记忆拒绝原因进 ClaimRejected payload，review 可恢复并看转化率；今天页展示执行失败/重试/死信 | 本提交未推送 |
-| 2026-08-17 | 收件箱页展示最近同步时间/结果/失败原因与重试；7 日轮询/重复/已读同步指标从事件重建 | 本提交未推送 |
-| 2026-08-17 | 词法折叠 `..` 堵住 filesystem 穿越；日志测试不再依赖顺序；新增 `merge-gate` | 已提交 `5775ac3` 未推送 |
-| 2026-08-17 | addError 同步打 console.error；收件箱轮询失败写 warning 且进页不再吞错 | 本提交 |
-| 2026-08-17 | 工具 JSON 不再被 8000 字截成非法串；收件箱轮询才能写入最近邮件 | 本提交 |
-| 2026-08-17 | 收件箱轮询同步最近已读邮件，不再只拉 UNSEEN | 本提交 |
-| 2026-08-17 | 收件箱最近邮件列表封顶 20 封 | 本提交 |
-| 2026-08-17 | 收件箱在摘要下展示全部邮件列表 | 本提交 |
-| 2026-08-17 | 确认条两侧随背景；首页回车即发送；审批中断持久化 tool_calls | 本提交 |
-| 2026-08-17 | 审批卡/错误页/今日待办改 lucide；收件箱摘要去掉 emoji 前缀 | 已提交 `49c3c29` 未推送 |
-| 2026-08-17 | 确认条收窄；通知铃二次点击关闭；侧栏新对话改成整行按钮 | 本提交未推送 |
-| 2026-08-17 | Context live A/B：bm07b 编译对照 + e2e_live 真 LLM 邮件 nonce | 已提交 `135aabf` 未推送 |
-| 2026-08-17 | 日用库 `verify_vector_consistency`：27 条记忆 SQLite↔Chroma 一致 | 只读对账，无代码改动 |
-| 2026-08-17 | 工具/时间线/引导页/记忆分类改 lucide；describeArgs 去掉 emoji 前缀 | 已提交 `0a852bc` 未推送 |
-| 2026-08-17 | 上下文收进顶栏；Chat lucide；概览「今天」；主按钮 insight；记忆角标直达 review | 已提交未推送 |
-| 2026-08-17 | 侧栏常驻数据导航；首页底部真输入条；吐司避开顶栏 | 已提交 `f148ebf` 未推送 |
-| 2026-08-17 | Chat 待确认记忆条与上下文按钮分层，避免右上角重合 | 已提交 `27067b6` 未推送 |
-| 2026-08-17 | 仪表盘 recent_memories 走 `recall_memories_for_context` | 已提交 `918a707` 已推送 |
-| 2026-08-17 | 公开 `GET /memories/search` 走 claim 过滤召回；抽取去重仍用未过滤 Chroma | 已提交 `b8700a6` 未推送 |
-| 2026-08-17 | 首页只计 ratified；Desktop/Vite/CORS 默认 IPv4 回环 | 已提交 `e26849a` 未推送 |
-| 2026-08-17 | 审批 deny 持久化 tool result + 会话说明（不调 LLM） | 已提交 `937a97e` 未推送 |
-| 2026-08-17 | Chat/Home 内联确认 proposed；ChatRequested max_retries=2；真 LLM Chat+write_file 审批 deny | 已提交 `b539b45` 未推送 |
-| 2026-08-17 | W34：email 应用 miss 记 CapabilityFailed；pending→completed 用户捷径；勾选子项重算父进度；soak 找对 SQLITE_PATH；Vite 绑 0.0.0.0 | 已并入 `b539b45` |
-| 2026-08-17 | 测试隔离：pin SQLITE_PATH + 重绑 runtime_config.settings；防止 app_settings 写入日用库 | 已推送 `315541f` |
-| 2026-08-16 | W33 日用修复：抽取降噪；简报用 pending 邮件计数且不铺 proposed 内容；Chat 待确认横幅；pending→completed 改 400；审批缺 decision 改 422；会话 JSON title；项目根豁免 /Users 敏感误伤 | 本提交 |
-| 2026-08-16 | W33-R2 dogfood：Chat/Memory/Work/Desktop/Inbox 全 pass；Memory 需 ratify 后新会话才能召回 | 记录在 `.harness/dogfood/2026-W33.md` |
-| 2026-08-16 | 修复 macOS 系统级 symlink（/tmp→/private/tmp）导致 FILESYSTEM_ALLOWED_DIRS 词法校验全拒；显式配置改为追加项目根；symlink 检查改为沿 lexical 根 walk（不先 resolve），堵住 alias 根下 planted symlink 逃逸；+回归测试 | commit `39b9da4` 未推送 |
-| 2026-08-13 | 体检 Now 批次：cap_intent 意图+chat 幂等键（E-10/E-11）；url_monitors/inbox 旁路收编+layer-deps R5；单实例文件锁；interrupted 计入 retry 预算；INV-C1/C4/W6 文档校正 | 本提交推送 |
-| 2026-08-07 | 记忆 triage：bulk/筛选/count + extractor 减流入（含 distance 去重修复） | commit `59b66c6` |
-| 2026-08-06 | Tasks：执行日志 + plan 预览确认；needs_user 建议话术全覆盖 | 前端 |
-| 2026-08-06 | harness：TimerFired / APP_STORAGE merge / Monitor SOP | commit `e555558` |
-| 2026-08-06 | Inbox Filter Monitor：poll 后求值 + Dashboard 监控 tab | 零新事件/表 |
-| 2026-08-06 | Wave A：Tasks/claim review/建议 UX；召回 over-fetch + proposed count 修复 | 准备推送 |
-| 2026-08-05 | Alembic 压回唯一 `0001`（对齐 schema_ddl）；删 6 增量；harness §9 + conventions | verify_alembic OK；准备提交 |
-| 2026-08-05 | 单文件优化：query_builder safe_*；cancel/denied/timer/lifespan 去重 | commit `6c3dc28` |
-| 2026-08-05 | 收口审查遗留：payload upcast；alembic 链守卫；desktop/docs | commit `ac9abb5` |
-| 2026-08-05 | P0：删休眠子系统；执行可信/白名单；ADR-R017 | commit `fddafb3` |
+| 2026-09-22 | 文档与代码对齐：重生参考表无 diff；改过期叙事（Electron/Vite/mcp pin、侧栏、WS 失效、桌面启动顺序、测试文件数） | 未改 CI 守卫 |
+| 2026-09-22 | Dependabot #69/#72/#73/#76：pypdf 6.19.0、ruff 0.16.8、openai 3.16.2、lucide-react 1.47.0 | #84，未关 Dependabot PR |
+| 2026-09-22 | 周期对比写入早安简报，并走通今日页 Playwright | #83 |
+| 2026-09-22 | 近 7 日 vs 前 7 日：完成目标、完成任务、新邮件、采纳率 | #82，无新事件类型 |
+| 2026-09-22 | `ask_user`：文本回答回到同一 Chat 工具环；取消写入 denied 并不调 LLM | #81 |
+| 2026-09-22 | 采纳率汇总工具建议与记忆确认；治理计数读 ApprovalGranted/Denied | #80 |
 
 ## 备注
 
-- 2026-09-22：建议待办可从当前交付转为子任务（`suggested_action_adopted` + 普通 WorkItemCreated）。重复下标不新建；旧版本 409。后端 1597 passed / 9 skipped / 6 deselected；前端 Tasks 测试与 tsc 通过。未跑浏览器日用，未推远程。
-
-- 2026-09-22：核对任务交付 MVP plan 与 HEAD ba22930；P0 开发已落地，剩余真实 LLM/邮箱日用及两周至少 10 项评审、四项 P1；现有 E2E 用 rebuild_all/BaseException 验证恢复，未证明真实进程重启或交付导出/导入闭环。本轮静态核对，未运行测试。
-
-- 2026-09-18：四审 `9fc0553` 未发现新阻塞缺陷，R3-C 关闭；后端相关 86 passed，boundary/layer-deps/concept-growth 与修改文件 ruff 通过；本次修复 review 通过，完整 merge-gate/真实重启 E2E/日用尚未验证，报告已更新。
-
-- 2026-09-18：R3-C 已修（`aprdis:` 派发意图覆盖领取后/派发前进程退出）；T4/T5 收口，merge-gate 整包通过；真 LLM / 真实邮箱日用待用户试用。
-
-- dogfood 记录约定（周记格式）仍见 `docs/05-engineering/development.md` §自用检查。
+- dogfood 周记格式见 `docs/05-engineering/development.md`。
 - DLQ 人工重放：`python -m scripts.replay_dead_letters [--limit N] [--dry-run]`
 - 开发期 Alembic squash SOP：`.harness/task-recipes.md` §9
-- 2026-09-09：对照企业 Agent 平台 V5 产品需求完成静态差异评审；关键差距为正式交付验收、Workspace 动态授权、不可变能力版本、业务预算及隔离执行；未修改代码、未运行测试。
-- 2026-09-09：基于企业 Agent V5 产品与技术文档，交付桌面 Agent-Studio-Prototype/index.html 独立交互原型；含任务创建/验收/返工、协作与模型页面，Chromium 主流程及移动布局验证通过，未修改项目应用代码。
-- 2026-09-17：完成项目静态分析（架构、Work API/任务页、上下文压缩与 spill、W35/W36 日用记录）；建议优先做可验收的个人任务闭环，以邮件/资料简报与待办验证价值；未修改应用代码、未运行测试，建议尚未作为产品决策执行。
-- 2026-09-17：交付 `.harness/plan-task-delivery-mvp.md`，包含 T0 持久化验证、T1–T5 开发分工、版本验收/返工契约、12 项验收场景与 agent 交接提示；仅文档，待其他 agent 开发。
-- 2026-09-17：按该计划完成 T0–T4：项目简报任务、event_log 承载的交付/验收、结果优先任务页；隔离测试与重建通过；真 LLM 日用未跑。
-- 2026-09-17：3fa88f5 复核 R2-B/R3-B 已修（ExecuteRequested 才算派发；审批写入完整步骤缓存）。
-- 2026-09-17：二审 `3fa88f5`：build 通过、前端 11 passed、后端相关 33 passed；仍复现 R2-B（running 后尚未派发却补写成功标记）与 R3-B（审批工具结果未入完整缓存）两项 P1，报告已追加；未改产品代码。
+- Windows 提交走 `git -c core.hooksPath=.githooks commit -F`
