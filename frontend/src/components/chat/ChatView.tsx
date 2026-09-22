@@ -370,11 +370,11 @@ export default function ChatView({ conversationId }: Props) {
         </div>
       )}
       {!contextOpen && (
-        <div className="flex items-center justify-end px-3 py-1.5 border-b border-border-subtle shrink-0">
+        <div className="flex shrink-0 items-center justify-end border-b border-border-subtle px-3 py-1.5">
           <button
             type="button"
             onClick={() => setContextOpen(true)}
-            className="px-2 py-1 text-xs bg-surface-overlay hover:bg-border-strong rounded-lg text-fg-secondary border border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+            className="rounded-md border border-border-subtle bg-surface-overlay px-2.5 py-1 text-xs text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             title="展开上下文面板"
           >
             上下文
@@ -425,10 +425,10 @@ export default function ChatView({ conversationId }: Props) {
         </div>
       )}
 
-      <div className="border-t border-border-subtle p-4">
-        <div className="max-w-3xl mx-auto">
+      <div className="border-t border-border-subtle bg-surface-app/80 p-4 backdrop-blur-sm">
+        <div className="mx-auto max-w-3xl">
           {suggestions.length > 0 && !isLoading && !pendingConfirmation && (
-            <div className="flex flex-wrap gap-2 mb-3">
+            <div className="mb-3 flex flex-wrap gap-2">
               {suggestions.map((s) => {
                 const SIcon = getSuggestionIcon(s);
                 return (
@@ -436,7 +436,7 @@ export default function ChatView({ conversationId }: Props) {
                     key={s}
                     type="button"
                     onClick={() => handlePickPrompt(s)}
-                    className="flex items-center gap-1 text-xs px-3 py-1.5 bg-surface-overlay hover:bg-border-strong text-fg-secondary hover:text-fg-primary rounded-full border border-border-subtle hover:border-border-strong transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                    className="flex items-center gap-1 rounded-full border border-border-subtle bg-surface-raised px-3 py-1.5 text-xs text-fg-secondary shadow-sm transition-all hover:border-border-strong hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                   >
                     <SIcon size={12} className="text-fg-secondary" />
                     <span>{s.length > 50 ? s.slice(0, 50) + "…" : s}</span>
@@ -453,7 +453,7 @@ export default function ChatView({ conversationId }: Props) {
             disabled={isLoading || !!pendingConfirmation}
             inputRef={inputRef}
           />
-          <p className="text-xs text-fg-disabled mt-2 text-center">
+          <p className="mt-2 text-center text-xs text-fg-disabled">
             Personal AI Runtime 可能会犯错，请验证重要信息。
           </p>
         </div>

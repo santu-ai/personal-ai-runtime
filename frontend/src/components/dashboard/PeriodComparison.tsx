@@ -49,7 +49,7 @@ export function PeriodComparisonView({ comparison }: { comparison: PeriodCompari
   return (
     <section
       data-testid="period-comparison"
-      className={`mb-6 w-full rounded-xl border px-4 py-3 text-left ${tone.surface}`}
+      className={`mb-5 w-full rounded-lg border px-4 py-3.5 text-left ${tone.surface}`}
     >
       <div className="flex items-center gap-2 mb-2">
         <ArrowLeftRight size={16} className={tone.icon} />

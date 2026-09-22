@@ -135,11 +135,11 @@ types.ts       ← 共享 TS 接口
 
 侧栏导航模型（[`Sidebar.tsx`](../../frontend/src/components/layout/Sidebar.tsx)）：
 
-- `PRIMARY_NAV`：`/`「对话」
-- `DATA_NAV`（「我的数据」）：`/dashboard`「概览」、`/goals`「目标」、`/tasks`「任务」、`/inbox`「收件箱」、`/approvals`「审批」、`/memories`「记忆」、`/timeline`「时间线」。待确认记忆角标大于 0 时，「记忆」链到 `/memories?tab=review`
-- `SYSTEM_NAV`：`/settings`「设置」
-
-会话列表只在 chat 路由显示。
+- 分组「概览」：`/`「对话」、`/dashboard`「概览」
+- 分组「任务」：`/goals`「目标」、`/tasks`「任务」、`/inbox`「收件箱」、`/approvals`「审批」（角标：收件箱未读、待审批）
+- 分组「知识」：`/memories`「记忆」、`/timeline`「时间线」。待确认记忆角标大于 0 时，「记忆」链到 `/memories?tab=review`
+- 分组「系统」：`/settings`「设置」；底部通知铃
+- 侧栏可收起（`localStorage.sidebar_collapsed`）；会话列表只在 chat 路由且展开时显示
 
 ## Layout
 

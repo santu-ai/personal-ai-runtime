@@ -155,7 +155,9 @@ export default function RiskCard({
   const RiskIcon = tone.Icon;
 
   return (
-    <div className={`${tone.container} rounded-lg ${variant === "panel" ? "p-5" : "p-3"}`}>
+    <div
+      className={`${tone.container} rounded-lg shadow-sm ${variant === "panel" ? "p-5" : "p-3"}`}
+    >
       <div className="flex items-start gap-2.5">
         <div className={`${tone.icon} mt-0.5 shrink-0`}>
           <RiskIcon size={variant === "panel" ? 20 : 16} />

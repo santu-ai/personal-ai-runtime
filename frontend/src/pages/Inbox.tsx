@@ -14,6 +14,7 @@ import { useInboxQuery, useInvalidateInbox, RECENT_INBOX_LIMIT } from "../hooks/
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import NoticeBanner from "../components/ui/NoticeBanner";
+import PageHeader from "../components/ui/PageHeader";
 import InboxEmailDetailModal from "../components/inbox/InboxEmailDetailModal";
 import InboxDigestModal from "../components/inbox/InboxDigestModal";
 
@@ -194,24 +195,24 @@ export default function InboxPage() {
   const byCategory = (cat: string) => emails.filter((e) => e.category === cat);
 
   return (
-    <div className="flex-1 overflow-y-auto p-6">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-2xl font-semibold text-fg-primary">收件箱</h2>
-            <p className="text-sm text-fg-tertiary mt-1">未读分拣，以及同步到的全部邮件</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {digest?.content ? (
-              <Button variant="secondary" onClick={() => setDigestOpen(true)}>
-                查看摘要
+    <div className="page-shell">
+      <div className="mx-auto w-full max-w-6xl px-4 py-5 md:px-6 md:py-6">
+        <PageHeader
+          title="收件箱"
+          description="未读分拣，以及同步到的全部邮件"
+          actions={
+            <>
+              {digest?.content ? (
+                <Button variant="secondary" onClick={() => setDigestOpen(true)}>
+                  查看摘要
+                </Button>
+              ) : null}
+              <Button onClick={handlePoll} disabled={polling}>
+                {polling ? "轮询中..." : "立即轮询"}
               </Button>
-            ) : null}
-            <Button onClick={handlePoll} disabled={polling}>
-              {polling ? "轮询中..." : "立即轮询"}
-            </Button>
-          </div>
-        </div>
+            </>
+          }
+        />
 
         <SyncStatusBar sync={sync} polling={polling} onRetry={() => void handlePoll()} />
 

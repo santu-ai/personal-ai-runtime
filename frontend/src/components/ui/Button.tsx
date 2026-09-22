@@ -5,19 +5,19 @@ type Variant = "primary" | "secondary" | "subtle" | "ghost" | "danger";
 const variantClasses: Record<Variant, string> = {
   // Primary: insight accent. Success green stays for completed / safe states.
   primary:
-    "bg-insight hover:bg-insight/90 text-white disabled:bg-surface-overlay disabled:text-fg-disabled",
+    "bg-insight-strong hover:bg-insight text-fg-on-accent shadow-sm disabled:bg-surface-overlay disabled:text-fg-disabled disabled:shadow-none",
   secondary:
-    "bg-surface-raised hover:bg-surface-overlay text-fg-primary border border-border-subtle disabled:opacity-50",
+    "bg-surface-raised hover:bg-surface-hover text-fg-primary border border-border-subtle disabled:opacity-50",
   // Subtle: ghost, but with a faint background — for tertiary inline actions.
-  subtle: "bg-transparent hover:bg-surface-overlay text-fg-secondary disabled:opacity-50",
-  ghost: "bg-transparent hover:bg-surface-overlay text-fg-secondary disabled:opacity-50",
+  subtle: "bg-transparent hover:bg-surface-hover text-fg-secondary disabled:opacity-50",
+  ghost: "bg-transparent hover:bg-surface-hover text-fg-secondary disabled:opacity-50",
   // Danger: irreversible delete/failure only. NOT for "reject" (rejecting is safe).
   danger:
-    "bg-danger hover:bg-danger/90 text-white disabled:bg-surface-overlay disabled:text-fg-disabled",
+    "bg-danger hover:bg-danger/90 text-fg-on-accent shadow-sm disabled:bg-surface-overlay disabled:text-fg-disabled disabled:shadow-none",
 };
 
 const focusRing =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-base";
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-app";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
@@ -35,10 +35,10 @@ export default function Button({
   children,
   ...props
 }: Props) {
-  const sizeClass = size === "sm" ? "px-3 py-1.5 text-xs gap-1.5" : "px-4 py-2 text-sm gap-2";
+  const sizeClass = size === "sm" ? "px-3 py-1.5 text-xs gap-1.5" : "px-3.5 py-2 text-sm gap-2";
   return (
     <button
-      className={`inline-flex items-center justify-center rounded-lg font-medium transition-colors ${sizeClass} ${variantClasses[variant]} ${focusRing} disabled:cursor-not-allowed ${className}`}
+      className={`inline-flex items-center justify-center rounded-md font-medium transition-colors ${sizeClass} ${variantClasses[variant]} ${focusRing} disabled:cursor-not-allowed ${className}`}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       {...props}

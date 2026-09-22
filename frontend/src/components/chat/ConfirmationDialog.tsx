@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Button from "../ui/Button";
+import { TextArea } from "../ui/Input";
 import RiskCard from "../approval/RiskCard";
 import { useCapabilityPolicyQuery } from "../../hooks/useSettingsQuery";
 import type { CapabilityPolicy } from "../../api/settings";
@@ -141,9 +142,9 @@ export default function ConfirmationDialog({ toolCall, onConfirm, onDeny }: Prop
             {context ? (
               <p className="text-xs text-fg-tertiary whitespace-pre-wrap">{context}</p>
             ) : null}
-            <textarea
+            <TextArea
               aria-label="你的回答"
-              className="w-full min-h-20 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm"
+              className="w-full"
               maxLength={ANSWER_MAX}
               value={draft}
               placeholder="输入回答，助手会带着它继续"

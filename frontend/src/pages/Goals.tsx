@@ -107,9 +107,9 @@ export default function GoalsPage() {
   return (
     <div className="flex h-full">
       {/* Goal list panel */}
-      <div className="w-80 border-r border-border-subtle overflow-y-auto shrink-0">
-        <div className="p-4 border-b border-border-subtle flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-fg-primary">目标</h2>
+      <div className="w-80 shrink-0 overflow-y-auto border-r border-border-subtle bg-surface-sidebar/40">
+        <div className="flex items-center justify-between border-b border-border-subtle p-4">
+          <h2 className="page-title text-lg">目标</h2>
           <Button size="sm" onClick={() => setShowCreate(true)}>
             + 新建
           </Button>
