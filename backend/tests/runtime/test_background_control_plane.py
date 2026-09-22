@@ -192,6 +192,110 @@ def test_recover_does_not_redispatch_finished_task(kernel, monkeypatch):
 
     assert RuntimeLoop()._recover_interrupted_background_tasks() == 0
     assert len(kernel.read_events(type="ExecuteRequested", aggregate_id="exec_finished")) == 1
+    assert kernel.query_state("work_items", id="finished", limit=1)[0]["status"] == "running"
+
+
+def _patch_kernel(monkeypatch, kernel) -> None:
+    monkeypatch.setattr("app.core.runtime.runtime_loop.kernel", kernel)
+    monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", kernel)
+    monkeypatch.setattr("app.core.runtime.read_ports.work.kernel", lambda: kernel)
+
+
+def _running_with_execute(kernel, work_id: str, *, work_type: str = "task"):
+    kernel.emit_event(
+        EVENT_WORK_ITEM_CREATED, AGGREGATE_WORK_ITEM, work_id,
+        payload={
+            "title": work_id,
+            "work_type": work_type,
+            "status": "running",
+            "executable_plan": '{"steps":[{"tool":"read_file"}]}',
+        },
+        actor="user",
+    )
+    trigger = kernel.emit_event(
+        "ExecuteRequested", "action", f"exec_{work_id}",
+        payload={"action_id": work_id}, actor="user",
+    )
+    return trigger
+
+
+def test_recover_closes_dead_lettered_task(kernel, monkeypatch):
+    from app.core.runtime.execution_events import emit_execution_failed
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    trigger = _running_with_execute(kernel, "dead")
+    item = ScheduledExecution(event_id=trigger.id, event_seq=trigger.seq or 0)
+    item.error = "interrupted"
+    emit_execution_requested(kernel, item, "user")
+    emit_execution_failed(kernel, item, terminal=True, dead_letter=True)
+    _patch_kernel(monkeypatch, kernel)
+
+    assert RuntimeLoop()._recover_interrupted_background_tasks() == 1
+    assert kernel.query_state("work_items", id="dead", limit=1)[0]["status"] == "failed"
+    assert len(kernel.read_events(type="ExecuteRequested", aggregate_id="exec_dead")) == 1
+
+
+def test_recover_does_not_requeue_background_after_dead_letter(kernel, monkeypatch):
+    from app.core.runtime.execution_events import emit_execution_failed
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    trigger = _running_with_execute(kernel, "bg-dead", work_type="background")
+    item = ScheduledExecution(event_id=trigger.id, event_seq=trigger.seq or 0)
+    item.error = "interrupted"
+    emit_execution_requested(kernel, item, "user")
+    emit_execution_failed(kernel, item, terminal=True, dead_letter=True)
+    _patch_kernel(monkeypatch, kernel)
+
+    assert RuntimeLoop()._recover_interrupted_background_tasks() == 1
+    row = kernel.query_state("work_items", id="bg-dead", limit=1)[0]
+    assert row["status"] == "failed"
+    assert len(kernel.read_events(type="ExecuteRequested", aggregate_id="exec_bg-dead")) == 1
+
+
+def test_recover_leaves_background_with_live_handler(kernel, monkeypatch):
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    trigger = _running_with_execute(kernel, "bg-live", work_type="background")
+    item = ScheduledExecution(event_id=trigger.id, event_seq=trigger.seq or 0)
+    emit_execution_requested(kernel, item, "user")
+    _patch_kernel(monkeypatch, kernel)
+
+    assert RuntimeLoop()._recover_interrupted_background_tasks() == 0
+    assert kernel.query_state("work_items", id="bg-live", limit=1)[0]["status"] == "running"
+
+
+def test_recover_syncs_completed_handler_from_execute_completed(kernel, monkeypatch):
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    trigger = _running_with_execute(kernel, "synced")
+    item = ScheduledExecution(event_id=trigger.id, event_seq=trigger.seq or 0)
+    emit_execution_requested(kernel, item, "user")
+    emit_execution_completed(kernel, item)
+    kernel.emit_event(
+        "ExecuteCompleted", "action", "exec_synced",
+        payload={"action_id": "synced", "status": "success"},
+        actor="executor",
+        caused_by=trigger.id,
+    )
+    _patch_kernel(monkeypatch, kernel)
+
+    assert RuntimeLoop()._recover_interrupted_background_tasks() == 1
+    assert kernel.query_state("work_items", id="synced", limit=1)[0]["status"] == "completed"
+    assert len(kernel.read_events(type="ExecuteRequested", aggregate_id="exec_synced")) == 1
+
+
+def test_recover_does_not_requeue_background_after_completed_handler(kernel, monkeypatch):
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    trigger = _running_with_execute(kernel, "bg-done", work_type="background")
+    item = ScheduledExecution(event_id=trigger.id, event_seq=trigger.seq or 0)
+    emit_execution_requested(kernel, item, "user")
+    emit_execution_completed(kernel, item)
+    _patch_kernel(monkeypatch, kernel)
+
+    assert RuntimeLoop()._recover_interrupted_background_tasks() == 0
+    assert kernel.query_state("work_items", id="bg-done", limit=1)[0]["status"] == "running"
+    assert len(kernel.read_events(type="ExecuteRequested", aggregate_id="exec_bg-done")) == 1
 
 
 @pytest.mark.asyncio

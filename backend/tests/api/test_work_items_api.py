@@ -124,6 +124,76 @@ def test_execution_detail_uses_scheduler_record_for_trigger_event(client):
     assert response.json()["execution"]["handler_execution"]["id"] == scheduled.id
 
 
+def test_execute_retries_running_task_after_failed_handler(client):
+    from app.core.runtime.execution_events import (
+        emit_execution_failed,
+        emit_execution_requested,
+    )
+    from app.core.runtime.kernel.constants import (
+        AGGREGATE_WORK_ITEM,
+        EVENT_WORK_ITEM_STATUS_CHANGED,
+    )
+    from app.core.runtime.kernel_instance import kernel
+    from app.core.runtime.scheduled_execution import ScheduledExecution
+
+    created = client.post("/api/work-items/", json={
+        "title": "Retry me",
+        "work_type": "task",
+        "executable_plan": '{"steps":[{"tool":"read_file"}]}',
+    }).json()
+    item_id = created["id"]
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, item_id,
+        payload={"status": "running"}, actor="user",
+    )
+    trigger = kernel.emit_event(
+        "ExecuteRequested", "action", f"exec_{item_id}",
+        payload={"action_id": item_id}, actor="user",
+    )
+    scheduled = ScheduledExecution(event_id=trigger.id, event_seq=trigger.seq or 0)
+    scheduled.error = "interrupted"
+    emit_execution_requested(kernel, scheduled, "user")
+    emit_execution_failed(kernel, scheduled, terminal=True, dead_letter=True)
+
+    response = client.post(f"/api/work-items/{item_id}/execute")
+
+    assert response.status_code == 200, response.text
+    events = kernel.read_events(type="ExecuteRequested", aggregate_id=f"exec_{item_id}")
+    assert len(events) == 2
+
+
+def test_execute_rejects_running_task_with_live_handler(client):
+    from app.core.runtime.execution_events import emit_execution_requested
+    from app.core.runtime.kernel.constants import (
+        AGGREGATE_WORK_ITEM,
+        EVENT_WORK_ITEM_STATUS_CHANGED,
+    )
+    from app.core.runtime.kernel_instance import kernel
+    from app.core.runtime.scheduled_execution import ScheduledExecution
+
+    created = client.post("/api/work-items/", json={
+        "title": "Still running",
+        "work_type": "task",
+        "executable_plan": '{"steps":[{"tool":"read_file"}]}',
+    }).json()
+    item_id = created["id"]
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, item_id,
+        payload={"status": "running"}, actor="user",
+    )
+    trigger = kernel.emit_event(
+        "ExecuteRequested", "action", f"exec_{item_id}",
+        payload={"action_id": item_id}, actor="user",
+    )
+    scheduled = ScheduledExecution(event_id=trigger.id, event_seq=trigger.seq or 0)
+    emit_execution_requested(kernel, scheduled, "user")
+
+    response = client.post(f"/api/work-items/{item_id}/execute")
+
+    assert response.status_code == 409
+    assert len(kernel.read_events(type="ExecuteRequested", aggregate_id=f"exec_{item_id}")) == 1
+
+
 def test_user_complete_from_pending_returns_200(client):
     """pending → completed is the user mark-done shortcut (Goals checkbox)."""
     create = client.post("/api/work-items/", json={
