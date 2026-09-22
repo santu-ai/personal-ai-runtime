@@ -668,6 +668,76 @@ def test_reclaim_terminal_lease_closes_running_work(kernel):
     assert len(kernel.read_events(type="ExecuteRequested", aggregate_id="exec_lease-dead")) == 1
 
 
+def _backdate_lease(kernel, execution_id: str) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    old = (datetime.now(UTC) - timedelta(seconds=3600)).isoformat()
+    with kernel._db.get_db() as conn:
+        conn.execute(
+            "UPDATE handler_executions SET started_at = ? WHERE id = ?",
+            (old, execution_id),
+        )
+
+
+def test_kernel_expire_terminal_lease_closes_running_work(kernel):
+    trigger = _running_with_execute(kernel, "kernel-lease")
+    item = _seed_running_execute(kernel, trigger, max_retries=0)
+    _backdate_lease(kernel, item.id)
+
+    assert kernel.expire_stale_running_leases(ttl_seconds=60) == 1
+    assert kernel.query_state("work_items", id="kernel-lease", limit=1)[0]["status"] == "failed"
+    handler = kernel.read_scheduled_execution(item.id)
+    assert handler is not None
+    assert handler.dead_letter is True
+    assert handler.error == "timeout"
+    failed = _failed_status_events(kernel, "kernel-lease")
+    assert len(failed) == 1
+    assert failed[0].payload.get("error") == "timeout"
+    assert len(kernel.read_events(type="ExecuteRequested", aggregate_id="exec_kernel-lease")) == 1
+
+
+def test_kernel_expire_with_retries_left_leaves_work_running(kernel):
+    trigger = _running_with_execute(kernel, "kernel-retry")
+    item = _seed_running_execute(kernel, trigger, max_retries=2)
+    _backdate_lease(kernel, item.id)
+
+    assert kernel.expire_stale_running_leases(ttl_seconds=60) == 1
+    assert kernel.query_state("work_items", id="kernel-retry", limit=1)[0]["status"] == "running"
+    handler = kernel.read_scheduled_execution(item.id)
+    assert handler is not None
+    assert handler.dead_letter is False
+    assert handler.status == "failed"
+    assert _failed_status_events(kernel, "kernel-retry") == []
+
+
+def test_kernel_expire_waits_for_live_sibling(kernel):
+    trigger = _running_with_execute(kernel, "kernel-sibling")
+    stale = _seed_running_execute(kernel, trigger, max_retries=0)
+    _seed_running_execute(kernel, trigger, max_retries=0)
+    _backdate_lease(kernel, stale.id)
+
+    assert kernel.expire_stale_running_leases(ttl_seconds=60) == 1
+    assert kernel.query_state("work_items", id="kernel-sibling", limit=1)[0]["status"] == "running"
+    assert _failed_status_events(kernel, "kernel-sibling") == []
+    handler = kernel.read_scheduled_execution(stale.id)
+    assert handler is not None
+    assert handler.dead_letter is True
+
+
+def test_kernel_expire_closes_after_every_sibling_dead_letters(kernel):
+    trigger = _running_with_execute(kernel, "kernel-both")
+    first = _seed_running_execute(kernel, trigger, max_retries=0)
+    second = _seed_running_execute(kernel, trigger, max_retries=0)
+    _backdate_lease(kernel, first.id)
+    _backdate_lease(kernel, second.id)
+
+    assert kernel.expire_stale_running_leases(ttl_seconds=60) == 2
+    assert kernel.query_state("work_items", id="kernel-both", limit=1)[0]["status"] == "failed"
+    failed = _failed_status_events(kernel, "kernel-both")
+    assert len(failed) == 1
+    assert len(kernel.read_events(type="ExecuteRequested", aggregate_id="exec_kernel-both")) == 1
+
+
 def test_reclaim_with_retries_left_leaves_work_running(kernel):
     from datetime import UTC, datetime, timedelta
 

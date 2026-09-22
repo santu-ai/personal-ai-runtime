@@ -163,7 +163,12 @@ def expire_stale_running_leases(
 
     Prefer ``Scheduler.reclaim_stale_leases`` from RuntimeLoop (cancels
     in-flight tasks and re-queues retries). This helper is the durable
-    event-only path used by tests / scripts.
+    event-only path used by tests / scripts. It does not re-queue retries
+    that remain. After every stale row has been failed, each terminal dead
+    letter closes a still-running domain Work item through
+    ``close_dead_lettered_domain_work`` — the same predicate Scheduler uses
+    after ``_emit_verify``. Closing only after the full pass keeps the
+    sibling-handler check independent of scan order.
     """
     from datetime import UTC, datetime
 
@@ -188,6 +193,12 @@ def expire_stale_running_leases(
         emit_execution_failed(
             kernel, item, terminal=terminal, dead_letter=terminal,
         )
+    dead_lettered = [item for item in stale if item.dead_letter]
+    if dead_lettered:
+        from app.core.runtime.runtime_loop import close_dead_lettered_domain_work
+
+        for item in dead_lettered:
+            close_dead_lettered_domain_work(kernel, item)
     return len(stale)
 
 
