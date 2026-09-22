@@ -440,3 +440,291 @@ async def test_cancel_before_handler_keeps_cancelled_status(kernel, monkeypatch)
         "handler must not promote a cancelled row back to running"
     )
     assert not is_execution_cancelled("exec_race1"), "flag must be cleared"
+
+
+def _failed_status_events(kernel, work_id: str) -> list:
+    return [
+        event
+        for event in kernel.read_events(
+            type="WorkItemStatusChanged",
+            aggregate_id=work_id,
+        )
+        if (event.payload or {}).get("status") == "failed"
+    ]
+
+
+def _pending_execute_execution(kernel, trigger, *, max_retries: int = 0):
+    from app.core.runtime.scheduled_execution import ExecutionPolicy, ScheduledExecution
+
+    return ScheduledExecution(
+        event_id=trigger.id,
+        event_seq=trigger.seq or 0,
+        event_type="ExecuteRequested",
+        handler_name="on_execute_requested",
+        instance_id="runtime:primary",
+        policy=ExecutionPolicy(
+            timeout_seconds=0.05,
+            max_retries=max_retries,
+            retry_delay_seconds=0,
+        ),
+        _event=trigger,
+    )
+
+
+def _seed_running_execute(kernel, trigger, *, max_retries: int, retry_count: int = 0):
+    """Project a running handler for ``trigger`` without constructing Scheduler."""
+    from app.core.runtime.execution_events import (
+        emit_execution_requested,
+        emit_execution_retried,
+        emit_execution_started,
+    )
+
+    item = _pending_execute_execution(kernel, trigger, max_retries=max_retries)
+    emit_execution_requested(kernel, item, "user")
+    item.transition_to("running")
+    emit_execution_started(kernel, item)
+    if retry_count:
+        item.retry_count = retry_count
+        item.transition_to("retrying")
+        emit_execution_retried(kernel, item, reason="boom", status="retrying")
+        item.transition_to("pending")
+        emit_execution_retried(kernel, item, reason="boom", status="pending")
+        item.transition_to("running")
+        emit_execution_started(kernel, item)
+    return item
+
+
+@pytest.mark.asyncio
+async def test_timeout_dead_letter_closes_running_work(kernel):
+    """Handler timeout with no retries left fails the work item immediately."""
+    import asyncio
+
+    from app.core.runtime.agent_scheduler import Scheduler
+    from app.core.runtime.execution_events import emit_execution_requested
+
+    sch = Scheduler(kernel)
+    trigger = _running_with_execute(kernel, "live-timeout")
+    item = _pending_execute_execution(kernel, trigger, max_retries=0)
+    emit_execution_requested(kernel, item, "user")
+
+    async def hang(_item, _event):
+        await asyncio.sleep(30)
+
+    sch._execute_handler = hang
+    await sch._process_work_item(item)
+
+    assert kernel.query_state("work_items", id="live-timeout", limit=1)[0]["status"] == "failed"
+    handler = kernel.read_scheduled_execution(item.id)
+    assert handler is not None
+    assert handler.status == "failed"
+    assert handler.dead_letter is True
+    assert kernel.read_events(type="ExecutionRetried", aggregate_id=item.id) == []
+    assert len(kernel.read_events(type="ExecuteRequested", aggregate_id="exec_live-timeout")) == 1
+    failed = _failed_status_events(kernel, "live-timeout")
+    assert len(failed) == 1
+    assert failed[0].actor == "kernel"
+    assert str(failed[0].payload.get("error") or "").startswith("Timeout after")
+
+
+@pytest.mark.asyncio
+async def test_timeout_with_retries_left_leaves_work_running(kernel):
+    import asyncio
+
+    from app.core.runtime.agent_scheduler import Scheduler
+    from app.core.runtime.execution_events import emit_execution_requested
+
+    sch = Scheduler(kernel)
+    trigger = _running_with_execute(kernel, "live-retry")
+    item = _pending_execute_execution(kernel, trigger, max_retries=1)
+    emit_execution_requested(kernel, item, "user")
+
+    async def hang(_item, _event):
+        await asyncio.sleep(30)
+
+    sch._execute_handler = hang
+    await sch._process_work_item(item)
+
+    assert kernel.query_state("work_items", id="live-retry", limit=1)[0]["status"] == "running"
+    handler = kernel.read_scheduled_execution(item.id)
+    assert handler is not None
+    assert handler.dead_letter is False
+    assert handler.status == "pending"
+    assert _failed_status_events(kernel, "live-retry") == []
+    assert len(kernel.read_events(type="ExecuteRequested", aggregate_id="exec_live-retry")) == 1
+
+
+@pytest.mark.asyncio
+async def test_retry_budget_dead_letter_closes_running_work(kernel):
+    from app.core.runtime.agent_scheduler import Scheduler
+
+    sch = Scheduler(kernel)
+    trigger = _running_with_execute(kernel, "budget")
+    item = _seed_running_execute(kernel, trigger, max_retries=1, retry_count=1)
+    item.error = "boom"
+    await sch._maybe_retry(item)
+
+    assert kernel.query_state("work_items", id="budget", limit=1)[0]["status"] == "failed"
+    handler = kernel.read_scheduled_execution(item.id)
+    assert handler is not None
+    assert handler.dead_letter is True
+    assert handler.retry_count == 1
+    failed = _failed_status_events(kernel, "budget")
+    assert len(failed) == 1
+    assert failed[0].payload.get("error") == "boom"
+    assert len(kernel.read_events(type="ExecuteRequested", aggregate_id="exec_budget")) == 1
+
+
+@pytest.mark.asyncio
+async def test_dead_letter_waits_for_sibling_handler(kernel):
+    from app.core.runtime.agent_scheduler import Scheduler
+
+    sch = Scheduler(kernel)
+    trigger = _running_with_execute(kernel, "siblings")
+    first = _seed_running_execute(kernel, trigger, max_retries=0)
+    second = _seed_running_execute(kernel, trigger, max_retries=0)
+    first.error = "boom"
+    await sch._maybe_retry(first)
+
+    assert kernel.query_state("work_items", id="siblings", limit=1)[0]["status"] == "running"
+    assert _failed_status_events(kernel, "siblings") == []
+
+    second.error = "boom"
+    await sch._maybe_retry(second)
+    assert kernel.query_state("work_items", id="siblings", limit=1)[0]["status"] == "failed"
+    assert len(_failed_status_events(kernel, "siblings")) == 1
+
+
+@pytest.mark.asyncio
+async def test_stale_execute_dead_letter_does_not_close_newer_run(kernel):
+    from app.core.runtime.agent_scheduler import Scheduler
+
+    sch = Scheduler(kernel)
+    older = _running_with_execute(kernel, "newer-run")
+    newer = kernel.emit_event(
+        "ExecuteRequested", "action", "exec_newer-run",
+        payload={"action_id": "newer-run"}, actor="user",
+    )
+    _seed_running_execute(kernel, newer, max_retries=1)
+    stale = _seed_running_execute(kernel, older, max_retries=0)
+    stale.error = "boom"
+    await sch._maybe_retry(stale)
+
+    assert kernel.query_state("work_items", id="newer-run", limit=1)[0]["status"] == "running"
+    assert _failed_status_events(kernel, "newer-run") == []
+
+
+@pytest.mark.asyncio
+async def test_non_execute_dead_letter_leaves_work_running(kernel):
+    from app.core.runtime.agent_scheduler import Scheduler
+    from app.core.runtime.execution_events import (
+        emit_execution_requested,
+        emit_execution_started,
+    )
+    from app.core.runtime.scheduled_execution import ExecutionPolicy, ScheduledExecution
+
+    sch = Scheduler(kernel)
+    _running_with_execute(kernel, "beside")
+    item = ScheduledExecution(
+        event_type="TimerFired",
+        event_id="timer-1",
+        handler_name="on_timer",
+        policy=ExecutionPolicy(max_retries=0, retry_delay_seconds=0),
+    )
+    emit_execution_requested(kernel, item, "scheduler")
+    item.transition_to("running")
+    emit_execution_started(kernel, item)
+    item.error = "timeout"
+    await sch._maybe_retry(item)
+
+    assert kernel.query_state("work_items", id="beside", limit=1)[0]["status"] == "running"
+    assert kernel.read_scheduled_execution(item.id).dead_letter is True
+
+
+def test_reclaim_terminal_lease_closes_running_work(kernel):
+    from datetime import UTC, datetime, timedelta
+
+    from app.core.runtime.agent_scheduler import Scheduler
+
+    sch = Scheduler(kernel)
+    trigger = _running_with_execute(kernel, "lease-dead")
+    item = _seed_running_execute(kernel, trigger, max_retries=0)
+    old = (datetime.now(UTC) - timedelta(seconds=3600)).isoformat()
+    with kernel._db.get_db() as conn:
+        conn.execute(
+            "UPDATE handler_executions SET started_at = ? WHERE id = ?",
+            (old, item.id),
+        )
+
+    assert sch.reclaim_stale_leases(60) == 1
+    assert kernel.query_state("work_items", id="lease-dead", limit=1)[0]["status"] == "failed"
+    handler = kernel.read_scheduled_execution(item.id)
+    assert handler is not None
+    assert handler.dead_letter is True
+    assert handler.error == "timeout"
+    assert all(pending.id != item.id for pending in sch._pending)
+    failed = _failed_status_events(kernel, "lease-dead")
+    assert len(failed) == 1
+    assert failed[0].payload.get("error") == "timeout"
+    assert len(kernel.read_events(type="ExecuteRequested", aggregate_id="exec_lease-dead")) == 1
+
+
+def test_reclaim_with_retries_left_leaves_work_running(kernel):
+    from datetime import UTC, datetime, timedelta
+
+    from app.core.runtime.agent_scheduler import Scheduler
+
+    sch = Scheduler(kernel)
+    trigger = _running_with_execute(kernel, "lease-retry")
+    item = _seed_running_execute(kernel, trigger, max_retries=2)
+    old = (datetime.now(UTC) - timedelta(seconds=3600)).isoformat()
+    with kernel._db.get_db() as conn:
+        conn.execute(
+            "UPDATE handler_executions SET started_at = ? WHERE id = ?",
+            (old, item.id),
+        )
+
+    assert sch.reclaim_stale_leases(60) == 1
+    assert kernel.query_state("work_items", id="lease-retry", limit=1)[0]["status"] == "running"
+    handler = kernel.read_scheduled_execution(item.id)
+    assert handler is not None
+    assert handler.dead_letter is False
+    assert handler.status == "pending"
+    assert _failed_status_events(kernel, "lease-retry") == []
+
+
+def test_scheduler_recover_dead_letter_closes_work_immediately(kernel, monkeypatch):
+    from app.core.runtime.agent_scheduler import Scheduler
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    trigger = _running_with_execute(kernel, "boot-dead")
+    _seed_running_execute(kernel, trigger, max_retries=1, retry_count=1)
+    Scheduler(kernel)
+
+    assert kernel.query_state("work_items", id="boot-dead", limit=1)[0]["status"] == "failed"
+    failed = _failed_status_events(kernel, "boot-dead")
+    assert len(failed) == 1
+    assert failed[0].payload.get("error") == "interrupted"
+    assert len(kernel.read_events(type="ExecuteRequested", aggregate_id="exec_boot-dead")) == 1
+
+    _patch_kernel(monkeypatch, kernel)
+    assert RuntimeLoop()._recover_interrupted_background_tasks() == 0
+    assert len(_failed_status_events(kernel, "boot-dead")) == 1
+
+
+def test_cancel_does_not_close_running_work(kernel):
+    from app.core.runtime.agent_scheduler import Scheduler
+    from app.core.runtime.execution_events import emit_execution_requested
+
+    sch = Scheduler(kernel)
+    trigger = _running_with_execute(kernel, "cancel-live")
+    item = _pending_execute_execution(kernel, trigger, max_retries=0)
+    emit_execution_requested(kernel, item, "user")
+    sch._pending.append(item)
+
+    assert sch.request_cancel(item.id) is True
+    assert kernel.query_state("work_items", id="cancel-live", limit=1)[0]["status"] == "running"
+    handler = kernel.read_scheduled_execution(item.id)
+    assert handler is not None
+    assert handler.status == "failed"
+    assert handler.dead_letter is False
+    assert _failed_status_events(kernel, "cancel-live") == []

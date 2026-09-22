@@ -465,8 +465,8 @@ def request_work_item_execute(item_id: str) -> dict[str, Any]:
     status = item.get("status") or "pending"
     if status in _TERMINAL_EXECUTE_STATUSES:
         raise ValueError(f"Work item already terminal ({status})")
-    # A dead-lettered handler leaves the work item ``running``. That is not
-    # an in-flight execution; the user can start again.
+    # Dead-letter normally closes the work item as failed. A leftover
+    # ``running`` row (crash before that close) is not in-flight and can restart.
     handler_failed = False
     if status == "running":
         from app.core.runtime.runtime_loop import latest_execute_handler_failed

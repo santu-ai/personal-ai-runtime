@@ -410,6 +410,8 @@ class RuntimeLoop:
         A handler that is still pending, running, or retrying stays with the
         scheduler. A failed handler closes the work item as ``failed`` so a
         dead-lettered run is not started again under a fresh retry budget.
+        The scheduler applies that same close when it dead-letters the handler
+        while the process is still up (``close_dead_lettered_domain_work``).
         A completed handler is not replayed; an ``ExecuteCompleted`` caused by
         that same request can still sync the work-item status. Only a running
         row with no handler row is re-queued (background) or given the missing
@@ -451,18 +453,9 @@ class RuntimeLoop:
                 ]
                 if any(item.status not in _TERMINAL_HANDLER_STATUSES for item in handlers):
                     continue
-                if any(item.status == "failed" for item in handlers):
-                    error = next(
-                        (str(item.error) for item in handlers if item.error),
-                        "execution_failed",
-                    )
-                    kernel.emit_event(
-                        EVENT_WORK_ITEM_STATUS_CHANGED,
-                        AGGREGATE_WORK_ITEM,
-                        work_id,
-                        payload={"status": "failed", "error": error[:500]},
-                        actor="kernel",
-                    )
+                failure = failed_handler_close_error(handlers)
+                if failure is not None:
+                    _emit_running_work_failed(kernel, work_id, failure)
                     recovered += 1
                     continue
                 if handlers:
@@ -681,6 +674,123 @@ _EXECUTE_COMPLETED_TO_WORK = {
     "cancelled": "cancelled",
     "empty": "failed",
 }
+
+
+def failed_handler_close_error(handlers: list) -> str | None:
+    """Error text when startup recovery would close this work item as failed.
+
+    Every handler for the latest ``ExecuteRequested`` must be terminal, and at
+    least one must be ``failed``. Returns ``None`` when recovery would leave
+    the work item alone (still in flight, or no failed handler).
+    """
+    if not handlers:
+        return None
+    if any(item.status not in _TERMINAL_HANDLER_STATUSES for item in handlers):
+        return None
+    if not any(item.status == "failed" for item in handlers):
+        return None
+    error = next(
+        (str(item.error) for item in handlers if item.error),
+        "execution_failed",
+    )
+    return error[:500]
+
+
+def _emit_running_work_failed(rt_kernel, work_id: str, error: str) -> None:
+    from app.core.runtime.kernel.constants import (
+        AGGREGATE_WORK_ITEM,
+        EVENT_WORK_ITEM_STATUS_CHANGED,
+    )
+
+    rt_kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED,
+        AGGREGATE_WORK_ITEM,
+        work_id,
+        payload={"status": "failed", "error": error},
+        actor="kernel",
+    )
+
+
+def close_dead_lettered_domain_work(rt_kernel, execution) -> bool:
+    """Close a still-running work item when this execution just dead-lettered.
+
+    Same predicate as ``RuntimeLoop`` startup recovery for a failed handler:
+    the execution belongs to that work item's latest ``ExecuteRequested``,
+    every handler for that request is terminal, and one of them failed.
+    Emits ``WorkItemStatusChanged(failed)`` only. Does not enqueue another
+    ``ExecuteRequested`` or spend a new retry budget.
+    """
+    try:
+        return _close_dead_lettered_domain_work(rt_kernel, execution)
+    except Exception:
+        logger.exception(
+            "Failed to close domain work after dead-lettered execution %s",
+            getattr(execution, "id", ""),
+        )
+        return False
+
+
+def _close_dead_lettered_domain_work(rt_kernel, execution) -> bool:
+    from app.core.runtime.kernel.constants import EVENT_EXECUTE_REQUESTED
+
+    if not getattr(execution, "dead_letter", False):
+        return False
+    if getattr(execution, "status", "") != "failed":
+        return False
+    if (getattr(execution, "event_type", "") or "") != EVENT_EXECUTE_REQUESTED:
+        return False
+    event_id = getattr(execution, "event_id", "") or ""
+    if not event_id:
+        return False
+    work_id = _work_id_for_execute_execution(rt_kernel, execution)
+    if not work_id:
+        return False
+    rows = rt_kernel.query_state("work_items", id=work_id, limit=1)
+    if not rows or rows[0].get("status") != "running":
+        return False
+    events = rt_kernel.read_events(
+        type=EVENT_EXECUTE_REQUESTED,
+        aggregate_type="action",
+        aggregate_id=f"exec_{work_id}",
+        order="desc",
+        limit=1,
+    )
+    if not events or events[0].id != event_id:
+        return False
+    handlers = [
+        item
+        for item in rt_kernel.read_scheduled_executions()
+        if item.event_id == event_id
+    ]
+    failure = failed_handler_close_error(handlers)
+    if failure is None:
+        return False
+    _emit_running_work_failed(rt_kernel, work_id, failure)
+    logger.info(
+        "Closed running work %s as failed after dead-lettered handler",
+        work_id,
+    )
+    return True
+
+
+def _work_id_for_execute_execution(rt_kernel, execution) -> str:
+    from app.core.runtime.kernel.constants import EVENT_EXECUTE_REQUESTED
+
+    event = getattr(execution, "_event", None)
+    if event is None:
+        found = rt_kernel.read_events(id=execution.event_id, limit=1)
+        event = found[0] if found else None
+    if event is None or getattr(event, "type", None) != EVENT_EXECUTE_REQUESTED:
+        return ""
+    payload = event.payload if isinstance(getattr(event, "payload", None), dict) else {}
+    action_id = str(payload.get("action_id") or "").strip()
+    if action_id:
+        return action_id
+    aggregate_id = str(getattr(event, "aggregate_id", "") or "")
+    prefix = "exec_"
+    if aggregate_id.startswith(prefix):
+        return aggregate_id[len(prefix):]
+    return ""
 
 
 def latest_execute_handler_failed(item_id: str) -> bool:

@@ -220,6 +220,10 @@ class Scheduler:
         """Emit execution event then verify projection matches."""
         emit_fn()
         _shadow_compare(self._kernel, item)
+        if item.dead_letter:
+            from app.core.runtime.runtime_loop import close_dead_lettered_domain_work
+
+            close_dead_lettered_domain_work(self._kernel, item)
 
     def _mark_cancelled(
         self,
@@ -835,15 +839,11 @@ async def ensure_scheduler(kernel) -> None:
 
 
 def reset_agent_bootstrap() -> None:
-    """Clear the ``_started`` flag so the next ``ensure_scheduler`` re-binds.
+    """Clear ``_started`` so the next ``ensure_scheduler`` re-binds the dispatcher.
 
-    Pairs with ``reset_scheduler`` in ``runtime_container.reset()``. Without
-    this, the module-level ``_started`` boolean survives across tests: the
-    fresh Kernel has no ``_async_dispatcher`` registered, but
-    ``ensure_scheduler`` short-circuits and the Scheduler loop is never
-    (re)started on the new event loop. This was the root cause of the
-    intermittent 504s in ``test_approval_resolve`` (ARCHITECTURE_SURVIVAL_REVIEW
-    High #6).
+    The flag survives ``runtime_container.reset()``. Left set, a fresh Kernel
+    has no dispatcher while ``ensure_scheduler`` short-circuits (504s in
+    ``test_approval_resolve``).
     """
     global _started
     _started = False
