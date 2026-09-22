@@ -43,7 +43,6 @@
 | 日期 | 改动摘要 | 备注 |
 |---|---|---|
 | 2026-09-22 | 汇总 Dependabot #66、#68–#78：backend lock 重生（alembic/openai/pypdf/mcp/ruff）；frontend react+react-dom 19.3.0 同步；desktop electron 44.4.3 / vitest 5.0.1 | 已合入 main |
-| 2026-09-18 | R3-C：审批恢复领取后、ExecuteRequested 前保留 `aprdis:` 派发意图，进程退出仍可跳过工具并补派发 | 无新事件类型；未推远程；未跑 merge-gate |
 | 2026-09-22 | 当前交付的建议待办可转为子任务；同一下标重复请求返回同一任务，删除后可再转 | 无新事件类型；后端 1597 passed；未推远程 |
 | 2026-09-18 | 简报交付真实后端端到端回归（A1–A5/A8–A10/A12）；修 `kernel` 代理 monkeypatch 跨测试泄漏 | merge-gate 通过：后端 1593 passed、前端 240 passed + 构建；未推远程 |
 | 2026-09-18 | R3-C：审批恢复领取后、ExecuteRequested 前保留 `aprdis:` 派发意图，进程退出仍可跳过工具并补派发 | 无新事件类型；未推远程 |
