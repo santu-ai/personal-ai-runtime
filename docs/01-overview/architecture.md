@@ -168,7 +168,7 @@ sequenceDiagram
 1. **Transport ≠ Event**：聊天文本增量（`text_delta`）经 TRANSPORT（[`notification_bridge.py`](../../backend/app/core/runtime/notification_bridge.py) 的内存队列 / SSE / WS）推送，不入 `event_log`。`ChatCompleted`/`ChatDone` 等完成态事实才持久化。见 [runtime-algebra.md §1.6](../02-concepts/runtime-algebra.md)。
 2. **统一 RuntimeLoop**：[`runtime_loop.py`](../../backend/app/core/runtime/runtime_loop.py) 用 100ms 单循环驱动 timer 扫描与维护（审批过期、索引修复、reaction 评估、后台任务派发）。阻塞型维护经 `asyncio.to_thread` 卸载，避免卡住 event loop。
 3. **execution_scope ContextVar**：所有 capability 调用必须绑定 `execution_id`（[`execution.py`](../../backend/app/core/runtime/execution.py)），用于归属与崩溃恢复。
-4. **调度 Work 崩溃恢复**：Scheduler 扫描中断的 `handler_executions`，重放为 `ExecutionRetried(reason=interrupted)`。
+4. **调度 Work 崩溃恢复**：Scheduler `_recover()` 扫描中断的 `handler_executions`。未超 retry 预算的重放为 `ExecutionRetried(reason=interrupted)`；预算耗尽则 `ExecutionFailed(error=interrupted)` 并进入死信，不再重放。RuntimeLoop 启动时把失败 handler 仍标 running 的领域 Work 收成 `failed`。
 5. **投影快照增量重建**：`kernel.rebuild(aggregate_type)` 从 `projection_checkpoints.last_applied_seq` 增量重放（[`verify_snapshot_rebuild.py`](../../backend/scripts/verify_snapshot_rebuild.py)）。
 
 ## 下一步

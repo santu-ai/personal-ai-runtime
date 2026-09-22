@@ -19,10 +19,10 @@
 |---|---|---|
 | `/`（index） | `pages/ChatPage.tsx` | 聊天首页（无会话）→ `ChatHome` |
 | `/chat/:conversationId` | `pages/ChatPage.tsx` | 活跃会话 → `ChatView` |
-| `/goals` | `pages/Goals.tsx` | 目标列表 + 详情。与其他主页面共用 `page-shell`；窄屏选中后只显示详情，可返回列表。进度按 0–1 比例显示为百分比 |
+| `/goals` | `pages/Goals.tsx` | 目标列表 + 详情。与其他主页面共用 `page-shell`；窄屏选中后只显示详情，可返回列表。进度经 `goalProgressPercent`：0–1 乘 100；大于 1 视为已经是百分比，显示不超过 100 |
 | `/goals/:goalId` | `pages/Goals.tsx` | 同上，直接打开该目标详情 |
-| `/tasks` | `pages/Tasks.tsx` | 任务列表 + 详情。与目标页共用 `page-shell`；窄屏选中后只显示详情，可返回列表。可创建项目资料简报；有评审时展示近 30 日首版采纳、返工和已转任务 |
-| `/tasks/:taskId` | `pages/Tasks.tsx` | 同上，直接打开该任务详情：交付结果优先，可验收/返工；执行日志可折叠 |
+| `/tasks` | `pages/Tasks.tsx` | 任务列表 + 详情。与目标页共用 `page-shell`；窄屏选中后只显示详情，可返回列表。可创建项目资料简报。有评审或已转任务时展示近 30 日首版采纳、返工、已转任务和平均评审耗时，以及按交付执行归因的审批次数、恢复次数和模型成本（接口值为 unavailable 时显示「未分开计」） |
+| `/tasks/:taskId` | `pages/Tasks.tsx` | 同上，直接打开该任务详情：交付结果优先，可验收/返工；执行日志可折叠。状态仍为 running、最新 handler 已失败或死信时，提示可以「重新执行」 |
 | `/inbox` | `pages/Inbox.tsx` | 未读分拣三列（重要 / 需跟进 / 可忽略）+ 最近 15 封（仅标题与发件人，未读加粗）+ 最近同步时间/结果/失败原因与重试 |
 | `/memories` | `pages/Memories.tsx` | 记忆列表 + 图谱（含 `?tab=portrait` 画像、`?tab=review` 待确认 triage：筛选/批量确认拒绝） |
 | `/dashboard` | `pages/Dashboard.tsx` | 「今天」工作台：三栏「需要你决定 / 今天要做 / AI 已处理」+ 近 7 日建议采纳 + 近 7 日与前 7 日对比 + 无法进栏的导流提醒（`?tab=trust` 信任报告、`?tab=monitors` 收件箱/网页监控） |
@@ -206,6 +206,7 @@ e2e 文件：[`e2e/chat-approval.spec.ts`](../../frontend/e2e/chat-approval.spec
 
 - `stripToolMarkup.ts` — 去除助手文本中的内联工具调用标记（带测试）。
 - `timeUtils.ts` — `timeAgo`、`isStagnant`（Goals 用）。
+- `goalProgress.ts` — `goalProgressPercent`（Goals 进度：0–1 转为百分比，大于 1 视为已经是百分比）。
 - `toolLabels.ts` / `toolLabels.test.ts` — 工具名友好中文标签。
 - `notificationRoutes.ts` — 通知类型 → 路由 + 标签。
 - `notificationUtils.ts` — `notificationPreview`（截断）。

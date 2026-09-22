@@ -106,6 +106,8 @@ Kernel 拥有 Chroma 索引。`emit_event` 对 `MEMORY_INDEX_EVENT_TYPES` 在**�
 | 每 10 tick（~1s） | `_check_timers` — 扫描 `timer_events` 投影中 `fire_at <= now` 的项，emit `TimerFired`；对 cron 类型用**同一 aggregate_id** 再 emit `TimerCreated`（`INSERT OR REPLACE` 把行标回 `active`）。重启时 `_init_timers` 只跳过仍为 `active` 的具名行。 |
 | 每 100 tick（~10s） | `_maintenance`（见下） |
 
+`start()` 在进入 tick 循环之前调用 `_recover_interrupted_background_tasks`。仍有未结束 handler 的 Work 留给 Scheduler。最新 handler 已失败时，仍为 running 的 Work 收成 `failed`，不重新排队，也不另开一轮 retry 预算。handler 已完成且能对上同一次 `ExecuteCompleted` 时同步状态。没有 handler 行时：后台任务回到 pending；有 `executable_plan` 的 task/action 补一次 `ExecuteRequested`；goal 或没有计划则跳过。
+
 `_maintenance`（[`runtime_loop.py`](../../backend/app/core/runtime/runtime_loop.py)）：
 
 1. `kernel.expire_stale_approvals`
@@ -160,7 +162,7 @@ Handlers（[`handlers/`](../../backend/app/core/agents/handlers/)）：
 
 [`backend/app/core/runtime/agent_scheduler.py`](../../backend/app/core/runtime/agent_scheduler.py) 是 WorkItem 执行引擎。
 
-- `__init__` 调 `_recover()` 扫描中断的 `handler_executions`，重放为 `ExecutionRetried(reason=interrupted)`。
+- `__init__` 调 `_recover()` 扫描中断的 `handler_executions`。`retry_count` 未达 `max_retries` 时重放为 `ExecutionRetried(reason=interrupted)`（先 `retrying` 再 `pending`，`retry_count` +1）。预算已尽则与 `_maybe_retry` 超限相同：`ExecutionFailed`（`error=interrupted`，`terminal` + `dead_letter`），不再重放。
 - 循环每 50ms tick，每 tick 处理至多 `_MAX_CONCURRENT=8` 个 item。
 - `enqueue(instance_id, actor, event, policy)` → 查 handler → 创建 ScheduledExecution → emit `ExecutionRequested`。
 - `_process_work_item` 在 `execution_scope(item.id)` 内跑 handler，使能力调用正确归属。
