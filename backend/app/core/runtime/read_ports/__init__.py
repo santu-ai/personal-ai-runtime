@@ -19,11 +19,13 @@ Runtime 模块（``work_item_engine``、``reaction_registry``、桥、调度器�
 from app.core.runtime.notification_bridge import NotificationPayload
 from app.core.runtime.read_ports.approvals import (
     approval_correlation_id,
+    combine_adoption,
     load_approval_chat_checkpoint,
     query_approval,
     query_approvals,
     query_pending_approval_count,
     query_pending_approvals,
+    summarize_suggestion_adoption,
 )
 from app.core.runtime.read_ports.calendar_mcp import (
     get_mcp_server_status,
@@ -200,6 +202,8 @@ __all__ = [
     "summarize_inbox_sync_metrics",
     "query_pending_approval_count",
     "query_pending_approvals",
+    "summarize_suggestion_adoption",
+    "combine_adoption",
     "approval_correlation_id",
     "load_approval_chat_checkpoint",
     "query_approval",

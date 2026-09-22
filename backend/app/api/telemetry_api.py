@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Query
 
+from app.core.runtime import read_ports
 from app.core.runtime.kernel_instance import kernel
 from app.core.telemetry.telemetry import telemetry
 
@@ -79,6 +80,11 @@ async def governance_summary(days: int = Query(default=7, ge=1, le=90)):
     tools deferred to user approval, approvals approved/rejected/expired,
     and taint-elevated decisions — all within the window.
 
+    Approval adopt/reject/expire counts come from ``ApprovalGranted`` /
+    ``ApprovalDenied``. ``ApproveCompleted`` only carries command ``status``,
+    so it cannot answer whether the user accepted the suggestion.
+    ``auto_allow`` and ``auto_expired`` stay out of the adoption rate.
+
     This makes the 3-gate governance model visible: users can see exactly
     how many risky operations the LLM attempted and how many were caught.
     """
@@ -91,11 +97,12 @@ async def governance_summary(days: int = Query(default=7, ge=1, le=90)):
     denied = [e for e in denied_all if e.payload.get("reason") != "deferred"]
     deferred = [e for e in denied_all if e.payload.get("reason") == "deferred"]
     approve_req = kernel.read_events(type="ApproveRequested", since_ts=since, limit=_CAP)
-    approve_done = kernel.read_events(type="ApproveCompleted", since_ts=since, limit=_CAP)
+    suggestions = read_ports.summarize_suggestion_adoption(days=days, limit=_CAP)
+    memories = read_ports.summarize_claim_conversion(days=days, limit=_CAP)
+    adoption = read_ports.combine_adoption(suggestions, memories)
 
-    capped = any(
-        len(xs) >= _CAP
-        for xs in (invoked, denied_all, approve_req, approve_done)
+    capped = any(len(xs) >= _CAP for xs in (invoked, denied_all, approve_req)) or bool(
+        suggestions.get("capped")
     )
 
     # Tool-name breakdown of invoked capabilities
@@ -112,19 +119,6 @@ async def governance_summary(days: int = Query(default=7, ge=1, le=90)):
         name = str(evt.payload.get("name", "unknown"))
         denied_tools[name] = denied_tools.get(name, 0) + 1
 
-    approved_count = sum(
-        1 for e in approve_done
-        if e.payload.get("decision") == "approved"
-    )
-    rejected_count = sum(
-        1 for e in approve_done
-        if e.payload.get("decision") == "rejected"
-    )
-    expired_count = sum(
-        1 for e in approve_done
-        if e.payload.get("decision") not in ("approved", "rejected")
-    )
-
     return {
         "window_days": days,
         "capped": capped,
@@ -133,10 +127,11 @@ async def governance_summary(days: int = Query(default=7, ge=1, le=90)):
         "tools_denied": len(denied),
         "tools_deferred": len(deferred),
         "approvals_requested": len(approve_req),
-        "approvals_approved": approved_count,
-        "approvals_rejected": rejected_count,
-        "approvals_expired": expired_count,
+        "approvals_approved": suggestions["adopted"],
+        "approvals_rejected": suggestions["rejected"],
+        "approvals_expired": suggestions["expired"],
         "taint_elevated": taint_elevated,
         "by_tool": by_tool,
         "denied_tools": denied_tools,
+        "adoption": adoption,
     }

@@ -10,6 +10,7 @@ import { useProposedMemoryCountQuery } from "../hooks/useMemoriesQuery";
 import NotificationDetailModal from "../components/notifications/NotificationDetailModal";
 import { TrustReportPanel } from "./TrustReport";
 import TodayActions from "../components/dashboard/TodayActions";
+import { AdoptionSummaryCard } from "../components/dashboard/AdoptionSummary";
 import ExecutionTrustPanel from "../components/dashboard/ExecutionTrustPanel";
 import RemindersPanel from "../components/dashboard/RemindersPanel";
 import HealthPanel from "../components/dashboard/HealthPanel";
@@ -182,6 +183,8 @@ export default function DashboardPage() {
             </button>
           </div>
         </div>
+
+        <AdoptionSummaryCard onOpen={() => setTab("trust")} />
 
         {/* ── 今天最值得处理的（动态主卡区）── */}
         <TodayActions buckets={todayBuckets} />

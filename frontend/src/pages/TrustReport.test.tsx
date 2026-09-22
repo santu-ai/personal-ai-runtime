@@ -116,6 +116,46 @@ describe("TrustReportPanel", () => {
     expect(screen.getAllByText("$0.0100").length).toBeGreaterThanOrEqual(2);
   });
 
+  it("shows combined adoption from governance", async () => {
+    mockGetReport.mockResolvedValue({
+      ...BASE,
+      governance: {
+        ...BASE.governance!,
+        approvals_approved: 3,
+        approvals_rejected: 1,
+        adoption: {
+          days: 7,
+          suggestions: {
+            days: 7,
+            adopted: 3,
+            rejected: 1,
+            expired: 0,
+            auto_allowed: 2,
+            decided: 4,
+            adoption_rate: 0.75,
+          },
+          memories: {
+            ratified: 1,
+            rejected: 1,
+            auto_expired: 0,
+            proposed_open: 0,
+            decided: 2,
+            conversion_rate: 0.5,
+          },
+          adopted: 4,
+          rejected: 2,
+          decided: 6,
+          adoption_rate: 4 / 6,
+        },
+      },
+    });
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("adoption-summary")).toHaveTextContent("近 7 日 67%");
+    });
+    expect(screen.getByText(/采纳率 75%/)).toBeInTheDocument();
+  });
+
   it("shows empty approvals", async () => {
     mockGetReport.mockResolvedValue(BASE);
     renderPage();

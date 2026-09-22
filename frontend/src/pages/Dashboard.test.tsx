@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, fireEvent } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
 import DashboardPage from "./Dashboard";
 
@@ -37,11 +37,18 @@ vi.mock("../hooks/useMemoriesQuery", () => ({
   useProposedMemoryCountQuery: vi.fn(() => ({ data: 0 })),
 }));
 
+vi.mock("../api/telemetry", () => ({
+  getGovernanceSummary: vi.fn(),
+}));
+
+import { getGovernanceSummary } from "../api/telemetry";
 import { useDashboard } from "../hooks/useDashboard";
 import { useApprovalsQuery } from "../hooks/useApprovalsQuery";
 import { useInboxQuery } from "../hooks/useInboxQuery";
 import { useGoalsQuery } from "../hooks/useGoalsQuery";
 import { useProposedMemoryCountQuery } from "../hooks/useMemoriesQuery";
+
+const mockGovernance = vi.mocked(getGovernanceSummary);
 
 const mockUseDashboard = vi.mocked(useDashboard);
 const mockUseApprovalsQuery = vi.mocked(useApprovalsQuery);
@@ -117,11 +124,51 @@ describe("DashboardPage", () => {
       typeof useProposedMemoryCountQuery
     >);
     mockDashboardData();
+    mockGovernance.mockResolvedValue({
+      window_days: 7,
+      tools_invoked: 0,
+      tools_denied: 0,
+      tools_deferred: 0,
+      approvals_requested: 0,
+      approvals_approved: 3,
+      approvals_rejected: 1,
+      approvals_expired: 0,
+      taint_elevated: 0,
+      by_tool: {},
+      denied_tools: {},
+      adoption: {
+        days: 7,
+        suggestions: {
+          days: 7,
+          adopted: 3,
+          rejected: 1,
+          expired: 0,
+          auto_allowed: 0,
+          decided: 4,
+          adoption_rate: 0.75,
+        },
+        memories: {
+          ratified: 1,
+          rejected: 1,
+          auto_expired: 0,
+          proposed_open: 0,
+          decided: 2,
+          conversion_rate: 0.5,
+        },
+        adopted: 4,
+        rejected: 2,
+        decided: 6,
+        adoption_rate: 4 / 6,
+      },
+    });
   });
 
-  it("renders today title", () => {
+  it("renders today title and adoption rate", async () => {
     renderDashboard();
     expect(screen.getByRole("heading", { name: "今天" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId("adoption-summary")).toHaveTextContent("近 7 日 67%");
+    });
   });
 
   it("shows loading state", () => {

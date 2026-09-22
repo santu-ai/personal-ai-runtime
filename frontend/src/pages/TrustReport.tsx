@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { retryMemoryIndexRepair } from "../api/telemetry";
 import { useTrustReportQuery, useInvalidateTrustReport } from "../hooks/useTrustReportQuery";
+import { AdoptionSummaryView, formatAdoptionRate } from "../components/dashboard/AdoptionSummary";
 
 const FLOW_COLORS: Record<string, string> = {
   对话: "text-insight",
@@ -361,7 +362,11 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
                     label="提交审批"
                     value={`${g.tools_deferred}`}
                     color="text-warning"
-                    sub={`${g.approvals_approved} 通过 / ${g.approvals_rejected} 拒绝`}
+                    sub={
+                      g.adoption
+                        ? `采纳率 ${formatAdoptionRate(g.adoption.suggestions.adoption_rate)} · ${g.approvals_approved} 通过 / ${g.approvals_rejected} 拒绝`
+                        : `${g.approvals_approved} 通过 / ${g.approvals_rejected} 拒绝`
+                    }
                   />
                   <Kv
                     icon={AlertCircle}
@@ -399,6 +404,11 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
                         </div>
                       </div>
                     )}
+                  </div>
+                )}
+                {g.adoption && (
+                  <div className="mt-4">
+                    <AdoptionSummaryView adoption={g.adoption} />
                   </div>
                 )}
                 {g.tools_invoked === 0 && (
