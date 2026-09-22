@@ -43,7 +43,7 @@ Vite 开发服务器默认绑 `127.0.0.1`。`host: true` 会经同源 `/api` 代
 
 策略种子 [`backend/capability_policy.json`](../../backend/capability_policy.json)：
 
-- **needs_user**（16 个写工具）：`apply_patch`、`write_file`、`add_calendar_event`、`send_email`、`shell_exec`、`telegram_send`、`computer_screenshot`/`click`/`type`/`move`/`scroll`/`key`、`create_goal`/`update_goal_progress`/`complete_goal`/`delete_goal`。
+- **needs_user**（17 个写工具）：`apply_patch`、`write_file`、`add_calendar_event`、`send_email`、`shell_exec`、`telegram_send`、`computer_screenshot`/`click`/`type`/`move`/`scroll`/`key`、`create_goal`/`update_goal_progress`/`complete_goal`/`delete_goal`、`ask_user`（澄清提问：自由文本回答后回到同一 Chat 工具环；取消写入 denied 结果，不调 LLM）。
 - 审批 24h TTL，RuntimeLoop 每 ~10s 过期。
 - `correlation_id` 被 taint 时，写类工具强制 high 风险（防提示注入）。
 

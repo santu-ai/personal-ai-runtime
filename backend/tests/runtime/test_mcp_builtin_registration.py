@@ -13,7 +13,9 @@ def test_category_builders_cover_hub_categories():
 
 def test_core_registration_tool_count():
     hub = MCPHub(enabled_categories=set(MCPHub.CORE_CATEGORIES))
-    assert len(hub._tools) == 26
+    assert len(hub._tools) == 27
+    assert "ask_user" in hub._tools
+    assert hub.needs_confirmation("ask_user")
     assert "read_file" in hub._tools
     assert "telegram_send" not in hub._tools
     assert "computer_screenshot" not in hub._tools

@@ -399,6 +399,8 @@ async def resolve_approval(approval_id: str, body: ResolveApprovalRequest):
 
     tool_name, tool_args = _load_pending_approval(approval_id)
     _reject_client_approval_mismatch(body, tool_name, tool_args)
+    if tool_name == "ask_user" and body.decision == "approve" and not body.answer.strip():
+        raise HTTPException(status_code=422, detail="ask_user requires a non-empty answer")
 
     result = await submit_approve_requested(
         approval_id,
@@ -407,6 +409,7 @@ async def resolve_approval(approval_id: str, body: ResolveApprovalRequest):
         tool_args=tool_args,
         conv_id=body.conv_id or "",
         tool_call_id=body.tool_call_id or "",
+        user_answer=body.answer.strip() if tool_name == "ask_user" else "",
     )
 
     return _approval_result_payload(result)

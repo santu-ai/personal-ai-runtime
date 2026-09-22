@@ -225,6 +225,11 @@ async def approve(approval_id: str):
         raise HTTPException(status_code=400, detail=f"Approval is already {approval.get('status')}")
 
     tool_name = approval.get("action", "")
+    if tool_name == "ask_user":
+        raise HTTPException(
+            status_code=400,
+            detail="ask_user requires a text answer via the chat resolve endpoint",
+        )
     try:
         raw = approval.get("params", "{}")
         tool_args = json.loads(raw) if isinstance(raw, str) else dict(raw)

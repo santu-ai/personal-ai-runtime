@@ -284,3 +284,36 @@ def _git_specs() -> list[BuiltinToolSpec]:
             offload=True,
         ),
     ]
+
+
+def _clarify_specs() -> list[BuiltinToolSpec]:
+    from app.core.harness.builtin_tools.ask_user import ASK_USER_TOOL, handle_ask_user
+
+    return [
+        BuiltinToolSpec(
+            name=ASK_USER_TOOL,
+            description=(
+                "Ask the user one clarifying question when a fact only they know "
+                "blocks the task (a choice, a missing value, or which source to use). "
+                "Pauses until they reply in text or cancel. This is not a side effect: "
+                "do not use it to confirm writes — those tools already request approval. "
+                "Ask only what you cannot look up."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "The single question to show the user.",
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": "Optional short reason this answer is needed.",
+                    },
+                },
+                "required": ["question"],
+            },
+            handler=handle_ask_user,
+            requires_confirmation=True,
+        ),
+    ]

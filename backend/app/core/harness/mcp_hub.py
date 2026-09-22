@@ -101,7 +101,7 @@ class MCPHub:
     # 减少提示词 token 占用，也压缩暴露给模型的写类工具攻击面。
     CORE_CATEGORIES: frozenset[str] = frozenset({
         "time", "filesystem", "web", "calendar", "email",
-        "shell", "git", "goals",
+        "shell", "git", "goals", "clarify",
     })
     # 依赖宿主 GUI/消息/硬件的高级类目，需经 settings.builtin_tool_categories
     # 显式开启。浏览器自动化归外部 Playwright MCP 管，不在内置之列。

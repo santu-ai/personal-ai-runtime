@@ -146,6 +146,62 @@ describe("ApprovalsPage", () => {
     });
   });
 
+  it("sends the typed answer for ask_user and cancels through resolve", async () => {
+    const ask: EnrichedApproval = {
+      ...chatContinuable,
+      id: "ap-ask",
+      action: "ask_user",
+      params: JSON.stringify({ question: "简报要覆盖最近几天？" }),
+    };
+    mockList.mockResolvedValueOnce([ask]).mockResolvedValue([]);
+    mockResolve.mockResolvedValue({ status: "ok", assistant_message: "继续" });
+    renderWithRouter(<ApprovalsPage />);
+    await waitFor(() =>
+      expect(screen.getAllByText("简报要覆盖最近几天？").length).toBeGreaterThan(0),
+    );
+    const send = screen.getByRole("button", { name: "发送回答" });
+    expect(send).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("你的回答"), { target: { value: "最近三天" } });
+    fireEvent.click(send);
+    await waitFor(() => {
+      expect(mockResolve).toHaveBeenCalledWith(
+        "ap-ask",
+        "approve",
+        "ask_user",
+        { question: "简报要覆盖最近几天？" },
+        "conv-9",
+        "tc-9",
+        "最近三天",
+      );
+      expect(mockNavigate).toHaveBeenCalledWith("/chat/conv-9");
+    });
+  });
+
+  it("cancels a chat ask_user through resolve deny", async () => {
+    const ask: EnrichedApproval = {
+      ...chatContinuable,
+      id: "ap-ask",
+      action: "ask_user",
+      params: JSON.stringify({ question: "用哪份资料？" }),
+    };
+    mockList.mockResolvedValueOnce([ask]).mockResolvedValue([]);
+    mockResolve.mockResolvedValue({ status: "denied" });
+    renderWithRouter(<ApprovalsPage />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    await waitFor(() => {
+      expect(mockResolve).toHaveBeenCalledWith(
+        "ap-ask",
+        "deny",
+        "ask_user",
+        { question: "用哪份资料？" },
+        "conv-9",
+        "tc-9",
+      );
+      expect(mockReject).not.toHaveBeenCalled();
+    });
+  });
+
   it("does not navigate when chat resolve resume fails", async () => {
     mockList.mockResolvedValueOnce([chatContinuable]).mockResolvedValue([]);
     mockResolve.mockResolvedValue({

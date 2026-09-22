@@ -151,11 +151,18 @@ def build_policy_tool_notes() -> str:
     policy = _load_capability_policy()
     needs = [str(x) for x in policy.get("needs_user", []) if x]
     external = [str(x) for x in policy.get("external_ingestion", []) if x]
+    clarification = [name for name in needs if name == "ask_user"]
+    side_effects = [name for name in needs if name != "ask_user"]
     if not needs and not external:
         return ""
     lines = ["# Live governance tool lists (from capability_policy.json)"]
-    if needs:
-        lines.append("Gated side-effect tools (need confirmation): " + ", ".join(needs))
+    if side_effects:
+        lines.append("Gated side-effect tools (need confirmation): " + ", ".join(side_effects))
+    if clarification:
+        lines.append(
+            "Clarification tools (free-text reply, not a side effect): "
+            + ", ".join(clarification)
+        )
     if external:
         lines.append("External/untrusted content tools: " + ", ".join(external))
     return "\n".join(lines)

@@ -55,6 +55,56 @@ describe("ConfirmationDialog", () => {
     expect(onDeny).not.toHaveBeenCalled();
   });
 
+  it("sends a free-text answer for ask_user and ignores an empty draft", () => {
+    const onConfirm = vi.fn();
+    const onDeny = vi.fn();
+    const { container } = renderWithRouter(
+      <ConfirmationDialog
+        toolCall={{
+          index: 0,
+          id: "tc-ask",
+          function_name: "ask_user",
+          arguments: JSON.stringify({
+            question: "简报要覆盖最近几天？",
+            context: "没有天数就无法筛选邮件",
+          }),
+        }}
+        onConfirm={onConfirm}
+        onDeny={onDeny}
+      />,
+    );
+
+    expect(screen.getAllByText("简报要覆盖最近几天？").length).toBeGreaterThan(0);
+    expect(screen.getByText("没有天数就无法筛选邮件")).toBeInTheDocument();
+    const send = within(container).getByRole("button", { name: "发送回答" });
+    expect(send).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("你的回答"), { target: { value: "  最近三天  " } });
+    expect(send).toBeEnabled();
+    fireEvent.click(send);
+    expect(onConfirm).toHaveBeenCalledWith("最近三天");
+    expect(onDeny).not.toHaveBeenCalled();
+  });
+
+  it("cancels ask_user without sending an answer", () => {
+    const onConfirm = vi.fn();
+    const onDeny = vi.fn();
+    const { container } = renderWithRouter(
+      <ConfirmationDialog
+        toolCall={{
+          index: 0,
+          id: "tc-ask",
+          function_name: "ask_user",
+          arguments: JSON.stringify({ question: "用哪份资料？" }),
+        }}
+        onConfirm={onConfirm}
+        onDeny={onDeny}
+      />,
+    );
+    fireEvent.click(within(container).getByRole("button", { name: "取消" }));
+    expect(onDeny).toHaveBeenCalledOnce();
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
   it("calls onDeny when user cancels", () => {
     const onConfirm = vi.fn();
     const onDeny = vi.fn();

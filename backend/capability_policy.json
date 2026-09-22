@@ -40,7 +40,8 @@
     "create_goal",
     "update_goal_progress",
     "complete_goal",
-    "delete_goal"
+    "delete_goal",
+    "ask_user"
   ],
   "external_ingestion": [
     "check_inbox",

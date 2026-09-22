@@ -93,6 +93,12 @@ class TestPolicyToolNotes:
         assert "shell_exec" in notes
         assert "check_inbox" in notes
         assert "fetch_url" in notes
+        assert "Clarification tools" in notes
+        assert "ask_user" in notes
+        side_effect_line = next(
+            line for line in notes.splitlines() if line.startswith("Gated side-effect")
+        )
+        assert "ask_user" not in side_effect_line
 
 
 class TestRenderCodingRules:

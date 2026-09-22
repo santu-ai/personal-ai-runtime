@@ -67,7 +67,14 @@ class ToolDispatcher:
             # 结果，避免重复外部副作用（邮件重发、重复写文件）。只限
             # write-class：读类工具缓存会在同轮「写后读」时返回陈旧内容。
             cached: str | None = None
-            idem_eligible = bool(correlation_id) and is_write_class_tool(tool_name)
+            # ask_user shares the needs_user approval gate, but a repeated
+            # question must ask again. Write-class idempotency would replay
+            # the previous answer and hide the card.
+            idem_eligible = (
+                bool(correlation_id)
+                and tool_name != "ask_user"
+                and is_write_class_tool(tool_name)
+            )
             if idem_eligible:
                 try:
                     cached = lookup_chat_tool_success(

@@ -18,6 +18,7 @@ async def submit_approve_requested(
     tool_args: dict[str, Any] | None = None,
     conv_id: str = "",
     tool_call_id: str = "",
+    user_answer: str = "",
 ) -> dict[str, Any]:
     """Ensure scheduler is up, then wait for ApproveRequested completion."""
     await ensure_runtime_scheduler()
@@ -35,6 +36,7 @@ async def submit_approve_requested(
             "tool_args": tool_args or {},
             "conv_id": conv_id or "",
             "tool_call_id": tool_call_id or "",
+            "user_answer": user_answer or "",
         },
         actor="user",
         timeout=settings.submit_command_timeout_approval,
