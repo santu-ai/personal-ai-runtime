@@ -43,6 +43,7 @@ from app.core.runtime.read_ports.conversation import (
     query_message,
 )
 from app.core.runtime.read_ports.events import (
+    compare_periods,
     conversation_chat_in_flight,
     goal_events,
     mark_external_taint,
@@ -257,6 +258,7 @@ __all__ = [
     "query_recent_events",
     "reconstruct_execution_trace",
     "query_execution_trust_summary",
+    "compare_periods",
     "conversation_chat_in_flight",
     "mark_external_taint",
     "build_memory_graph_edges",

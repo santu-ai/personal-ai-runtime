@@ -164,14 +164,33 @@ def _latest_claim_decisions(
     return {aggregate_id: decision for aggregate_id, (_, decision) in latest.items()}
 
 
-def summarize_claim_conversion(*, days: int = 30, limit: int = 500) -> dict[str, Any]:
-    """proposed → ratified conversion and reject rate from claim events."""
-    since_ts = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+def summarize_claim_conversion(
+    *,
+    days: int = 30,
+    limit: int = 500,
+    since_ts: str | None = None,
+    until_ts: str | None = None,
+) -> dict[str, Any]:
+    """proposed → ratified conversion and reject rate from claim events.
+
+    ``since_ts`` / ``until_ts`` override the rolling ``days`` window.
+    ``proposed_open`` is the current stock of open claims, not a period flow.
+    """
+    if since_ts is None:
+        since_ts = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     ratified = kernel().read_events(
-        type="ClaimRatified", since_ts=since_ts, limit=limit, order="desc",
+        type="ClaimRatified",
+        since_ts=since_ts,
+        until_ts=until_ts,
+        limit=limit,
+        order="desc",
     )
     rejected = kernel().read_events(
-        type="ClaimRejected", since_ts=since_ts, limit=limit, order="desc",
+        type="ClaimRejected",
+        since_ts=since_ts,
+        until_ts=until_ts,
+        limit=limit,
+        order="desc",
     )
     proposed_open = count_memories(claim_status="proposed")
     decisions = _latest_claim_decisions(ratified, rejected)
@@ -192,6 +211,7 @@ def summarize_claim_conversion(*, days: int = 30, limit: int = 500) -> dict[str,
         "decided": decided,
         "conversion_rate": conversion_rate,
         "false_positive_rate": false_positive_rate,
+        "capped": len(ratified) >= limit or len(rejected) >= limit,
     }
 
 

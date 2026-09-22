@@ -6,13 +6,18 @@ module. ``to_prompt_context`` is consumed via ``read_ports.query_world_context``
 
 Prompt reads always rebuild from governed projections so the snapshot is fresh;
 ``refresh_snapshot`` still warms an optional cache for non-prompt callers.
+The prompt also includes a last-7-days vs previous-7-days comparison from
+``read_ports.compare_periods`` (same events, no stored snapshot series).
 """
 
 import json
+import logging
 from datetime import UTC, datetime, timedelta
 
 from app.core.runtime import read_ports
 from app.core.runtime.kernel_instance import kernel
+
+logger = logging.getLogger(__name__)
 
 
 class WorldModel:
@@ -74,7 +79,42 @@ class WorldModel:
         lines.append(f"- Active Goals: {snapshot['health']['active_goals']}")
         lines.append(f"- Completed Goals (30d): {snapshot['health']['completed_recently']}")
         lines.append(f"- Recent Activity: {json.dumps(snapshot['work']['recent_activity_types'])}")
+        period_line = _period_comparison_line()
+        if period_line:
+            lines.append(period_line)
         return "\n".join(lines)
+
+
+def _period_comparison_line() -> str:
+    """One prompt line for last 7 days vs the 7 days before that."""
+    try:
+        comparison = read_ports.compare_periods(days=7)
+    except Exception:
+        logger.warning("world model period comparison failed", exc_info=True)
+        return ""
+    signals = comparison.get("signals") or {}
+
+    def pair(key: str) -> str:
+        signal = signals.get(key) or {}
+        return f"{signal.get('current', 0)} vs {signal.get('previous', 0)}"
+
+    rate = signals.get("adoption_rate") or {}
+
+    def percent(value: object) -> str:
+        if not isinstance(value, (int, float)):
+            return "n/a"
+        return f"{round(float(value) * 100)}%"
+
+    line = (
+        "- Period comparison (last 7d vs previous 7d): "
+        f"goals completed {pair('goals_completed')}; "
+        f"tasks completed {pair('tasks_completed')}; "
+        f"inbox recorded {pair('inbox_recorded')}; "
+        f"adoption {percent(rate.get('current'))} vs {percent(rate.get('previous'))}"
+    )
+    if comparison.get("capped"):
+        line += " (partial)"
+    return line
 
 
 from app.core.runtime.runtime_container import _LazyProxy, runtime  # noqa: E402

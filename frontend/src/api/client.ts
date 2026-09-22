@@ -73,6 +73,7 @@ export {
   importEncryptedData,
   destroyAllData,
   getDashboard,
+  getPeriodComparison,
 } from "./system";
 
 // Goals (work_type=goal helpers over work-items)

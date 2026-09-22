@@ -29,6 +29,38 @@ export async function getDashboard(): Promise<DashboardData> {
   return request<DashboardData>(`${API_BASE}/dashboard`);
 }
 
+export interface CountSignal {
+  current: number;
+  previous: number;
+  delta: number;
+}
+
+export interface RateSignal {
+  current: number | null;
+  previous: number | null;
+  delta: number | null;
+}
+
+/** Last N days against the previous N days, rebuilt from existing events. */
+export interface PeriodComparison {
+  days: number;
+  current: { start: string; end: string };
+  previous: { start: string; end: string };
+  signals: {
+    goals_completed: CountSignal;
+    tasks_completed: CountSignal;
+    work_completed_untyped: CountSignal;
+    inbox_recorded: CountSignal;
+    adoption_decided: CountSignal;
+    adoption_rate: RateSignal;
+  };
+  capped: boolean;
+}
+
+export async function getPeriodComparison(days = 7): Promise<PeriodComparison> {
+  return request<PeriodComparison>(`${API_BASE}/dashboard/periods?days=${days}`);
+}
+
 /**
  * Stream plaintext snapshot to a file download without JSON.parse + re-stringify.
  * Response body is already valid snapshot JSON from the server.

@@ -25,7 +25,7 @@
 | `/tasks/:taskId` | `pages/Tasks.tsx` | 任务详情：交付结果优先，可验收/返工；执行日志可折叠 |
 | `/inbox` | `pages/Inbox.tsx` | 未读分拣三列（重要 / 需跟进 / 可忽略）+ 最近 15 封（仅标题与发件人，未读加粗）+ 最近同步时间/结果/失败原因与重试 |
 | `/memories` | `pages/Memories.tsx` | 记忆列表 + 图谱（含 `?tab=portrait` 画像、`?tab=review` 待确认 triage：筛选/批量确认拒绝） |
-| `/dashboard` | `pages/Dashboard.tsx` | 「今天」工作台：三栏「需要你决定 / 今天要做 / AI 已处理」+ 无法进栏的导流提醒（`?tab=trust` 信任报告、`?tab=monitors` 收件箱/网页监控） |
+| `/dashboard` | `pages/Dashboard.tsx` | 「今天」工作台：三栏「需要你决定 / 今天要做 / AI 已处理」+ 近 7 日与前 7 日对比 + 无法进栏的导流提醒（`?tab=trust` 信任报告、`?tab=monitors` 收件箱/网页监控） |
 | `/settings` | `pages/Settings.tsx` | LLM/邮件/MCP/数据设置 |
 | `/approvals` | `pages/Approvals.tsx` | 审批队列 |
 | `/timeline` | `pages/Timeline.tsx` | 人生事件时间线 |
