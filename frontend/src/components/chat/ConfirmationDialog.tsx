@@ -138,7 +138,9 @@ export default function ConfirmationDialog({ toolCall, onConfirm, onDeny }: Prop
             <p className="text-sm text-fg-primary whitespace-pre-wrap">
               {question || "助手需要你的回答才能继续。"}
             </p>
-            {context ? <p className="text-xs text-fg-tertiary whitespace-pre-wrap">{context}</p> : null}
+            {context ? (
+              <p className="text-xs text-fg-tertiary whitespace-pre-wrap">{context}</p>
+            ) : null}
             <textarea
               aria-label="你的回答"
               className="w-full min-h-20 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm"

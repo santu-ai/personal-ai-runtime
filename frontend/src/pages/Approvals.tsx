@@ -69,14 +69,7 @@ export default function ApprovalsPage() {
               toolCallId,
               answer,
             )
-          : await resolveApproval(
-              item.id,
-              "approve",
-              item.action || "",
-              args,
-              convId,
-              toolCallId,
-            );
+          : await resolveApproval(item.id, "approve", item.action || "", args, convId, toolCallId);
         if (res.status === "resume_failed" || res.retryable) {
           addError(res.error || "续写失败，可再试一次", "审批");
           return;
@@ -255,7 +248,9 @@ function ApprovalCard({
         onClick={() => (isAskUser ? onApprove(answer) : onApprove())}
         disabled={resolving || (isAskUser && !answer)}
         className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium bg-surface-overlay hover:bg-border-strong text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-        title={isAskUser ? "发送回答并继续对话" : canContinue ? "批准、续写回复并打开对话" : "批准此操作"}
+        title={
+          isAskUser ? "发送回答并继续对话" : canContinue ? "批准、续写回复并打开对话" : "批准此操作"
+        }
       >
         {canContinue || isAskUser ? <MessageSquare size={14} /> : <Check size={14} />}
         {isAskUser ? "发送回答" : canContinue ? "批准并续写" : "批准"}

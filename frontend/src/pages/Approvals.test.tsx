@@ -156,7 +156,9 @@ describe("ApprovalsPage", () => {
     mockList.mockResolvedValueOnce([ask]).mockResolvedValue([]);
     mockResolve.mockResolvedValue({ status: "ok", assistant_message: "继续" });
     renderWithRouter(<ApprovalsPage />);
-    await waitFor(() => expect(screen.getAllByText("简报要覆盖最近几天？").length).toBeGreaterThan(0));
+    await waitFor(() =>
+      expect(screen.getAllByText("简报要覆盖最近几天？").length).toBeGreaterThan(0),
+    );
     const send = screen.getByRole("button", { name: "发送回答" });
     expect(send).toBeDisabled();
     fireEvent.change(screen.getByLabelText("你的回答"), { target: { value: "最近三天" } });
