@@ -95,6 +95,6 @@ export function PeriodComparisonCard() {
     staleTime: 30_000,
     retry: 1,
   });
-  if (!data) return null;
+  if (!data?.signals) return null;
   return <PeriodComparisonView comparison={data} />;
 }

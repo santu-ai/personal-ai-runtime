@@ -197,6 +197,20 @@ export function buildCommonMocks(): MockApiRouter {
     })
     .json("/api/memory/memories/count", { count: 0 })
     .json("/api/memory/memories/search", [])
+    .json("/api/dashboard/periods", {
+      days: 7,
+      current: { start: "2026-06-21T00:00:00+00:00", end: "2026-06-28T00:00:00+00:00" },
+      previous: { start: "2026-06-14T00:00:00+00:00", end: "2026-06-21T00:00:00+00:00" },
+      signals: {
+        goals_completed: { current: 1, previous: 0, delta: 1 },
+        tasks_completed: { current: 0, previous: 0, delta: 0 },
+        work_completed_untyped: { current: 0, previous: 0, delta: 0 },
+        inbox_recorded: { current: 0, previous: 0, delta: 0 },
+        adoption_decided: { current: 0, previous: 0, delta: 0 },
+        adoption_rate: { current: null, previous: null, delta: null },
+      },
+      capped: false,
+    })
     .json("/api/dashboard", {
       generated_at: "2026-06-28T10:00:00Z",
       data_sovereignty: {
