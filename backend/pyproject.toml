@@ -15,7 +15,7 @@ dependencies = [
     "uvicorn[standard]==0.52.4",
     "uvloop==0.22.1 ; sys_platform != 'win32' and implementation_name == 'cpython'",
     "colorama==0.4.6 ; sys_platform == 'win32'",
-    "openai==3.13.0",
+    "openai==3.16.2",
     "pydantic==2.13.5",
     "pydantic-settings==2.15.0",
     "python-dotenv==1.2.3",
@@ -27,7 +27,7 @@ dependencies = [
     "tiktoken==0.14.0",
     "structlog==26.1.0",
     "cryptography==50.0.1",
-    "pypdf==6.18.1",
+    "pypdf==6.19.0",
     "python-docx==1.2.0",
 ]
 
