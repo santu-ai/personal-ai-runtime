@@ -97,6 +97,29 @@ def test_record_llm_outcome_failure():
     assert payload["purpose"] == "memory_extract"
     assert payload["error_message"] == "connection refused"
     assert payload["cost"] == 0.0
+    assert mock_kernel.emit_event.call_args.kwargs["correlation_id"] is None
+    assert mock_kernel.emit_event.call_args.kwargs["caused_by"] is None
+
+
+def test_record_llm_outcome_forwards_execution_link():
+    from app.core.agents.brain_telemetry import record_llm_outcome
+
+    with patch("app.core.agents.brain_telemetry.kernel") as mock_kernel:
+        record_llm_outcome(
+            provider_name="ollama",
+            provider_model="qwen",
+            llm_start=0.0,
+            success=True,
+            prompt_tokens=2,
+            completion_tokens=3,
+            purpose="project_brief",
+            correlation_id="corr-1",
+            caused_by="exec-1",
+        )
+    kwargs = mock_kernel.emit_event.call_args.kwargs
+    assert kwargs["correlation_id"] == "corr-1"
+    assert kwargs["caused_by"] == "exec-1"
+    assert kwargs["payload"]["purpose"] == "project_brief"
 
 
 def test_llm_call_projector_persists_purpose(tmp_path, monkeypatch):

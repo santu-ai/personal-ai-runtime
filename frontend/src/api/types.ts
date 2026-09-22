@@ -349,9 +349,9 @@ export interface DeliveryMetrics {
   adopted_action_count: number;
   average_review_latency_hours: number | null;
   attribution: {
-    approval_interventions: "unavailable" | string;
-    recovery_interventions: "unavailable" | string;
-    llm_cost: "unavailable" | string;
+    approval_interventions: number | "unavailable";
+    recovery_interventions: number | "unavailable";
+    llm_cost: number | "unavailable";
   };
   capped: boolean;
   cap_limit: number;

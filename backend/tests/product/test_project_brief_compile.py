@@ -127,3 +127,35 @@ async def test_compile_source_failure_is_unqualified(isolated_kernel):
     current = fold_delivery_history(item["id"])["current"]
     assert current is not None
     assert "失败" in current["summary"] or current["qualified"] is False
+
+
+@pytest.mark.asyncio
+async def test_compile_links_llm_call_to_execution(isolated_kernel, monkeypatch):
+    kernel, _db = isolated_kernel
+    kernel.emit_event(
+        "ExecutionRequested",
+        "execution",
+        "exec-llm",
+        payload={"execution_id": "exec-llm", "correlation_id": "corr-llm"},
+        correlation_id="corr-llm",
+    )
+    item = create_project_brief_work(title="A", objective="列出变化", source_scope={})
+    seen: list[dict] = []
+
+    async def fake_complete(_messages, **kwargs):
+        seen.append(kwargs)
+        return '{"summary":"s"}', "fake"
+
+    monkeypatch.setattr(
+        "app.core.agents.brain_llm_ops.complete_text_with_failover",
+        fake_complete,
+    )
+    await compile_project_brief_delivery(
+        item["id"],
+        SimpleNamespace(results=[]),
+        execution_id="exec-llm",
+    )
+    assert seen
+    assert seen[0]["caused_by"] == "exec-llm"
+    assert seen[0]["correlation_id"] == "corr-llm"
+    assert seen[0]["purpose"] == "project_brief"
