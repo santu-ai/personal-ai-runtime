@@ -209,9 +209,32 @@ describe("TasksPage", () => {
 
   it("renders empty tasks shell", async () => {
     vi.mocked(listWorkItems).mockResolvedValue([]);
-    renderTasks("/tasks");
+    const { container } = renderTasks("/tasks");
     expect(await screen.findByText("暂无任务")).toBeInTheDocument();
     expect(screen.getByText("交办、交付与验收")).toBeInTheDocument();
+    expect(container.querySelector(".page-shell .page-container")).toBeTruthy();
+    expect(container.querySelector(".flex.min-h-0")).toBeNull();
+  });
+
+  it("keeps the list and detail placeholder in one page shell", async () => {
+    renderTasks("/tasks");
+
+    expect(await screen.findByRole("button", { name: /整理报告/ })).toBeInTheDocument();
+    const list = screen.getByRole("region", { name: "任务列表" });
+    const detail = screen.getByRole("region", { name: "任务详情" });
+    expect(list).not.toHaveClass("hidden");
+    expect(detail).toHaveClass("hidden", "lg:block");
+    expect(screen.getByRole("heading", { name: "任务" })).toBeInTheDocument();
+    expect(screen.getByText("选择一个任务")).toBeInTheDocument();
+  });
+
+  it("opens the detail on narrow screens and keeps a way back to the list", async () => {
+    renderTasks("/tasks/task_1");
+
+    expect(await screen.findByText("最近一步输出（预览）")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "任务列表" })).toHaveClass("hidden", "lg:block");
+    expect(screen.getByRole("region", { name: "任务详情" })).not.toHaveClass("hidden");
+    expect(screen.getByRole("button", { name: "返回列表" }).parentElement).toHaveClass("lg:hidden");
   });
 
   it("shows previous_output and asks for plan confirmation before execute", async () => {

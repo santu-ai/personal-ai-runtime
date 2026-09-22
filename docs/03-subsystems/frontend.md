@@ -21,8 +21,8 @@
 | `/chat/:conversationId` | `pages/ChatPage.tsx` | 活跃会话 → `ChatView` |
 | `/goals` | `pages/Goals.tsx` | 目标列表 + 详情。与其他主页面共用 `page-shell`；窄屏选中后只显示详情，可返回列表。进度按 0–1 比例显示为百分比 |
 | `/goals/:goalId` | `pages/Goals.tsx` | 同上，直接打开该目标详情 |
-| `/tasks` | `pages/Tasks.tsx` | 后台/可执行任务列表，可创建项目资料简报；有评审时展示近 30 日首版采纳、返工和已转任务 |
-| `/tasks/:taskId` | `pages/Tasks.tsx` | 任务详情：交付结果优先，可验收/返工；执行日志可折叠 |
+| `/tasks` | `pages/Tasks.tsx` | 任务列表 + 详情。与目标页共用 `page-shell`；窄屏选中后只显示详情，可返回列表。可创建项目资料简报；有评审时展示近 30 日首版采纳、返工和已转任务 |
+| `/tasks/:taskId` | `pages/Tasks.tsx` | 同上，直接打开该任务详情：交付结果优先，可验收/返工；执行日志可折叠 |
 | `/inbox` | `pages/Inbox.tsx` | 未读分拣三列（重要 / 需跟进 / 可忽略）+ 最近 15 封（仅标题与发件人，未读加粗）+ 最近同步时间/结果/失败原因与重试 |
 | `/memories` | `pages/Memories.tsx` | 记忆列表 + 图谱（含 `?tab=portrait` 画像、`?tab=review` 待确认 triage：筛选/批量确认拒绝） |
 | `/dashboard` | `pages/Dashboard.tsx` | 「今天」工作台：三栏「需要你决定 / 今天要做 / AI 已处理」+ 近 7 日建议采纳 + 近 7 日与前 7 日对比 + 无法进栏的导流提醒（`?tab=trust` 信任报告、`?tab=monitors` 收件箱/网页监控） |
