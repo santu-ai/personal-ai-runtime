@@ -5,7 +5,7 @@
 
 ## 当前状态
 
-- 2026-09-22：简报交付指标把审批次数、崩溃恢复和模型成本关联到交付的 `execution_id`（既有事件；`LLMCallRecorded.caused_by`）。待评审列表改为分页读取，事件窗被普通更新占满时再扫有限任务行。目标页仍是 `h-full` 双栏，未改成 `page-shell`。
+- 2026-09-22：目标页改用 `page-shell`：整页滚动，窄屏选中后只留详情；进度按 0–1 比例显示。窄于 md 的侧栏保持图标栏。任务页仍是刷新前的双栏。简报指标里一次崩溃同时留下 handler replay 与 `interrupted_before_audit` 时，恢复次数仍可能重复计数。
 - 2026-09-22：Batch 1：执行 handler 已失败时，仍显示 running 的任务会在启动时收成 failed，不再把后台任务重新排队绕过死信；任务页可对死信中的进行中任务重新执行。
 - 2026-09-22：前端 UI 刷新 PR #87（`cursor/frontend-ui-refresh-fcd9`）：tokens 表面层次 + 侧栏分组/收起 + PageHeader/SegmentedControl；主页面视觉统一；lint/tsc/vitest/build/e2e 已绿。无后端/Kernel 改动。
 - 2026-09-22：前端依赖范围内 patch/minor 已升（react-query 5.103.2、vite 8.3.0、vitest 5.0.1、eslint 10.11.0 等）；跳过 typescript 7（typescript-eslint 仍要 TS 6 API）与 jsdom 30（engines 要求 Node ≥22.22.2，镜像是 node:20）。
