@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-09-22：Batch 10：任务页在 Work 已是 `failed` 且仍可执行时，主按钮与提示改为「重新执行」；`running` 且 handler 失败/死信的旧窗口保持原提示。执行仍走原来的 `executeWorkItem`。
 - 2026-09-22：Batch 9：`kernel.expire_stale_running_leases` 在本批行都失败后，对终态死信调用与 Scheduler 相同的 `close_dead_lettered_domain_work`。仍有未结束的 sibling 时不收口；剩余重试不重新入队。不新增事件类型。
 - 2026-09-22：Batch 8：调度器把本次执行打成终态死信（超时、重试预算耗尽、租约回收、启动时 interrupted 超限）后，立刻用与启动恢复相同的判定把仍为 running 的领域 Work 收成 `failed`（`WorkItemStatusChanged`）。不新开 retry 预算，不新增事件类型。进程死在这两条事件之间时，下次启动仍走原恢复。
 - 2026-09-22：Batch 7 文档对齐 #88–#93：任务页写出审批/恢复/模型成本与「重新执行」；`_recover` 预算耗尽走 `ExecutionFailed` 死信。未改守卫脚本。
