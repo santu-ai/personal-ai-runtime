@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-09-23：Batch 40：「相对 vN」里当前版本的 `source_ids` 与结论、建议待办共用 `deliverySourceNav`：滚到同一交付的来源行；`type=email` 且 `email:{message_id}` 时打开既有收件箱详情。上一版编号、去掉的条目、文件路径来源，以及正文 `<pre>` 里的反引号编号，仍是纯文本。不新增事件类型，未改 Kernel，未改 `read_ports/work.py`。
 - 2026-09-23：Batch 39：任务详情里结论和建议待办的 `source_ids` 可点，滚到同一交付里 id 相同的来源行。`type=email` 且编号为 `email:{message_id}` 时，用既有 `getInboxEmailDetail` 打开收件箱详情，不新开 `/inbox/:id`。文件路径来源保持纯文本。不新增事件类型，未改后端。
 - 2026-09-23：Batch 38：审批恢复先写 `ExecuteRequested`、handler 再补 `WorkItemStatusChanged(running)`（`caused_by` 指向该请求）时，这条请求仍是当前尝试。`_current_execute_requested` 与任务详情 `_snapshot_execute_requested` 是同一函数。启动恢复、死信收口、`latest_execute_handler_failed` 和死信重放不再把它当成没有当前尝试。不新增事件类型。未改 `read_ports/work.py`。
 - 2026-09-23：Batch 37：文档对齐 `e863c8f` 与 #117–#123。当前尝试、半开 `rerun_restore` / `rework_restore`、`rerun_stash`、死信跳过终态与 `not_current_attempt`、按 `execution_id` 的 `model_cost`，写在 `docs/02-concepts/execution-model.md`；周期统计排除这两种收回。不新增事件类型，未改 Kernel。

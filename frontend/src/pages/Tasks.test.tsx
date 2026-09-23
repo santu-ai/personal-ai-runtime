@@ -1519,4 +1519,153 @@ describe("TasksPage", () => {
       HTMLElement.prototype.scrollIntoView = previousScroll;
     }
   });
+
+  it("navigates current-version source ids in the relative diff", async () => {
+    const cited = {
+      ...currentDelivery,
+      content: "正文预览保留 `email:m1` 与 `file:abc`",
+      findings: [],
+      suggested_actions: [],
+      sources: [
+        { id: "email:m1", type: "email", title: "延期邮件", locator: "a@example.com" },
+        { id: "email:m10", type: "email", title: "另一封", locator: "b@example.com" },
+        { id: "file:abc", type: "file", title: "纪要", locator: "C:\\notes\\a.md" },
+      ],
+      changes_from_previous: {
+        previous_delivery_id: "d1",
+        previous_version: 1,
+        summary_changed: false,
+        content_changed: true,
+        findings_added: [{ text: "排期推迟", kind: "risk", source_ids: ["email:m1"] }],
+        findings_removed: [{ text: "进度正常", kind: "change", source_ids: ["email:old"] }],
+        findings_changed: [
+          {
+            text: "范围变化",
+            kind: "risk",
+            source_ids: ["file:abc"],
+            previous_kind: "change",
+            previous_source_ids: ["email:m1"],
+          },
+        ],
+        sources_added: [
+          { id: "file:abc", type: "file", title: "纪要", locator: "C:\\notes\\a.md" },
+        ],
+        sources_removed: [],
+        sources_changed: [],
+        limitations_added: [],
+        limitations_removed: [],
+        actions_added: [{ title: "核对邮件", source_ids: ["email:m1", "file:abc"] }],
+        actions_removed: [{ title: "旧待办", source_ids: ["email:old"] }],
+        actions_changed: [
+          {
+            title: "核对排期",
+            source_ids: ["email:m1"],
+            previous_source_ids: ["email:gone"],
+          },
+        ],
+      },
+    };
+    const task: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        ...briefTask.delivery_bundle!,
+        current: cited,
+        deliveries: [historySummary, { ...currentSummary, ...cited }],
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [task];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(task);
+    vi.mocked(getInboxEmailDetail).mockResolvedValue({
+      id: "m1",
+      sender: "a@example.com",
+      subject: "延期邮件全文",
+      preview: "延期",
+      received_at: "2026-09-20T00:00:00Z",
+      category: "actionable",
+      importance: 0.5,
+      reason: "需要跟进",
+      notified: 0,
+      digested: 0,
+      status: "pending",
+      created_at: "2026-09-20T00:00:00Z",
+    });
+    const scrolled: HTMLElement[] = [];
+    const previousScroll = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = function (this: HTMLElement) {
+      scrolled.push(this);
+    };
+    try {
+      renderTasks("/tasks/brief_1");
+
+      const panel = await screen.findByTestId("delivery-version-diff");
+      const fileRow = screen.getByTestId("delivery-source-file:abc");
+      const emailRow = screen.getByTestId("delivery-source-email:m1");
+      expect(within(fileRow).queryByRole("button")).not.toBeInTheDocument();
+
+      const added = within(panel)
+        .getByText(/新增结论/)
+        .closest("li");
+      expect(added).toHaveTextContent("新增结论：[风险] 排期推迟（email:m1）");
+      const changed = within(panel)
+        .getByText(/改写的结论/)
+        .closest("li");
+      expect(changed).toHaveTextContent(
+        "改写的结论：范围变化，变化 → 风险，来源 email:m1 → file:abc",
+      );
+      expect(
+        within(changed as HTMLElement).queryByRole("button", { name: "来源 email:m1" }),
+      ).not.toBeInTheDocument();
+      const removed = within(panel)
+        .getByText(/去掉的结论/)
+        .closest("li");
+      expect(removed).toHaveTextContent("去掉的结论：[变化] 进度正常（email:old）");
+      expect(within(removed as HTMLElement).queryByRole("button")).not.toBeInTheDocument();
+      const addedSource = within(panel).getByText("新增来源：file:abc 纪要").closest("li");
+      expect(within(addedSource as HTMLElement).queryByRole("button")).not.toBeInTheDocument();
+      const addedAction = within(panel)
+        .getByText(/新增待办：核对邮件/)
+        .closest("li");
+      expect(addedAction).toHaveTextContent("新增待办：核对邮件（email:m1、file:abc）");
+      const removedAction = within(panel)
+        .getByText(/去掉的待办：旧待办/)
+        .closest("li");
+      expect(removedAction).not.toHaveTextContent("email:old");
+      expect(within(removedAction as HTMLElement).queryByRole("button")).not.toBeInTheDocument();
+      const changedAction = within(panel)
+        .getByText(/待办有更新/)
+        .closest("li");
+      expect(changedAction).toHaveTextContent("待办有更新：核对排期，来源 email:gone → email:m1");
+      expect(
+        within(changedAction as HTMLElement).queryByRole("button", { name: "来源 email:gone" }),
+      ).not.toBeInTheDocument();
+
+      const body = screen.getByText("正文预览保留 `email:m1` 与 `file:abc`");
+      expect(body.tagName).toBe("PRE");
+      expect(within(body).queryByRole("button")).not.toBeInTheDocument();
+
+      fireEvent.click(
+        within(changed as HTMLElement).getByRole("button", { name: "来源 file:abc" }),
+      );
+      expect(scrolled).toEqual([fileRow]);
+      expect(scrolled).not.toContain(screen.getByTestId("delivery-source-email:m10"));
+      expect(getInboxEmailDetail).not.toHaveBeenCalled();
+
+      scrolled.length = 0;
+      fireEvent.click(within(added as HTMLElement).getByRole("button", { name: "来源 email:m1" }));
+      expect(scrolled).toEqual([emailRow]);
+      await waitFor(() => expect(getInboxEmailDetail).toHaveBeenCalledWith("m1"));
+      expect(await screen.findByRole("heading", { name: "延期邮件全文" })).toBeInTheDocument();
+
+      fireEvent.click(
+        within(changedAction as HTMLElement).getByRole("button", { name: "来源 email:m1" }),
+      );
+      await waitFor(() => expect(getInboxEmailDetail).toHaveBeenCalledTimes(2));
+      expect(getInboxEmailDetail).toHaveBeenNthCalledWith(2, "m1");
+    } finally {
+      HTMLElement.prototype.scrollIntoView = previousScroll;
+    }
+  });
 });

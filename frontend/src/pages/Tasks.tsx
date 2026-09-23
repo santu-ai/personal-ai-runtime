@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
@@ -221,24 +221,35 @@ function findingKindLabel(kind: string | undefined): string {
 function SourceIdChips({
   ids,
   onCite,
+  inline = false,
 }: {
   ids: string[] | undefined;
   onCite: (sourceId: string) => void;
+  /** Sit inside a sentence. Separate ids with `、` and drop the leading margin. */
+  inline?: boolean;
 }) {
   const clean = (ids ?? []).map((id) => id.trim()).filter(Boolean);
   if (clean.length === 0) return null;
   return (
-    <span className="ml-2 inline-flex flex-wrap gap-1 align-middle">
+    <span
+      className={
+        inline
+          ? "inline-flex flex-wrap items-center align-middle"
+          : "ml-2 inline-flex flex-wrap gap-1 align-middle"
+      }
+    >
       {clean.map((sourceId, index) => (
-        <button
-          key={`${sourceId}-${index}`}
-          type="button"
-          className="rounded-full border border-border-subtle bg-surface-overlay px-2 py-0.5 font-mono text-xs text-insight hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-          onClick={() => onCite(sourceId)}
-          aria-label={`来源 ${sourceId}`}
-        >
-          {sourceId}
-        </button>
+        <span key={`${sourceId}-${index}`}>
+          {inline && index > 0 ? "、" : null}
+          <button
+            type="button"
+            className="rounded-full border border-border-subtle bg-surface-overlay px-2 py-0.5 font-mono text-xs text-insight hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+            onClick={() => onCite(sourceId)}
+            aria-label={`来源 ${sourceId}`}
+          >
+            {sourceId}
+          </button>
+        </span>
       ))}
     </span>
   );
@@ -329,19 +340,50 @@ function findingLine(prefix: string, item: WorkDeliveryChangeFinding): string {
   return `${prefix}：[${findingKindLabel(item.kind)}] ${item.text}${cites ? `（${cites}）` : ""}`;
 }
 
-function findingChangedLine(item: WorkDeliveryChangeFinding): string {
-  const parts = [item.text];
+function currentVersionSourceIds(
+  ids: string[] | undefined,
+  onCite: (sourceId: string) => void,
+): ReactNode {
+  if (!joinedIds(ids)) return "无";
+  return <SourceIdChips ids={ids} onCite={onCite} inline />;
+}
+
+function findingAddedLine(
+  item: WorkDeliveryChangeFinding,
+  onCite: (sourceId: string) => void,
+): ReactNode {
+  return (
+    <>
+      {`新增结论：[${findingKindLabel(item.kind)}] ${item.text}`}
+      {joinedIds(item.source_ids) ? (
+        <>（{currentVersionSourceIds(item.source_ids, onCite)}）</>
+      ) : null}
+    </>
+  );
+}
+
+function findingChangedLine(
+  item: WorkDeliveryChangeFinding,
+  onCite: (sourceId: string) => void,
+): ReactNode {
   const previousKind = item.previous_kind || "change";
   const nextKind = item.kind || "change";
-  if (previousKind !== nextKind) {
-    parts.push(`${findingKindLabel(previousKind)} → ${findingKindLabel(nextKind)}`);
-  }
+  const kindChange =
+    previousKind !== nextKind
+      ? `，${findingKindLabel(previousKind)} → ${findingKindLabel(nextKind)}`
+      : "";
   const previousIds = joinedIds(item.previous_source_ids);
   const nextIds = joinedIds(item.source_ids);
-  if (previousIds !== nextIds) {
-    parts.push(`来源 ${previousIds || "无"} → ${nextIds || "无"}`);
-  }
-  return `改写的结论：${parts.join("，")}`;
+  return (
+    <>
+      {`改写的结论：${item.text}${kindChange}`}
+      {previousIds !== nextIds ? (
+        <>
+          ，来源 {previousIds || "无"} → {currentVersionSourceIds(item.source_ids, onCite)}
+        </>
+      ) : null}
+    </>
+  );
 }
 
 function sourceLabel(source: WorkDeliveryChangeSource): string {
@@ -369,34 +411,58 @@ function sourceChangedLine(source: WorkDeliveryChangeSource): string {
   return `来源有更新：${parts.join("，")}`;
 }
 
-function actionChangedLine(action: WorkDeliveryChangeAction): string {
-  const parts = [action.title];
-  const previousReason = action.previous_reason?.trim() || "";
-  const reason = action.reason?.trim() || "";
-  if (previousReason !== reason) {
-    parts.push(`理由 ${previousReason || "无"} → ${reason || "无"}`);
-  }
-  const previousIds = joinedIds(action.previous_source_ids);
-  const nextIds = joinedIds(action.source_ids);
-  if (previousIds !== nextIds) {
-    parts.push(`来源 ${previousIds || "无"} → ${nextIds || "无"}`);
-  }
-  return `待办有更新：${parts.join("，")}`;
+function actionAddedLine(
+  action: WorkDeliveryChangeAction,
+  onCite: (sourceId: string) => void,
+): ReactNode {
+  return (
+    <>
+      {`新增待办：${action.title}`}
+      {joinedIds(action.source_ids) ? (
+        <>（{currentVersionSourceIds(action.source_ids, onCite)}）</>
+      ) : null}
+    </>
+  );
 }
 
-function deliveryChangeLines(delta: WorkDeliveryChanges): string[] {
-  const lines = [
-    ...(delta.findings_added ?? []).map((item) => findingLine("新增结论", item)),
+function actionChangedLine(
+  action: WorkDeliveryChangeAction,
+  onCite: (sourceId: string) => void,
+): ReactNode {
+  const previousReason = action.previous_reason?.trim() || "";
+  const reason = action.reason?.trim() || "";
+  const reasonChange =
+    previousReason !== reason ? `，理由 ${previousReason || "无"} → ${reason || "无"}` : "";
+  const previousIds = joinedIds(action.previous_source_ids);
+  const nextIds = joinedIds(action.source_ids);
+  return (
+    <>
+      {`待办有更新：${action.title}${reasonChange}`}
+      {previousIds !== nextIds ? (
+        <>
+          ，来源 {previousIds || "无"} → {currentVersionSourceIds(action.source_ids, onCite)}
+        </>
+      ) : null}
+    </>
+  );
+}
+
+function deliveryChangeLines(
+  delta: WorkDeliveryChanges,
+  onCite: (sourceId: string) => void,
+): ReactNode[] {
+  const lines: ReactNode[] = [
+    ...(delta.findings_added ?? []).map((item) => findingAddedLine(item, onCite)),
     ...(delta.findings_removed ?? []).map((item) => findingLine("去掉的结论", item)),
-    ...(delta.findings_changed ?? []).map((item) => findingChangedLine(item)),
+    ...(delta.findings_changed ?? []).map((item) => findingChangedLine(item, onCite)),
     ...(delta.sources_added ?? []).map((item) => `新增来源：${sourceLabel(item)}`),
     ...(delta.sources_removed ?? []).map((item) => `去掉的来源：${sourceLabel(item)}`),
     ...(delta.sources_changed ?? []).map((item) => sourceChangedLine(item)),
     ...(delta.limitations_added ?? []).map((item) => `新增限制：${item}`),
     ...(delta.limitations_removed ?? []).map((item) => `去掉的限制：${item}`),
-    ...(delta.actions_added ?? []).map((item) => `新增待办：${item.title}`),
+    ...(delta.actions_added ?? []).map((item) => actionAddedLine(item, onCite)),
     ...(delta.actions_removed ?? []).map((item) => `去掉的待办：${item.title}`),
-    ...(delta.actions_changed ?? []).map((item) => actionChangedLine(item)),
+    ...(delta.actions_changed ?? []).map((item) => actionChangedLine(item, onCite)),
   ];
   if (delta.summary_changed) lines.push("摘要已更新");
   const structuredBodyChanged =
@@ -413,10 +479,16 @@ function deliveryChangeLines(delta: WorkDeliveryChanges): string[] {
   return lines;
 }
 
-function DeliveryVersionDiff({ delivery }: { delivery: WorkDelivery }) {
+function DeliveryVersionDiff({
+  delivery,
+  onCite,
+}: {
+  delivery: WorkDelivery;
+  onCite: (sourceId: string) => void;
+}) {
   const delta = delivery.changes_from_previous;
   if (!delta) return null;
-  const lines = deliveryChangeLines(delta);
+  const lines = deliveryChangeLines(delta, onCite);
   return (
     <div className="space-y-1" data-testid="delivery-version-diff">
       <h4 className="text-xs font-medium text-fg-tertiary">相对 v{delta.previous_version}</h4>
@@ -425,7 +497,7 @@ function DeliveryVersionDiff({ delivery }: { delivery: WorkDelivery }) {
       ) : (
         <ul className="text-sm text-fg-secondary space-y-1">
           {lines.map((line, index) => (
-            <li key={`${line}-${index}`}>{line}</li>
+            <li key={index}>{line}</li>
           ))}
         </ul>
       )}
@@ -1223,7 +1295,10 @@ export default function TasksPage() {
                         )}
                       </div>
                       <DeliveryChecks delivery={shownDelivery} />
-                      <DeliveryVersionDiff delivery={shownDelivery} />
+                      <DeliveryVersionDiff
+                        delivery={shownDelivery}
+                        onCite={(sourceId) => void openCitedSource(sourceId, shownDelivery.sources)}
+                      />
                       <p className="text-sm text-fg-secondary whitespace-pre-wrap">
                         {shownDelivery.summary}
                       </p>
