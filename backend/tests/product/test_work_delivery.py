@@ -418,6 +418,7 @@ def test_idempotency_key_cannot_cover_different_request(isolated_kernel):
 
 
 def test_rework_replay_completes_dispatch_after_interrupt(isolated_kernel, monkeypatch):
+    k, _db = isolated_kernel
     item = read_ports.create_work_item(
         "项目简报",
         description="整理最近变化",
@@ -438,11 +439,19 @@ def test_rework_replay_completes_dispatch_after_interrupt(isolated_kernel, monke
         execution_id="exec-r2",
     )
     execute_calls: list[str] = []
-    monkeypatch.setattr(
-        read_ports,
-        "request_work_item_execute",
-        lambda wid: execute_calls.append(wid) or {"id": wid, "status": "running"},
-    )
+
+    def fake_execute(wid: str) -> dict[str, str]:
+        execute_calls.append(wid)
+        k.emit_event(
+            "ExecuteRequested",
+            "action",
+            f"exec_{wid}",
+            payload={"action_id": wid},
+            actor="user",
+        )
+        return {"id": wid, "status": "running"}
+
+    monkeypatch.setattr(read_ports, "request_work_item_execute", fake_execute)
 
     def boom(_wid: str) -> None:
         raise RuntimeError("injected reset failure")
@@ -1627,6 +1636,10 @@ def test_rework_restores_failed_when_execute_fails_after_stash(isolated_kernel, 
     assert restored[-1].payload.get("reason") != "rerun_restore"
     _assert_rerun_progress(k, work_id)
     assert k.read_events(type="ExecuteRequested", aggregate_id=f"exec_{work_id}") == []
+    folded = fold_delivery_history(work_id)
+    assert folded["_rework_withdrawn"] is True
+    assert folded["current_review_status"] == "unreviewed"
+    assert public_bundle(work_id)["current"]["latest_decision"] is None
 
 
 def test_rework_retry_restores_stashed_open_without_executing(isolated_kernel, monkeypatch):
@@ -1666,6 +1679,96 @@ def test_rework_retry_restores_stashed_open_without_executing(isolated_kernel, m
     assert restored[-1].payload.get("reason") != "rerun_restore"
     _assert_rerun_progress(k, work_id)
     assert k.read_events(type="ExecuteRequested", aggregate_id=f"exec_{work_id}") == []
+
+
+def test_withdrawn_rework_is_not_presented_as_in_progress(isolated_kernel, monkeypatch):
+    """收回后的 changes_requested 不再当成正在返工，当前交付回到待验收。"""
+    k, _db = isolated_kernel
+    item = _brief_task_with_steps()
+    work_id = item["id"]
+    published = publish_delivery(
+        work_id, content="第一期", summary="第一期", sources=[],
+        execution_id="rework-present",
+    )
+    _seed_rerun_progress(k, work_id)
+
+    def drop_execute(_work_id: str):
+        raise RuntimeError("execute request dropped")
+
+    monkeypatch.setattr(read_ports, "request_work_item_execute", drop_execute)
+    with pytest.raises(RuntimeError, match="execute request dropped"):
+        request_rework(
+            work_id, published["delivery_id"], reason="需要补风险",
+            idempotency_key="rework-present",
+        )
+
+    folded = fold_delivery_history(work_id)
+    assert folded["_rework_withdrawn"] is True
+    assert folded["current_review_status"] == "unreviewed"
+    assert folded["current"]["review_status"] == "unreviewed"
+    assert folded["current"]["latest_decision"] is None
+    assert folded["deliveries"][-1]["review_status"] == "unreviewed"
+    assert folded["deliveries"][-1]["latest_decision"] is None
+    assert folded["latest_decision"]["decision"] == "changes_requested"
+    assert folded["latest_decision"]["reason"] == "需要补风险"
+    bundle = public_bundle(work_id)
+    assert bundle["current_review_status"] == "unreviewed"
+    single = get_delivery(work_id, published["delivery_id"])
+    assert single["review_status"] == "unreviewed"
+    assert single["latest_decision"] is None
+
+    accepted = accept_delivery(
+        work_id, published["delivery_id"], reason="可以留下",
+        idempotency_key="after-withdraw",
+    )
+    assert accepted["bundle"]["current_review_status"] == "accepted"
+    assert accepted["bundle"]["current"]["latest_decision"]["reason"] == "可以留下"
+
+
+def test_half_open_rework_pending_is_not_presented_as_in_progress(isolated_kernel):
+    """打开之后还没有 ExecuteRequested 时，也不显示成正在返工。"""
+    k, _db = isolated_kernel
+    item = _brief_task_with_steps()
+    work_id = item["id"]
+    published = publish_delivery(
+        work_id, content="第一期", summary="第一期", sources=[],
+        execution_id="rework-open-present",
+    )
+    request_rework(
+        work_id, published["delivery_id"], reason="需要补风险",
+        idempotency_key="rework-open-present", dispatch=False,
+    )
+    k.emit_event(
+        "WorkItemStatusChanged", "work_item", work_id,
+        payload={"status": "pending", "reason": "rework_restore"},
+        actor="user",
+    )
+    folded = fold_delivery_history(work_id)
+    assert folded["_rework_withdrawn"] is True
+    assert folded["current_review_status"] == "unreviewed"
+    assert public_bundle(work_id)["current"]["review_status"] == "unreviewed"
+    assert k.read_events(type="ExecuteRequested", aggregate_id=f"exec_{work_id}") == []
+
+
+def test_dispatched_rework_stays_changes_requested(isolated_kernel):
+    """ExecuteRequested 落在返工打开之后时，当前交付仍是已要求返工。"""
+    k, _db = isolated_kernel
+    item = _brief_task_with_steps()
+    work_id = item["id"]
+    published = publish_delivery(
+        work_id, content="第一期", summary="第一期", sources=[],
+        execution_id="rework-dispatched-present",
+    )
+    request_rework(
+        work_id, published["delivery_id"], reason="需要补风险",
+        idempotency_key="rework-dispatched-present",
+    )
+    assert k.read_events(type="ExecuteRequested", aggregate_id=f"exec_{work_id}")
+    folded = fold_delivery_history(work_id)
+    assert folded["_rework_withdrawn"] is False
+    assert folded["current_review_status"] == "changes_requested"
+    assert folded["current"]["latest_decision"]["reason"] == "需要补风险"
+    assert public_bundle(work_id)["current_review_status"] == "changes_requested"
 
 
 def test_rerun_same_brief_rejects_missing_delivery_and_other_work(isolated_kernel):

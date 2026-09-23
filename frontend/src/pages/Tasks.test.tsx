@@ -857,6 +857,43 @@ describe("TasksPage", () => {
     expect(screen.getByTestId("rework-reason")).toHaveTextContent(`返工理由：${reason}`);
   });
 
+  it("does not present a withdrawn rework as in progress", async () => {
+    const reason = "需要补风险";
+    const withdrawn: WorkItem = {
+      ...briefTask,
+      status: "completed",
+      delivery_bundle: {
+        work_id: "brief_1",
+        current_review_status: "unreviewed",
+        current: {
+          ...currentDelivery,
+          review_status: "unreviewed",
+          latest_decision: { decision: "changes_requested", reason },
+        },
+        deliveries: [
+          {
+            ...currentSummary,
+            review_status: "unreviewed",
+            latest_decision: { decision: "changes_requested", reason },
+          },
+        ],
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [withdrawn];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(withdrawn);
+    renderTasks("/tasks/brief_1");
+
+    expect(await screen.findByText("有进度风险")).toBeInTheDocument();
+    expect(screen.getAllByText("待验收").length).toBeGreaterThan(0);
+    expect(screen.queryByText("已要求返工")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("rework-reason")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "验收" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "返工" })).toBeInTheDocument();
+  });
+
   it("shows a historical version's rework reason", async () => {
     const reason = "第一版缺少风险";
     const task: WorkItem = {
