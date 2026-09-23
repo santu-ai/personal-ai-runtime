@@ -529,7 +529,7 @@ def ensure_work_item_execute_requested(item_id: str) -> dict[str, Any]:
 
 
 def work_item_execution_snapshot(item_id: str, item: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Plan steps, progress, and the Lane-A row (stored error included) for Tasks."""
+    """Plan steps, progress, and the Lane-A row (scheduler or plan error) for Tasks."""
     import json
 
     from app.core.runtime.plan_resume import load_plan_progress
@@ -570,8 +570,8 @@ def work_item_execution_snapshot(item_id: str, item: dict[str, Any] | None = Non
     )
     handler: dict[str, Any] | None = None
     if scheduled is not None:
-        raw_error = getattr(scheduled, "error", None)
-        error = raw_error.strip() if isinstance(raw_error, str) else None
+        from app.core.runtime.read_ports.events import execution_failure_reason
+
         handler = {
             "id": scheduled.id,
             "status": scheduled.status,
@@ -580,7 +580,7 @@ def work_item_execution_snapshot(item_id: str, item: dict[str, Any] | None = Non
             "handler_name": getattr(scheduled, "handler_name", "") or "",
             "started_at": getattr(scheduled, "started_at", None),
             "completed_at": getattr(scheduled, "completed_at", None),
-            "error": error or None,
+            "error": execution_failure_reason(item_id, scheduled),
         }
 
     return {

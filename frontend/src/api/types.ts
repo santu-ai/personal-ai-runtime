@@ -208,7 +208,10 @@ export interface WorkItemExecutionHandler {
   handler_name: string;
   started_at: string | null;
   completed_at: string | null;
-  /** ScheduledExecution.error already stored on the handler row. */
+  /**
+   * Failure text for this run: ``ScheduledExecution.error`` when set,
+   * otherwise ``ExecuteCompleted.error`` for the same trigger.
+   */
   error?: string | null;
 }
 

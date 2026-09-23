@@ -285,6 +285,38 @@ describe("TasksPage", () => {
     expect(within(log).getByText(/on_execute_requested/)).toBeInTheDocument();
   });
 
+  it("shows a plan failure reason when the handler row itself completed", async () => {
+    const failed: WorkItem = {
+      ...sampleTask,
+      status: "failed",
+      execution: {
+        steps: [{ tool: "read_file" }],
+        resume_from: 0,
+        previous_output: {},
+        handler_execution: {
+          id: "wi_plan",
+          status: "completed",
+          dead_letter: false,
+          retry_count: 0,
+          handler_name: "on_execute_requested",
+          started_at: "2026-08-06T00:00:00Z",
+          completed_at: "2026-08-06T00:01:00Z",
+          error: "disk full",
+        },
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [failed];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(failed);
+    renderTasks("/tasks/task_1");
+
+    const log = await screen.findByRole("region", { name: "执行状态" });
+    expect(within(log).getByText("disk full")).toBeInTheDocument();
+    expect(within(log).getByText(/completed/)).toBeInTheDocument();
+  });
+
   it("offers retry when a running task's handler has already failed", async () => {
     const stuck: WorkItem = {
       ...sampleTask,

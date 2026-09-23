@@ -8,6 +8,7 @@ cancel_check / progress-stream semantics (INV-W5).
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -28,6 +29,8 @@ from app.core.runtime.plan_resume import PlanResume, load_plan_progress
 if TYPE_CHECKING:
     from app.core.runtime.execution import ExecutionContext
     from app.core.runtime.kernel.event import Event
+
+logger = logging.getLogger(__name__)
 
 # stopped_reason → ExecuteCompleted.status → work_item status
 _OUTCOME_TO_EXEC_STATUS = {
@@ -300,7 +303,7 @@ async def on_execute_requested(ctx: "ExecutionContext", event: "Event") -> None:
             )
         else:
             outcome = PlanRunOutcome(stopped_reason="completed")
-    except Exception:
+    except Exception as exc:
         if is_background and cancel_check():
             _finalize_cancelled(
                 ctx, event, action_id,
@@ -309,9 +312,13 @@ async def on_execute_requested(ctx: "ExecutionContext", event: "Event") -> None:
                 total_steps=len(steps),
             )
             return
+        message = str(exc).strip() or type(exc).__name__
+        logger.warning(
+            "ExecuteRequested failed for %s: %s", action_id, message, exc_info=exc,
+        )
         _sync_work_item_status(ctx, event, action_id, "failed")
         _emit_execute_completed(
-            ctx, event, action_id, status="error", error="handler_failed",
+            ctx, event, action_id, status="error", error=message,
         )
         return
 

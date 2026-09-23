@@ -615,3 +615,39 @@ def compare_periods(
         },
         "capped": capped,
     }
+
+
+def execution_failure_reason(item_id: str, scheduled: Any) -> str | None:
+    """Scheduler error, else ``ExecuteCompleted.error`` for the same trigger.
+
+    A plan failure returns from the handler, so the scheduler clears
+    ``ScheduledExecution.error`` and records ``ExecutionCompleted``. The reason
+    is already on the ``ExecuteCompleted`` caused by that ``ExecuteRequested``.
+    Blank text is ``None``.
+    """
+    raw = getattr(scheduled, "error", None)
+    text = raw.strip() if isinstance(raw, str) else ""
+    if text:
+        return text
+    event_id = str(getattr(scheduled, "event_id", "") or "")
+    if not event_id:
+        return None
+    from app.core.runtime.kernel.constants import EVENT_EXECUTE_COMPLETED
+
+    events = kernel().read_events(
+        type=EVENT_EXECUTE_COMPLETED,
+        aggregate_type="action",
+        aggregate_id=f"exec_{item_id}",
+        order="desc",
+    )
+    matched = next(
+        (event for event in events if getattr(event, "caused_by", None) == event_id),
+        None,
+    )
+    if matched is None:
+        return None
+    payload = matched.payload if isinstance(getattr(matched, "payload", None), dict) else {}
+    completed = payload.get("error")
+    if not isinstance(completed, str):
+        return None
+    return completed.strip() or None

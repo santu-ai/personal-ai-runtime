@@ -154,7 +154,7 @@ Handlers（[`handlers/`](../../backend/app/core/agents/handlers/)）：
 |---|---|---|
 | `chat_handler.py` | `ChatRequested` | 编译 prompt（`prompt_compiler`），跑 `Brain.chat_stream`，把 `text_delta`/`tool_call_start`/`tool_result` 推到 SSE 队列（不进 event_log——频率太高），emit `ChatCompleted` + `ChatDone` |
 | `approve_handlers.py`（`runtime/handlers/`） | `ApproveRequested` | 解决审批；有 checkpoint 时恢复 Chat 工具环，否则 `continue_after_tool_result` |
-| `execute_handlers.py`（`runtime/handlers/`） | `ExecuteRequested` | 执行 work item 的 `executable_plan`（含 `work_type=background`） |
+| `execute_handlers.py`（`runtime/handlers/`） | `ExecuteRequested` | 执行 work item 的 `executable_plan`（含 `work_type=background`）。计划执行中抛出的异常把异常文本写入已有 `ExecuteCompleted.error` 后正常返回，不再写成字面量 `handler_failed` |
 | `inbox_poll_handlers.py`（`runtime/handlers/`） | `InboxPollRequested` | 经 capability 拉未读邮件 |
 | `timer_trigger_handler.py` | `TimerFired` | 按 `handler_name` 分派到 product 函数：`deadline_alert`/`memory_decay`/`world_model_snapshot`/`projection_snapshots`/`inbox_poll`/`inbox_digest`/`morning_brief`/`url_monitor`（`url_monitor` 与 `inbox_poll` 一样 fire-and-forget，避免 30s ExecutionPolicy 超时） |
 
