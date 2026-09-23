@@ -50,7 +50,7 @@ frozenset({
 
 `work_type` 区分 `task` / `action` / `background` / `goal`。目标通过 `query_state("work_items", work_type="goal", ...)` 读取（[`kernel_query_state.py`](../../backend/app/core/runtime/kernel/kernel_query_state.py)）。
 
-项目资料简报的**任务要求**存在 `executable_plan` JSON 的 `contract` 字段（与 `steps` 并列），用户可见说明仍在 `description`。交付版本与验收决定不另开表：它们作为 `WorkItemUpdated` payload 的 `delivery_published` / `delivery_decision` 写入 `event_log`。把当前交付里的一条建议待办转成任务时，子任务仍是普通 `WorkItemCreated`；关联记在父任务的 `suggested_action_adopted` payload 上。投影器忽略这些键，因此 `work_items` 行形状不变；读取经 Product 折叠事件。完整正文在事件 payload 中，不能用步骤预览代替。同一交付下标重复采纳返回已有子任务。近 N 日首版采纳、返工、已转任务和评审耗时由这些事件现算，不另存指标表。审批次数、恢复次数和模型成本同样不另存表，按交付 `execution_id` 关联既有事件。同一次中断的 handler replay（`ExecutionRetried(reason=interrupted, status=retrying)` 或 `ExecutionFailed(error=interrupted)`）与带同一执行、同一 `retry_count` 的 `CapabilityFailed(error=interrupted_before_audit)` 只计一次恢复；没有这些字段的旧审计缺口仍按 correlation 并入已有 handler replay。读上限打满时审批、恢复、模型成本、未归因简报调用次数和未归因金额都是 unavailable。能关联到交付执行的成功 `purpose=project_brief` 调用仍计入模型成本；同一回看窗口里缺少 `caused_by` 的成功调用另计 `unattributed_project_brief_calls`，其金额合计为 `unattributed_project_brief_cost`，不并入已归因金额，也不把已归因金额改成 unavailable。对外读出的每个交付版本带该版本最新决定 `latest_decision`（含 `reason`）；没有决定时为 null。有上一版时另带 `changes_from_previous`：读取时对照 `supersedes_delivery_id` 现算 findings、sources、limitations、suggested_actions 的增删改，以及摘要、正文是否变化。对比结果不复制任一版全文，也不另存事件。第一版或上一版缺失时为 null。
+项目资料简报的**任务要求**存在 `executable_plan` JSON 的 `contract` 字段（与 `steps` 并列），用户可见说明仍在 `description`。交付版本与验收决定不另开表：它们作为 `WorkItemUpdated` payload 的 `delivery_published` / `delivery_decision` 写入 `event_log`。把当前交付里的一条建议待办转成任务时，子任务仍是普通 `WorkItemCreated`；关联记在父任务的 `suggested_action_adopted` payload 上。投影器忽略这些键，因此 `work_items` 行形状不变；读取经 Product 折叠事件。完整正文在事件 payload 中，不能用步骤预览代替。同一交付下标重复采纳返回已有子任务。近 N 日首版采纳、返工、已转任务和评审耗时由这些事件现算，不另存指标表。审批次数、恢复次数和模型成本同样不另存表，按交付 `execution_id` 关联既有事件。同一次中断的 handler replay（`ExecutionRetried(reason=interrupted, status=retrying)` 或 `ExecutionFailed(error=interrupted)`）与带同一执行、同一 `retry_count` 的 `CapabilityFailed(error=interrupted_before_audit)` 只计一次恢复；没有这些字段的旧审计缺口仍按 correlation 并入已有 handler replay。读上限打满时审批、恢复、模型成本、未归因简报调用次数和未归因金额都是 unavailable。能关联到交付执行的成功 `purpose=project_brief` 调用仍计入模型成本；同一回看窗口里缺少 `caused_by` 的成功调用另计 `unattributed_project_brief_calls`，其金额合计为 `unattributed_project_brief_cost`，不并入已归因金额，也不把已归因金额改成 unavailable。对外读出的每个交付版本带该版本最新决定 `latest_decision`（含 `reason`）；没有决定时为 null。同一事件里的 `checks`（`criterion` / `result` / `detail`）随版本读出，不另开表。有上一版时另带 `changes_from_previous`：读取时对照 `supersedes_delivery_id` 现算 findings、sources、limitations、suggested_actions 的增删改，以及摘要、正文是否变化。对比结果不复制任一版全文，也不另存事件。第一版或上一版缺失时为 null。
 
 ### `memories`
 
@@ -138,7 +138,7 @@ frozenset({
 })
 ```
 
-`payload_json` 是 `TimerCreated` 的嵌套 `payload`。内置 cron 不写入任务 id。`set_timer` 只在调用方传入已经存在的 `work_id` 时写入该键；空白或不存在的 id 不写入，也不改用别的键。任务页为已完成且已有交付的项目简报设定「定时再次运行」时，走的就是这次调用。触发后：若该简报仍已完成且已有交付，则再次运行同一份任务；否则只打开这一份仍在的任务。不新建任务，也不为这次触发另建交付。仪表盘只在该对象里已有非空 `work_id`（没有该键时才看 `action_id`）且 `work_items` 仍有该行时带上 `work_id`。空白或指向已删除任务的键不会改去读另一个键。定时器 id 与 `correlation_id` 不当作任务 id。
+`payload_json` 是 `TimerCreated` 的嵌套 `payload`。内置 cron 不写入任务 id。`set_timer` 只在调用方传入已经存在的 `work_id` 时写入该键；空白或不存在的 id 不写入，也不改用别的键。任务页为已完成且已有交付的项目简报设定「定时再次运行」时，走的就是这次调用。触发后：payload 里已有非空 `work_id` 且任务仍在时，若该简报仍已完成且已有交付，则再次运行同一份任务；否则只打开这一份。任务已删除、`work_id` 空白，或没有该键时，仍是普通提醒，不改去读 `action_id`。不新建任务，也不为这次触发另建交付。仪表盘只在该对象里已有非空 `work_id`（没有该键时才看 `action_id`）且 `work_items` 仍有该行时带上 `work_id`。空白或指向已删除任务的键不会改去读另一个键。定时器 id 与 `correlation_id` 不当作任务 id。
 
 ### `policy_events`（治理事件溯源根）
 

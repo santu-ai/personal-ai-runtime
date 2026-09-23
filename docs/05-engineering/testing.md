@@ -7,7 +7,7 @@
 ```mermaid
 flowchart TB
     subgraph L1[层 1 · 单元/集成]
-        Pytest[backend/tests/<br/>202 个 test_*.py]
+        Pytest[backend/tests/<br/>203 个 test_*.py]
         FE[frontend vitest]
     end
 
@@ -31,14 +31,16 @@ flowchart TB
 
 | 目录 | 内容 |
 |---|---|
-| `agents/` | agent 层单测：brain 遥测、computer_use/voice import 安全、token_counter、tool_dispatcher、tool_markup/postprocess、会话压缩、工具结果 spill |
+| `agents/` | agent 层单测：brain 遥测与流式装配、computer_use/voice、token_counter、tool_dispatcher、会话压缩、工具结果 spill、记忆召回过滤、fact parsing |
 | `recorded_sessions/` | 无密钥 recorded-session：脚本模型 + 真 Brain/Kernel/工具环，断言 `messages` 投影与世界状态（文件是否被写） |
-| `api/` | API 覆盖冒烟（`test_api_coverage.py`） |
-| `integration/` | FastAPI TestClient + Kernel：approval flow、auth、b2/b3 审计、dashboard、goals/settings/system/timeline/trigger API |
-| `product/` | 基于 Kernel 的产品层：dashboard、encrypted_sync、inbox、notifications |
-| `runtime/` | kernel/执行/治理核心（133 个 `test_*.py`） |
+| `api/` | HTTP 路由：覆盖冒烟（`test_api_coverage.py`）、work item / 交付、chat SSE、审批、收件箱、监控、记忆、连接器 |
+| `integration/` | FastAPI TestClient + Kernel：auth、审批、ask_user、dashboard、settings/system/timeline、项目简报交付、记忆溯源、安全错误与网关契约 |
+| `product/` | 基于 Kernel 的产品层：dashboard、交付与简报再次运行、project brief、inbox、monitors、notifications、encrypted_sync、morning brief |
+| `e2e_live/` | 真 LLM 冒烟，默认标记 `live_llm`，不进 `make test-backend` |
+| `eval/` | Kernel 与真实工具的运行时基准（`test_benchmarks.py`） |
+| `runtime/` | kernel/执行/治理核心（133 个 `test_*.py`），含 `tool_markup` / `tool_postprocess` |
 
-顶层还有：`test_context_policy.py`、`test_context_assembler.py`、`test_core_tier_fragments.py`、`test_pipeline_integration.py`、`test_prompt_artifact.py`、`test_policy_coverage.py`、`test_fragment_registry_audit.py`、`test_fragment_read_boundary.py`、`test_mail_fragment_collect.py`、`test_version.py`。
+顶层还有：`test_background_fragment.py`、`test_context_assembler.py`、`test_context_policy.py`、`test_conversation_state_fragment.py`、`test_core_tier_fragments.py`、`test_dependency_sync.py`、`test_fragment_read_boundary.py`、`test_fragment_registry_audit.py`、`test_fragment_selector_behavior.py`、`test_goals_fragment.py`、`test_mail_fragment_collect.py`、`test_pipeline_integration.py`、`test_policy_coverage.py`、`test_prompt_artifact.py`、`test_timeline_fragment.py`、`test_version.py`。
 
 ### conftest 隔离
 
@@ -62,7 +64,7 @@ flowchart TB
 - **MCP / filesystem / shell / email server**：`test_filesystem_server.py`、`test_shell_server.py`、`test_email_server.py`、`test_mcp_config.py`、`test_mcp_mesh.py`
 - **记忆 / Telegram / 通知 / 后台**：`test_memory_extractor.py`、`test_proposed_memory_expiry.py`、`test_telegram_gateway.py`（offset、allowlist、入站去重、重启状态、失败退避、scoped consent）、`test_memory_ws_notify.py`、`test_notification_bridge.py`、`test_notification_channel.py`、`test_sse_queue_registry.py`、`test_background_task_event_chain.py`、`test_work_item_engine_behavior.py`（状态词表校验、依赖门控、递归树、级联删除、父活动刷新）
 - **Read ports**：`test_read_ports_api.py`、`test_read_ports_events.py`、`test_read_ports_telemetry.py`、`test_read_ports_memory_behavior.py`（记忆检索/查询/计数参数转发）、`test_read_ports_work_behavior.py`（work 查询转发、background 映射、cancel/execute 守卫、目标完成通知）
-- **Product / 主权 / fragment**：`tests/product/`（dashboard / inbox / notifications / encrypted_sync）、`test_sovereignty_basic.py`、`test_governance_fragment.py`、`test_scenario_fragments.py`、`test_mail_fragment_collect.py`、`test_fragment_read_boundary.py`、`test_fragment_registry_audit.py`、`test_fragment_selector_behavior.py`、`test_core_tier_fragments.py`、`test_runtime_container.py`
+- **Product / 主权 / fragment**：`tests/product/`（dashboard / 交付与简报 / inbox / monitors / notifications / encrypted_sync / morning brief）、`test_sovereignty_basic.py`、`test_governance_fragment.py`、`test_scenario_fragments.py`、`test_mail_fragment_collect.py`、`test_fragment_read_boundary.py`、`test_fragment_registry_audit.py`、`test_fragment_selector_behavior.py`、`test_core_tier_fragments.py`、`test_runtime_container.py`
 
 ### 运行
 
@@ -154,6 +156,7 @@ CI 报告用 `--cov-report=term-missing` 让缺失部分可见，开发者按需
 - **可信闭环**（[`e2e/trust-loops.spec.ts`](../../frontend/e2e/trust-loops.spec.ts)）：首页发送进对话、重载后恢复待审批卡、收件箱失败后重试同步、确认 proposed 记忆后出现在聊天上下文、会话 A 确认→会话 B 召回→更新后会话 C 只用新事实、工作台三栏与提醒区不重复同一实体。
 - **连续审批**（[`e2e/chat-approval.spec.ts`](../../frontend/e2e/chat-approval.spec.ts)）：首次确认后若后端返回下一审批，无需另发消息即可再次确认；切换会话不会串走确认卡，回到原会话可从待审批列表恢复。
 - **错误处理**：telemetry 端点 500 时 dashboard 显示 `重试`。
+- **审批页与通知**（[`e2e/extra-flows.spec.ts`](../../frontend/e2e/extra-flows.spec.ts)）：待审批项批准或拒绝后从列表消失；通知铃铛打开详情。
 - **新页面**：timeline（`人生时间线`、含 `BeliefFormed` 事件）、dashboard 数据主权面板（`1,250` events、`121` memories、`全部本地存储`、`导出我的数据`）。
 
 运行：`make test-e2e`（先 `npx playwright install chromium`）。
@@ -179,7 +182,7 @@ vitest，**不需要 Electron 已安装**。读 `main.js` 源码，字符串 `to
 
 ### 前端单元（vitest）
 
-`auth.test.ts`、`api/client.test.ts`，hook 测试（`useChatMessages` 切会话竞态、`useNotifications` 指数退避重连），组件测试（`Button/Input/Dialog/Sidebar/MessageItem/ToolCallDisplay/ContextPanel/ConfirmationDialog/ChatView/ProposedMemoryBanner/AdoptionSummary/PeriodComparison/todayBuckets/ui.snapshots`），页面测试（`Dashboard/Inbox/Memories/Goals/Tasks/Approvals/Timeline/Settings/Portrait/TrustReport/ChatPage`），以及 `sw.test.ts`（API 不进 Cache Storage）与 `viteConfig.test.ts`。后两者使用 Node `fs`/`vm`，`tsconfig.json` 将其排除出 `tsc --noEmit`，由 Vitest 执行。运行：`make test-frontend`（含 `tsc --noEmit`）。
+覆盖 `frontend/src` 的页面、组件与 hook（`useChatMessages` 切会话竞态、`useNotifications` 指数退避重连、`useWsInvalidationBridge`）。Button 的外观断言在 `ui.snapshots.test.tsx`，没有单独的 `Button.test.tsx`。`sw.test.ts` 校验 API 不进 Cache Storage，`viteConfig.test.ts` 读 Vite 配置。后两者使用 Node `fs`/`vm`，`tsconfig.json` 将其排除出 `tsc --noEmit`，由 Vitest 执行。运行：`make test-frontend`（含 `tsc --noEmit`）。
 
 ## Soak 测试（Execution 契约 §3）
 
