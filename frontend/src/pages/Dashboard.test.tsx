@@ -614,6 +614,226 @@ describe("DashboardPage", () => {
     expect(screen.queryByRole("link", { name: /memory_decay/ })).not.toBeInTheDocument();
   });
 
+  it("lists other recent failures without repeating the newest or a dead letter", () => {
+    mockDashboardData({
+      dashboard: {
+        generated_at: "2026-08-17T00:00:00Z",
+        data_sovereignty: {
+          total_events: 1,
+          total_memories: 0,
+          memories_self_report: 0,
+          memories_claim: 0,
+          total_goals: 0,
+          goals_active: 0,
+          goals_completed: 0,
+          total_conversations: 0,
+          total_messages: 0,
+          data_location: "本地",
+          last_belief_reflection: null,
+          export_supported: true,
+        },
+        active_goals: { count: 0, top: [] },
+        execution_trust: {
+          by_status: { failed: 6, in_retry: 1 },
+          pending_approvals: 0,
+          failed: [
+            {
+              id: "ex-new",
+              status: "failed",
+              handler_name: "handle_execute",
+              event_type: "ExecuteRequested",
+              error: "newest boom",
+              retry_count: 1,
+              dead_letter: false,
+              created_at: "2026-08-17T00:06:00Z",
+              completed_at: "2026-08-17T00:06:30Z",
+              correlation_id: "corr-new",
+              work_id: "task_new",
+            },
+            {
+              id: "ex-mid",
+              status: "failed",
+              handler_name: "handle_execute",
+              event_type: "ExecuteRequested",
+              error: "middle miss",
+              retry_count: 1,
+              dead_letter: false,
+              created_at: "2026-08-17T00:05:00Z",
+              completed_at: "2026-08-17T00:05:30Z",
+              correlation_id: "corr-mid",
+              work_id: "task/mid",
+            },
+            {
+              id: "ex-plain",
+              status: "failed",
+              handler_name: "inbox_poll",
+              event_type: "InboxPollRequested",
+              error: "plain miss",
+              retry_count: 0,
+              dead_letter: false,
+              created_at: "2026-08-17T00:04:00Z",
+              completed_at: "2026-08-17T00:04:30Z",
+              correlation_id: "task_should_not_link",
+              work_id: null,
+            },
+            {
+              id: "ex-blank",
+              status: "failed",
+              handler_name: "memory_decay",
+              event_type: "TimerFired",
+              error: "blank owner",
+              retry_count: 0,
+              dead_letter: false,
+              created_at: "2026-08-17T00:03:30Z",
+              completed_at: "2026-08-17T00:03:40Z",
+              correlation_id: "",
+              work_id: "   ",
+            },
+            {
+              id: "ex-shared",
+              status: "failed",
+              handler_name: "handle_execute",
+              event_type: "ExecuteRequested",
+              error: "shared letter",
+              retry_count: 3,
+              dead_letter: true,
+              created_at: "2026-08-17T00:03:00Z",
+              completed_at: "2026-08-17T00:03:20Z",
+              correlation_id: "corr-shared",
+              work_id: "task_shared",
+            },
+            {
+              id: "ex-buried",
+              status: "failed",
+              handler_name: "handle_execute",
+              event_type: "ExecuteRequested",
+              error: "buried letter",
+              retry_count: 3,
+              dead_letter: true,
+              created_at: "2026-08-17T00:00:30Z",
+              completed_at: null,
+              correlation_id: "corr-buried",
+              work_id: "task_buried",
+            },
+          ],
+          in_retry: [
+            {
+              id: "ex-retry",
+              status: "in_retry",
+              handler_name: "handle_execute",
+              event_type: "ExecuteRequested",
+              error: "still waiting",
+              retry_count: 2,
+              dead_letter: false,
+              created_at: "2026-08-17T00:07:00Z",
+              completed_at: null,
+              correlation_id: "corr-retry",
+              work_id: "task_retry",
+            },
+          ],
+          dead_letter: [
+            {
+              id: "ex-shared",
+              status: "failed",
+              handler_name: "handle_execute",
+              event_type: "ExecuteRequested",
+              error: "shared letter",
+              retry_count: 3,
+              dead_letter: true,
+              created_at: "2026-08-17T00:03:00Z",
+              completed_at: "2026-08-17T00:03:20Z",
+              correlation_id: "corr-shared",
+              work_id: "task_shared",
+            },
+            {
+              id: "ex-d2",
+              status: "failed",
+              handler_name: "inbox_poll",
+              event_type: "InboxPollRequested",
+              error: "second letter",
+              retry_count: 1,
+              dead_letter: true,
+              created_at: "2026-08-17T00:02:00Z",
+              completed_at: null,
+              correlation_id: "corr-d2",
+              work_id: null,
+            },
+            {
+              id: "ex-d3",
+              status: "failed",
+              handler_name: "inbox_poll",
+              event_type: "InboxPollRequested",
+              error: "third letter",
+              retry_count: 1,
+              dead_letter: true,
+              created_at: "2026-08-17T00:01:00Z",
+              completed_at: null,
+              correlation_id: "corr-d3",
+              work_id: null,
+            },
+            {
+              id: "ex-buried",
+              status: "failed",
+              handler_name: "handle_execute",
+              event_type: "ExecuteRequested",
+              error: "buried letter",
+              retry_count: 3,
+              dead_letter: true,
+              created_at: "2026-08-17T00:00:30Z",
+              completed_at: null,
+              correlation_id: "corr-buried",
+              work_id: "task_buried",
+            },
+          ],
+          dead_letter_count: 4,
+          last_completed: null,
+          last_failed: {
+            id: "ex-new",
+            status: "failed",
+            handler_name: "handle_execute",
+            event_type: "ExecuteRequested",
+            error: "newest boom",
+            retry_count: 1,
+            dead_letter: false,
+            created_at: "2026-08-17T00:06:00Z",
+            completed_at: "2026-08-17T00:06:30Z",
+            correlation_id: "corr-new",
+            work_id: "task_new",
+          },
+        },
+      },
+    });
+    renderDashboard();
+
+    expect(screen.getByText(/失败 6/)).toBeInTheDocument();
+    expect(screen.getAllByText(/newest boom/)).toHaveLength(1);
+    expect(screen.getByRole("link", { name: /newest boom/ })).toHaveAttribute(
+      "href",
+      "/tasks/task_new",
+    );
+    expect(screen.getByRole("link", { name: /middle miss/ })).toHaveAttribute(
+      "href",
+      "/tasks/task%2Fmid",
+    );
+    expect(screen.getByText(/plain miss/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /plain miss/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /task_should_not_link/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/blank owner/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /blank owner/ })).not.toBeInTheDocument();
+    expect(screen.getAllByText(/shared letter/)).toHaveLength(1);
+    expect(
+      screen.getByRole("link", { name: /死信 handle_execute · shared letter/ }),
+    ).toHaveAttribute("href", "/tasks/task_shared");
+    expect(screen.getByText(/second letter/)).toBeInTheDocument();
+    expect(screen.getByText(/third letter/)).toBeInTheDocument();
+    expect(screen.queryByText(/buried letter/)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /still waiting/ })).toHaveAttribute(
+      "href",
+      "/tasks/task_retry",
+    );
+    expect(screen.getByText(/重试中 handle_execute · 第 2 次 · still waiting/)).toBeInTheDocument();
+  });
+
   it("does not repeat an approval or morning brief in reminders", () => {
     mockUseApprovalsQuery.mockReturnValue({
       data: [{ id: "ap-1", action: "write_file", status: "pending" }],
