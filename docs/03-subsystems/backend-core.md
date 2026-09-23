@@ -128,15 +128,15 @@ cron 表达式解析 `_next_cron_fire(cron_expr, from_ts)`（[`runtime_loop.py`]
 |---|---|---|
 | morning_brief | 每天 08:00 | `TimerFired` → `handler_name=morning_brief`。应用内通知按本地日期分桶（title `早安简报 - YYYY-MM-DD` + `dedup_key=morning_brief:{date}`），避免 `create_notification` 的 type+title 幂等把次日简报折叠进昨日同一行。通知正文含同一 `read_ports.compare_periods` 的近 7 日对比（完成目标、完成任务、新邮件、采纳率；投影缺失的完成仅在非零时写入 `work_completed_untyped`）；该段读取失败时降级为「获取失败」，不中断简报 |
 | deadline_alert | 每天 09:00 | `TimerFired` → `handler_name=deadline_alert`。对 1/3 天后到期的目标发 `goal_deadline` 通知；`dedup_key=deadline_alert:{goal_id}:{date}`，避免固定 title「Deadline 预警」把跨目标/跨天折叠进同一行 |
-| trigger_evaluation | 每 30 分钟 | trigger_evaluation |
 | memory_decay | 每天 03:00 | memory_decay |
 | world_model_snapshot | 每周日 06:00 | world_model_snapshot |
 | projection_snapshots | 每天 04:00 | projection_snapshots |
 | inbox_poll | 每 15 分钟 | inbox_poll |
 | inbox_digest | 每天 08:30 | inbox_digest |
 | url_monitor | 每 30 分钟 | url_monitor |
+| telegram_poll | 每 1 分钟 | `TimerFired` → `handler_name=telegram_poll`。后台 `poll_once`；网关未启用时返回 `disabled`，不拉更新 |
 
-`init_scheduler()` 还订阅 `WorkItemCompleted` / `WorkItemStatusChanged`，自动启动依赖任务（`_on_work_item_status_changed`，[`cron_registry.py`](../../backend/app/core/runtime/cron_registry.py)）。
+`init_scheduler()` 订阅 `WorkItemStatusChanged`。状态变为 `completed` 或 `failed` 时，启动依赖已满足的后继任务（`_on_work_item_status_changed`，[`cron_registry.py`](../../backend/app/core/runtime/cron_registry.py)）。
 
 ## Agent / 执行模型
 
@@ -156,7 +156,7 @@ Handlers（[`handlers/`](../../backend/app/core/agents/handlers/)）：
 | `approve_handlers.py`（`runtime/handlers/`） | `ApproveRequested` | 解决审批；有 checkpoint 时恢复 Chat 工具环，否则 `continue_after_tool_result` |
 | `execute_handlers.py`（`runtime/handlers/`） | `ExecuteRequested` | 执行 work item 的 `executable_plan`（含 `work_type=background`）。计划执行中抛出的异常把异常文本写入已有 `ExecuteCompleted.error` 后正常返回，不再写成字面量 `handler_failed`。工具步骤返回 failed 或 denied 时，步骤结果里已有的失败原因同样写入该字段；空白原因不写。`continue_on_error` 之后计划仍完成的，不写 `error`。简报编译失败仍优先用编译错误文本 |
 | `inbox_poll_handlers.py`（`runtime/handlers/`） | `InboxPollRequested` | 经 capability 拉未读邮件 |
-| `timer_trigger_handler.py` | `TimerFired` | 按 `handler_name` 分派到 product 函数：`deadline_alert`/`memory_decay`/`world_model_snapshot`/`projection_snapshots`/`inbox_poll`/`inbox_digest`/`morning_brief`/`url_monitor`（`url_monitor` 与 `inbox_poll` 一样 fire-and-forget，避免 30s ExecutionPolicy 超时） |
+| `timer_trigger_handler.py` | `TimerFired` | 按 `handler_name` 分派：`deadline_alert`、`memory_decay`、`world_model_snapshot`、`projection_snapshots`、`inbox_poll`、`inbox_digest`、`morning_brief`、`reminder`、`url_monitor`、`telegram_poll`。`inbox_poll` 发出 `InboxPollRequested` 后返回，不在这条定时 Work 里等待完成。`url_monitor` 与 `telegram_poll` 用 `asyncio.create_task` 放到后台，避免 30s ExecutionPolicy 超时。`reminder` 只在 payload 里已有非空 `work_id` 且任务仍在时再次运行或打开这一份任务；任务已删除、该键为空白，或没有该键时仍是普通提醒，不改去读 `action_id`。不新建任务、不为这次触发另建交付 |
 
 ## Scheduler — WorkItem 执行引擎
 
@@ -167,7 +167,7 @@ Handlers（[`handlers/`](../../backend/app/core/agents/handlers/)）：
 - `enqueue(instance_id, actor, event, policy)` → 查 handler → 创建 ScheduledExecution → emit `ExecutionRequested`。
 - `_process_work_item` 在 `execution_scope(item.id)` 内跑 handler，使能力调用正确归属。
 - `_emit_verify` 每次写后跑 `verify_persist_matches_projection`（影子比对）。`dead_letter` 置位后调用 `close_dead_lettered_domain_work`：最新 `ExecuteRequested` 的 handler 都已终态且至少一条失败时，把仍为 running 的领域 Work 收成 `failed`（`WorkItemStatusChanged`），不另开 retry 预算。
-- `kernel.expire_stale_running_leases` 是不取消在途任务、也不把剩余重试重新入队的薄事件路径。本批过期行都写成 `ExecutionFailed` 之后，终态死信走同一个收口函数；仍有未结束的 sibling handler 时不收口。RuntimeLoop 维护周期仍调用 `Scheduler.reclaim_stale_leases`。
+- `kernel.expire_stale_running_leases` 是不取消在途任务、也不把剩余重试重新入队的薄事件路径。这次调用里过期的行都写成 `ExecutionFailed` 之后，终态死信走同一个收口函数；仍有未结束的 sibling handler 时不收口。RuntimeLoop 维护周期仍调用 `Scheduler.reclaim_stale_leases`。
 - 默认 `ExecutionPolicy(timeout=30s, max_retries=3, retry_delay=5s)`；`ChatRequested` 由 `policy_for_event` 覆盖为工具环超时 + `max_retries=2`（第三次崩溃仍 DLQ，见 [ADR-R011](../07-adr/ADR-R011-chat-approval-continuation.md)）。
 - `get_scheduler(kernel)` 是单例工厂。
 
