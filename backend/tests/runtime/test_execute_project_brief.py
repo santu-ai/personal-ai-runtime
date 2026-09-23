@@ -118,5 +118,6 @@ async def test_execute_handler_fails_on_illegal_brief(monkeypatch):
 
     done = next(e for e in emitted if e[0][0] == "ExecuteCompleted")
     assert done[1]["payload"]["status"] == "error"
+    assert done[1]["payload"]["error"] == "模型输出非法或不可用，可重试"
     wi = [e for e in emitted if e[0][0] == "WorkItemStatusChanged"]
     assert wi[-1][1]["payload"]["status"] == "failed"

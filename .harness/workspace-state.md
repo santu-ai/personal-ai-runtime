@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-09-23：Batch 17：计划工具步骤返回 failed/denied 时，把步骤结果里已有的失败原因写入 `ExecuteCompleted.error`。任务详情仍走 Batch 16 的同一条路径。空白原因不写；`continue_on_error` 后计划完成的不写。不新增事件类型。未改 `read_ports/work.py`。
 - 2026-09-23：Batch 16：任务详情在调度行 `error` 为空白时，显示同一次 `ExecuteRequested` 引起的 `ExecuteCompleted.error`。`on_execute_requested` 抓住异常后写入异常文本（空白则用异常类型名）再正常返回，不再写成 `handler_failed`。超时/死信仍优先用调度行上的错误。不新增事件类型。`read_ports/work.py` 仍为 598/600。
 - 2026-09-23：Batch 15：任务详情 `include=execution` 的 `handler_execution` 带上调度行已有的 `error`（空白为 null），执行日志直接显示。不新增事件类型。
 - 2026-09-23：Batch 14：仪表盘「执行」把 `failed` 里除最近一条以外的失败也列出来（最新在前）。与最近失败或死信列表相同的 `id` 不重复；有 `work_id` 时打开 `/tasks/:id`。重试中的错误写在行内。`correlation_id` 不参与去重，也不当作任务 id。不新增事件类型。
