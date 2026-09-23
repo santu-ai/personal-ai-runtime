@@ -14,10 +14,33 @@ from app.core.harness.mcp_hub import (
 logger = logging.getLogger(__name__)
 
 
+def _nested_timer_payload(message: str, work_id: str | None) -> dict:
+    """Reminder body plus an already-existing work id, when the caller passed one.
+
+    A blank ``work_id`` is omitted. A non-blank value must name a work item
+    that already exists; this does not invent an id or copy another key.
+    """
+    nested: dict = {"message": message}
+    if work_id is None:
+        return nested
+    if not isinstance(work_id, str):
+        raise ToolInvokeError(OUTCOME_TOOL_INVALID_RESULT, "work_id must be a string")
+    cleaned = work_id.strip()
+    if not cleaned:
+        return nested
+    from app.core.runtime import read_ports
+
+    if not read_ports.query_work_item(cleaned):
+        raise ToolInvokeError(OUTCOME_TOOL_INVALID_RESULT, "work_id does not exist")
+    nested["work_id"] = cleaned
+    return nested
+
+
 def _writer_set_timer(
     minutes: float = 0,
     hours: float = 0,
     message: str = "时间到！",
+    work_id: str | None = None,
 ) -> str:
     """Tool handler — emit TimerCreated event."""
     try:
@@ -31,6 +54,7 @@ def _writer_set_timer(
         fire_at = fire_at_dt.isoformat().replace("+00:00", "Z")
 
         timer_id = f"t_{uuid.uuid4().hex[:12]}"
+        nested = _nested_timer_payload(message, work_id)
 
         kernel.emit_event(
             "TimerCreated",
@@ -41,7 +65,7 @@ def _writer_set_timer(
                 "schedule_type": "once",
                 "cron_expr": "",
                 "fire_at": fire_at,
-                "payload": {"message": message},
+                "payload": nested,
             },
             actor="user",
         )

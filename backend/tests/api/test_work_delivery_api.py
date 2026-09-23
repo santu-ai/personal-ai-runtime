@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from app.core.runtime import read_ports
 from app.product.work_delivery import publish_delivery, request_rework
 
@@ -241,6 +243,45 @@ def test_delivery_metrics_endpoint_reports_project_brief_reviews(client):
     assert body["attribution"]["llm_cost"] == 0.0
     assert body["attribution"]["unattributed_project_brief_calls"] == 0
     assert body["attribution"]["unattributed_project_brief_cost"] == 0.0
+
+
+def test_repeat_timer_stores_the_existing_brief_id(client):
+    created = client.post("/api/work-items/project-brief", json={
+        "title": "周期简报",
+        "objective": "列出变化",
+    })
+    assert created.status_code == 200, created.text
+    work_id = created.json()["id"]
+    publish_delivery(
+        work_id,
+        content="第一期",
+        summary="第一期",
+        sources=[],
+        execution_id="api-repeat-v1",
+    )
+    read_ports.update_work_item_status(work_id, "completed")
+
+    missing = client.post(
+        "/api/work-items/missing-brief/repeat-timer",
+        json={"hours": 1},
+    )
+    assert missing.status_code == 404
+
+    empty = client.post(f"/api/work-items/{work_id}/repeat-timer", json={})
+    assert empty.status_code == 400
+
+    scheduled = client.post(
+        f"/api/work-items/{work_id}/repeat-timer",
+        json={"hours": 2, "minutes": 15},
+    )
+    assert scheduled.status_code == 200, scheduled.text
+    body = scheduled.json()
+    assert body["work_id"] == work_id
+    timer = read_ports.query_timer(body["timer_id"])
+    assert timer is not None
+    payload = json.loads(timer["payload_json"])
+    assert payload["work_id"] == work_id
+    assert read_ports.query_work_item(work_id)["status"] == "completed"
 
 
 def test_rerun_completed_brief_uses_the_same_work_item(client):

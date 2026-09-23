@@ -32,7 +32,7 @@ from app.core.runtime.kernel.constants import (
     EVENT_LLM_CALL_RECORDED,
     EVENT_WORK_ITEM_UPDATED,
 )
-from app.core.runtime.kernel_instance import kernel
+from app.core.runtime.kernel_instance import get_current_execution_id, kernel
 
 logger = logging.getLogger(__name__)
 
@@ -1246,6 +1246,23 @@ def list_rerunnable_briefs(*, limit: int = 5) -> list[dict[str, Any]]:
     return out
 
 
+def _require_completed_brief(work_id: str) -> tuple[dict[str, Any], str]:
+    """Completed project brief that already has a delivery, plus that delivery id."""
+    item = read_ports.query_work_item(work_id)
+    if item is None:
+        raise DeliveryNotFoundError(work_id)
+    if not is_project_brief_plan(item.get("executable_plan")):
+        raise DeliveryValidationError("只有项目简报可以再次运行")
+    status = str(item.get("status") or "")
+    if status != "completed":
+        raise DeliveryConflictError("只有已完成的简报可以再次运行")
+    folded = fold_delivery_history(work_id)
+    current = folded.get("current")
+    if not isinstance(current, dict) or not current.get("delivery_id"):
+        raise DeliveryValidationError("还没有可对照的交付")
+    return item, str(current.get("delivery_id") or "")
+
+
 def rerun_project_brief(work_id: str) -> dict[str, Any]:
     """Re-execute a completed project brief on the same work item.
 
@@ -1255,19 +1272,7 @@ def rerun_project_brief(work_id: str) -> dict[str, Any]:
     the current one.
     """
     with _work_lock(work_id):
-        item = read_ports.query_work_item(work_id)
-        if item is None:
-            raise DeliveryNotFoundError(work_id)
-        if not is_project_brief_plan(item.get("executable_plan")):
-            raise DeliveryValidationError("只有项目简报可以再次运行")
-        status = str(item.get("status") or "")
-        if status != "completed":
-            raise DeliveryConflictError("只有已完成的简报可以再次运行")
-        folded = fold_delivery_history(work_id)
-        current = folded.get("current")
-        if not isinstance(current, dict) or not current.get("delivery_id"):
-            raise DeliveryValidationError("还没有可对照的交付")
-        previous_id = str(current.get("delivery_id") or "")
+        _item, previous_id = _require_completed_brief(work_id)
         read_ports.update_work_item_status(work_id, "pending")
         read_ports.reset_work_item_plan_progress(work_id)
         try:
@@ -1279,6 +1284,57 @@ def rerun_project_brief(work_id: str) -> dict[str, Any]:
             "supersedes_delivery_id": previous_id,
             "work": work,
         }
+
+
+_REPEAT_MESSAGE_LIMIT = 200
+
+
+def _repeat_timer_message(title: str) -> str:
+    text = f"再次运行：{title}".strip() or "再次运行"
+    if len(text) > _REPEAT_MESSAGE_LIMIT:
+        return text[:_REPEAT_MESSAGE_LIMIT]
+    return text
+
+
+async def schedule_brief_repeat(
+    work_id: str,
+    *,
+    minutes: float = 0,
+    hours: float = 0,
+) -> dict[str, Any]:
+    """Schedule ``set_timer`` so this same brief repeats once.
+
+    The nested timer payload stores the existing ``work_id``. Scheduling does
+    not change the work item and does not publish a delivery. On fire, the
+    reminder handler re-runs this task or opens it.
+    """
+    with _work_lock(work_id):
+        item, _previous_id = _require_completed_brief(work_id)
+        message = _repeat_timer_message(str(item.get("title") or "项目简报"))
+    cap = await kernel.invoke_capability(
+        "set_timer",
+        {
+            "minutes": minutes,
+            "hours": hours,
+            "message": message,
+            "work_id": work_id,
+        },
+        actor="user",
+        execution_id=get_current_execution_id(),
+    )
+    if cap.get("status") != "success":
+        raise DeliveryValidationError(str(cap.get("error") or "无法设置定时"))
+    try:
+        data = json.loads(cap.get("result") or "")
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise DeliveryValidationError("无法设置定时") from exc
+    if not isinstance(data, dict) or not data.get("timer_id"):
+        raise DeliveryValidationError("无法设置定时")
+    return {
+        "work_id": work_id,
+        "timer_id": str(data["timer_id"]),
+        "fire_at": str(data.get("fire_at") or ""),
+    }
 
 
 # Each read stays inside Kernel's limit. Pages stop once the inbox is full.

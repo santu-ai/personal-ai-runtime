@@ -48,13 +48,25 @@ def _time_specs() -> list[BuiltinToolSpec]:
         ),
         BuiltinToolSpec(
             name="set_timer",
-            description="Set a one-time reminder after a specified delay in minutes/hours.",
+            description=(
+                "Set a one-time reminder after a specified delay in minutes/hours. "
+                "Pass work_id only when the user explicitly asks to repeat an existing "
+                "project brief, and only with that brief's existing work item id. "
+                "Do not invent an id. Omit work_id for an ordinary reminder."
+            ),
             parameters={
                 "type": "object",
                 "properties": {
                     "minutes": {"type": "number", "description": "Minutes to wait before firing."},
                     "hours": {"type": "number", "description": "Hours to wait before firing."},
                     "message": {"type": "string", "description": "The reminder message to show."},
+                    "work_id": {
+                        "type": "string",
+                        "description": (
+                            "Existing work item id of the project brief to repeat. "
+                            "Omit unless the user explicitly asked to repeat that brief."
+                        ),
+                    },
                 },
                 "required": ["message"],
             },

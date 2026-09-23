@@ -159,19 +159,102 @@ async def _handle_morning_brief(payload: dict, timer_id: str | None) -> None:
     )
 
 
-async def _handle_reminder(payload: dict, timer_id: str | None) -> None:
-    from app.core.runtime.notification_channel import notification_router
+def explicit_timer_work_id(payload: dict | None) -> str | None:
+    """Non-blank ``work_id`` already stored on a timer payload.
 
-    message = payload.get("message", "时间到！")
+    A present key that is blank or not a string does not fall through to
+    ``action_id``. This does not invent an id.
+    """
+    if not isinstance(payload, dict) or "work_id" not in payload:
+        return None
+    raw = payload.get("work_id")
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    return text or None
+
+
+def _reminder_title(message: str, timer_id: str | None) -> str:
     title = f"提醒: {message}" if len(message) < 20 else "提醒"
     # Include timer_id so create_notification idempotency doesn't collapse
     # consecutive reminders with the same message text.
     if timer_id:
-        title = f"{title} ({timer_id})"
+        return f"{title} ({timer_id})"
+    return title
+
+
+async def _notify_reminder(
+    message: str,
+    timer_id: str | None,
+    *,
+    content: str | None = None,
+    related_id: str | None = None,
+) -> None:
+    from app.core.runtime.notification_channel import notification_router
 
     await notification_router.notify(
-        title, message, type_="reminder", priority="high", persist=True,
+        _reminder_title(message, timer_id),
+        content if content is not None else message,
+        type_="reminder",
+        priority="high",
+        persist=True,
+        related_id=related_id,
+        related_type="work_item" if related_id else None,
+        dedup_key=f"reminder:{timer_id}" if timer_id and related_id else None,
     )
+
+
+async def _open_or_rerun_same_task(
+    work_id: str,
+    message: str,
+    timer_id: str | None,
+) -> None:
+    """Re-run the named brief, or open that same task.
+
+    Does not create a work item or publish a delivery. A missing id stays a
+    plain reminder.
+    """
+    from app.core.runtime import read_ports
+    from app.product.work_delivery import (
+        DeliveryConflictError,
+        DeliveryNotFoundError,
+        DeliveryValidationError,
+        rerun_project_brief,
+    )
+
+    if not read_ports.query_work_item(work_id):
+        await _notify_reminder(message, timer_id)
+        return
+
+    started = False
+    try:
+        rerun_project_brief(work_id)
+        started = True
+    except (DeliveryConflictError, DeliveryNotFoundError, DeliveryValidationError):
+        started = False
+    except Exception:
+        logger.warning("timer repeat skipped for %s", work_id, exc_info=True)
+        started = False
+
+    if started:
+        content = "已再次运行这一份任务。"
+    else:
+        content = "这一份任务现在不能再次运行，打开的仍是它。"
+    extra = message.strip()
+    if extra and extra != "时间到！":
+        content = f"{content} {extra}"
+    await _notify_reminder(message, timer_id, content=content, related_id=work_id)
+
+
+async def _handle_reminder(payload: dict, timer_id: str | None) -> None:
+    message = payload.get("message", "时间到！")
+    if not isinstance(message, str) or not message.strip():
+        message = "时间到！"
+    work_id = explicit_timer_work_id(payload)
+    if work_id is None:
+        await _notify_reminder(message, timer_id)
+        return
+    await _open_or_rerun_same_task(work_id, message, timer_id)
 
 
 # Strong refs so fire-and-forget url_monitor tasks are not GC'd mid-flight.

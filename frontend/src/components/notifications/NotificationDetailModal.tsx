@@ -15,7 +15,7 @@ export default function NotificationDetailModal({ notification, onClose }: Props
 
   if (!notification) return null;
 
-  const target = notificationTargetPath(notification.type);
+  const target = notificationTargetPath(notification.type, notification);
   const displayContent = notificationPreview(notification.content);
 
   const handleNavigate = () => {

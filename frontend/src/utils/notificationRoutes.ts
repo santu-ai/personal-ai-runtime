@@ -1,5 +1,12 @@
 /** Map notification type to in-app route. */
-export function notificationTargetPath(type: string): string | null {
+export function notificationTargetPath(
+  type: string,
+  related?: { related_id?: string | null; related_type?: string | null } | null,
+): string | null {
+  if (related?.related_type === "work_item") {
+    const workId = related.related_id?.trim();
+    if (workId) return `/tasks/${encodeURIComponent(workId)}`;
+  }
   if (type === "goal_stagnant" || type.includes("goal")) return "/goals";
   if (type === "morning_brief") return "/dashboard";
   if (type === "url_monitor") return "/dashboard?tab=monitors";

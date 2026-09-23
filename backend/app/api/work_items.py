@@ -493,6 +493,33 @@ async def delete_work_item(item_id: str):
     return {"status": "ok"}
 
 
+class ScheduleBriefRepeatRequest(BaseModel):
+    minutes: float = Field(default=0, ge=0, le=24 * 60)
+    hours: float = Field(default=0, ge=0, le=24 * 30)
+
+
+@router.post("/{item_id}/repeat-timer")
+async def schedule_project_brief_repeat(item_id: str, body: ScheduleBriefRepeatRequest):
+    """Schedule one later run of this completed project brief.
+
+    Calls ``set_timer`` and stores this work id in the timer payload. Does not
+    create a work item or a delivery. When the timer fires, that same task is
+    re-run if it is still completed; otherwise the reminder opens it.
+    """
+    from app.product.work_delivery import schedule_brief_repeat
+
+    if body.minutes <= 0 and body.hours <= 0:
+        raise HTTPException(status_code=400, detail="delay must be positive")
+    if not read_ports.query_work_item(item_id):
+        raise HTTPException(status_code=404, detail="Work item not found")
+    try:
+        return await schedule_brief_repeat(
+            item_id, minutes=body.minutes, hours=body.hours,
+        )
+    except Exception as exc:
+        raise _delivery_http_error(exc) from exc
+
+
 @router.post("/{item_id}/rerun")
 async def rerun_project_brief(item_id: str):
     """Re-run a completed project brief on the same work item.

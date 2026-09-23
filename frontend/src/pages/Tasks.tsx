@@ -11,6 +11,7 @@ import {
   getWorkDelivery,
   reworkWorkDelivery,
   rerunProjectBrief,
+  scheduleBriefRepeat,
   updateWorkItemStatus,
   type WorkDelivery,
   type WorkDeliveryChangeAction,
@@ -448,6 +449,10 @@ export default function TasksPage() {
   const [busy, setBusy] = useState(false);
   const [confirmExecute, setConfirmExecute] = useState(false);
   const [confirmRerun, setConfirmRerun] = useState(false);
+  const [confirmSchedule, setConfirmSchedule] = useState(false);
+  const [scheduleHours, setScheduleHours] = useState("");
+  const [scheduleMinutes, setScheduleMinutes] = useState("");
+  const [scheduledRepeatNote, setScheduledRepeatNote] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [objective, setObjective] = useState("");
@@ -521,6 +526,11 @@ export default function TasksPage() {
       cancelled = true;
     };
   }, [urlTaskId, historyId]);
+
+  useEffect(() => {
+    setScheduledRepeatNote(null);
+    setConfirmSchedule(false);
+  }, [urlTaskId]);
 
   useEffect(() => {
     if (listError) {
@@ -619,6 +629,38 @@ export default function TasksPage() {
       invalidate();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "再次运行失败", "任务");
+    } finally {
+      executeInFlight.current = false;
+      setBusy(false);
+    }
+  };
+
+  const scheduleDelay = () => {
+    const hours = Number(scheduleHours || 0);
+    const minutes = Number(scheduleMinutes || 0);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes) || hours < 0 || minutes < 0) {
+      return null;
+    }
+    if (hours === 0 && minutes === 0) return null;
+    return { hours, minutes };
+  };
+
+  const handleScheduleRepeat = async () => {
+    if (!selected || executeInFlight.current) return;
+    const delay = scheduleDelay();
+    if (!delay) return;
+    executeInFlight.current = true;
+    setBusy(true);
+    setConfirmSchedule(false);
+    try {
+      const scheduled = await scheduleBriefRepeat(selected.id, delay);
+      setScheduledRepeatNote(
+        scheduled.fire_at
+          ? `已设定，将在 ${scheduled.fire_at} 再次运行这一份任务。`
+          : "已设定，到点后再次运行这一份任务。",
+      );
+    } catch (err) {
+      addError(err instanceof ApiError ? err.message : "设定定时失败", "任务");
     } finally {
       executeInFlight.current = false;
       setBusy(false);
@@ -936,6 +978,16 @@ export default function TasksPage() {
                             再次运行
                           </Button>
                         )}
+                        {canRerunSameBrief && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setConfirmSchedule(true)}
+                            disabled={busy}
+                          >
+                            定时再次运行
+                          </Button>
+                        )}
                         {canCancel && (
                           <Button size="sm" variant="subtle" onClick={handleCancel} disabled={busy}>
                             取消
@@ -950,7 +1002,12 @@ export default function TasksPage() {
                     )}
                     {canRerunSameBrief ? (
                       <p className="text-xs text-fg-tertiary" data-testid="rerun-same-brief-hint">
-                        再次运行仍使用这一份任务。新版本会对照当前交付，显示相对上一版的变化。
+                        再次运行仍使用这一份任务。新版本会对照当前交付，显示相对上一版的变化。定时到点后也只再次运行这一份，不另建简报。
+                      </p>
+                    ) : null}
+                    {scheduledRepeatNote ? (
+                      <p className="text-xs text-fg-secondary" data-testid="scheduled-repeat-note">
+                        {scheduledRepeatNote}
                       </p>
                     ) : null}
                   </header>
@@ -1268,6 +1325,40 @@ export default function TasksPage() {
           }}
           onCancel={() => setConfirmRerun(false)}
         />
+
+        <Dialog
+          open={confirmSchedule && canRerunSameBrief}
+          title="定时再次运行这一份简报"
+          description="到点后只再次运行这一份任务。不会新开一份简报，也不会为这次触发另建交付。若到点时它已经不能再次运行，提醒只会打开这一份任务。"
+          confirmLabel="确认定时"
+          cancelLabel="取消"
+          confirmDisabled={busy || scheduleDelay() === null}
+          onConfirm={() => {
+            void handleScheduleRepeat();
+          }}
+          onCancel={() => setConfirmSchedule(false)}
+        >
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <label className="block space-y-1">
+              <span className="text-xs text-fg-tertiary">小时</span>
+              <Input
+                inputMode="decimal"
+                value={scheduleHours}
+                onChange={(e) => setScheduleHours(e.target.value)}
+                placeholder="0"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs text-fg-tertiary">分钟</span>
+              <Input
+                inputMode="decimal"
+                value={scheduleMinutes}
+                onChange={(e) => setScheduleMinutes(e.target.value)}
+                placeholder="0"
+              />
+            </label>
+          </div>
+        </Dialog>
 
         <Dialog
           open={showCreate}

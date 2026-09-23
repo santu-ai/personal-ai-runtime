@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-09-23：Batch 26：已完成且已有交付的项目简报可以「定时再次运行」。既有 `set_timer` 的 payload 写入这一份的 `work_id`。到点若仍可再次运行，就跑同一份任务；否则提醒只打开它。不新建任务，不为这次触发另建交付。`GET /api/dashboard/periods` 仍是全局对比。不新增事件类型。未改 `read_ports/work.py`。
 - 2026-09-23：Batch 25 CI：真实后端 e2e 同时占住两个临时端口再分别交给假 LLM 和 uvicorn，避免健康检查打到假 LLM 的 GET 501。后端 stdout 会读完，避免管道写满卡住启动。
 - 2026-09-23：Batch 25：定时 payload 没有任务 id 时不编造链接。已有非空 `work_id`（没有该键时用 `action_id`）且任务仍在，仪表盘定时行才打开 `/tasks/:id`。已完成且已有交付的项目简报可再次运行：同一任务、不记返工，下一版仍用 `changes_from_previous`。不新增事件类型。未改 `read_ports/work.py`。
 - 2026-09-23：Batch 24：任务页验收时可以填写可选说明，留空不传 `reason`。已验收版本在交付区显示非空的 `latest_decision.reason`，版本历史同一行也写出；空白不显示。沿用既有 `accept` 与 `latest_decision`，不新增事件类型。未改 `read_ports/work.py`。
