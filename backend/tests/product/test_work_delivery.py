@@ -7,15 +7,18 @@ import pytest
 from app.core.runtime import read_ports
 from app.product.work_delivery import (
     DeliveryConflictError,
+    DeliveryNotFoundError,
     DeliveryValidationError,
     accept_delivery,
     adopt_suggested_action,
     fold_delivery_history,
     get_delivery,
+    list_rerunnable_briefs,
     list_unreviewed_deliveries,
     public_bundle,
     publish_delivery,
     request_rework,
+    rerun_project_brief,
     summarize_delivery_metrics,
 )
 
@@ -1287,3 +1290,129 @@ def test_unreviewed_scan_pages_past_newer_updates(isolated_kernel, monkeypatch):
     assert all(limit == 200 for limit in limits)
     assert len(limits) >= 2
     assert any(row["work_id"] == brief["id"] and row["delivery_id"] == delivery["delivery_id"] for row in rows)
+
+
+def test_rerun_same_brief_reexecutes_without_a_review_decision(isolated_kernel):
+    """再次运行同一份已完成简报：不记评审，下一版仍对照上一版。"""
+    k, _db = isolated_kernel
+    item = _brief_task_with_steps()
+    work_id = item["id"]
+    plan_before = item["executable_plan"]
+    v1 = publish_delivery(
+        work_id,
+        content="第一期正文",
+        summary="第一期",
+        sources=[{"id": "email:a", "type": "email", "title": "来信"}],
+        execution_id="rerun-v1",
+    )
+
+    result = rerun_project_brief(work_id)
+    assert result["supersedes_delivery_id"] == v1["delivery_id"]
+    assert result["work"]["status"] == "running"
+    stored = read_ports.query_work_item(work_id)
+    assert stored is not None
+    assert stored["executable_plan"] == plan_before
+    assert "rework_notes" not in stored["executable_plan"]
+
+    decisions = k.read_events(type="WorkItemUpdated", aggregate_id=work_id)
+    assert all(
+        "delivery_decision" not in (event.payload or {})
+        for event in decisions
+    )
+    assert len(k.read_events(type="ExecuteRequested", aggregate_id=f"exec_{work_id}")) == 1
+
+    with pytest.raises(DeliveryConflictError):
+        rerun_project_brief(work_id)
+
+    v2 = publish_delivery(
+        work_id,
+        content="第二期正文",
+        summary="第二期",
+        sources=[{"id": "email:b", "type": "email", "title": "新来信"}],
+        execution_id="rerun-v2",
+    )
+    delta = v2["changes_from_previous"]
+    assert delta["previous_delivery_id"] == v1["delivery_id"]
+    assert delta["previous_version"] == 1
+    assert delta["content_changed"] is True
+    assert delta["summary_changed"] is True
+    assert "第一期正文" not in str(delta)
+    bundle = public_bundle(work_id)
+    assert bundle["current_review_status"] == "unreviewed"
+    assert bundle["current"]["version"] == 2
+
+
+def test_rerun_same_brief_rejects_missing_delivery_and_other_work(isolated_kernel):
+    item = _brief_task_with_steps()
+    with pytest.raises(DeliveryValidationError, match="还没有可对照的交付"):
+        rerun_project_brief(item["id"])
+
+    other = read_ports.create_work_item(
+        "普通任务",
+        work_type="task",
+        executable_plan='{"steps":[{"tool":"echo","params":{}}]}',
+        status="completed",
+    )
+    with pytest.raises(DeliveryValidationError, match="只有项目简报"):
+        rerun_project_brief(other["id"])
+
+    failed = _brief_task_with_steps()
+    publish_delivery(
+        failed["id"],
+        content="v",
+        summary="v",
+        sources=[],
+        execution_id="rerun-failed",
+    )
+    read_ports.update_work_item_status(failed["id"], "pending")
+    read_ports.update_work_item_status(failed["id"], "running")
+    read_ports.update_work_item_status(failed["id"], "failed")
+    with pytest.raises(DeliveryConflictError, match="只有已完成"):
+        rerun_project_brief(failed["id"])
+
+    with pytest.raises(DeliveryNotFoundError):
+        rerun_project_brief("missing-brief")
+
+
+def test_list_rerunnable_briefs_keeps_completed_briefs_with_a_delivery(isolated_kernel):
+    ready = _brief_task_with_steps()
+    published = publish_delivery(
+        ready["id"],
+        content="正文",
+        summary="摘要",
+        sources=[],
+        execution_id="list-ready",
+    )
+    bare = read_ports.create_work_item(
+        "还没有交付",
+        work_type="task",
+        executable_plan=ready["executable_plan"],
+        status="completed",
+    )
+    plain = read_ports.create_work_item(
+        "普通任务",
+        work_type="task",
+        executable_plan='{"steps":[{"tool":"echo","params":{}}]}',
+        status="completed",
+    )
+    pending = read_ports.create_work_item(
+        "还在进行",
+        work_type="task",
+        executable_plan=ready["executable_plan"],
+    )
+    publish_delivery(
+        pending["id"],
+        content="进行中",
+        summary="进行中",
+        sources=[],
+        execution_id="list-pending",
+    )
+
+    rows = list_rerunnable_briefs()
+    assert [row["work_id"] for row in rows] == [ready["id"]]
+    assert rows[0]["title"] == "项目简报"
+    assert rows[0]["version"] == 1
+    assert rows[0]["delivery_id"] == published["delivery_id"]
+    assert bare["id"] not in {row["work_id"] for row in rows}
+    assert plain["id"] not in {row["work_id"] for row in rows}
+    assert pending["id"] not in {row["work_id"] for row in rows}

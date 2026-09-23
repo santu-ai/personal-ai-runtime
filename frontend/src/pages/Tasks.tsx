@@ -10,6 +10,7 @@ import {
   getDeliveryMetrics,
   getWorkDelivery,
   reworkWorkDelivery,
+  rerunProjectBrief,
   updateWorkItemStatus,
   type WorkDelivery,
   type WorkDeliveryChangeAction,
@@ -446,6 +447,7 @@ export default function TasksPage() {
   const addError = useErrorStore((s) => s.addError);
   const [busy, setBusy] = useState(false);
   const [confirmExecute, setConfirmExecute] = useState(false);
+  const [confirmRerun, setConfirmRerun] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [objective, setObjective] = useState("");
@@ -601,6 +603,22 @@ export default function TasksPage() {
       invalidate();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "启动任务失败", "任务");
+    } finally {
+      executeInFlight.current = false;
+      setBusy(false);
+    }
+  };
+
+  const handleRerun = async () => {
+    if (!selected || executeInFlight.current) return;
+    executeInFlight.current = true;
+    setBusy(true);
+    setConfirmRerun(false);
+    try {
+      await rerunProjectBrief(selected.id);
+      invalidate();
+    } catch (err) {
+      addError(err instanceof ApiError ? err.message : "再次运行失败", "任务");
     } finally {
       executeInFlight.current = false;
       setBusy(false);
@@ -767,6 +785,12 @@ export default function TasksPage() {
     selected && selected.work_type === "background" && !TERMINAL_STATUSES.has(selected.status);
   const bundle = selected?.delivery_bundle;
   const currentDelivery = bundle?.current ?? null;
+  const canRerunSameBrief = Boolean(
+    selected &&
+      isProjectBrief(selected) &&
+      selected.status === "completed" &&
+      currentDelivery,
+  );
   const viewingHistory = Boolean(
     historyId && currentDelivery && historyId !== currentDelivery.delivery_id,
   );
@@ -910,6 +934,11 @@ export default function TasksPage() {
                             {rerun ? "重新执行" : "执行"}
                           </Button>
                         )}
+                        {canRerunSameBrief && (
+                          <Button size="sm" onClick={() => setConfirmRerun(true)} disabled={busy}>
+                            再次运行
+                          </Button>
+                        )}
                         {canCancel && (
                           <Button size="sm" variant="subtle" onClick={handleCancel} disabled={busy}>
                             取消
@@ -922,6 +951,11 @@ export default function TasksPage() {
                         {selected.description}
                       </p>
                     )}
+                    {canRerunSameBrief ? (
+                      <p className="text-xs text-fg-tertiary" data-testid="rerun-same-brief-hint">
+                        再次运行仍使用这一份任务。新版本会对照当前交付，显示相对上一版的变化。
+                      </p>
+                    ) : null}
                   </header>
 
                   {viewingHistory && historyLoading && (
@@ -1223,6 +1257,19 @@ export default function TasksPage() {
             void handleExecute();
           }}
           onCancel={() => setConfirmExecute(false)}
+        />
+
+        <Dialog
+          open={confirmRerun && canRerunSameBrief}
+          title="再次运行同一份简报"
+          description="将重新执行这份简报，不另建任务，也不记成返工。完成后的新版本会对照当前这一版，显示相对上一版的变化。"
+          confirmLabel="确认再次运行"
+          cancelLabel="取消"
+          confirmDisabled={busy}
+          onConfirm={() => {
+            void handleRerun();
+          }}
+          onCancel={() => setConfirmRerun(false)}
         />
 
         <Dialog

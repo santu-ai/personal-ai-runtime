@@ -138,6 +138,8 @@ frozenset({
 })
 ```
 
+`payload_json` 是 `TimerCreated` 的嵌套 `payload`。内置 cron 与 `set_timer` 不写入任务 id。仪表盘只在该对象里已有非空 `work_id`（没有该键时才看 `action_id`）且 `work_items` 仍有该行时带上 `work_id`。空白或指向已删除任务的键不会改去读另一个键。定时器 id 与 `correlation_id` 不当作任务 id。
+
 ### `policy_events`（治理事件溯源根）
 
 ```python

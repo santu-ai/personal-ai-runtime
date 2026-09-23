@@ -1203,6 +1203,84 @@ def _complete_rework_dispatch(
         return result
 
 
+# Recent completed tasks scanned for a project brief that already has a delivery.
+# Not a new work model: the next publish still supersedes the current version.
+_RERUN_SCAN = 30
+
+
+def list_rerunnable_briefs(*, limit: int = 5) -> list[dict[str, Any]]:
+    """Completed project briefs that already have a delivery.
+
+    Opening one and running it again stays on the same work item. The next
+    ``publish_delivery`` sets ``supersedes_delivery_id``, so
+    ``changes_from_previous`` is the comparison with the previous version.
+    """
+    limit = max(1, min(int(limit), 5))
+    rows = read_ports.query_work_items(
+        work_type="task",
+        status="completed",
+        order="created_at_desc",
+        limit=_RERUN_SCAN,
+    )
+    out: list[dict[str, Any]] = []
+    for item in rows:
+        if len(out) >= limit:
+            break
+        work_id = str(item.get("id") or "")
+        if not work_id or not is_project_brief_plan(item.get("executable_plan")):
+            continue
+        try:
+            folded = fold_delivery_history(work_id)
+        except Exception:
+            logger.warning("skip rerunnable brief %s", work_id, exc_info=True)
+            continue
+        current = folded.get("current")
+        if not isinstance(current, dict) or not current.get("delivery_id"):
+            continue
+        out.append({
+            "work_id": work_id,
+            "title": item.get("title") or "",
+            "version": current.get("version"),
+            "delivery_id": current.get("delivery_id"),
+        })
+    return out
+
+
+def rerun_project_brief(work_id: str) -> dict[str, Any]:
+    """Re-execute a completed project brief on the same work item.
+
+    Does not record a review decision and does not append rework notes.
+    Reopens ``completed`` → ``pending``, clears plan progress, then uses the
+    existing ``ExecuteRequested`` path. The next published delivery supersedes
+    the current one.
+    """
+    with _work_lock(work_id):
+        item = read_ports.query_work_item(work_id)
+        if item is None:
+            raise DeliveryNotFoundError(work_id)
+        if not is_project_brief_plan(item.get("executable_plan")):
+            raise DeliveryValidationError("只有项目简报可以再次运行")
+        status = str(item.get("status") or "")
+        if status != "completed":
+            raise DeliveryConflictError("只有已完成的简报可以再次运行")
+        folded = fold_delivery_history(work_id)
+        current = folded.get("current")
+        if not isinstance(current, dict) or not current.get("delivery_id"):
+            raise DeliveryValidationError("还没有可对照的交付")
+        previous_id = str(current.get("delivery_id") or "")
+        read_ports.update_work_item_status(work_id, "pending")
+        read_ports.reset_work_item_plan_progress(work_id)
+        try:
+            work = read_ports.request_work_item_execute(work_id)
+        except ValueError as exc:
+            raise DeliveryValidationError(str(exc)) from exc
+        return {
+            "work_id": work_id,
+            "supersedes_delivery_id": previous_id,
+            "work": work,
+        }
+
+
 # Each read stays inside Kernel's limit. Pages stop once the inbox is full.
 # If that window is entirely newer non-delivery updates, fall back to a bounded
 # task-row scan so an older unreviewed brief is not dropped.

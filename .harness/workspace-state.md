@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-09-23：Batch 25：定时 payload 没有任务 id 时不编造链接。已有非空 `work_id`（没有该键时用 `action_id`）且任务仍在，仪表盘定时行才打开 `/tasks/:id`。已完成且已有交付的项目简报可再次运行：同一任务、不记返工，下一版仍用 `changes_from_previous`。不新增事件类型。未改 `read_ports/work.py`。
 - 2026-09-23：Batch 24：任务页验收时可以填写可选说明，留空不传 `reason`。已验收版本在交付区显示非空的 `latest_decision.reason`，版本历史同一行也写出；空白不显示。沿用既有 `accept` 与 `latest_decision`，不新增事件类型。未改 `read_ports/work.py`。
 - 2026-09-23：Batch 23：任务页交付区列出该版本已存储的 `checks`（通过 / 未通过 / 待判断），非空说明写在同一行。版本历史同一行写出条数；未通过和待判断带上要求。空白检查不显示。不新增事件类型。未改 `read_ports/work.py`。
 - 2026-09-23：Batch 22：任务页对已有上一版的交付显示「相对 vN」。`changes_from_previous` 在读取时对照 `supersedes_delivery_id`，比较已存储的 findings、sources、limitations、suggested_actions，以及摘要和正文是否变化。不复制上一版全文，不新增事件类型。第一版或上一版缺失时为 null。未改 `read_ports/work.py`。

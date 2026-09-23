@@ -11,13 +11,19 @@ Widgets:
   - active_goals: active goal count + top 3 by importance
   - recent_events: last 5 system events (what happened)
   - recent_memories: semantic recall of recent memories
-  - timer_status: active timer count (Time dimension)
+  - timer_status: active timer count (Time dimension). ``work_id`` is set only
+    when the stored timer payload already names ``work_id`` (or ``action_id``
+    when ``work_id`` is absent) and that work item still exists. The timer row
+    id and ``correlation_id`` are not work ids.
+  - rerunnable_briefs: completed project briefs that already have a delivery.
+    Re-running them stays on the same work item.
   - governance_status: active policy + grant counts (Governance)
   - execution_trust: pending approvals, failed/retry/dead-letter executions, last result.
     Rows include work_id only when the trigger ExecuteRequested already names a
     work item that still exists. correlation_id is not a work id.
 """
 
+import json
 import logging
 from datetime import UTC, datetime, timedelta
 
@@ -50,6 +56,7 @@ def generate_dashboard() -> dict:
         "recent_events": _widget_recent_events(seven_days_ago),
         "recent_memories": _widget_recent_memories(),
         "timer_status": _widget_timer_status(),
+        "rerunnable_briefs": _widget_rerunnable_briefs(),
         "governance_status": _widget_governance_status(),
         "execution_trust": _widget_execution_trust(),
     }
@@ -184,6 +191,37 @@ def _widget_recent_memories() -> dict:
         return {"count": 0, "items": []}
 
 
+def _linked_work_id(payload_json: object) -> str | None:
+    """Work id already stored on a timer payload, if that work item still exists.
+
+    ``work_id`` wins. ``action_id`` is used only when ``work_id`` is absent.
+    A present key that is blank, or names a missing work item, does not fall
+    through to another key. Timer ids and ``correlation_id`` are ignored.
+    """
+    if isinstance(payload_json, dict):
+        payload = payload_json
+    elif isinstance(payload_json, str):
+        try:
+            payload = json.loads(payload_json or "{}")
+        except json.JSONDecodeError:
+            return None
+    else:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    for key in ("work_id", "action_id"):
+        if key not in payload:
+            continue
+        raw = payload.get(key)
+        if not isinstance(raw, str) or not raw.strip():
+            return None
+        candidate = raw.strip()
+        if read_ports.query_work_item(candidate):
+            return candidate
+        return None
+    return None
+
+
 def _widget_timer_status() -> dict:
     """Active timers — Time dimension health."""
     try:
@@ -196,13 +234,26 @@ def _widget_timer_status() -> dict:
         "active_timers": active_count,
         "items": [
             {
+                "id": t.get("id", ""),
                 "handler_name": t.get("handler_name", ""),
                 "schedule_type": t.get("schedule_type", ""),
                 "fire_at": t.get("fire_at", ""),
+                "work_id": _linked_work_id(t.get("payload_json")),
             }
             for t in active
         ],
     }
+
+
+def _widget_rerunnable_briefs() -> list:
+    """Completed project briefs the user can open and run again."""
+    try:
+        from app.product.work_delivery import list_rerunnable_briefs
+
+        return list_rerunnable_briefs(limit=5)
+    except Exception:
+        logger.warning("Dashboard: Failed to list rerunnable briefs", exc_info=True)
+        return []
 
 
 def _widget_governance_status() -> dict:
