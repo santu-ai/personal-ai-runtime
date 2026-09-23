@@ -57,8 +57,8 @@ Personal AI Runtime 的所有执行路径用**一套三车道语义**解释。�
 | Concept | Create | Start | End | Retry | Recover | Destroy/GC |
 |---------|--------|-------|-----|-------|---------|------------|
 | **ScheduledExecution** | ExecutionRequested | ExecutionStarted | Completed/Failed | ExecutionRetried (Lane A) | running→retrying→pending；retry 预算尽则 ExecutionFailed / DLQ | Soft-prune terminal rows (`handler_executions_retention_days`) |
-| **WorkItem** | WorkItemCreated | StatusChanged(running) 或用户 pending→completed | completed/cancelled | Domain re-open: failed→pending、completed→pending；running 且最新 handler 已失败时可再次 `ExecuteRequested` | 无 handler 行的 BG running→pending；有计划的 task/action 在 running 且无 handler 行时补 `ExecuteRequested`；goal 或没有计划则跳过。该请求的 handler 都已终态且至少一条失败则收成 `failed` | Domain delete events |
+| **WorkItem** | WorkItemCreated | StatusChanged(running) 或用户 pending→completed | completed/cancelled | Domain re-open: failed→pending、completed→pending；running 且最新 `status=running` 之后的 `ExecuteRequested` 已失败时可再次 `ExecuteRequested` | 无 handler 行的 BG running→pending；有计划的 task/action 在 running 且无 handler 行时补 `ExecuteRequested`；goal 或没有计划则跳过。该请求的 handler 都已终态且至少一条失败则收成 `failed` | Domain delete events |
 | **PlanResume** | register on pending approval | — | take on approve/deny | — | SQLite durable | clear on cancel/deny/expire |
 | **Chat tool loop** | ChatRequested | Brain.chat_stream | ChatCompleted / confirmation_required | Lane A `max_retries=2` | `chat_ckpt:{correlation_id}` on interrupt replay | — |
 
-Domain FSM 不含 `retrying`；操作层重试由 Lane A（`ScheduledExecution`）独占。
+Domain FSM 不含 `retrying`；操作层重试由 Lane A（`ScheduledExecution`）独占。任务详情的 `handler_execution` 与死信收口用同一条边界：只认最新 `status=running` 之后的 `ExecuteRequested`。这条请求还没有 handler 行时快照为空，不把上一轮失败当成当前尝试。handler 在请求之后补写的 `status=running`（`caused_by` 指向该请求）仍属于这一次。

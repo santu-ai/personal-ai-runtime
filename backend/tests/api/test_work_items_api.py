@@ -227,6 +227,90 @@ def test_execution_detail_uses_execute_completed_error_when_scheduler_error_is_b
     assert handler["error"] == "disk full"
 
 
+def test_execution_detail_ignores_previous_attempt_until_current_handler_exists(client):
+    """A new running attempt does not inherit the previous handler failure."""
+    from app.core.runtime.execution_events import (
+        emit_execution_failed,
+        emit_execution_requested,
+    )
+    from app.core.runtime.kernel.constants import (
+        AGGREGATE_WORK_ITEM,
+        EVENT_WORK_ITEM_STATUS_CHANGED,
+    )
+    from app.core.runtime.kernel_instance import kernel
+    from app.core.runtime.scheduled_execution import ScheduledExecution
+
+    created = client.post("/api/work-items/", json={
+        "title": "Retry window",
+        "work_type": "task",
+        "executable_plan": '{"steps":[{"tool":"read_file"}]}',
+    }).json()
+    item_id = created["id"]
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, item_id,
+        payload={"status": "running"}, actor="user",
+    )
+    previous = kernel.emit_event(
+        "ExecuteRequested", "action", f"exec_{item_id}",
+        payload={"action_id": item_id}, actor="user",
+    )
+    failed = ScheduledExecution(
+        event_id=previous.id,
+        event_seq=previous.seq or 0,
+        event_type=previous.type,
+        handler_name="on_execute_requested",
+    )
+    failed.error = "disk full"
+    emit_execution_requested(kernel, failed, "user")
+    emit_execution_failed(kernel, failed, terminal=True, dead_letter=True)
+
+    before = client.get(f"/api/work-items/{item_id}?include=execution")
+    assert before.status_code == 200
+    assert before.json()["execution"]["handler_execution"]["id"] == failed.id
+    assert before.json()["execution"]["handler_execution"]["error"] == "disk full"
+
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, item_id,
+        payload={"status": "running"}, actor="executor", caused_by=previous.id,
+    )
+    stamped = client.get(f"/api/work-items/{item_id}?include=execution")
+    assert stamped.status_code == 200
+    assert stamped.json()["execution"]["handler_execution"]["id"] == failed.id
+
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, item_id,
+        payload={"status": "running"}, actor="user",
+    )
+    opened = client.get(f"/api/work-items/{item_id}?include=execution")
+    assert opened.status_code == 200
+    assert opened.json()["status"] == "running"
+    assert opened.json()["execution"]["handler_execution"] is None
+
+    current = kernel.emit_event(
+        "ExecuteRequested", "action", f"exec_{item_id}",
+        payload={"action_id": item_id}, actor="user",
+    )
+    waiting = client.get(f"/api/work-items/{item_id}?include=execution")
+    assert waiting.status_code == 200
+    assert waiting.json()["status"] == "running"
+    assert waiting.json()["execution"]["handler_execution"] is None
+
+    live = ScheduledExecution(
+        event_id=current.id,
+        event_seq=current.seq or 0,
+        event_type=current.type,
+        handler_name="on_execute_requested",
+    )
+    emit_execution_requested(kernel, live, "user")
+    started = client.get(f"/api/work-items/{item_id}?include=execution")
+    assert started.status_code == 200
+    handler = started.json()["execution"]["handler_execution"]
+    assert handler["id"] == live.id
+    assert handler["status"] != "failed"
+    assert handler["dead_letter"] is False
+    assert handler["error"] is None
+
+
 async def test_execution_detail_shows_in_handler_exception(client, monkeypatch):
     """The except path keeps the exception text, and task detail reads it back."""
     from app.core.runtime.execution import ExecutionContext

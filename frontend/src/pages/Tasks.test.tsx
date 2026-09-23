@@ -585,6 +585,30 @@ describe("TasksPage", () => {
     });
   });
 
+  it("does not offer re-execute while the current attempt has no handler row", async () => {
+    const running: WorkItem = {
+      ...sampleTask,
+      status: "running",
+      execution: {
+        steps: [{ tool: "write_file" }],
+        resume_from: 0,
+        previous_output: {},
+        handler_execution: null,
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [running];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(running);
+    renderTasks("/tasks/task_1");
+
+    expect(await screen.findByRole("heading", { name: "整理报告" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重新执行" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "执行" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/上次执行已失败/)).not.toBeInTheDocument();
+  });
+
   it("labels a failed task that can run again as 重新执行", async () => {
     const closed: WorkItem = {
       ...sampleTask,
