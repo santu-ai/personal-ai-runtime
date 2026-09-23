@@ -70,6 +70,124 @@ function deliveryReworkReason(delivery: WorkDelivery | null | undefined): string
   return typeof reason === "string" ? reason.trim() : "";
 }
 
+function checkResultLabel(result: string): string {
+  if (result === "pass") return "通过";
+  if (result === "fail") return "未通过";
+  if (result === "needs_review") return "待判断";
+  return result;
+}
+
+function checkResultClass(result: string): string {
+  if (result === "pass") return "text-success";
+  if (result === "fail") return "text-danger";
+  if (result === "needs_review") return "text-warning";
+  return "text-fg-secondary";
+}
+
+function checkDetailLabel(detail: string): string {
+  const text = detail.trim();
+  if (!text) return "";
+  if (text === "0 missing citations") return "引用完整";
+  if (text === "no sources in this run") return "本次没有来源";
+  if (text === "limitations present") return "已写明不足";
+  if (text === "sources available") return "已有来源";
+  if (text === "all citations in allowed source set") return "引用都在允许的来源内";
+  if (text === "requires human judgment") return "需要人工判断";
+  const missing = /^(\d+) findings lack citations$/.exec(text);
+  if (missing) return `${missing[1]} 条结论缺少来源`;
+  return text;
+}
+
+function visibleDeliveryChecks(delivery: WorkDelivery | null | undefined): Array<{
+  criterion: string;
+  result: string;
+  detail: string;
+}> {
+  const raw = delivery?.checks;
+  if (!Array.isArray(raw)) return [];
+  const rows: Array<{ criterion: string; result: string; detail: string }> = [];
+  for (const check of raw) {
+    if (!check || typeof check !== "object") continue;
+    const criterion = typeof check.criterion === "string" ? check.criterion.trim() : "";
+    const result = typeof check.result === "string" ? check.result.trim() : "";
+    const detail = checkDetailLabel(typeof check.detail === "string" ? check.detail : "");
+    if (!criterion && !result && !detail) continue;
+    rows.push({ criterion, result, detail });
+  }
+  return rows;
+}
+
+function deliveryCheckSummary(delivery: WorkDelivery | null | undefined): string {
+  const rows = visibleDeliveryChecks(delivery);
+  if (rows.length === 0) return "";
+  const names = new Map<string, string[]>();
+  const seen: string[] = [];
+  for (const row of rows) {
+    if (!names.has(row.result)) {
+      names.set(row.result, []);
+      seen.push(row.result);
+    }
+    if (row.criterion) names.get(row.result)?.push(row.criterion);
+  }
+  const preferred = ["pass", "fail", "needs_review"];
+  const keys = [
+    ...preferred.filter((key) => names.has(key)),
+    ...seen.filter((key) => key && !preferred.includes(key)),
+  ];
+  const parts = keys.map((key) => {
+    const criteria = names.get(key) ?? [];
+    const count = rows.filter((row) => row.result === key).length;
+    const label = `${checkResultLabel(key)} ${count}`;
+    if (key === "pass" || criteria.length === 0) return label;
+    return `${label}（${criteria.join("、")}）`;
+  });
+  const unlabeled = rows.filter((row) => !row.result);
+  if (unlabeled.length > 0) {
+    const criteria = unlabeled.map((row) => row.criterion).filter(Boolean);
+    parts.push(
+      criteria.length > 0
+        ? `未标明 ${unlabeled.length}（${criteria.join("、")}）`
+        : `未标明 ${unlabeled.length}`,
+    );
+  }
+  return parts.join(" · ");
+}
+
+function deliveryVersionLabel(row: WorkDelivery): string {
+  return [
+    `v${row.version}`,
+    reviewLabel(row.review_status),
+    deliveryReworkReason(row).replace(/\s+/g, " "),
+    deliveryCheckSummary(row),
+    row.summary || "无摘要",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function DeliveryChecks({ delivery }: { delivery: WorkDelivery }) {
+  const rows = visibleDeliveryChecks(delivery);
+  if (rows.length === 0) return null;
+  return (
+    <div className="space-y-1" data-testid="delivery-checks">
+      <h4 className="text-xs font-medium text-fg-tertiary">验收检查</h4>
+      <ul className="text-sm space-y-1">
+        {rows.map((row, index) => {
+          const label = checkResultLabel(row.result);
+          const rest = [row.criterion, row.detail].filter(Boolean).join(" · ");
+          return (
+            <li key={`${row.criterion}-${row.result}-${index}`} className="text-fg-secondary">
+              {label ? <span className={checkResultClass(row.result)}>{label}</span> : null}
+              {label && rest ? " · " : ""}
+              {rest}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 function findingKindLabel(kind: string | undefined): string {
   if (kind === "risk") return "风险";
   if (kind === "action") return "行动";
@@ -837,6 +955,7 @@ export default function TasksPage() {
                           </div>
                         )}
                       </div>
+                      <DeliveryChecks delivery={shownDelivery} />
                       <DeliveryVersionDiff delivery={shownDelivery} />
                       <p className="text-sm text-fg-secondary whitespace-pre-wrap">
                         {shownDelivery.summary}
@@ -949,11 +1068,7 @@ export default function TasksPage() {
                                 )
                               }
                             >
-                              {`v${row.version} · ${reviewLabel(row.review_status)}${
-                                deliveryReworkReason(row)
-                                  ? ` · ${deliveryReworkReason(row).replace(/\s+/g, " ")}`
-                                  : ""
-                              } · ${row.summary || "无摘要"}`}
+                              {deliveryVersionLabel(row)}
                             </button>
                           </li>
                         ))}

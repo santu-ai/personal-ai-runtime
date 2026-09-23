@@ -978,4 +978,145 @@ describe("TasksPage", () => {
     expect(panel).toHaveTextContent("正文已更新");
     expect(panel).not.toHaveTextContent("与上一版相同");
   });
+
+  it("shows stored acceptance checks on the current delivery and version list", async () => {
+    const checks = [
+      {
+        criterion: "每条关键结论附来源",
+        result: "fail" as const,
+        programmatic: true,
+        detail: "2 findings lack citations",
+      },
+      {
+        criterion: "不编造来源",
+        result: "pass" as const,
+        programmatic: true,
+        detail: "all citations in allowed source set",
+      },
+      {
+        criterion: "语气必须让老板满意",
+        result: "needs_review" as const,
+        programmatic: false,
+        detail: "requires human judgment",
+      },
+      { criterion: "  ", result: "  ", detail: "   " },
+    ];
+    const task: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        ...briefTask.delivery_bundle!,
+        current: { ...currentDelivery, checks },
+        deliveries: [historySummary, { ...currentSummary, checks }],
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [task];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(task);
+    renderTasks("/tasks/brief_1");
+
+    const panel = await screen.findByTestId("delivery-checks");
+    expect(panel).toHaveTextContent("未通过 · 每条关键结论附来源 · 2 条结论缺少来源");
+    expect(panel).toHaveTextContent("通过 · 不编造来源 · 引用都在允许的来源内");
+    expect(panel).toHaveTextContent("待判断 · 语气必须让老板满意 · 需要人工判断");
+    expect(
+      screen.getByRole("button", {
+        name: "v2 · 待验收 · 通过 1 · 未通过 1（每条关键结论附来源） · 待判断 1（语气必须让老板满意） · 有进度风险",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "v1 · 已要求返工 · 第一版摘要" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows stored checks for a historical version", async () => {
+    const task: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        ...briefTask.delivery_bundle!,
+        current: {
+          ...currentDelivery,
+          checks: [{ criterion: "当前版要求", result: "pass", detail: "0 missing citations" }],
+        },
+        deliveries: [
+          {
+            ...historySummary,
+            checks: [
+              { criterion: "不编造来源", result: "pass", detail: "0 missing citations" },
+              {
+                criterion: "每条关键结论附来源",
+                result: "fail",
+                detail: "1 findings lack citations",
+              },
+            ],
+          },
+          {
+            ...currentSummary,
+            checks: [{ criterion: "当前版要求", result: "pass", detail: "0 missing citations" }],
+          },
+        ],
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [task];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(task);
+    vi.mocked(getWorkDelivery).mockResolvedValue({
+      ...historyFull,
+      checks: [
+        {
+          criterion: "资料不足时明确说明",
+          result: "needs_review",
+          detail: "no sources in this run",
+        },
+        { criterion: "额外门槛", result: "blocked", detail: "仍需确认" },
+      ],
+    });
+    renderTasks("/tasks/brief_1");
+
+    expect(await screen.findByTestId("delivery-checks")).toHaveTextContent(
+      "通过 · 当前版要求 · 引用完整",
+    );
+    const historyButton = screen.getByRole("button", {
+      name: "v1 · 已要求返工 · 通过 1 · 未通过 1（每条关键结论附来源） · 第一版摘要",
+    });
+    fireEvent.click(historyButton);
+    const panel = await screen.findByTestId("delivery-checks");
+    expect(panel).toHaveTextContent("待判断 · 资料不足时明确说明 · 本次没有来源");
+    expect(panel).toHaveTextContent("blocked · 额外门槛 · 仍需确认");
+    expect(panel).not.toHaveTextContent("当前版要求");
+    expect(
+      screen.getByRole("button", { name: "v2 · 待验收 · 通过 1 · 有进度风险" }),
+    ).toBeInTheDocument();
+  });
+
+  it("omits blank acceptance checks", async () => {
+    const blank = [{ criterion: "  ", result: " ", detail: "\n" }];
+    const task: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        ...briefTask.delivery_bundle!,
+        current: { ...currentDelivery, checks: blank },
+        deliveries: [
+          { ...historySummary, checks: blank },
+          { ...currentSummary, checks: blank },
+        ],
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [task];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(task);
+    renderTasks("/tasks/brief_1");
+
+    expect(await screen.findByText("有进度风险")).toBeInTheDocument();
+    expect(screen.queryByTestId("delivery-checks")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "v1 · 已要求返工 · 第一版摘要" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "v2 · 待验收 · 有进度风险" })).toBeInTheDocument();
+  });
 });
