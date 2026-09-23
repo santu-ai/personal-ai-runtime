@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-09-23：Batch 22：任务页对已有上一版的交付显示「相对 vN」。`changes_from_previous` 在读取时对照 `supersedes_delivery_id`，比较已存储的 findings、sources、limitations、suggested_actions，以及摘要和正文是否变化。不复制上一版全文，不新增事件类型。第一版或上一版缺失时为 null。未改 `read_ports/work.py`。
 - 2026-09-23：Batch 21：任务页交付包和 `WorkDelivery` 带上该版本已有的 `latest_decision`（含 `reason`）。「已要求返工」时交付区显示返工理由，版本历史同一行也写出。空白理由不显示。不新增事件类型。未改 `read_ports/work.py`。
 - 2026-09-23：Batch 20：交付指标对缺少 `caused_by` 的成功 `project_brief` 调用另计 `unattributed_project_brief_cost`，不并入 `llm_cost`；读上限打满时该金额与次数仍是 unavailable。任务页在未归因次数旁写出这笔金额。不新增事件类型。未改 `read_ports/work.py`。
 - 2026-09-23：Batch 19：交付指标里缺少 `caused_by` 的成功 `project_brief` 调用另计 `unattributed_project_brief_calls`，已归因金额照常加总；读上限打满时金额和次数仍是 unavailable。任务页在金额后标出未归因次数。不新增事件类型。未改 `read_ports/work.py`。

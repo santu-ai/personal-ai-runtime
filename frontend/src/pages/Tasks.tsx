@@ -12,6 +12,10 @@ import {
   reworkWorkDelivery,
   updateWorkItemStatus,
   type WorkDelivery,
+  type WorkDeliveryChangeAction,
+  type WorkDeliveryChangeFinding,
+  type WorkDeliveryChangeSource,
+  type WorkDeliveryChanges,
   type DeliveryMetrics,
   type WorkItem,
 } from "../api/client";
@@ -64,6 +68,126 @@ function deliveryReworkReason(delivery: WorkDelivery | null | undefined): string
   if (!delivery || delivery.review_status !== "changes_requested") return "";
   const reason = delivery.latest_decision?.reason;
   return typeof reason === "string" ? reason.trim() : "";
+}
+
+function findingKindLabel(kind: string | undefined): string {
+  if (kind === "risk") return "风险";
+  if (kind === "action") return "行动";
+  if (!kind || kind === "change") return "变化";
+  return kind;
+}
+
+function joinedIds(ids: string[] | undefined): string {
+  return (ids ?? []).filter((item) => item.trim()).join("、");
+}
+
+function findingLine(prefix: string, item: WorkDeliveryChangeFinding): string {
+  const cites = joinedIds(item.source_ids);
+  return `${prefix}：[${findingKindLabel(item.kind)}] ${item.text}${cites ? `（${cites}）` : ""}`;
+}
+
+function findingChangedLine(item: WorkDeliveryChangeFinding): string {
+  const parts = [item.text];
+  const previousKind = item.previous_kind || "change";
+  const nextKind = item.kind || "change";
+  if (previousKind !== nextKind) {
+    parts.push(`${findingKindLabel(previousKind)} → ${findingKindLabel(nextKind)}`);
+  }
+  const previousIds = joinedIds(item.previous_source_ids);
+  const nextIds = joinedIds(item.source_ids);
+  if (previousIds !== nextIds) {
+    parts.push(`来源 ${previousIds || "无"} → ${nextIds || "无"}`);
+  }
+  return `改写的结论：${parts.join("，")}`;
+}
+
+function sourceLabel(source: WorkDeliveryChangeSource): string {
+  const title = source.title?.trim();
+  return title ? `${source.id} ${title}` : source.id;
+}
+
+function sourceChangedLine(source: WorkDeliveryChangeSource): string {
+  const parts = [source.id];
+  const previousTitle = source.previous_title?.trim() || "";
+  const title = source.title?.trim() || "";
+  if (previousTitle !== title) {
+    parts.push(`${previousTitle || "无标题"} → ${title || "无标题"}`);
+  }
+  const previousLocator = source.previous_locator?.trim() || "";
+  const locator = source.locator?.trim() || "";
+  if (previousLocator !== locator) {
+    parts.push(`${previousLocator || "无定位"} → ${locator || "无定位"}`);
+  }
+  const previousType = source.previous_type?.trim() || "";
+  const type = source.type?.trim() || "";
+  if (previousType !== type) {
+    parts.push(`${previousType || "无类型"} → ${type || "无类型"}`);
+  }
+  return `来源有更新：${parts.join("，")}`;
+}
+
+function actionChangedLine(action: WorkDeliveryChangeAction): string {
+  const parts = [action.title];
+  const previousReason = action.previous_reason?.trim() || "";
+  const reason = action.reason?.trim() || "";
+  if (previousReason !== reason) {
+    parts.push(`理由 ${previousReason || "无"} → ${reason || "无"}`);
+  }
+  const previousIds = joinedIds(action.previous_source_ids);
+  const nextIds = joinedIds(action.source_ids);
+  if (previousIds !== nextIds) {
+    parts.push(`来源 ${previousIds || "无"} → ${nextIds || "无"}`);
+  }
+  return `待办有更新：${parts.join("，")}`;
+}
+
+function deliveryChangeLines(delta: WorkDeliveryChanges): string[] {
+  const lines = [
+    ...(delta.findings_added ?? []).map((item) => findingLine("新增结论", item)),
+    ...(delta.findings_removed ?? []).map((item) => findingLine("去掉的结论", item)),
+    ...(delta.findings_changed ?? []).map((item) => findingChangedLine(item)),
+    ...(delta.sources_added ?? []).map((item) => `新增来源：${sourceLabel(item)}`),
+    ...(delta.sources_removed ?? []).map((item) => `去掉的来源：${sourceLabel(item)}`),
+    ...(delta.sources_changed ?? []).map((item) => sourceChangedLine(item)),
+    ...(delta.limitations_added ?? []).map((item) => `新增限制：${item}`),
+    ...(delta.limitations_removed ?? []).map((item) => `去掉的限制：${item}`),
+    ...(delta.actions_added ?? []).map((item) => `新增待办：${item.title}`),
+    ...(delta.actions_removed ?? []).map((item) => `去掉的待办：${item.title}`),
+    ...(delta.actions_changed ?? []).map((item) => actionChangedLine(item)),
+  ];
+  if (delta.summary_changed) lines.push("摘要已更新");
+  const structuredBodyChanged =
+    (delta.findings_added?.length ?? 0) +
+      (delta.findings_removed?.length ?? 0) +
+      (delta.findings_changed?.length ?? 0) +
+      (delta.limitations_added?.length ?? 0) +
+      (delta.limitations_removed?.length ?? 0) +
+      (delta.actions_added?.length ?? 0) +
+      (delta.actions_removed?.length ?? 0) +
+      (delta.actions_changed?.length ?? 0) >
+    0;
+  if (delta.content_changed && !structuredBodyChanged) lines.push("正文已更新");
+  return lines;
+}
+
+function DeliveryVersionDiff({ delivery }: { delivery: WorkDelivery }) {
+  const delta = delivery.changes_from_previous;
+  if (!delta) return null;
+  const lines = deliveryChangeLines(delta);
+  return (
+    <div className="space-y-1" data-testid="delivery-version-diff">
+      <h4 className="text-xs font-medium text-fg-tertiary">相对 v{delta.previous_version}</h4>
+      {lines.length === 0 ? (
+        <p className="text-sm text-fg-secondary">与上一版相同</p>
+      ) : (
+        <ul className="text-sm text-fg-secondary space-y-1">
+          {lines.map((line, index) => (
+            <li key={`${line}-${index}`}>{line}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 function stepToolName(step: Record<string, unknown>): string {
@@ -713,6 +837,7 @@ export default function TasksPage() {
                           </div>
                         )}
                       </div>
+                      <DeliveryVersionDiff delivery={shownDelivery} />
                       <p className="text-sm text-fg-secondary whitespace-pre-wrap">
                         {shownDelivery.summary}
                       </p>

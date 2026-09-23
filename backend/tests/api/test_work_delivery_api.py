@@ -60,6 +60,14 @@ def test_accept_rework_conflict_and_idempotency(client):
     assert len(bundle["deliveries"]) == 2
     assert bundle["current"]["delivery_id"] == v2["delivery_id"]
     assert bundle["current"]["content"] == "full-v2-longer-than-preview"
+    assert bundle["deliveries"][0]["changes_from_previous"] is None
+    delta = bundle["current"]["changes_from_previous"]
+    assert delta["previous_delivery_id"] == v1["delivery_id"]
+    assert delta["previous_version"] == 1
+    assert delta["summary_changed"] is True
+    assert delta["content_changed"] is True
+    assert "full-v1" not in str(delta)
+    assert bundle["deliveries"][1]["changes_from_previous"]["content_changed"] is True
 
     detail = client.get(f"/api/work-items/{work_id}?include=deliveries")
     assert detail.json()["delivery_bundle"]["current"]["version"] == 2

@@ -169,6 +169,135 @@ def test_public_delivery_keeps_rework_reason(isolated_kernel):
     assert "content" not in old
 
 
+def test_changes_from_previous_use_stored_delivery_fields(isolated_kernel):
+    k, _db = isolated_kernel
+    item = _create_task()
+    work_id = item["id"]
+    v1 = publish_delivery(
+        work_id,
+        content="body-v1",
+        summary="第一版",
+        sources=[{"id": "email:1", "type": "email", "title": "旧邮件", "locator": "a"}],
+        findings=[
+            {"text": "进度正常", "kind": "change", "source_ids": ["email:1"]},
+            {"text": "范围只含邮件", "kind": "change", "source_ids": ["email:1"]},
+        ],
+        limitations=["只看了邮件"],
+        suggested_actions=[{
+            "title": "核对排期",
+            "reason": "旧理由",
+            "source_ids": ["email:1"],
+        }],
+        execution_id="exec-d1",
+    )
+    assert v1["changes_from_previous"] is None
+
+    again = publish_delivery(
+        work_id,
+        content="ignored",
+        summary="ignored",
+        sources=[],
+        execution_id="exec-d1",
+    )
+    assert again["delivery_id"] == v1["delivery_id"]
+    assert again["changes_from_previous"] is None
+
+    v2 = publish_delivery(
+        work_id,
+        content="body-v2",
+        summary="第二版",
+        sources=[
+            {"id": "email:1", "type": "email", "title": "新邮件", "locator": "b"},
+            {"id": "file:1", "type": "file", "title": "纪要", "locator": "notes.md"},
+        ],
+        findings=[
+            {"text": "进度正常", "kind": "risk", "source_ids": ["file:1", "email:1"]},
+            {"text": "新增风险", "kind": "risk", "source_ids": ["file:1"]},
+        ],
+        limitations=["只看了邮件", "缺附件"],
+        suggested_actions=[{
+            "title": "核对排期",
+            "reason": "新理由",
+            "source_ids": ["file:1"],
+        }],
+        execution_id="exec-d2",
+    )
+    delta = v2["changes_from_previous"]
+    assert delta["previous_delivery_id"] == v1["delivery_id"]
+    assert delta["previous_version"] == 1
+    assert delta["summary_changed"] is True
+    assert delta["content_changed"] is True
+    assert delta["findings_added"] == [{
+        "text": "新增风险",
+        "kind": "risk",
+        "source_ids": ["file:1"],
+    }]
+    assert delta["findings_removed"] == [{
+        "text": "范围只含邮件",
+        "kind": "change",
+        "source_ids": ["email:1"],
+    }]
+    changed = delta["findings_changed"][0]
+    assert changed["text"] == "进度正常"
+    assert changed["kind"] == "risk"
+    assert changed["previous_kind"] == "change"
+    assert changed["previous_source_ids"] == ["email:1"]
+    assert delta["sources_added"][0]["id"] == "file:1"
+    assert delta["sources_removed"] == []
+    assert delta["sources_changed"][0]["id"] == "email:1"
+    assert delta["sources_changed"][0]["previous_title"] == "旧邮件"
+    assert delta["sources_changed"][0]["title"] == "新邮件"
+    assert delta["limitations_added"] == ["缺附件"]
+    assert delta["limitations_removed"] == []
+    assert delta["actions_added"] == []
+    assert delta["actions_removed"] == []
+    assert delta["actions_changed"][0]["previous_reason"] == "旧理由"
+    assert "body-v1" not in str(delta)
+    assert "body-v2" not in str(delta)
+
+    v3 = publish_delivery(
+        work_id,
+        content="body-v2",
+        summary="第二版",
+        sources=[
+            {"id": "email:1", "type": "email", "title": "新邮件", "locator": "b"},
+            {"id": "file:1", "type": "file", "title": "纪要", "locator": "notes.md"},
+        ],
+        findings=[
+            {"text": "进度正常", "kind": "risk", "source_ids": ["email:1", "file:1"]},
+            {"text": "新增风险", "kind": "risk", "source_ids": ["file:1"]},
+        ],
+        limitations=["缺附件", "只看了邮件"],
+        suggested_actions=[{
+            "title": "核对排期",
+            "reason": "新理由",
+            "source_ids": ["file:1"],
+        }],
+        execution_id="exec-d3",
+    )
+    same = v3["changes_from_previous"]
+    assert same["previous_version"] == 2
+    assert same["summary_changed"] is False
+    assert same["content_changed"] is False
+    assert same["findings_added"] == []
+    assert same["findings_removed"] == []
+    assert same["findings_changed"] == []
+    assert same["sources_changed"] == []
+    assert same["limitations_added"] == []
+    assert same["actions_changed"] == []
+
+    bundle = public_bundle(work_id)
+    assert bundle["deliveries"][0]["changes_from_previous"] is None
+    assert "content" not in bundle["deliveries"][1]
+    assert bundle["deliveries"][1]["changes_from_previous"]["findings_added"][0]["text"] == "新增风险"
+    assert get_delivery(work_id, v2["delivery_id"])["changes_from_previous"]["previous_version"] == 1
+
+    k.rebuild_all()
+    rebuilt = get_delivery(work_id, v2["delivery_id"])
+    assert rebuilt["changes_from_previous"]["findings_removed"][0]["text"] == "范围只含邮件"
+    assert "body-v1" not in str(rebuilt["changes_from_previous"])
+
+
 def test_old_work_without_delivery_still_reads(isolated_kernel):
     item = read_ports.create_work_item("普通任务", work_type="task")
     folded = fold_delivery_history(item["id"])
