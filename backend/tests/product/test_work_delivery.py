@@ -1309,7 +1309,9 @@ def test_rerun_same_brief_reexecutes_without_a_review_decision(isolated_kernel):
     from app.core.runtime.plan_resume import (
         load_plan_progress,
         lookup_action_step_success,
+        peek_plan_resume,
         record_step_success,
+        rerun_stash_key,
         save_plan_progress,
     )
 
@@ -1323,6 +1325,7 @@ def test_rerun_same_brief_reexecutes_without_a_review_decision(isolated_kernel):
     assert result["work"]["status"] == "running"
     assert load_plan_progress(work_id, kernel=k) is None
     assert lookup_action_step_success(work_id, 0, kernel=k) is None
+    assert peek_plan_resume(rerun_stash_key(work_id), kernel=k) is None
     stored = read_ports.query_work_item(work_id)
     assert stored is not None
     assert stored["executable_plan"] == plan_before
@@ -1380,6 +1383,8 @@ def _assert_rerun_progress(kernel, work_id: str) -> None:
         load_plan_progress,
         lookup_action_step_success,
         lookup_step_success,
+        peek_plan_resume,
+        rerun_stash_key,
     )
 
     progress = load_plan_progress(work_id, kernel=kernel)
@@ -1388,6 +1393,7 @@ def _assert_rerun_progress(kernel, work_id: str) -> None:
     assert progress.previous_output == {"step_1_output": "ok"}
     assert lookup_action_step_success(work_id, 0, kernel=kernel) == "step-ok"
     assert lookup_step_success("corr-rerun", 0, kernel=kernel) == "step-ok"
+    assert peek_plan_resume(rerun_stash_key(work_id), kernel=kernel) is None
 
 
 def test_rerun_rejects_unexecutable_plan_without_reopening(isolated_kernel):

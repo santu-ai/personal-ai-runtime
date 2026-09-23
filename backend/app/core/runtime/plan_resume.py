@@ -25,6 +25,10 @@ ResumeKind = Literal["execute"]
 
 logger = logging.getLogger(__name__)
 
+# 再次运行清游标时的暂存键。与 progress:/idem: 一样是 APP_STORAGE 合成键，
+# 不新增表，也不新增事件类型。action_id 留空，避免被工作项的 take/clear 扫掉。
+RERUN_STASH_PREFIX = "rerun_stash:"
+
 # 测试覆盖——生产环境经 ``app.store.database.db`` 解析。
 _db_override: Any | None = None
 
@@ -108,6 +112,38 @@ def _db_from_kernel(kernel: Any | None) -> Any | None:
     return candidate
 
 
+def rerun_stash_key(work_item_id: str) -> str:
+    return f"{RERUN_STASH_PREFIX}{work_item_id}"
+
+
+def _upsert_resume_conn(conn: Any, approval_id: str, resume: PlanResume) -> None:
+    row = resume.to_row()
+    conn.execute(
+        """INSERT INTO plan_resumes
+           (approval_id, kind, resume_from, previous_output_json,
+            action_id, task_id, plan_json, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(approval_id) DO UPDATE SET
+             kind = excluded.kind,
+             resume_from = excluded.resume_from,
+             previous_output_json = excluded.previous_output_json,
+             action_id = excluded.action_id,
+             task_id = excluded.task_id,
+             plan_json = excluded.plan_json,
+             created_at = excluded.created_at""",
+        (
+            approval_id,
+            row["kind"],
+            row["resume_from"],
+            row["previous_output_json"],
+            row["action_id"],
+            row["task_id"],
+            row["plan_json"],
+            datetime.now(UTC).isoformat(),
+        ),
+    )
+
+
 def register_plan_resume(
     approval_id: str,
     resume: PlanResume,
@@ -118,33 +154,8 @@ def register_plan_resume(
     if not approval_id:
         return
     database = _resolve_db(db if db is not None else _db_from_kernel(kernel))
-    row = resume.to_row()
-    now = datetime.now(UTC).isoformat()
     with database.get_db() as conn:
-        conn.execute(
-            """INSERT INTO plan_resumes
-               (approval_id, kind, resume_from, previous_output_json,
-                action_id, task_id, plan_json, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT(approval_id) DO UPDATE SET
-                 kind = excluded.kind,
-                 resume_from = excluded.resume_from,
-                 previous_output_json = excluded.previous_output_json,
-                 action_id = excluded.action_id,
-                 task_id = excluded.task_id,
-                 plan_json = excluded.plan_json,
-                 created_at = excluded.created_at""",
-            (
-                approval_id,
-                row["kind"],
-                row["resume_from"],
-                row["previous_output_json"],
-                row["action_id"],
-                row["task_id"],
-                row["plan_json"],
-                now,
-            ),
-        )
+        _upsert_resume_conn(conn, approval_id, resume)
 
 
 def peek_plan_resume(
@@ -281,7 +292,50 @@ def clear_plan_resumes_for_work_item(
             "DELETE FROM plan_resumes WHERE kind = ? AND action_id = ?",
             ("execute", work_item_id),
         )
+        conn.execute(
+            "DELETE FROM plan_resumes WHERE approval_id = ?",
+            (rerun_stash_key(work_item_id),),
+        )
         return int(cur.rowcount or 0)
+
+
+def _resume_blob(row: Any) -> dict[str, Any]:
+    resume = PlanResume.from_row(row)
+    return {
+        "approval_id": str(row["approval_id"]),
+        "kind": resume.kind,
+        "resume_from": resume.resume_from,
+        "previous_output": resume.previous_output,
+        "action_id": resume.action_id,
+        "task_id": resume.task_id,
+        "plan_json": resume.plan_json,
+    }
+
+
+def _resume_from_blob(blob: dict[str, Any]) -> PlanResume:
+    prev = blob.get("previous_output")
+    if not isinstance(prev, dict):
+        prev = None
+    return PlanResume(
+        kind="execute",
+        resume_from=int(blob.get("resume_from") or 0),
+        previous_output=prev,
+        action_id=str(blob.get("action_id") or ""),
+        task_id=str(blob.get("task_id") or ""),
+        plan_json=str(blob.get("plan_json") or ""),
+    )
+
+
+def _stash_blobs(raw: Any) -> list[dict[str, Any]]:
+    try:
+        payload = json.loads(raw or "{}")
+    except (TypeError, json.JSONDecodeError):
+        logger.warning("rerun plan stash payload is not JSON")
+        return []
+    rows = payload.get("rows") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        return []
+    return [item for item in rows if isinstance(item, dict)]
 
 
 def take_plan_resumes_for_work_item(
@@ -290,16 +344,38 @@ def take_plan_resumes_for_work_item(
     db: Any | None = None,
     kernel: Any | None = None,
 ) -> list[tuple[str, PlanResume]]:
-    """Delete and return operational resumes for one work item."""
+    """Delete operational resumes and keep them under ``rerun_stash:{id}``.
+
+    The delete and the stash insert commit together. A crash before
+    ``ExecuteRequested`` can put the rows back. An empty clear removes any
+    earlier stash so a later restore cannot revive an older cursor.
+    """
     if not work_item_id:
         return []
     database = _resolve_db(db if db is not None else _db_from_kernel(kernel))
+    key = rerun_stash_key(work_item_id)
     with database.get_db() as conn:
         rows = conn.execute(
-            "DELETE FROM plan_resumes WHERE kind = ? AND action_id = ? RETURNING *",
-            ("execute", work_item_id),
+            """DELETE FROM plan_resumes
+               WHERE kind = ? AND action_id = ? AND approval_id != ?
+               RETURNING *""",
+            ("execute", work_item_id, key),
         ).fetchall()
-    return [(str(row["approval_id"]), PlanResume.from_row(row)) for row in rows]
+        conn.execute("DELETE FROM plan_resumes WHERE approval_id = ?", (key,))
+        blobs = [_resume_blob(row) for row in rows]
+        if blobs:
+            conn.execute(
+                """INSERT INTO plan_resumes
+                   (approval_id, kind, resume_from, previous_output_json,
+                    action_id, task_id, plan_json, created_at)
+                   VALUES (?, 'execute', 0, ?, '', '', '', ?)""",
+                (
+                    key,
+                    json.dumps({"rows": blobs}, ensure_ascii=False),
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
+    return [(str(blob["approval_id"]), _resume_from_blob(blob)) for blob in blobs]
 
 
 def restore_plan_resumes_for_work_item(
@@ -308,10 +384,120 @@ def restore_plan_resumes_for_work_item(
     db: Any | None = None,
     kernel: Any | None = None,
 ) -> list[tuple[str, PlanResume]]:
-    """Put back resumes taken by ``take_plan_resumes_for_work_item``."""
-    for approval_id, resume in rows:
-        register_plan_resume(approval_id, resume, db=db, kernel=kernel)
+    """Put back resumes taken by ``take_plan_resumes_for_work_item``.
+
+    Rows and the matching rerun stash commit together, so a crash cannot
+    leave a partial cursor beside the stash.
+    """
+    database = _resolve_db(db if db is not None else _db_from_kernel(kernel))
+    action_ids = {resume.action_id for _, resume in rows if resume.action_id}
+    with database.get_db() as conn:
+        for approval_id, resume in rows:
+            if approval_id:
+                _upsert_resume_conn(conn, approval_id, resume)
+        for action_id in action_ids:
+            conn.execute(
+                "DELETE FROM plan_resumes WHERE approval_id = ?",
+                (rerun_stash_key(action_id),),
+            )
     return list(rows)
+
+
+def discard_rerun_plan_stash(
+    work_item_id: str,
+    *,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> None:
+    """Drop a rerun stash once execute has been requested."""
+    if not work_item_id:
+        return
+    database = _resolve_db(db if db is not None else _db_from_kernel(kernel))
+    with database.get_db() as conn:
+        conn.execute(
+            "DELETE FROM plan_resumes WHERE approval_id = ?",
+            (rerun_stash_key(work_item_id),),
+        )
+
+
+def restore_rerun_plan_stash(
+    work_item_id: str,
+    *,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> int:
+    """Put back a stashed cursor when the clear committed and execute did not.
+
+    Operational rows still present means the clear did not commit. Drop the
+    stash and leave those rows alone.
+    """
+    if not work_item_id:
+        return 0
+    database = _resolve_db(db if db is not None else _db_from_kernel(kernel))
+    key = rerun_stash_key(work_item_id)
+    with database.get_db() as conn:
+        live = conn.execute(
+            """SELECT 1 FROM plan_resumes
+               WHERE kind = ? AND action_id = ? AND approval_id != ?
+               LIMIT 1""",
+            ("execute", work_item_id, key),
+        ).fetchone()
+        if live is not None:
+            conn.execute("DELETE FROM plan_resumes WHERE approval_id = ?", (key,))
+            return 0
+        row = conn.execute(
+            "SELECT previous_output_json FROM plan_resumes WHERE approval_id = ?",
+            (key,),
+        ).fetchone()
+        if row is None:
+            return 0
+        restored = 0
+        for blob in _stash_blobs(row["previous_output_json"]):
+            approval_id = str(blob.get("approval_id") or "")
+            if not approval_id or approval_id == key:
+                continue
+            _upsert_resume_conn(conn, approval_id, _resume_from_blob(blob))
+            restored += 1
+        conn.execute("DELETE FROM plan_resumes WHERE approval_id = ?", (key,))
+        return restored
+
+
+def list_rerun_stash_work_ids(
+    *,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> list[str]:
+    database = _resolve_db(db if db is not None else _db_from_kernel(kernel))
+    with database.get_db() as conn:
+        rows = conn.execute(
+            "SELECT approval_id FROM plan_resumes WHERE approval_id LIKE ?",
+            (f"{RERUN_STASH_PREFIX}%",),
+        ).fetchall()
+    return [
+        str(row["approval_id"])[len(RERUN_STASH_PREFIX):]
+        for row in rows
+        if str(row["approval_id"]).startswith(RERUN_STASH_PREFIX)
+    ]
+
+
+def release_finished_rerun_stashes(
+    still_half_open: Any,
+    *,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> int:
+    """Drop stashes whose reopen is no longer waiting on execute.
+
+    ``still_half_open`` is consulted outside the delete transaction so event
+    reads do not nest on the same SQLite connection.
+    """
+    released = 0
+    for work_id in list_rerun_stash_work_ids(db=db, kernel=kernel):
+        if work_id and still_half_open(work_id):
+            continue
+        discard_rerun_plan_stash(work_id, db=db, kernel=kernel)
+        released += 1
+    return released
 
 
 def clear_plan_resumes(*, db: Any | None = None) -> None:
@@ -328,6 +514,7 @@ def clear_plan_resumes(*, db: Any | None = None) -> None:
 #   stepres:{action_id}:{step}        — full step result for compile after resume
 #   aprdis:{approval_id}              — approve→execute dispatch intent until emit confirms
 #   chat_ckpt:{correlation_id}        — Chat tool-loop messages for interrupt replay
+#   rerun_stash:{work_id}             — cursor taken for a rerun, until execute starts
 
 
 def progress_key(action_id: str) -> str:

@@ -1344,9 +1344,9 @@ def rerun_project_brief(work_id: str) -> dict[str, Any]:
     a new completion, so the dependency hook does not start other pending
     tasks. If the process dies while the brief is still that pending reopen
     and no later ``ExecuteRequested`` landed, startup recovery emits the same
-    completed event. It cannot put back a plan cursor that was already
-    cleared. The current delivery stays. The next published delivery
-    supersedes it. A plan that cannot run is rejected before the reopen.
+    completed event and puts back the plan cursor stashed in ``plan_resumes``
+    (``rerun_stash:{work_id}``). The current delivery stays. The next published
+    delivery supersedes it. A plan that cannot run is rejected before the reopen.
     """
     with _work_lock(work_id):
         item, previous_id = _require_completed_brief(work_id)
