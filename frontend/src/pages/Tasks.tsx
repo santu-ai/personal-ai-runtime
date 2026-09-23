@@ -418,6 +418,20 @@ function formatAttributedCost(
   return `${cost} · 未归因 ${unattributedCalls} 次`;
 }
 
+function DeliveryModelCost({ delivery }: { delivery: WorkDelivery }) {
+  const cost = delivery.model_cost;
+  if (!cost) return null;
+  const money =
+    cost.llm_cost === "unavailable" ? "模型成本未分开计" : `模型成本 $${cost.llm_cost.toFixed(4)}`;
+  return (
+    <p className="mt-1 text-xs text-fg-tertiary" data-testid="delivery-model-cost">
+      {formatAttributedCount(cost.recovery_interventions, "恢复")}
+      {" · "}
+      {money}
+    </p>
+  );
+}
+
 function hasDeliveryMetrics(metrics: DeliveryMetrics | null): metrics is DeliveryMetrics {
   return Boolean(metrics && (metrics.reviewed_tasks > 0 || metrics.adopted_action_count > 0));
 }
@@ -1033,6 +1047,7 @@ export default function TasksPage() {
                             {reviewLabel(shownDelivery.review_status)}
                             {shownDelivery.qualified ? "" : " · 非完整合格简报"}
                           </p>
+                          <DeliveryModelCost delivery={shownDelivery} />
                           {deliveryReworkReason(shownDelivery) ? (
                             <p
                               className="text-sm text-fg-secondary mt-1 whitespace-pre-wrap break-words"

@@ -1264,6 +1264,135 @@ def test_llm_read_cap_hides_partial_brief_cost(isolated_kernel):
     assert metrics["attribution"]["unattributed_project_brief_cost"] == "unavailable"
 
 
+def _emit_execution(kernel, execution_id: str, correlation: str) -> None:
+    kernel.emit_event(
+        "ExecutionRequested",
+        "execution",
+        execution_id,
+        payload={"execution_id": execution_id, "correlation_id": correlation},
+        correlation_id=correlation,
+    )
+
+
+def _emit_crash_retry(kernel, execution_id: str, correlation: str, attempt: int) -> None:
+    kernel.emit_event(
+        "ExecutionRetried",
+        "execution",
+        execution_id,
+        payload={
+            "execution_id": execution_id,
+            "attempt": attempt,
+            "reason": "interrupted",
+            "status": "retrying",
+        },
+        correlation_id=correlation,
+    )
+
+
+def _emit_brief_cost(kernel, caused_by: str | None, cost: float, aggregate_id: str) -> None:
+    kwargs = {}
+    if caused_by is not None:
+        kwargs["caused_by"] = caused_by
+    kernel.emit_event(
+        "LLMCallRecorded",
+        "llm_call",
+        aggregate_id,
+        payload={"purpose": "project_brief", "cost": cost, "success": True},
+        **kwargs,
+    )
+
+
+def test_each_delivery_keeps_its_own_model_cost(isolated_kernel):
+    """One version's money and recoveries stay on that execution_id."""
+    kernel, _db = isolated_kernel
+    _emit_execution(kernel, "exec-v1", "corr-v1")
+    _emit_crash_retry(kernel, "exec-v1", "corr-v1", 1)
+    kernel.emit_event(
+        "CapabilityFailed",
+        "capability",
+        "cap_v1",
+        payload={"name": "check_inbox", "error": "interrupted_before_audit"},
+        correlation_id="corr-v1",
+    )
+    _emit_brief_cost(kernel, "exec-v1", 0.2, "llm-v1")
+    _emit_execution(kernel, "exec-v2", "corr-v2")
+    _emit_crash_retry(kernel, "exec-v2", "corr-v2", 1)
+    _emit_crash_retry(kernel, "exec-v2", "corr-v2", 2)
+    _emit_brief_cost(kernel, "exec-v2", 1.25, "llm-v2")
+    _emit_brief_cost(kernel, None, 4.5, "llm-unlinked")
+    _emit_execution(kernel, "exec-other", "corr-other")
+    _emit_crash_retry(kernel, "exec-other", "corr-other", 1)
+    _emit_brief_cost(kernel, "exec-other", 9.0, "llm-other")
+
+    task = _create_task("分版本成本")
+    v1 = publish_delivery(
+        task["id"], content="v1", summary="v1", sources=[], execution_id="exec-v1",
+    )
+    publish_delivery(
+        task["id"], content="v2", summary="v2", sources=[], execution_id="exec-v2",
+    )
+
+    bundle = public_bundle(task["id"])
+    assert bundle["current"]["execution_id"] == "exec-v2"
+    assert bundle["current"]["model_cost"] == {
+        "llm_cost": 1.25,
+        "recovery_interventions": 2,
+    }
+    listed_v1 = next(row for row in bundle["deliveries"] if row["delivery_id"] == v1["delivery_id"])
+    assert listed_v1["model_cost"] == {
+        "llm_cost": 0.2,
+        "recovery_interventions": 1,
+    }
+    assert get_delivery(task["id"], v1["delivery_id"])["model_cost"] == listed_v1["model_cost"]
+
+    metrics = summarize_delivery_metrics(days=30)
+    assert metrics["attribution"]["llm_cost"] == 1.45
+    assert metrics["attribution"]["recovery_interventions"] == 3
+    assert metrics["attribution"]["unattributed_project_brief_cost"] == 4.5
+    assert metrics["attribution"]["unattributed_project_brief_calls"] == 1
+
+
+def test_delivery_model_cost_stays_unavailable_when_read_is_capped(isolated_kernel, monkeypatch):
+    monkeypatch.setattr("app.product.work_delivery._DELIVERY_MODEL_COST_LIMIT", 1)
+    kernel, _db = isolated_kernel
+    _emit_execution(kernel, "exec-capped-delivery", "corr-capped-delivery")
+    _emit_crash_retry(kernel, "exec-capped-delivery", "corr-capped-delivery", 1)
+    _emit_brief_cost(kernel, "exec-capped-delivery", 0.2, "llm-capped-linked")
+    _emit_brief_cost(kernel, None, 4.5, "llm-capped-unlinked")
+
+    task = _create_task("读满的交付成本")
+    published = publish_delivery(
+        task["id"], content="v1", summary="v1", sources=[],
+        execution_id="exec-capped-delivery",
+    )
+    cost = public_bundle(task["id"])["current"]["model_cost"]
+    assert cost == {
+        "llm_cost": "unavailable",
+        "recovery_interventions": "unavailable",
+    }
+    assert get_delivery(task["id"], published["delivery_id"])["model_cost"] == cost
+    assert cost["llm_cost"] != 0
+    assert cost["llm_cost"] != 0.2
+    assert cost["llm_cost"] != 4.5
+    assert cost["recovery_interventions"] != 0
+
+
+def test_delivery_without_execution_does_not_absorb_unattributed_cost(isolated_kernel):
+    kernel, _db = isolated_kernel
+    _emit_brief_cost(kernel, None, 3.0, "llm-orphan")
+    _emit_execution(kernel, "exec-elsewhere", "corr-elsewhere")
+    _emit_crash_retry(kernel, "exec-elsewhere", "corr-elsewhere", 1)
+    _emit_brief_cost(kernel, "exec-elsewhere", 2.0, "llm-elsewhere")
+
+    task = _create_task("没有执行号")
+    published = publish_delivery(task["id"], content="v1", summary="v1", sources=[])
+    assert published["model_cost"] == {
+        "llm_cost": 0.0,
+        "recovery_interventions": 0,
+    }
+    assert public_bundle(task["id"])["current"]["model_cost"] == published["model_cost"]
+
+
 def test_unreviewed_scan_pages_past_newer_updates(isolated_kernel, monkeypatch):
     kernel, _db = isolated_kernel
     brief = _create_task("埋在更新后面的简报")
