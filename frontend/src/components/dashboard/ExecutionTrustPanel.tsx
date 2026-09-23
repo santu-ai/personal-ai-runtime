@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, RotateCcw, ShieldAlert } from "lucide-react";
-import type { ExecutionTrust } from "../../api/types";
+import { Link } from "react-router-dom";
+import type { ExecutionTrust, ExecutionTrustItem } from "../../api/types";
 import { timeAgoShort } from "../../utils/timeUtils";
 import { STATUS_TONE } from "../ui/statusTone";
 
@@ -14,6 +15,37 @@ function rowLabel(item: {
 }): string {
   const name = item.handler_name || item.event_type || "未知执行";
   return item.error ? `${name} · ${item.error}` : name;
+}
+
+function taskPath(workId: string | null | undefined): string | null {
+  const id = workId?.trim();
+  if (!id) return null;
+  return `/tasks/${encodeURIComponent(id)}`;
+}
+
+function TrustText({
+  item,
+  text,
+  link,
+}: {
+  item: ExecutionTrustItem;
+  text: string;
+  link: boolean;
+}) {
+  const href = link ? taskPath(item.work_id) : null;
+  const title = item.error || (href ? "打开任务" : undefined);
+  if (!href) {
+    return (
+      <span className="min-w-0 truncate" title={title}>
+        {text}
+      </span>
+    );
+  }
+  return (
+    <Link to={href} className="min-w-0 truncate text-inherit hover:underline" title={title}>
+      {text}
+    </Link>
+  );
 }
 
 interface Props {
@@ -52,12 +84,9 @@ export default function ExecutionTrustPanel({ trust }: Props) {
       )}
 
       {trust.last_failed && (
-        <p
-          className="text-xs text-danger mt-1 flex items-start gap-1.5"
-          title={trust.last_failed.error || ""}
-        >
+        <p className="text-xs text-danger mt-1 flex items-start gap-1.5">
           <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-          <span className="min-w-0 truncate">{rowLabel(trust.last_failed)}</span>
+          <TrustText item={trust.last_failed} text={rowLabel(trust.last_failed)} link />
         </p>
       )}
 
@@ -70,12 +99,8 @@ export default function ExecutionTrustPanel({ trust }: Props) {
       ))}
 
       {trust.dead_letter.slice(0, 3).map((item) => (
-        <p
-          key={item.id}
-          className="text-xs text-fg-secondary mt-1 truncate"
-          title={item.error || ""}
-        >
-          死信 {rowLabel(item)}
+        <p key={item.id} className="text-xs text-fg-secondary mt-1 flex items-center gap-1.5">
+          <TrustText item={item} text={`死信 ${rowLabel(item)}`} link />
         </p>
       ))}
 

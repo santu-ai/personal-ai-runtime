@@ -233,6 +233,176 @@ def test_query_execution_trust_summary_shapes_and_limits(monkeypatch):
     assert [row["id"] for row in result["failed"]] == ["f2"]
     assert [row["id"] for row in result["in_retry"]] == ["r1"]
     assert result["in_retry"][0]["status"] == "in_retry"
+    assert result["in_retry"][0]["work_id"] is None
     assert result["last_failed"]["id"] == "f2"
+    assert result["last_failed"]["work_id"] is None
     assert result["last_completed"]["id"] == "c1"
+    assert result["last_completed"]["work_id"] is None
     assert [row["id"] for row in result["dead_letter"]] == ["d1"]
+    assert result["dead_letter"][0]["work_id"] is None
+
+
+def _emit_failed_execution(
+    kernel,
+    *,
+    execution_id: str,
+    trigger,
+    created_at: str,
+    correlation_id: str,
+    dead_letter: bool,
+) -> None:
+    from app.core.runtime.kernel.constants import AGGREGATE_EXECUTION
+
+    kernel.emit_event(
+        "ExecutionRequested",
+        AGGREGATE_EXECUTION,
+        execution_id,
+        payload={
+            "handler_name": "handle_execute",
+            "trigger_event_id": trigger.id,
+            "trigger_event_type": trigger.type,
+            "correlation_id": correlation_id,
+            "created_at": created_at,
+            "event_seq": int(trigger.seq or 0),
+            "policy": {},
+        },
+        actor="scheduler",
+        correlation_id=correlation_id,
+    )
+    kernel.emit_event(
+        "ExecutionFailed",
+        AGGREGATE_EXECUTION,
+        execution_id,
+        payload={
+            "error": execution_id,
+            "attempt": 1,
+            "dead_letter": dead_letter,
+            "failed_at": created_at,
+        },
+        actor="scheduler",
+        correlation_id=correlation_id,
+    )
+
+
+def test_execution_trust_surfaces_existing_work_association(isolated_kernel):
+    """work_id comes from the ExecuteRequested trigger, never correlation_id."""
+    kernel, _db = isolated_kernel
+    kernel.emit_event(
+        "WorkItemCreated",
+        "work_item",
+        "task_action",
+        payload={"work_type": "task", "title": "Action", "status": "failed"},
+        actor="test",
+    )
+    kernel.emit_event(
+        "WorkItemCreated",
+        "work_item",
+        "task_prefix",
+        payload={"work_type": "task", "title": "Prefix", "status": "failed"},
+        actor="test",
+    )
+    kernel.emit_event(
+        "WorkItemCreated",
+        "work_item",
+        "task_real",
+        payload={"work_type": "task", "title": "Real", "status": "failed"},
+        actor="test",
+    )
+
+    trigger_action = kernel.emit_event(
+        "ExecuteRequested",
+        "action",
+        "exec_task_action",
+        payload={"action_id": "task_action"},
+        actor="user",
+        correlation_id="corr-not-a-work-id",
+    )
+    trigger_prefix = kernel.emit_event(
+        "ExecuteRequested",
+        "action",
+        "exec_task_prefix",
+        payload={},
+        actor="user",
+        correlation_id="corr-prefix",
+    )
+    trigger_missing = kernel.emit_event(
+        "ExecuteRequested",
+        "action",
+        "exec_task_action",
+        payload={"action_id": "gone"},
+        actor="user",
+        correlation_id="task_action",
+    )
+    trigger_other = kernel.emit_event(
+        "InboxPollRequested",
+        "inbox",
+        "poll_1",
+        payload={},
+        actor="scheduler",
+        correlation_id="task_action",
+    )
+    trigger_prefer = kernel.emit_event(
+        "ExecuteRequested",
+        "action",
+        "exec_other",
+        payload={"action_id": "task_real"},
+        actor="user",
+        correlation_id="exec_other",
+    )
+
+    _emit_failed_execution(
+        kernel,
+        execution_id="ex_action",
+        trigger=trigger_action,
+        created_at="2026-09-23T00:00:05+00:00",
+        correlation_id="corr-not-a-work-id",
+        dead_letter=True,
+    )
+    _emit_failed_execution(
+        kernel,
+        execution_id="ex_prefix",
+        trigger=trigger_prefix,
+        created_at="2026-09-23T00:00:04+00:00",
+        correlation_id="corr-prefix",
+        dead_letter=True,
+    )
+    _emit_failed_execution(
+        kernel,
+        execution_id="ex_missing",
+        trigger=trigger_missing,
+        created_at="2026-09-23T00:00:03+00:00",
+        correlation_id="task_action",
+        dead_letter=False,
+    )
+    _emit_failed_execution(
+        kernel,
+        execution_id="ex_corr",
+        trigger=trigger_other,
+        created_at="2026-09-23T00:00:02+00:00",
+        correlation_id="task_action",
+        dead_letter=True,
+    )
+    _emit_failed_execution(
+        kernel,
+        execution_id="ex_prefer",
+        trigger=trigger_prefer,
+        created_at="2026-09-23T00:00:01+00:00",
+        correlation_id="exec_other",
+        dead_letter=False,
+    )
+
+    result = events_port.query_execution_trust_summary(recent_limit=5)
+    by_id = {row["id"]: row for row in result["failed"]}
+    assert by_id["ex_action"]["work_id"] == "task_action"
+    assert by_id["ex_action"]["correlation_id"] == "corr-not-a-work-id"
+    assert by_id["ex_prefix"]["work_id"] == "task_prefix"
+    assert by_id["ex_missing"]["work_id"] is None
+    assert by_id["ex_corr"]["work_id"] is None
+    assert by_id["ex_corr"]["correlation_id"] == "task_action"
+    assert by_id["ex_prefer"]["work_id"] == "task_real"
+    assert result["last_failed"]["id"] == "ex_action"
+    assert result["last_failed"]["work_id"] == "task_action"
+    dead = {row["id"]: row["work_id"] for row in result["dead_letter"]}
+    assert dead["ex_action"] == "task_action"
+    assert dead["ex_prefix"] == "task_prefix"
+    assert dead["ex_corr"] is None

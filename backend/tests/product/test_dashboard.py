@@ -185,4 +185,6 @@ def test_execution_trust_widget_surfaces_failed_and_dead_letter(product_kernel):
     assert trust["dead_letter_count"] == 1
     assert trust["last_failed"]["handler_name"] == "inbox_poll"
     assert "imap timeout" in (trust["last_failed"]["error"] or "")
+    assert trust["last_failed"]["work_id"] is None
     assert trust["last_completed"]["handler_name"] == "memory_decay"
+    assert trust["last_completed"]["work_id"] is None

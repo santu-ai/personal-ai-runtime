@@ -13,7 +13,9 @@ Widgets:
   - recent_memories: semantic recall of recent memories
   - timer_status: active timer count (Time dimension)
   - governance_status: active policy + grant counts (Governance)
-  - execution_trust: pending approvals, failed/retry/dead-letter executions, last result
+  - execution_trust: pending approvals, failed/retry/dead-letter executions, last result.
+    Rows include work_id only when the trigger ExecuteRequested already names a
+    work item that still exists. correlation_id is not a work id.
 """
 
 import logging

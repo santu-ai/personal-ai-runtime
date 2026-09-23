@@ -376,7 +376,108 @@ describe("DashboardPage", () => {
     renderDashboard();
     expect(screen.getByTestId("execution-trust")).toBeInTheDocument();
     expect(screen.getByText(/imap timeout/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /imap timeout/ })).not.toBeInTheDocument();
     expect(screen.getByText(/重试中 memory_decay/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /memory_decay/ })).not.toBeInTheDocument();
+  });
+
+  it("links execution failures to an existing task and leaves the rest as text", () => {
+    mockDashboardData({
+      dashboard: {
+        generated_at: "2026-08-17T00:00:00Z",
+        data_sovereignty: {
+          total_events: 1,
+          total_memories: 0,
+          memories_self_report: 0,
+          memories_claim: 0,
+          total_goals: 0,
+          goals_active: 0,
+          goals_completed: 0,
+          total_conversations: 0,
+          total_messages: 0,
+          data_location: "本地",
+          last_belief_reflection: null,
+          export_supported: true,
+        },
+        active_goals: { count: 0, top: [] },
+        execution_trust: {
+          by_status: { failed: 1, in_retry: 1 },
+          pending_approvals: 0,
+          failed: [],
+          in_retry: [
+            {
+              id: "ex-retry",
+              status: "in_retry",
+              handler_name: "handle_execute",
+              event_type: "ExecuteRequested",
+              error: "still trying",
+              retry_count: 1,
+              dead_letter: false,
+              created_at: "2026-08-17T00:02:00Z",
+              completed_at: null,
+              correlation_id: "corr-retry",
+              work_id: "task_retry",
+            },
+          ],
+          dead_letter: [
+            {
+              id: "ex-dead",
+              status: "failed",
+              handler_name: "handle_execute",
+              event_type: "ExecuteRequested",
+              error: "plan crashed",
+              retry_count: 3,
+              dead_letter: true,
+              created_at: "2026-08-17T00:03:00Z",
+              completed_at: "2026-08-17T00:04:00Z",
+              correlation_id: "corr-dead",
+              work_id: "task/dead",
+            },
+            {
+              id: "ex-orphan",
+              status: "failed",
+              handler_name: "inbox_poll",
+              event_type: "InboxPollRequested",
+              error: "no owner",
+              retry_count: 3,
+              dead_letter: true,
+              created_at: "2026-08-17T00:01:00Z",
+              completed_at: "2026-08-17T00:02:00Z",
+              correlation_id: "task_should_not_link",
+              work_id: null,
+            },
+          ],
+          dead_letter_count: 2,
+          last_completed: null,
+          last_failed: {
+            id: "ex-failed",
+            status: "failed",
+            handler_name: "handle_execute",
+            event_type: "ExecuteRequested",
+            error: "handler down",
+            retry_count: 1,
+            dead_letter: false,
+            created_at: "2026-08-17T00:05:00Z",
+            completed_at: "2026-08-17T00:06:00Z",
+            correlation_id: "corr-failed",
+            work_id: "task_failed",
+          },
+        },
+      },
+    });
+    renderDashboard();
+    expect(screen.getByRole("link", { name: /handler down/ })).toHaveAttribute(
+      "href",
+      "/tasks/task_failed",
+    );
+    expect(screen.getByRole("link", { name: /plan crashed/ })).toHaveAttribute(
+      "href",
+      "/tasks/task%2Fdead",
+    );
+    expect(screen.getByText(/no owner/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /no owner/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/重试中 handle_execute/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /still trying/ })).not.toBeInTheDocument();
   });
 
   it("does not repeat an approval or morning brief in reminders", () => {
