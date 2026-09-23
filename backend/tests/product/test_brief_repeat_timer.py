@@ -117,6 +117,42 @@ def test_timer_fire_reruns_the_same_completed_brief(isolated_kernel):
     assert "已再次运行这一份任务" in notes[0]["content"]
 
 
+def test_timer_fire_keeps_completed_delivery_when_rerun_execute_fails(
+    isolated_kernel, monkeypatch,
+):
+    """到点走同一条 rerun。执行请求失败时仍是已完成交付，提醒只打开这一份。"""
+    k, _db = isolated_kernel
+    item = _completed_brief()
+    work_id = item["id"]
+    published = publish_delivery(
+        work_id,
+        content="第一期",
+        summary="第一期",
+        sources=[],
+        execution_id="fire-fail",
+    )
+
+    def boom(_item_id: str) -> None:
+        raise ValueError("executable_plan has no steps")
+
+    monkeypatch.setattr(read_ports, "request_work_item_execute", boom)
+    asyncio.run(_handle_reminder(
+        {"message": "再次运行：项目简报", "work_id": work_id},
+        "t_fail",
+    ))
+
+    stored = read_ports.query_work_item(work_id)
+    assert stored is not None
+    assert stored["status"] == "completed"
+    assert fold_delivery_history(work_id)["current"]["delivery_id"] == published["delivery_id"]
+    assert k.read_events(type="ExecuteRequested", aggregate_id=f"exec_{work_id}") == []
+    notes = read_ports.query_notifications(type="reminder", limit=10)
+    assert len(notes) == 1
+    assert notes[0]["related_id"] == work_id
+    assert "打开的仍是它" in notes[0]["content"]
+    assert "已再次运行" not in notes[0]["content"]
+
+
 def test_timer_fire_opens_when_the_same_task_cannot_rerun(isolated_kernel):
     other = read_ports.create_work_item(
         "普通任务",

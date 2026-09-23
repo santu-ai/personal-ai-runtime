@@ -138,7 +138,7 @@ frozenset({
 })
 ```
 
-`payload_json` 是 `TimerCreated` 的嵌套 `payload`。内置 cron 不写入任务 id。`set_timer` 只在调用方传入已经存在的 `work_id` 时写入该键；空白或不存在的 id 不写入，也不改用别的键。任务页为已完成且已有交付的项目简报设定「定时再次运行」时，走的就是这次调用。触发后：payload 里已有非空 `work_id` 且任务仍在时，若该简报仍已完成且已有交付，则再次运行同一份任务；否则只打开这一份。任务已删除、`work_id` 空白，或没有该键时，仍是普通提醒，不改去读 `action_id`。不新建任务，也不为这次触发另建交付。仪表盘只在该对象里已有非空 `work_id`（没有该键时才看 `action_id`）且 `work_items` 仍有该行时带上 `work_id`。空白或指向已删除任务的键不会改去读另一个键。定时器 id 与 `correlation_id` 不当作任务 id。
+`payload_json` 是 `TimerCreated` 的嵌套 `payload`。内置 cron 不写入任务 id。`set_timer` 只在调用方传入已经存在的 `work_id` 时写入该键；空白或不存在的 id 不写入，也不改用别的键。任务页为已完成且已有交付的项目简报设定「定时再次运行」时，走的就是这次调用。触发后：payload 里已有非空 `work_id` 且任务仍在时，若该简报仍已完成且已有交付，则再次运行同一份任务；执行请求失败时任务仍是 `completed`，当前交付不变，提醒只打开这一份。否则只打开这一份。任务已删除、`work_id` 空白，或没有该键时，仍是普通提醒，不改去读 `action_id`。不新建任务，也不为这次触发另建交付。仪表盘只在该对象里已有非空 `work_id`（没有该键时才看 `action_id`）且 `work_items` 仍有该行时带上 `work_id`。空白或指向已删除任务的键不会改去读另一个键。定时器 id 与 `correlation_id` 不当作任务 id。
 
 ### `policy_events`（治理事件溯源根）
 
