@@ -84,6 +84,14 @@ export async function executeWorkItem(itemId: string): Promise<WorkItem> {
   });
 }
 
+export async function rerunProjectBrief(
+  itemId: string,
+): Promise<{ work_id: string; supersedes_delivery_id: string; work: WorkItem }> {
+  return request(`${API_BASE}/work-items/${itemId}/rerun`, {
+    method: "POST",
+  });
+}
+
 export async function cancelWorkItem(itemId: string): Promise<WorkItem> {
   return request<WorkItem>(`${API_BASE}/work-items/${itemId}/cancel`, {
     method: "POST",

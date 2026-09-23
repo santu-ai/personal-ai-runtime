@@ -206,4 +206,5 @@
 | POST | `/api/work-items/{item_id}/deliveries/{delivery_id}/rework` | auth | — | Rework Work Delivery |
 | GET | `/api/work-items/{item_id}/events` | auth | — | Get Events |
 | POST | `/api/work-items/{item_id}/execute` | auth | — | Execute Work Item |
+| POST | `/api/work-items/{item_id}/rerun` | auth | — | Rerun Project Brief |
 | POST | `/api/work-items/{item_id}/status` | auth | — | Update Status |

@@ -493,6 +493,23 @@ async def delete_work_item(item_id: str):
     return {"status": "ok"}
 
 
+@router.post("/{item_id}/rerun")
+async def rerun_project_brief(item_id: str):
+    """Re-run a completed project brief on the same work item.
+
+    Does not record a review decision. The next delivery supersedes the current
+    one, so ``changes_from_previous`` compares the two versions.
+    """
+    from app.product.work_delivery import rerun_project_brief as _rerun
+
+    if not read_ports.query_work_item(item_id):
+        raise HTTPException(status_code=404, detail="Work item not found")
+    try:
+        return _rerun(item_id)
+    except Exception as exc:
+        raise _delivery_http_error(exc) from exc
+
+
 @router.post("/{item_id}/execute")
 async def execute_work_item(item_id: str):
     """Start the work item's executable_plan via ExecuteRequested."""

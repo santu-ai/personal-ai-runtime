@@ -98,6 +98,7 @@ export {
   updateWorkItem,
   deleteWorkItem,
   executeWorkItem,
+  rerunProjectBrief,
   cancelWorkItem,
   decomposeWorkItem,
   createProjectBrief,

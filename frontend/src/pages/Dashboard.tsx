@@ -13,6 +13,7 @@ import TodayActions from "../components/dashboard/TodayActions";
 import { AdoptionSummaryCard } from "../components/dashboard/AdoptionSummary";
 import { PeriodComparisonCard } from "../components/dashboard/PeriodComparison";
 import ExecutionTrustPanel from "../components/dashboard/ExecutionTrustPanel";
+import TimerBriefPanel from "../components/dashboard/TimerBriefPanel";
 import RemindersPanel from "../components/dashboard/RemindersPanel";
 import HealthPanel from "../components/dashboard/HealthPanel";
 import MonitorsPanel from "../components/dashboard/MonitorsPanel";
@@ -177,6 +178,12 @@ export default function DashboardPage() {
         <TodayActions buckets={todayBuckets} />
 
         {dashboard?.execution_trust && <ExecutionTrustPanel trust={dashboard.execution_trust} />}
+
+        <TimerBriefPanel
+          timers={dashboard?.timer_status?.items ?? []}
+          activeTimers={dashboard?.timer_status?.active_timers ?? 0}
+          briefs={dashboard?.rerunnable_briefs ?? []}
+        />
 
         <RemindersPanel
           notifications={todayBuckets.reminders}

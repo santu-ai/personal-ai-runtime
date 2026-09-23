@@ -188,3 +188,121 @@ def test_execution_trust_widget_surfaces_failed_and_dead_letter(product_kernel):
     assert trust["last_failed"]["work_id"] is None
     assert trust["last_completed"]["handler_name"] == "memory_decay"
     assert trust["last_completed"]["work_id"] is None
+
+
+def test_timer_rows_link_only_an_existing_payload_work_id(product_kernel):
+    """Built-in timers have no work id. A stored one links; the row id does not."""
+    from app.product.personal_dashboard import generate_dashboard
+
+    k = product_kernel
+    k.emit_event(
+        "WorkItemCreated",
+        "work_item",
+        "task_linked",
+        payload={
+            "work_type": "task",
+            "status": "completed",
+            "title": "已有简报",
+        },
+        actor="test",
+    )
+    k.emit_event(
+        "TimerCreated",
+        "timer",
+        "task_linked",
+        payload={
+            "handler_name": "reminder",
+            "schedule_type": "once",
+            "fire_at": "2026-06-16T09:00:00Z",
+            "payload": {},
+        },
+        actor="test",
+    )
+    k.emit_event(
+        "TimerCreated",
+        "timer",
+        "t_work",
+        payload={
+            "handler_name": "reminder",
+            "schedule_type": "once",
+            "fire_at": "2026-06-16T10:00:00Z",
+            "payload": {"work_id": "task_linked", "message": "看简报"},
+        },
+        actor="test",
+    )
+    k.emit_event(
+        "TimerCreated",
+        "timer",
+        "t_action",
+        payload={
+            "handler_name": "reminder",
+            "schedule_type": "once",
+            "fire_at": "2026-06-16T11:00:00Z",
+            "payload": {"action_id": "task_linked"},
+        },
+        actor="test",
+    )
+    k.emit_event(
+        "TimerCreated",
+        "timer",
+        "t_missing",
+        payload={
+            "handler_name": "reminder",
+            "schedule_type": "once",
+            "fire_at": "2026-06-16T12:00:00Z",
+            "payload": {"work_id": "gone"},
+        },
+        actor="test",
+    )
+    k.emit_event(
+        "TimerCreated",
+        "timer",
+        "t_corr",
+        payload={
+            "handler_name": "morning_brief",
+            "schedule_type": "cron",
+            "cron_expr": "hour=8,minute=0",
+            "fire_at": "2026-06-16T08:00:00Z",
+            "payload": {"correlation_id": "task_linked"},
+        },
+        actor="test",
+    )
+
+    items = {
+        row["id"]: row
+        for row in generate_dashboard()["timer_status"]["items"]
+    }
+    assert items["task_linked"]["work_id"] is None
+    assert items["t_work"]["work_id"] == "task_linked"
+    assert items["t_action"]["work_id"] == "task_linked"
+    assert items["t_missing"]["work_id"] is None
+    assert items["t_corr"]["work_id"] is None
+    assert "message" not in items["t_work"]
+
+
+def test_blank_timer_work_id_does_not_fall_through(product_kernel):
+    from app.product.personal_dashboard import generate_dashboard
+
+    k = product_kernel
+    k.emit_event(
+        "WorkItemCreated",
+        "work_item",
+        "task_linked",
+        payload={"work_type": "task", "status": "completed", "title": "已有简报"},
+        actor="test",
+    )
+    k.emit_event(
+        "TimerCreated",
+        "timer",
+        "t_blank",
+        payload={
+            "handler_name": "reminder",
+            "schedule_type": "once",
+            "fire_at": "2026-06-16T13:00:00Z",
+            "payload": {"work_id": "  ", "action_id": "task_linked"},
+        },
+        actor="test",
+    )
+    row = generate_dashboard()["timer_status"]["items"][0]
+    assert row["id"] == "t_blank"
+    assert row["work_id"] is None

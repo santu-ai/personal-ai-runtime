@@ -480,6 +480,22 @@ export interface DataSovereignty {
   export_supported: boolean;
 }
 
+export interface TimerStatusItem {
+  id: string;
+  handler_name: string;
+  schedule_type: string;
+  fire_at: string;
+  /** Set only when the timer payload already names a work item that still exists. */
+  work_id?: string | null;
+}
+
+export interface RerunnableBrief {
+  work_id: string;
+  title: string;
+  version: number;
+  delivery_id: string;
+}
+
 export interface DashboardData {
   generated_at: string;
   data_sovereignty: DataSovereignty;
@@ -492,6 +508,11 @@ export interface DashboardData {
       importance: number;
     }>;
   };
+  timer_status?: {
+    active_timers: number;
+    items: TimerStatusItem[];
+  };
+  rerunnable_briefs?: RerunnableBrief[];
   execution_trust?: ExecutionTrust;
 }
 

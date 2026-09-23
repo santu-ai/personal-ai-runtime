@@ -864,4 +864,58 @@ describe("DashboardPage", () => {
     expect(reminderSection?.textContent).not.toContain("write_file");
     expect(reminderSection?.textContent).not.toContain("早安简报");
   });
+
+  it("links a timer only when the payload already has a work id", () => {
+    mockDashboardData({
+      dashboard: {
+        generated_at: "2026-09-23T00:00:00Z",
+        data_sovereignty: {
+          total_events: 1,
+          total_memories: 0,
+          memories_self_report: 0,
+          memories_claim: 0,
+          total_goals: 0,
+          goals_active: 0,
+          goals_completed: 0,
+          total_conversations: 0,
+          total_messages: 0,
+          data_location: "本地",
+          last_belief_reflection: null,
+          export_supported: true,
+        },
+        active_goals: { count: 0, top: [] },
+        timer_status: {
+          active_timers: 2,
+          items: [
+            {
+              id: "morning_brief",
+              handler_name: "morning_brief",
+              schedule_type: "cron",
+              fire_at: "2026-09-24T00:00:00Z",
+              work_id: null,
+            },
+            {
+              id: "t_work",
+              handler_name: "reminder",
+              schedule_type: "once",
+              fire_at: "2026-09-24T01:00:00Z",
+              work_id: "brief_9",
+            },
+          ],
+        },
+        rerunnable_briefs: [
+          { work_id: "brief_9", title: "项目 A 简报", version: 2, delivery_id: "d2" },
+        ],
+      },
+    });
+    renderDashboard();
+    expect(screen.getByText(/早安简报/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /早安简报/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /提醒/ })).toHaveAttribute("href", "/tasks/brief_9");
+    expect(screen.getByRole("link", { name: /项目 A 简报 · 当前 v2/ })).toHaveAttribute(
+      "href",
+      "/tasks/brief_9",
+    );
+    expect(screen.getByText(/相对上一版/)).toBeInTheDocument();
+  });
 });

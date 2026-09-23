@@ -12,6 +12,8 @@ import {
   getWorkDelivery,
   getWorkItem,
   listWorkItems,
+  rerunProjectBrief,
+  reworkWorkDelivery,
   type WorkDelivery,
   type WorkItem,
 } from "../api/client";
@@ -24,6 +26,7 @@ vi.mock("../api/client", async (importOriginal) => {
     getWorkItem: vi.fn(),
     getWorkDelivery: vi.fn(),
     executeWorkItem: vi.fn().mockResolvedValue({}),
+    rerunProjectBrief: vi.fn().mockResolvedValue({}),
     cancelWorkItem: vi.fn(),
     createProjectBrief: vi.fn(),
     acceptWorkDelivery: vi.fn().mockResolvedValue({ replayed: false }),
@@ -1249,5 +1252,23 @@ describe("TasksPage", () => {
       screen.getByRole("button", { name: "v1 · 已要求返工 · 第一版摘要" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "v2 · 待验收 · 有进度风险" })).toBeInTheDocument();
+  });
+
+  it("reruns a completed brief on the same task", async () => {
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [briefTask];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(briefTask);
+    renderTasks("/tasks/brief_1");
+
+    expect(await screen.findByTestId("rerun-same-brief-hint")).toHaveTextContent("相对上一版");
+    expect(screen.queryByRole("button", { name: "重新执行" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "再次运行" }));
+    expect(await screen.findByText(/不另建任务，也不记成返工/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "确认再次运行" }));
+    await waitFor(() => expect(rerunProjectBrief).toHaveBeenCalledWith("brief_1"));
+    expect(executeWorkItem).not.toHaveBeenCalled();
+    expect(reworkWorkDelivery).not.toHaveBeenCalled();
   });
 });

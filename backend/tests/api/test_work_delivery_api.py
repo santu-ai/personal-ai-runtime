@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.core.runtime import read_ports
 from app.product.work_delivery import publish_delivery, request_rework
 
 
@@ -240,3 +241,35 @@ def test_delivery_metrics_endpoint_reports_project_brief_reviews(client):
     assert body["attribution"]["llm_cost"] == 0.0
     assert body["attribution"]["unattributed_project_brief_calls"] == 0
     assert body["attribution"]["unattributed_project_brief_cost"] == 0.0
+
+
+def test_rerun_completed_brief_uses_the_same_work_item(client):
+    created = client.post("/api/work-items/project-brief", json={
+        "title": "周期简报",
+        "objective": "列出变化",
+        "source_scope": {"email": {"enabled": True, "query": "项目", "days": 3}},
+    })
+    assert created.status_code == 200, created.text
+    work_id = created.json()["id"]
+    delivery = publish_delivery(
+        work_id,
+        content="第一期",
+        summary="第一期",
+        sources=[],
+        execution_id="api-rerun-v1",
+    )
+    read_ports.update_work_item_status(work_id, "completed")
+
+    missing = client.post("/api/work-items/missing-brief/rerun")
+    assert missing.status_code == 404
+
+    first = client.post(f"/api/work-items/{work_id}/rerun")
+    assert first.status_code == 200, first.text
+    body = first.json()
+    assert body["work_id"] == work_id
+    assert body["supersedes_delivery_id"] == delivery["delivery_id"]
+    assert body["work"]["status"] == "running"
+    assert body["work"]["id"] == work_id
+
+    second = client.post(f"/api/work-items/{work_id}/rerun")
+    assert second.status_code == 409
