@@ -152,6 +152,19 @@ def test_execution_detail_includes_scheduled_execution_error(client):
     emit_execution_requested(kernel, scheduled, "user")
     emit_execution_failed(kernel, scheduled, terminal=True, dead_letter=True)
 
+    kernel.emit_event(
+        "ExecuteCompleted",
+        "action",
+        f"exec_{created['id']}",
+        payload={
+            "action_id": created["id"],
+            "status": "error",
+            "error": "plan step blew up",
+        },
+        caused_by=trigger.id,
+        actor="executor",
+    )
+
     response = client.get(f"/api/work-items/{created['id']}?include=execution")
 
     assert response.status_code == 200
@@ -160,6 +173,113 @@ def test_execution_detail_includes_scheduled_execution_error(client):
     assert handler["status"] == "failed"
     assert handler["dead_letter"] is True
     assert handler["error"] == "Timeout after 30.0s"
+
+
+def test_execution_detail_uses_execute_completed_error_when_scheduler_error_is_blank(client):
+    """A plan failure returns normally, so the scheduler row has no error text."""
+    from app.core.runtime.execution_events import (
+        emit_execution_completed,
+        emit_execution_requested,
+    )
+    from app.core.runtime.kernel_instance import kernel
+    from app.core.runtime.scheduled_execution import ScheduledExecution
+
+    created = client.post(
+        "/api/work-items/", json={"title": "Plan failed", "work_type": "task"},
+    ).json()
+    item_id = created["id"]
+    older = kernel.emit_event(
+        "ExecuteRequested", "action", f"exec_{item_id}",
+        payload={"action_id": item_id}, actor="user",
+    )
+    trigger = kernel.emit_event(
+        "ExecuteRequested", "action", f"exec_{item_id}",
+        payload={"action_id": item_id}, actor="user",
+    )
+    scheduled = ScheduledExecution(
+        event_id=trigger.id,
+        event_seq=trigger.seq or 0,
+        event_type=trigger.type,
+        handler_name="on_execute_requested",
+    )
+    emit_execution_requested(kernel, scheduled, "user")
+    emit_execution_completed(kernel, scheduled)
+    kernel.emit_event(
+        "ExecuteCompleted", "action", f"exec_{item_id}",
+        payload={"action_id": item_id, "status": "error", "error": "stale reason"},
+        caused_by=older.id,
+        actor="executor",
+    )
+    kernel.emit_event(
+        "ExecuteCompleted", "action", f"exec_{item_id}",
+        payload={"action_id": item_id, "status": "error", "error": "  disk full  "},
+        caused_by=trigger.id,
+        actor="executor",
+    )
+
+    response = client.get(f"/api/work-items/{item_id}?include=execution")
+
+    assert response.status_code == 200
+    handler = response.json()["execution"]["handler_execution"]
+    assert handler["id"] == scheduled.id
+    assert handler["status"] == "completed"
+    assert handler["dead_letter"] is False
+    assert handler["error"] == "disk full"
+
+
+async def test_execution_detail_shows_in_handler_exception(client, monkeypatch):
+    """The except path keeps the exception text, and task detail reads it back."""
+    from app.core.runtime.execution import ExecutionContext
+    from app.core.runtime.execution_events import (
+        emit_execution_completed,
+        emit_execution_requested,
+    )
+    from app.core.runtime.handlers.execute_handlers import on_execute_requested
+    from app.core.runtime.kernel_instance import kernel
+    from app.core.runtime.scheduled_execution import ScheduledExecution
+
+    created = client.post("/api/work-items/", json={
+        "title": "Handler boom",
+        "work_type": "task",
+        "executable_plan": '{"steps":[{"tool":"read_file","params":{"path":"x"}}]}',
+    }).json()
+    item_id = created["id"]
+    trigger = kernel.emit_event(
+        "ExecuteRequested", "action", f"exec_{item_id}",
+        payload={"action_id": item_id}, actor="user",
+    )
+    scheduled = ScheduledExecution(
+        event_id=trigger.id,
+        event_seq=trigger.seq or 0,
+        event_type=trigger.type,
+        handler_name="on_execute_requested",
+    )
+    emit_execution_requested(kernel, scheduled, "executor")
+
+    async def _boom(**_kwargs):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(kernel, "invoke_capability", _boom)
+    await on_execute_requested(
+        ExecutionContext(
+            instance_id="runtime:test",
+            actor="executor",
+            correlation_id="corr-plan",
+            _kernel=kernel,
+            execution_id=scheduled.id,
+        ),
+        trigger,
+    )
+    emit_execution_completed(kernel, scheduled)
+
+    response = client.get(f"/api/work-items/{item_id}?include=execution")
+
+    assert response.status_code == 200
+    handler = response.json()["execution"]["handler_execution"]
+    assert handler["status"] == "completed"
+    assert handler["error"] == "disk full"
+    completed = kernel.read_events(type="ExecuteCompleted", aggregate_id=f"exec_{item_id}")
+    assert completed[-1].payload["error"] == "disk full"
 
 
 def test_execute_retries_running_task_after_failed_handler(client):

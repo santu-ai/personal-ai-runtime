@@ -115,3 +115,84 @@ async def test_execute_handler_waiting_approval_syncs_status(monkeypatch):
     ]
     assert "running" in wi_payloads
     assert "waiting_approval" in wi_payloads
+
+
+@pytest.mark.asyncio
+async def test_execute_handler_keeps_exception_text(monkeypatch):
+    emitted: list[tuple] = []
+
+    class Ctx:
+        execution_id = "ex1"
+        correlation_id = "c1"
+
+        def emit(self, *args, **kwargs):
+            emitted.append((args, kwargs))
+
+    monkeypatch.setattr(
+        "app.core.runtime.read_ports.query_work_item",
+        lambda _id: {
+            "id": "act_err",
+            "status": "running",
+            "work_type": "task",
+            "executable_plan": '{"steps":[{"tool":"read_file","params":{"path":"x"}}]}',
+        },
+    )
+
+    async def _boom(**_kwargs):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(
+        "app.core.runtime.kernel_instance.kernel",
+        MagicMock(invoke_capability=_boom),
+    )
+
+    event = MagicMock()
+    event.id = "evt"
+    event.payload = {"action_id": "act_err"}
+
+    await on_execute_requested(Ctx(), event)
+
+    done = next(e for e in emitted if e[0][0] == "ExecuteCompleted")
+    assert done[1]["payload"]["status"] == "error"
+    assert done[1]["payload"]["error"] == "disk full"
+    wi = [e for e in emitted if e[0][0] == "WorkItemStatusChanged"]
+    assert wi[-1][1]["payload"]["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_execute_handler_uses_exception_type_when_message_is_blank(monkeypatch):
+    emitted: list[tuple] = []
+
+    class Ctx:
+        execution_id = "ex1"
+        correlation_id = "c1"
+
+        def emit(self, *args, **kwargs):
+            emitted.append((args, kwargs))
+
+    monkeypatch.setattr(
+        "app.core.runtime.read_ports.query_work_item",
+        lambda _id: {
+            "id": "act_blank",
+            "status": "running",
+            "work_type": "task",
+            "executable_plan": '{"steps":[{"tool":"read_file"}]}',
+        },
+    )
+
+    async def _boom(**_kwargs):
+        raise RuntimeError("   ")
+
+    monkeypatch.setattr(
+        "app.core.runtime.kernel_instance.kernel",
+        MagicMock(invoke_capability=_boom),
+    )
+
+    event = MagicMock()
+    event.id = "evt"
+    event.payload = {"action_id": "act_blank"}
+
+    await on_execute_requested(Ctx(), event)
+
+    done = next(e for e in emitted if e[0][0] == "ExecuteCompleted")
+    assert done[1]["payload"]["error"] == "RuntimeError"
