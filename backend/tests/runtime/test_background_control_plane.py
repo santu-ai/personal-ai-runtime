@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -1082,6 +1084,125 @@ def test_close_uses_execute_after_latest_running(kernel):
     assert close_dead_lettered_domain_work(kernel, stored_stale) is False
     assert kernel.query_state("work_items", id="gap-close", limit=1)[0]["status"] == "running"
     assert _failed_status_events(kernel, "gap-close") == []
+
+
+@contextmanager
+def _capture_replay_logs():
+    """Capture replay skip lines without depending on suite-wide logging.
+
+    ``configure_logging()`` installs a root ProcessorFormatter that mutates
+    ``LogRecord`` in place, so pytest ``caplog.text`` is empty once any
+    earlier test has configured logging.
+    """
+    log = logging.getLogger("app.core.runtime.kernel.execution_repository")
+    prev_level = log.level
+    prev_propagate = log.propagate
+    prev_disabled = log.disabled
+    prev_handlers = list(log.handlers)
+    records: list[logging.LogRecord] = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    handler = _Capture(level=logging.INFO)
+    log.handlers = [handler]
+    log.setLevel(logging.INFO)
+    log.propagate = False
+    log.disabled = False
+    try:
+        yield records
+    finally:
+        log.removeHandler(handler)
+        handler.close()
+        log.handlers = prev_handlers
+        log.setLevel(prev_level)
+        log.propagate = prev_propagate
+        log.disabled = prev_disabled
+
+
+def _replay_log_text(records: list[logging.LogRecord]) -> str:
+    return "\n".join(record.getMessage() for record in records)
+
+
+def _dead_letter_current_execute(kernel, work_id: str):
+    from app.core.runtime.execution_events import emit_execution_failed
+
+    trigger = _running_with_execute(kernel, work_id)
+    item = _pending_execute_execution(kernel, trigger, max_retries=0)
+    item.error = "boom"
+    emit_execution_requested(kernel, item, "user")
+    item.transition_to("failed")
+    emit_execution_failed(kernel, item, terminal=True, dead_letter=True)
+    return item
+
+
+@pytest.mark.parametrize("status", ["failed", "completed", "cancelled"])
+def test_replay_skips_dead_letter_when_work_is_terminal(kernel, status):
+    """领域 Work 已终态时，死信重放不把同一条执行再排成 pending。"""
+    item = _dead_letter_current_execute(kernel, f"replay-{status}")
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED,
+        AGGREGATE_WORK_ITEM,
+        f"replay-{status}",
+        payload={"status": status, "error": "boom"} if status == "failed" else {"status": status},
+        actor="kernel",
+    )
+
+    with _capture_replay_logs() as records:
+        replayed = kernel.replay_dead_letters(limit=10)
+
+    assert item.id not in replayed
+    assert f"reason=work_terminal:{status}" in _replay_log_text(records)
+    stored = kernel.read_scheduled_execution(item.id)
+    assert stored is not None
+    assert stored.status == "failed"
+    assert stored.dead_letter is True
+    assert kernel.read_events(type="ExecutionRetried", aggregate_id=item.id) == []
+    assert kernel.query_state(
+        "work_items", id=f"replay-{status}", limit=1,
+    )[0]["status"] == status
+
+
+def test_replay_requeues_when_work_still_running(kernel):
+    """Work 仍是 running、且死信属于当前这次执行时，重放仍排成 pending。"""
+    item = _dead_letter_current_execute(kernel, "replay-live")
+    assert kernel.query_state("work_items", id="replay-live", limit=1)[0]["status"] == "running"
+
+    replayed = kernel.replay_dead_letters(limit=10)
+
+    assert item.id in replayed
+    stored = kernel.read_scheduled_execution(item.id)
+    assert stored is not None
+    assert stored.status == "pending"
+    assert stored.dead_letter is False
+    retried = kernel.read_events(type="ExecutionRetried", aggregate_id=item.id)
+    assert retried
+    assert all((event.payload or {}).get("reason") == "dead_letter_replay" for event in retried)
+
+
+def test_replay_skips_stale_execute_while_work_still_running(kernel):
+    """更新的 ExecuteRequested 才是当前尝试；更早的死信不重放。"""
+    item = _dead_letter_current_execute(kernel, "replay-stale")
+    kernel.emit_event(
+        "ExecuteRequested",
+        "action",
+        "exec_replay-stale",
+        payload={"action_id": "replay-stale"},
+        actor="user",
+    )
+
+    with _capture_replay_logs() as records:
+        replayed = kernel.replay_dead_letters(limit=10)
+
+    assert item.id not in replayed
+    assert "reason=not_current_attempt" in _replay_log_text(records)
+    stored = kernel.read_scheduled_execution(item.id)
+    assert stored is not None
+    assert stored.status == "failed"
+    assert stored.dead_letter is True
+    assert kernel.query_state("work_items", id="replay-stale", limit=1)[0]["status"] == "running"
+    assert kernel.read_events(type="ExecutionRetried", aggregate_id=item.id) == []
 
 
 def test_handler_failed_follows_execute_after_latest_running(kernel, monkeypatch):

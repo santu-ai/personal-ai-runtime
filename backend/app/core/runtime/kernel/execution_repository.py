@@ -208,12 +208,27 @@ def replay_dead_letters(kernel: Any, *, limit: int = 50) -> list[str]:
     Clears ``dead_letter`` via ExecutionRetried → pending and enqueues
     into the live Scheduler when available. Returns ids that are durable
     pending **and** (when a Scheduler exists) successfully live-queued.
+
+    A row whose domain Work is already ``failed``, ``completed``, or
+    ``cancelled`` is left dead-lettered. So is an ``ExecuteRequested`` that
+    is not the current attempt (latest request after the latest
+    ``status=running``). The skip reason is logged; no Execution* event is
+    emitted for that row. Executions with no domain Work still replay.
     """
     from app.core.runtime.execution_events import emit_execution_retried
+    from app.core.runtime.runtime_loop import dead_letter_replay_block_reason
 
     durable_ids: list[str] = []
     items = list_dead_letter_executions(kernel._db)[: max(0, int(limit))]
     for item in items:
+        reason = dead_letter_replay_block_reason(kernel, item)
+        if reason:
+            logger.info(
+                "replay_dead_letters: skip %s reason=%s",
+                item.id,
+                reason,
+            )
+            continue
         item.dead_letter = False
         item.error = ""
         if item.status == "failed":

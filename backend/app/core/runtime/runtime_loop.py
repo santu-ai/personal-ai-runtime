@@ -959,6 +959,52 @@ def _close_dead_lettered_domain_work(rt_kernel, execution) -> bool:
     return True
 
 
+# Same set background cancel treats as terminal, plus the failed fold that
+# startup recovery and dead-letter close already write. Domain FSM still
+# allows failed/completed → pending via a new execute; that is not a replay
+# of the old handler row.
+_REPLAY_TERMINAL_WORK_STATUSES = frozenset({"completed", "failed", "cancelled"})
+
+
+def dead_letter_replay_block_reason(rt_kernel, execution) -> str | None:
+    """Why this dead letter must not be re-queued, or None when replay is safe.
+
+    Reads the current ``work_items`` projection for the execution's
+    ``ExecuteRequested``. ``failed``, ``completed``, and ``cancelled`` are
+    refused (``work_terminal:<status>``): recovery and scheduling already
+    folded a still-running item into ``failed``, and re-queueing that handler
+    would start it again. An ``ExecuteRequested`` that is not the one after
+    the latest ``status=running`` is a previous attempt
+    (``not_current_attempt``). A resolved work id with no projection row is
+    ``work_missing``. Executions that do not name a work item stay eligible.
+    """
+    try:
+        return _dead_letter_replay_block_reason(rt_kernel, execution)
+    except Exception:
+        logger.exception(
+            "Failed to read domain work for dead-letter replay of %s",
+            getattr(execution, "id", ""),
+        )
+        return "work_status_unreadable"
+
+
+def _dead_letter_replay_block_reason(rt_kernel, execution) -> str | None:
+    work_id = _work_id_for_execute_execution(rt_kernel, execution)
+    if not work_id:
+        return None
+    rows = rt_kernel.query_state("work_items", id=work_id, limit=1)
+    if not rows:
+        return "work_missing"
+    status = str(rows[0].get("status") or "")
+    if status in _REPLAY_TERMINAL_WORK_STATUSES:
+        return f"work_terminal:{status}"
+    current = _current_execute_requested(rt_kernel, work_id)
+    event_id = getattr(execution, "event_id", "") or ""
+    if current is None or current.id != event_id:
+        return "not_current_attempt"
+    return None
+
+
 def _work_id_for_execute_execution(rt_kernel, execution) -> str:
     from app.core.runtime.kernel.constants import EVENT_EXECUTE_REQUESTED
 

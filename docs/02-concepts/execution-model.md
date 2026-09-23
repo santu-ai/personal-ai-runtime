@@ -37,7 +37,7 @@ Personal AI Runtime 的所有执行路径用**一套三车道语义**解释。�
 |-----------|--------|------------------|
 | Retry | Present | Lane A `_maybe_retry` + ExecutionRetried；`test_scheduler*` / policy |
 | Cancellation (mid-flight) | Present (durable) | `Scheduler.request_cancel` → ExecutionFailed before `task.cancel`；BG via WorkItemStatusChanged；`test_background_control_plane` |
-| Recovery | Present | `recover_scheduled_executions` + 没有 handler 行的 BG running→pending；非 goal 且带 `executable_plan` 的 task/action 若已是 running 但还没有 handler 行，补一次 `ExecuteRequested`；goal 或没有计划则跳过。已结束的 handler 不重跑。该请求的 handler 都已终态且至少一条失败时，把仍为 running 的 Work 收成 `failed`（不另开一轮 retry 预算）。`ExecuteCompleted` 能对上同一次请求时，同步 Work 状态。interrupted 重放计入 retry 预算（超限走 ExecutionFailed / DLQ，不再重放）。`kernel.expire_stale_running_leases` 在终态死信时走与 Scheduler 相同的领域 Work 收口，但不重新入队剩余重试；scheduler/runtime_loop tests |
+| Recovery | Present | `recover_scheduled_executions` + 没有 handler 行的 BG running→pending；非 goal 且带 `executable_plan` 的 task/action 若已是 running 但还没有 handler 行，补一次 `ExecuteRequested`；goal 或没有计划则跳过。已结束的 handler 不重跑。该请求的 handler 都已终态且至少一条失败时，把仍为 running 的 Work 收成 `failed`（不另开一轮 retry 预算）。`ExecuteCompleted` 能对上同一次请求时，同步 Work 状态。interrupted 重放计入 retry 预算（超限走 ExecutionFailed / DLQ，不再重放）。`kernel.expire_stale_running_leases` 在终态死信时走与 Scheduler 相同的领域 Work 收口，但不重新入队剩余重试。`replay_dead_letters` 在对应领域 Work 已是 `failed` / `completed` / `cancelled` 时不把该死信再排成 pending（日志 `reason=work_terminal:<status>`，不发 Execution*）；不是最新 `status=running` 之后那条 `ExecuteRequested` 的死信同样跳过（`not_current_attempt`）。没有对应 Work 的执行仍可重放；scheduler/runtime_loop tests |
 | Lease / multi-worker ownership | Absent / **Non-goal** | 单进程；见 [runtime-invariants.md](runtime-invariants.md) INV-W6；`check_single_process_control_plane.py` |
 | Quota | Partial | HTTP/WS rate limits；tool-loop token/iteration caps；无 per-tenant scheduler quota |
 | Backpressure | Present | `scheduler_max_pending` → `queue_full` |
@@ -61,4 +61,4 @@ Personal AI Runtime 的所有执行路径用**一套三车道语义**解释。�
 | **PlanResume** | register on pending approval | — | take on approve/deny | — | SQLite durable | clear on cancel/deny/expire |
 | **Chat tool loop** | ChatRequested | Brain.chat_stream | ChatCompleted / confirmation_required | Lane A `max_retries=2` | `chat_ckpt:{correlation_id}` on interrupt replay | — |
 
-Domain FSM 不含 `retrying`；操作层重试由 Lane A（`ScheduledExecution`）独占。任务详情的 `handler_execution` 与死信收口用同一条边界：只认最新 `status=running` 之后的 `ExecuteRequested`。这条请求还没有 handler 行时快照为空，不把上一轮失败当成当前尝试。handler 在请求之后补写的 `status=running`（`caused_by` 指向该请求）仍属于这一次。
+Domain FSM 不含 `retrying`；操作层重试由 Lane A（`ScheduledExecution`）独占。任务详情的 `handler_execution` 与死信收口用同一条边界：只认最新 `status=running` 之后的 `ExecuteRequested`。这条请求还没有 handler 行时快照为空，不把上一轮失败当成当前尝试。handler 在请求之后补写的 `status=running`（`caused_by` 指向该请求）仍属于这一次。人工 `replay_dead_letters` 用同一条边界，并且在 Work 已经是 `failed`、`completed` 或 `cancelled` 时不重放这条死信；用户另行「重新执行」仍是一条新的 `ExecuteRequested`，不是把旧 handler 行再排成 pending。
