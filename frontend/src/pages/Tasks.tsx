@@ -141,8 +141,16 @@ function formatAttributedCount(value: number | "unavailable", label: string): st
   return value === "unavailable" ? `${label}未分开计` : `${label} ${value}`;
 }
 
-function formatAttributedCost(value: number | "unavailable"): string {
-  return value === "unavailable" ? "模型成本未分开计" : `模型成本 $${value.toFixed(4)}`;
+function formatAttributedCost(
+  value: number | "unavailable",
+  unattributed: number | "unavailable" | undefined,
+): string {
+  if (value === "unavailable") return "模型成本未分开计";
+  const cost = `模型成本 $${value.toFixed(4)}`;
+  if (typeof unattributed === "number" && unattributed > 0) {
+    return `${cost} · 未归因 ${unattributed} 次`;
+  }
+  return cost;
 }
 
 function hasDeliveryMetrics(metrics: DeliveryMetrics | null): metrics is DeliveryMetrics {
@@ -525,7 +533,10 @@ export default function TasksPage() {
               {" · "}
               {formatAttributedCount(metrics.attribution.recovery_interventions, "恢复")}
               {" · "}
-              {formatAttributedCost(metrics.attribution.llm_cost)}
+              {formatAttributedCost(
+                metrics.attribution.llm_cost,
+                metrics.attribution.unattributed_project_brief_calls,
+              )}
             </p>
             {metrics.capped ? (
               <p className="text-xs text-warning">窗口内事件较多，统计可能不完整</p>

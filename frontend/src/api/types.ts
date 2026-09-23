@@ -357,6 +357,7 @@ export interface DeliveryMetrics {
     approval_interventions: number | "unavailable";
     recovery_interventions: number | "unavailable";
     llm_cost: number | "unavailable";
+    unattributed_project_brief_calls: number | "unavailable";
   };
   capped: boolean;
   cap_limit: number;

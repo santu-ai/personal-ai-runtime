@@ -446,6 +446,7 @@ def test_delivery_metrics_track_first_acceptance_rework_and_adoption(isolated_ke
     assert metrics["attribution"]["approval_interventions"] == 0
     assert metrics["attribution"]["recovery_interventions"] == 0
     assert metrics["attribution"]["llm_cost"] == 0.0
+    assert metrics["attribution"]["unattributed_project_brief_calls"] == 0
     by_title = {row["title"]: row for row in metrics["items"]}
     assert by_title["首版通过"]["first_review_accepted_v1"] is True
     assert by_title["返工通过"]["reworks"] == 1
@@ -601,6 +602,7 @@ def test_delivery_metrics_attribute_approvals_recoveries_and_cost(isolated_kerne
     # One crash: retrying replay plus the audit-gap twins on the same correlation.
     assert metrics["attribution"]["recovery_interventions"] == 1
     assert metrics["attribution"]["llm_cost"] == 0.0125
+    assert metrics["attribution"]["unattributed_project_brief_calls"] == 0
     assert metrics["capped"] is False
 
 
@@ -883,7 +885,7 @@ def test_attributed_dead_letter_pairs_with_audit_gap(isolated_kernel):
     assert metrics["attribution"]["recovery_interventions"] == 1
 
 
-def test_unlinked_brief_cost_stays_unavailable(isolated_kernel):
+def test_unlinked_brief_cost_is_counted_apart(isolated_kernel):
     kernel, _db = isolated_kernel
     kernel.emit_event(
         "LLMCallRecorded",
@@ -899,7 +901,84 @@ def test_unlinked_brief_cost_stays_unavailable(isolated_kernel):
 
     metrics = summarize_delivery_metrics(days=30)
     assert metrics["attribution"]["approval_interventions"] == 0
+    assert metrics["attribution"]["llm_cost"] == 0.0
+    assert metrics["attribution"]["unattributed_project_brief_calls"] == 1
+
+
+def test_unattributed_brief_calls_keep_linked_cost(isolated_kernel):
+    """缺少 caused_by 的简报调用另计次数，不把已归因金额打成 unavailable。"""
+    kernel, _db = isolated_kernel
+    execution_id = "exec-mixed-cost"
+    kernel.emit_event(
+        "LLMCallRecorded",
+        "llm_call",
+        "llm_linked",
+        payload={"purpose": "project_brief", "cost": 0.0125, "success": True},
+        caused_by=execution_id,
+    )
+    kernel.emit_event(
+        "LLMCallRecorded",
+        "llm_call",
+        "llm_legacy",
+        payload={"purpose": "project_brief", "cost": 1.5, "success": True},
+    )
+    kernel.emit_event(
+        "LLMCallRecorded",
+        "llm_call",
+        "llm_blank_cause",
+        payload={"purpose": "project_brief", "cost": 0.4, "success": True},
+        caused_by="  ",
+    )
+    kernel.emit_event(
+        "LLMCallRecorded",
+        "llm_call",
+        "llm_failed",
+        payload={"purpose": "project_brief", "cost": 9.0, "success": False},
+    )
+    kernel.emit_event(
+        "LLMCallRecorded",
+        "llm_call",
+        "llm_chat",
+        payload={"purpose": "chat", "cost": 4.0, "success": True},
+    )
+    kernel.emit_event(
+        "LLMCallRecorded",
+        "llm_call",
+        "llm_other",
+        payload={"purpose": "project_brief", "cost": 3.0, "success": True},
+        caused_by="exec-other",
+    )
+    _accept_metric_brief("混合成本", execution_id)
+
+    metrics = summarize_delivery_metrics(days=30)
+    assert metrics["attribution"]["llm_cost"] == 0.0125
+    assert metrics["attribution"]["unattributed_project_brief_calls"] == 2
+    assert metrics["attribution"]["approval_interventions"] == 0
+    assert metrics["capped"] is False
+
+
+def test_llm_read_cap_hides_partial_brief_cost(isolated_kernel):
+    kernel, _db = isolated_kernel
+    execution_id = "exec-capped-cost"
+    kernel.emit_event(
+        "LLMCallRecorded",
+        "llm_call",
+        "llm_linked",
+        payload={"purpose": "project_brief", "cost": 0.0125, "success": True},
+        caused_by=execution_id,
+    )
+    kernel.emit_event(
+        "LLMCallRecorded",
+        "llm_call",
+        "llm_legacy",
+        payload={"purpose": "project_brief", "cost": 1.5, "success": True},
+    )
+    _accept_metric_brief("读上限成本", execution_id)
+
+    metrics = summarize_delivery_metrics(days=30, limit=1)
+    assert metrics["capped"] is True
     assert metrics["attribution"]["llm_cost"] == "unavailable"
+    assert metrics["attribution"]["unattributed_project_brief_calls"] == "unavailable"
 
 
 def test_unreviewed_scan_pages_past_newer_updates(isolated_kernel, monkeypatch):

@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-09-23：Batch 19：交付指标里缺少 `caused_by` 的成功 `project_brief` 调用另计 `unattributed_project_brief_calls`，已归因金额照常加总；读上限打满时金额和次数仍是 unavailable。任务页在金额后标出未归因次数。不新增事件类型。未改 `read_ports/work.py`。
 - 2026-09-23：Batch 18：任务已失败，或仍为 running 且 handler 已失败/死信时，非空白的 `handler_execution.error` 显示在「重新执行」提示旁；已有交付、日志默认折叠时，显示在交付区上方。日志里的原文仍保留。不改 Kernel，不改 `read_ports`。
 - 2026-09-23：Batch 17：计划工具步骤返回 failed/denied 时，把步骤结果里已有的失败原因写入 `ExecuteCompleted.error`。任务详情仍走 Batch 16 的同一条路径。空白原因不写；`continue_on_error` 后计划完成的不写。不新增事件类型。未改 `read_ports/work.py`。
 - 2026-09-23：Batch 16：任务详情在调度行 `error` 为空白时，显示同一次 `ExecuteRequested` 引起的 `ExecuteCompleted.error`。`on_execute_requested` 抓住异常后写入异常文本（空白则用异常类型名）再正常返回，不再写成 `handler_failed`。超时/死信仍优先用调度行上的错误。不新增事件类型。`read_ports/work.py` 仍为 598/600。
@@ -22,7 +23,7 @@
 - 2026-09-22：Batch 1：执行 handler 已失败时，仍显示 running 的任务会在启动时收成 failed，不再把后台任务重新排队绕过死信；任务页可对死信中的进行中任务重新执行。
 - 2026-09-22：前端 UI 刷新 PR #87（`cursor/frontend-ui-refresh-fcd9`）：tokens 表面层次 + 侧栏分组/收起 + PageHeader/SegmentedControl；主页面视觉统一；lint/tsc/vitest/build/e2e 已绿。无后端/Kernel 改动。
 - 2026-09-22：前端依赖范围内 patch/minor 已升（react-query 5.103.2、vite 8.3.0、vitest 5.0.1、eslint 10.11.0 等）；跳过 typescript 7（typescript-eslint 仍要 TS 6 API）与 jsdom 30（engines 要求 Node ≥22.22.2，镜像是 node:20）。
-- 2026-09-22：`main` 已包含 #80–#86。简报自己的近 30 日首版采纳、返工、已转任务和评审耗时在 `GET /api/work-items/delivery-metrics`，任务页有评审时展示。审批、恢复和模型成本已能按交付 `execution_id` 归因；无 `caused_by` 的历史简报调用仍是 unavailable。全局周期对比、Chat `ask_user`、工具/记忆采纳率仍是另一组指标。
+- 2026-09-22：`main` 已包含 #80–#86。简报自己的近 30 日首版采纳、返工、已转任务和评审耗时在 `GET /api/work-items/delivery-metrics`，任务页有评审时展示。审批、恢复和模型成本已能按交付 `execution_id` 归因；无 `caused_by` 的历史简报调用另计次数，不把已归因金额改成 unavailable。全局周期对比、Chat `ask_user`、工具/记忆采纳率仍是另一组指标。
 - 依赖 pin 以 `backend/requirements.txt` / `frontend/package.json` / `desktop/package.json` 为准：`openai==3.16.2`、`mcp==2.2.0`、`pypdf==6.19.0`、`cryptography==50.0.1`；前端 React 19.3 / Vite 8 / lucide-react 1.47；桌面 Electron 44。
 - 本机若用系统 `mcp` 1.x，mypy 可能误报；lock 钉 `mcp==2.2.0`，CI 用 lock。
 - 仍待用户试用：真 LLM、真实邮箱日用。无 Telegram token 时真实收发仍 blocked。soak 默认空库 `data/personal_ai.db`，日用库不在仓库里。
