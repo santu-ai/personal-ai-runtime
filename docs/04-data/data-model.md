@@ -138,7 +138,7 @@ frozenset({
 })
 ```
 
-`payload_json` 是 `TimerCreated` 的嵌套 `payload`。内置 cron 不写入任务 id。`set_timer` 只在调用方传入已经存在的 `work_id` 时写入该键；空白或不存在的 id 不写入，也不改用别的键。任务页为已完成且已有交付的项目简报设定「定时再次运行」时，走的就是这次调用。触发后：payload 里已有非空 `work_id` 且任务仍在时，若该简报仍已完成且已有交付，则再次运行同一份任务；执行请求失败时任务仍是 `completed`（`reason=rerun_restore`），当前交付不变，别的待执行任务保持原状态，提醒只打开这一份。否则只打开这一份。任务已删除、`work_id` 空白，或没有该键时，仍是普通提醒，不改去读 `action_id`。不新建任务，也不为这次触发另建交付。仪表盘只在该对象里已有非空 `work_id`（没有该键时才看 `action_id`）且 `work_items` 仍有该行时带上 `work_id`。空白或指向已删除任务的键不会改去读另一个键。定时器 id 与 `correlation_id` 不当作任务 id。
+`payload_json` 是 `TimerCreated` 的嵌套 `payload`。内置 cron 不写入任务 id。`set_timer` 只在调用方传入已经存在的 `work_id` 时写入该键；空白或不存在的 id 不写入，也不改用别的键。任务页为已完成且已有交付的项目简报设定「定时再次运行」时，走的就是这次调用。触发后：payload 里已有非空 `work_id` 且任务仍在时，若该简报仍已完成且已有交付，则再次运行同一份任务；清计划游标失败，或执行请求在打开之后失败时，任务仍是 `completed`（`reason=rerun_restore`）。清没有提交时不覆盖游标。当前交付不变，别的待执行任务保持原状态，提醒只打开这一份。否则只打开这一份。任务已删除、`work_id` 空白，或没有该键时，仍是普通提醒，不改去读 `action_id`。不新建任务，也不为这次触发另建交付。仪表盘只在该对象里已有非空 `work_id`（没有该键时才看 `action_id`）且 `work_items` 仍有该行时带上 `work_id`。空白或指向已删除任务的键不会改去读另一个键。定时器 id 与 `correlation_id` 不当作任务 id。
 
 ### `policy_events`（治理事件溯源根）
 
@@ -167,7 +167,7 @@ frozenset({
 | `activity_log` | 人类可读活动日志 | event_log 投影派生 |
 | `app_settings` | UI 偏好、LLM/Email 连接配置 | 本地运营配置 |
 | `memory_index_repairs` | ChromaDB 索引修复队列 | 权威记录是 `MemoryDerived/Updated` 事件；由 RuntimeLoop 重试 |
-| `plan_resumes` | 审批暂停后的计划续跑坐标，以及再次运行或返工清游标时的 `rerun_stash:{work_id}` | 运营续跑态；审批行仍是治理权威；跨进程恢复即可。暂存行 `action_id` 为空，执行请求落库后删除；半开恢复在清游标已提交且原行已空时放回。返工与再次运行共用该键；返工收回的 reason 是 `rework_restore` |
+| `plan_resumes` | 审批暂停后的计划续跑坐标，以及再次运行或返工清游标时的 `rerun_stash:{work_id}` | 运营续跑态；审批行仍是治理权威；跨进程恢复即可。暂存行 `action_id` 为空，行在 `previous_output_json`；清与写入同一事务，空的清会删掉更早的暂存。`ExecuteRequested` 落库后删除。半开恢复只在清已提交且原行已空时写回；原行还在则只删暂存。返工与再次运行共用该键；返工收回的 reason 是 `rework_restore`，再次运行收回是 `rerun_restore` |
 
 ## ChromaDB Collections
 

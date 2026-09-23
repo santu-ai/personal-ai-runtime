@@ -143,7 +143,7 @@ sequenceDiagram
     API-->>FE: SSE done
 ```
 
-`needs_user` 中的 `ask_user` 走同一 `confirmation_required`。用户提交自由文本后，结果写回 `chat_ckpt:{correlation_id}` 并继续同一工具环；取消只写入 denied tool result，不调用 LLM，也不计入建议采纳率。今日页的采纳率与周期对比、早安简报里的近 7 日 delta，都从既有审批/记忆/完成/收件事件重建，不新增事件类型。详见 [capability-governance.md](../02-concepts/capability-governance.md)、[backend-api.md](../03-subsystems/backend-api.md) 与 [ADR-R011](../07-adr/ADR-R011-chat-approval-continuation.md)。
+`needs_user` 中的 `ask_user` 走同一 `confirmation_required`。用户提交自由文本后，结果写回 `chat_ckpt:{correlation_id}` 并继续同一工具环；取消只写入 denied tool result，不调用 LLM，也不计入建议采纳率。今日页的采纳率与周期对比、早安简报里的近 7 日 delta，都从既有审批/记忆/完成/收件事件重建，不新增事件类型。完成计数排除 `reason=rerun_restore` 与 `reason=rework_restore`。详见 [capability-governance.md](../02-concepts/capability-governance.md)、[backend-api.md](../03-subsystems/backend-api.md)、[execution-model.md](../02-concepts/execution-model.md) 与 [ADR-R011](../07-adr/ADR-R011-chat-approval-continuation.md)。
 
 详细说明见 [03-subsystems/backend-core.md](../03-subsystems/backend-core.md)。
 
@@ -168,7 +168,7 @@ sequenceDiagram
 1. **Transport ≠ Event**：聊天文本增量（`text_delta`）经 TRANSPORT（[`notification_bridge.py`](../../backend/app/core/runtime/notification_bridge.py) 的内存队列 / SSE / WS）推送，不入 `event_log`。`ChatCompleted`/`ChatDone` 等完成态事实才持久化。见 [runtime-algebra.md §1.6](../02-concepts/runtime-algebra.md)。
 2. **统一 RuntimeLoop**：[`runtime_loop.py`](../../backend/app/core/runtime/runtime_loop.py) 用 100ms 单循环驱动 timer 扫描与维护（审批过期、索引修复、reaction 评估、后台任务派发）。阻塞型维护经 `asyncio.to_thread` 卸载，避免卡住 event loop。
 3. **execution_scope ContextVar**：所有 capability 调用必须绑定 `execution_id`（[`execution.py`](../../backend/app/core/runtime/execution.py)），用于归属与崩溃恢复。
-4. **调度 Work 崩溃恢复**：Scheduler `_recover()` 扫描中断的 `handler_executions`。未超 retry 预算的重放为 `ExecutionRetried(reason=interrupted)`；预算耗尽则 `ExecutionFailed(error=interrupted)` 并进入死信，不再重放。RuntimeLoop 启动时：该请求的 handler 都已终态且至少一条失败，仍为 running 的领域 Work 收成 `failed`；没有 handler 行时，后台任务回到 pending，有 `executable_plan` 的 task/action 补一次 `ExecuteRequested`，goal 或没有计划则跳过。handler 已完成且能对上同一次 `ExecuteCompleted` 时同步状态。Scheduler 当场死信与 `kernel.expire_stale_running_leases` 的终态死信走同一收口（`WorkItemStatusChanged(failed)`）；后者不取消在途任务，也不把剩余重试重新入队。`replay_dead_letters` 看到领域 Work 已是 `failed`、`completed` 或 `cancelled` 时留下死信，不把同一条执行再排成 pending；更早一次 `ExecuteRequested` 的死信同样不重放。
+4. **调度 Work 崩溃恢复**：Scheduler `_recover()` 扫描中断的 `handler_executions`。未超 retry 预算的重放为 `ExecutionRetried(reason=interrupted)`；预算耗尽则 `ExecutionFailed(error=interrupted)` 并进入死信，不再重放。RuntimeLoop 启动时：该请求的 handler 都已终态且至少一条失败，仍为 running 的领域 Work 收成 `failed`；没有 handler 行时，后台任务回到 pending，有 `executable_plan` 的 task/action 补一次 `ExecuteRequested`，goal 或没有计划则跳过。handler 已完成且能对上同一次 `ExecuteCompleted` 时同步状态。Scheduler 当场死信与 `kernel.expire_stale_running_leases` 的终态死信走同一收口（`WorkItemStatusChanged(failed)`）；后者不取消在途任务，也不把剩余重试重新入队。当前尝试是最新 `status=running` 之后的那条 `ExecuteRequested`。`replay_dead_letters` 看到领域 Work 已是 `failed`、`completed` 或 `cancelled` 时留下死信，不把同一条执行再排成 pending；更早一次 `ExecuteRequested` 的死信同样不重放（`not_current_attempt`）。启动还会扫描半开的 pending：`reason=rerun_restore` 收回 `completed`，`reason=rework_restore` 收回打开前的状态，并把 `rerun_stash:{work_id}` 放回。详见 [execution-model.md](../02-concepts/execution-model.md)。
 5. **投影快照增量重建**：`kernel.rebuild(aggregate_type)` 从 `projection_checkpoints.last_applied_seq` 增量重放（[`verify_snapshot_rebuild.py`](../../backend/scripts/verify_snapshot_rebuild.py)）。
 
 ## 下一步

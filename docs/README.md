@@ -36,7 +36,7 @@
 | [runtime-algebra.md](02-concepts/runtime-algebra.md) | ⭐ 六原语（Event/State/Capability/Work/Context/Transport）、三条判据、概念压缩契约 |
 | [architecture-principles.md](02-concepts/architecture-principles.md) | Runtime/Product 边界、层依赖规则、演化原则、Forbidden、概念压缩 |
 | [runtime-invariants.md](02-concepts/runtime-invariants.md) | 按原语分组的 Strong/Medium/Weak 不变量 |
-| [execution-model.md](02-concepts/execution-model.md) | 三车道执行语义（Scheduled Work / Sync Capability / Maintenance） |
+| [execution-model.md](02-concepts/execution-model.md) | 三车道执行语义；当前尝试、半开收回（`rerun_restore` / `rework_restore`）、死信重放与单次交付 `model_cost` |
 | [kernel-abi.md](02-concepts/kernel-abi.md) | Kernel 冻结 ABI 与「新能力默认不改 Kernel」纪律 |
 | [event-sourcing.md](02-concepts/event-sourcing.md) | `event_log` → projectors → 投影表的数据流 |
 | [kernel-boundary.md](02-concepts/kernel-boundary.md) | GOVERNED vs APP_STORAGE 表分类与边界守卫机制 |

@@ -82,7 +82,7 @@ personal-ai-runtime/
 代码中可观察到的、文档需明确标注的现状：
 
 - `desktop/preload.js` 不向渲染进程暴露任何 IPC 绑定。渲染进程通过 HTTP/SSE/WebSocket 直连后端；桌面原生行为（托盘、全局快捷键、WebSocket→系统通知）由 main 进程处理（[`desktop/main.js`](../../desktop/main.js)）。
-- 今日页展示近 7 日建议采纳（`GET /api/telemetry/governance`）以及近 7 日与前 7 日对比（`GET /api/dashboard/periods`：完成目标、完成任务、新邮件、采纳率；投影缺失的完成另计 `work_completed_untyped`）。早安简报正文使用同一 `read_ports.compare_periods`。
+- 今日页展示近 7 日建议采纳（`GET /api/telemetry/governance`）以及近 7 日与前 7 日对比（`GET /api/dashboard/periods`：完成目标、完成任务、新邮件、采纳率；投影缺失的完成另计 `work_completed_untyped`）。`reason=rerun_restore` 与 `reason=rework_restore` 的收回不是新的完成，不进完成计数。早安简报正文使用同一 `read_ports.compare_periods`。
 - `ask_user` 走同一审批门。自由文本回答回到同一 Chat 工具环；取消写入 denied tool result，不调用 LLM，也不计入采纳率。见 [ADR-R011](../07-adr/ADR-R011-chat-approval-continuation.md)。
 
 ## 下一步
