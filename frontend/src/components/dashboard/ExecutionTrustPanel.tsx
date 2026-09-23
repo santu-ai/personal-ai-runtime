@@ -23,6 +23,21 @@ function taskPath(workId: string | null | undefined): string | null {
   return `/tasks/${encodeURIComponent(id)}`;
 }
 
+function retryLabel(item: ExecutionTrustItem): string {
+  const name = item.handler_name || item.event_type;
+  const attempt = item.retry_count > 0 ? ` · 第 ${item.retry_count} 次` : "";
+  return `重试中 ${name}${attempt}`;
+}
+
+/** 与最近失败同一条执行（相同 id）不再出现在死信列表。correlation_id 不参与去重。 */
+function deadLettersBesideLastFailure(trust: ExecutionTrust): ExecutionTrustItem[] {
+  const failedId = trust.last_failed?.id.trim() ?? "";
+  const rows = failedId
+    ? trust.dead_letter.filter((item) => item.id !== failedId)
+    : trust.dead_letter;
+  return rows.slice(0, 3);
+}
+
 function TrustText({
   item,
   text,
@@ -93,12 +108,11 @@ export default function ExecutionTrustPanel({ trust }: Props) {
       {trust.in_retry.slice(0, 3).map((item) => (
         <p key={item.id} className="text-xs text-warning mt-1 flex items-center gap-1.5">
           <RotateCcw size={12} className="shrink-0" />
-          重试中 {item.handler_name || item.event_type}
-          {item.retry_count > 0 ? ` · 第 ${item.retry_count} 次` : ""}
+          <TrustText item={item} text={retryLabel(item)} link />
         </p>
       ))}
 
-      {trust.dead_letter.slice(0, 3).map((item) => (
+      {deadLettersBesideLastFailure(trust).map((item) => (
         <p key={item.id} className="text-xs text-fg-secondary mt-1 flex items-center gap-1.5">
           <TrustText item={item} text={`死信 ${rowLabel(item)}`} link />
         </p>

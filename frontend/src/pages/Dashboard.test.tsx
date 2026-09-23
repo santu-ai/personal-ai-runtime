@@ -476,8 +476,142 @@ describe("DashboardPage", () => {
     );
     expect(screen.getByText(/no owner/)).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /no owner/ })).not.toBeInTheDocument();
-    expect(screen.getByText(/重试中 handle_execute/)).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /still trying/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /重试中 handle_execute/ })).toHaveAttribute(
+      "href",
+      "/tasks/task_retry",
+    );
+  });
+
+  it("shows one row when the latest failure is also a dead letter", () => {
+    mockDashboardData({
+      dashboard: {
+        generated_at: "2026-08-17T00:00:00Z",
+        data_sovereignty: {
+          total_events: 1,
+          total_memories: 0,
+          memories_self_report: 0,
+          memories_claim: 0,
+          total_goals: 0,
+          goals_active: 0,
+          goals_completed: 0,
+          total_conversations: 0,
+          total_messages: 0,
+          data_location: "本地",
+          last_belief_reflection: null,
+          export_supported: true,
+        },
+        active_goals: { count: 0, top: [] },
+        execution_trust: {
+          by_status: { failed: 1 },
+          pending_approvals: 0,
+          failed: [],
+          in_retry: [
+            {
+              id: "ex-retry-blank",
+              status: "in_retry",
+              handler_name: "memory_decay",
+              event_type: "TimerFired",
+              error: null,
+              retry_count: 2,
+              dead_letter: false,
+              created_at: "2026-08-17T00:06:00Z",
+              completed_at: null,
+              correlation_id: "task_should_not_link",
+              work_id: "   ",
+            },
+          ],
+          dead_letter: [
+            {
+              id: "ex-shared",
+              status: "failed",
+              handler_name: "handle_execute",
+              event_type: "ExecuteRequested",
+              error: "same boom",
+              retry_count: 3,
+              dead_letter: true,
+              created_at: "2026-08-17T00:05:00Z",
+              completed_at: "2026-08-17T00:05:30Z",
+              correlation_id: "shared-corr",
+              work_id: "task_shared",
+            },
+            {
+              id: "ex-corr-only",
+              status: "failed",
+              handler_name: "inbox_poll",
+              event_type: "InboxPollRequested",
+              error: "different row",
+              retry_count: 3,
+              dead_letter: true,
+              created_at: "2026-08-17T00:04:00Z",
+              completed_at: "2026-08-17T00:04:30Z",
+              correlation_id: "shared-corr",
+              work_id: null,
+            },
+            {
+              id: "ex-d3",
+              status: "failed",
+              handler_name: "inbox_poll",
+              event_type: "InboxPollRequested",
+              error: "third letter",
+              retry_count: 1,
+              dead_letter: true,
+              created_at: "2026-08-17T00:03:00Z",
+              completed_at: null,
+              correlation_id: "corr-3",
+              work_id: null,
+            },
+            {
+              id: "ex-d4",
+              status: "failed",
+              handler_name: "handle_execute",
+              event_type: "ExecuteRequested",
+              error: "fourth letter",
+              retry_count: 1,
+              dead_letter: true,
+              created_at: "2026-08-17T00:02:00Z",
+              completed_at: null,
+              correlation_id: "corr-4",
+              work_id: "task_fourth",
+            },
+          ],
+          dead_letter_count: 4,
+          last_completed: null,
+          last_failed: {
+            id: "ex-shared",
+            status: "failed",
+            handler_name: "handle_execute",
+            event_type: "ExecuteRequested",
+            error: "same boom",
+            retry_count: 3,
+            dead_letter: true,
+            created_at: "2026-08-17T00:05:00Z",
+            completed_at: "2026-08-17T00:05:30Z",
+            correlation_id: "shared-corr",
+            work_id: "task_shared",
+          },
+        },
+      },
+    });
+    renderDashboard();
+
+    expect(screen.getAllByText(/same boom/)).toHaveLength(1);
+    expect(screen.getByRole("link", { name: /same boom/ })).toHaveAttribute(
+      "href",
+      "/tasks/task_shared",
+    );
+    expect(
+      screen.queryByRole("link", { name: /死信 handle_execute · same boom/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/different row/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /different row/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/third letter/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /fourth letter/ })).toHaveAttribute(
+      "href",
+      "/tasks/task_fourth",
+    );
+    expect(screen.getByText(/死信 4/)).toBeInTheDocument();
+    expect(screen.getByText(/重试中 memory_decay · 第 2 次/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /memory_decay/ })).not.toBeInTheDocument();
   });
 
   it("does not repeat an approval or morning brief in reminders", () => {
