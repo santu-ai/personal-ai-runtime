@@ -1139,7 +1139,16 @@ def _complete_rework_dispatch(
     actor: str,
     result: dict[str, Any],
 ) -> dict[str, Any]:
-    """Resume notes / reopen / execute after a durable changes_requested decision."""
+    """Resume notes / reopen / execute after a durable changes_requested decision.
+
+    A ``completed`` or ``failed`` item is reopened to ``pending`` with
+    ``reason=rework_restore`` and its plan cursor moves to
+    ``rerun_stash:{work_id}``. If ``ExecuteRequested`` never lands, this call
+    puts the cursor back and returns the pre-rework status. A later retry that
+    still finds that stash does the same. ``rerun_restore`` is not used: that
+    reason is only the brief-rerun undo, and it always means ``completed``.
+    Once ``ExecuteRequested`` for this attempt exists, the reopen stays.
+    """
     raw_decision = result.get("decision")
     decision: dict[str, Any] = raw_decision if isinstance(raw_decision, dict) else {}
     decision_id = str(decision.get("decision_id") or "") or None
@@ -1157,6 +1166,19 @@ def _complete_rework_dispatch(
             )
             result["bundle"] = public_bundle(work_id)
             result["work"] = read_ports.query_work_item(work_id)
+            return result
+
+        healed = read_ports.restore_half_open_rework(
+            work_id, actor=actor, require_stash=True,
+        )
+        if healed:
+            result["restored_status"] = healed
+            result["bundle"] = public_bundle(work_id)
+            result["work"] = read_ports.query_work_item(work_id)
+            logger.info(
+                "rework retry restored %s to %s; execute never started",
+                work_id, healed,
+            )
             return result
 
         item = read_ports.query_work_item(work_id)
@@ -1181,16 +1203,36 @@ def _complete_rework_dispatch(
                 actor=actor,
             )
 
-        if status in {"completed", "failed"}:
-            read_ports.update_work_item_status(work_id, "pending")
-            status = "pending"
-        read_ports.reset_work_item_plan_progress(work_id)
+        prior_status = status if status in {"completed", "failed"} else None
+        stashed = False
+        before_ids = _execute_requested_ids(work_id)
         try:
+            if prior_status is not None:
+                read_ports.update_work_item_status(
+                    work_id,
+                    "pending",
+                    reason=read_ports.WORK_STATUS_REASON_REWORK_RESTORE,
+                )
+                status = "pending"
+            read_ports.reset_work_item_plan_progress(work_id)
+            stashed = True
             if status == "running":
                 read_ports.ensure_work_item_execute_requested(work_id)
             else:
                 read_ports.request_work_item_execute(work_id)
-        except ValueError as exc:
+        except Exception as exc:
+            started = bool(_execute_requested_ids(work_id) - before_ids)
+            # Running without ExecuteRequested stays running: startup and a
+            # later retry emit the missing request. Only a still-pending open
+            # whose clear committed is put back.
+            if stashed and prior_status is not None and not started:
+                try:
+                    read_ports.restore_half_open_rework(work_id, actor=actor)
+                except Exception:
+                    logger.exception("rework restore failed for %s", work_id)
+                    raise
+            if started or not isinstance(exc, ValueError):
+                raise
             logger.info("rework execute deferred for %s: %s", work_id, exc)
             result["execute_error"] = str(exc)
             result["bundle"] = public_bundle(work_id)

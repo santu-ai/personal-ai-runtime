@@ -16,6 +16,8 @@ Runtime 模块（``work_item_engine``、``reaction_registry``、桥、调度器�
 ``from app.core.runtime import read_ports`` 导入。
 """
 
+from typing import Any
+
 from app.core.runtime.notification_bridge import NotificationPayload
 from app.core.runtime.read_ports.approvals import (
     approval_correlation_id,
@@ -150,11 +152,14 @@ from app.core.runtime.read_ports.work import (
     work_item_execution_snapshot,
 )
 
-# WorkItemStatusChanged.payload.reason：再次运行把已完成简报先收成 pending，
-# 以及这次打开没有执行起来时收回 completed。pending 上的标记让启动恢复认出
-# 「打开了但执行请求还没落库」；completed 上的标记让依赖钩子和周期对比不当成
-# 新的完成。不是新事件类型。
+# WorkItemStatusChanged.payload.reason。不是新事件类型。
+# rerun_restore：再次运行把已完成简报先收成 pending，没执行起来时收回 completed。
+#   依赖钩子和周期对比都不把它当成新的完成。
+# rework_restore：返工把 completed 或 failed 收成 pending，没执行起来时收回
+#   打开前的那个状态。不能复用 rerun_restore：那会跳过依赖钩子，并被当成
+#   「不是新的完成」的再次运行收回，终态也只会是 completed。
 WORK_STATUS_REASON_RERUN_RESTORE = "rerun_restore"
+WORK_STATUS_REASON_REWORK_RESTORE = "rework_restore"
 
 __all__ = [
     "count_active_goals",
@@ -183,6 +188,9 @@ __all__ = [
     "update_work_item_fields",
     "update_work_item_status",
     "WORK_STATUS_REASON_RERUN_RESTORE",
+    "WORK_STATUS_REASON_REWORK_RESTORE",
+    "rework_open_waiting_for_execute",
+    "restore_half_open_rework",
     "delete_work_item",
     "get_sub_work_items",
     "get_work_item_tree",
@@ -270,3 +278,106 @@ __all__ = [
     "mark_external_taint",
     "build_memory_graph_edges",
 ]
+
+
+_REWORK_PRIOR_STATUSES = frozenset({"completed", "failed"})
+
+
+def _rework_status_events(k: Any, work_id: str) -> list:
+    """Newest first. Only events that actually carry a work status."""
+    events = k.read_events(
+        aggregate_type="work_item",
+        aggregate_id=work_id,
+        types=["WorkItemCreated", "WorkItemStatusChanged", "WorkItemUpdated"],
+        order="desc",
+    )
+    return [
+        event
+        for event in events
+        if isinstance(getattr(event, "payload", None), dict)
+        and "status" in event.payload
+    ]
+
+
+def _rework_open_and_prior(k: Any, work_id: str) -> tuple[Any, str | None]:
+    """Pending rework open with no later ``ExecuteRequested``, plus prior status.
+
+    The prior status is the event immediately before that open, and only when
+    it is ``completed`` or ``failed``. Anything else is not this rework window.
+    """
+    events = _rework_status_events(k, work_id)
+    if not events:
+        return None, None
+    latest = events[0]
+    payload = latest.payload if isinstance(latest.payload, dict) else {}
+    if payload.get("status") != "pending":
+        return None, None
+    if payload.get("reason") != WORK_STATUS_REASON_REWORK_RESTORE:
+        return None, None
+    pending_seq = int(getattr(latest, "seq", 0) or 0)
+    requests = k.read_events(
+        type="ExecuteRequested",
+        aggregate_type="action",
+        aggregate_id=f"exec_{work_id}",
+        order="desc",
+        limit=1,
+    )
+    if requests and int(getattr(requests[0], "seq", 0) or 0) > pending_seq:
+        return None, None
+    prior: str | None = None
+    if len(events) > 1:
+        status = str(events[1].payload.get("status") or "")
+        if status in _REWORK_PRIOR_STATUSES:
+            prior = status
+    return latest, prior
+
+
+def rework_open_waiting_for_execute(work_id: str) -> bool:
+    """True when a rework reopen is still pending and execute never started."""
+    from app.core.runtime.read_ports._common import kernel as get_kernel
+
+    latest, _prior = _rework_open_and_prior(get_kernel(), work_id)
+    return latest is not None
+
+
+def restore_half_open_rework(
+    work_id: str,
+    *,
+    actor: str = "user",
+    require_stash: bool = False,
+) -> str | None:
+    """Put back the pre-rework status when this rework never dispatched.
+
+    Restores ``rerun_stash:{work_id}`` when the clear committed and the live
+    cursor is gone. Emits ``WorkItemStatusChanged`` with the status from before
+    the pending open (``completed`` or ``failed``) and ``reason=rework_restore``.
+    Returns that status, or None when this row is not a half-open rework.
+    ``require_stash`` skips the undo unless the cursor stash is still present,
+    so a retry can finish a dispatch whose clear never committed.
+    """
+    from app.core.runtime.plan_resume import (
+        peek_plan_resume,
+        rerun_stash_key,
+        restore_rerun_plan_stash,
+    )
+    from app.core.runtime.read_ports._common import kernel as get_kernel
+    from app.core.runtime.read_ports._common import logger as ports_logger
+
+    k = get_kernel()
+    _latest, prior = _rework_open_and_prior(k, work_id)
+    if prior is None:
+        return None
+    if require_stash and peek_plan_resume(rerun_stash_key(work_id), kernel=k) is None:
+        return None
+    restore_rerun_plan_stash(work_id, kernel=k)
+    k.emit_event(
+        "WorkItemStatusChanged",
+        "work_item",
+        work_id,
+        payload={"status": prior, "reason": WORK_STATUS_REASON_REWORK_RESTORE},
+        actor=actor,
+    )
+    ports_logger.info(
+        "restored %s work %s after rework execute did not start", prior, work_id,
+    )
+    return prior

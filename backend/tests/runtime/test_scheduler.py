@@ -130,6 +130,37 @@ def test_rerun_restore_does_not_start_dependents(tmp_path, monkeypatch):
     assert k.query_state("work_items", id="unrelated")[0]["status"] == "pending"
 
 
+def test_rework_restore_does_not_start_dependents(tmp_path, monkeypatch):
+    """返工收回的 completed 或 failed 都不启动后继。"""
+    from app.core.runtime.kernel import Kernel
+    from app.core.runtime.kernel.event import Event
+    from app.core.runtime.read_ports import WORK_STATUS_REASON_REWORK_RESTORE
+    from app.store.database import Database
+
+    k = Kernel(db=Database(db_path=str(tmp_path / "sched_rework_restore.db")))
+    monkeypatch.setattr("app.core.runtime.cron_registry.kernel", k)
+    monkeypatch.setattr("app.core.runtime.work_item_engine.kernel", k)
+    monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", k)
+
+    _pending(k, "brief", "简报")
+    _pending(k, "successor", "后继", dependencies_json='["brief"]')
+    _pending(k, "failed_item", "失败项")
+    _pending(k, "failed_next", "失败后继", dependencies_json='["failed_item"]')
+
+    from app.core.runtime.cron_registry import _on_work_item_status_changed
+
+    for item_id, status in (("brief", "completed"), ("failed_item", "failed")):
+        _on_work_item_status_changed(Event(
+            type="WorkItemStatusChanged",
+            aggregate_type="work_item",
+            aggregate_id=item_id,
+            payload={"status": status, "reason": WORK_STATUS_REASON_REWORK_RESTORE},
+        ))
+
+    assert k.query_state("work_items", id="successor")[0]["status"] == "pending"
+    assert k.query_state("work_items", id="failed_next")[0]["status"] == "pending"
+
+
 def test_subscribed_hook_skips_restore_and_unrelated_tasks(tmp_path, monkeypatch):
     """emit 本身会叫醒已订阅的钩子：普通完成只拉起后继，收回不会。"""
     from app.core.runtime.cron_registry import _on_work_item_status_changed

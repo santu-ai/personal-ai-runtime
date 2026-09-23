@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-09-23：Batch 33：返工把 `completed` 或 `failed` 收成 pending 时带 `reason=rework_restore`，计划游标仍进 `rerun_stash:{work_id}`。`ExecuteRequested` 没落库时，同一次失败、再次提交或启动恢复放回游标，并把 Work 收回打开前的状态。不用 `rerun_restore`，收回不算新的完成，也不启动后继。已经发出 `ExecuteRequested` 的返工打开不收回。不新增事件类型。`read_ports/work.py` 仍为 600/600。
 - 2026-09-23：Batch 32：任务详情 `handler_execution` 只认最新 `status=running` 之后的 `ExecuteRequested`。这条请求还没有 handler 行时快照为空，不显示上一轮失败，按钮也不因此变成「重新执行」。handler 在请求之后补写的 `running`（`caused_by` 指向该请求）仍算这一次。不新增事件类型。`read_ports/work.py` 仍为 600/600。
 - 2026-09-23：Batch 31：再次运行清计划游标时，同一事务把行写入 `plan_resumes` 的 `rerun_stash:{work_id}`。`ExecuteRequested` 落库后删掉暂存。进程死在打开与派发之间时，启动恢复放回游标并收回 `completed`；原行还在则只删暂存。不新增事件类型。`read_ports/work.py` 仍为 600/600。
 - 2026-09-23：Batch 30：死信收口和「最新 handler 已失败」都改成只认最新 `status=running` 之后的 `ExecuteRequested`。再次运行打开成 pending 时带上已有的 `reason=rerun_restore`；进程若死在执行请求落库前，启动恢复用同一条 `WorkItemStatusChanged(completed)` 收回。已经清掉的计划游标补不回来。不新增事件类型。`read_ports/work.py` 仍为 600/600。

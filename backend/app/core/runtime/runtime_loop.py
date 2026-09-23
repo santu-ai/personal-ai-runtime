@@ -421,8 +421,11 @@ class RuntimeLoop:
         task/action). A pending row whose latest status event is a brief rerun
         reopen (``reason=rerun_restore``) and that has no later
         ``ExecuteRequested`` is put back to ``completed`` with the same reason.
-        The plan cursor stashed at clear time is put back in that same pass.
-        A stash whose reopen already dispatched is dropped.
+        A pending rework reopen (``reason=rework_restore``) with no later
+        ``ExecuteRequested`` is put back to the status it had before that open
+        (``completed`` or ``failed``) with ``rework_restore``, not
+        ``rerun_restore``. The plan cursor stashed at clear time is put back
+        in that same pass. A stash whose reopen already dispatched is dropped.
         """
         from app.core.runtime.kernel.constants import (
             AGGREGATE_WORK_ITEM,
@@ -504,6 +507,8 @@ class RuntimeLoop:
         ``ExecuteRequested`` follows it, only when the process died before
         dispatch. Put back the ``rerun_stash`` cursor when the clear committed,
         then emit ``WorkItemStatusChanged(completed)`` with the same reason.
+        A rework open uses ``reason=rework_restore`` and is restored to the
+        pre-rework ``completed`` or ``failed`` status, same stash key.
         Stashes for reopens that already dispatched are dropped.
         """
         from app.core.runtime.kernel.constants import (
@@ -529,31 +534,36 @@ class RuntimeLoop:
         for row in rows:
             work_id = row["id"]
             try:
-                if not _half_open_rerun(kernel, work_id):
+                if _half_open_rerun(kernel, work_id):
+                    restore_rerun_plan_stash(work_id, kernel=kernel)
+                    kernel.emit_event(
+                        EVENT_WORK_ITEM_STATUS_CHANGED,
+                        AGGREGATE_WORK_ITEM,
+                        work_id,
+                        payload={
+                            "status": "completed",
+                            "reason": read_ports.WORK_STATUS_REASON_RERUN_RESTORE,
+                        },
+                        actor="kernel",
+                    )
+                    restored += 1
+                    logger.info(
+                        "Restored completed brief %s left pending by a rerun",
+                        work_id,
+                    )
                     continue
-                restore_rerun_plan_stash(work_id, kernel=kernel)
-                kernel.emit_event(
-                    EVENT_WORK_ITEM_STATUS_CHANGED,
-                    AGGREGATE_WORK_ITEM,
-                    work_id,
-                    payload={
-                        "status": "completed",
-                        "reason": read_ports.WORK_STATUS_REASON_RERUN_RESTORE,
-                    },
-                    actor="kernel",
-                )
-                restored += 1
-                logger.info(
-                    "Restored completed brief %s left pending by a rerun",
-                    work_id,
-                )
+                if read_ports.restore_half_open_rework(work_id, actor="kernel"):
+                    restored += 1
             except Exception:
                 logger.exception(
-                    "Failed to restore half-open rerun %s", work_id
+                    "Failed to restore half-open work %s", work_id
                 )
         try:
             release_finished_rerun_stashes(
-                lambda work_id: _half_open_rerun(kernel, work_id),
+                lambda work_id: (
+                    _half_open_rerun(kernel, work_id)
+                    or read_ports.rework_open_waiting_for_execute(work_id)
+                ),
                 kernel=kernel,
             )
         except Exception:

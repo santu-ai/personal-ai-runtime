@@ -25,7 +25,7 @@ ResumeKind = Literal["execute"]
 
 logger = logging.getLogger(__name__)
 
-# 再次运行清游标时的暂存键。与 progress:/idem: 一样是 APP_STORAGE 合成键，
+# 再次运行或返工清游标时的暂存键。与 progress:/idem: 一样是 APP_STORAGE 合成键，
 # 不新增表，也不新增事件类型。action_id 留空，避免被工作项的 take/clear 扫掉。
 RERUN_STASH_PREFIX = "rerun_stash:"
 
@@ -514,7 +514,7 @@ def clear_plan_resumes(*, db: Any | None = None) -> None:
 #   stepres:{action_id}:{step}        — full step result for compile after resume
 #   aprdis:{approval_id}              — approve→execute dispatch intent until emit confirms
 #   chat_ckpt:{correlation_id}        — Chat tool-loop messages for interrupt replay
-#   rerun_stash:{work_id}             — cursor taken for a rerun, until execute starts
+#   rerun_stash:{work_id}             — cursor taken for a rerun or rework, until execute starts
 
 
 def progress_key(action_id: str) -> str:

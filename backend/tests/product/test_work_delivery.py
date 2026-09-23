@@ -1543,6 +1543,131 @@ def test_rerun_restore_does_not_mark_other_pending_tasks_running(isolated_kernel
     assert restored[-1].payload.get("reason") == "rerun_restore"
 
 
+def test_rework_restores_completed_when_execute_fails_after_stash(isolated_kernel, monkeypatch):
+    """返工清游标之后执行请求失败时，收回 completed，并放回计划游标。"""
+    from app.core.runtime.cron_registry import _on_work_item_status_changed
+    from app.core.runtime.read_ports.events import _is_completion
+
+    k, _db = isolated_kernel
+    monkeypatch.setattr("app.core.runtime.cron_registry.kernel", k)
+    monkeypatch.setattr("app.core.runtime.work_item_engine.kernel", k)
+    unsub = k.subscribe_events(_on_work_item_status_changed, type="WorkItemStatusChanged")
+    try:
+        item = _brief_task_with_steps()
+        work_id = item["id"]
+        published = publish_delivery(
+            work_id, content="第一期", summary="第一期", sources=[],
+            execution_id="rework-emit-fail",
+        )
+        _seed_rerun_progress(k, work_id)
+        successor = read_ports.create_work_item(
+            "后继待办", work_type="task", dependencies=[work_id],
+        )
+
+        def drop_execute(_work_id: str):
+            raise RuntimeError("execute request dropped")
+
+        monkeypatch.setattr(read_ports, "request_work_item_execute", drop_execute)
+
+        with pytest.raises(RuntimeError, match="execute request dropped"):
+            request_rework(
+                work_id, published["delivery_id"], reason="需要补风险",
+                idempotency_key="rework-stash-fail",
+            )
+    finally:
+        unsub()
+
+    stored = read_ports.query_work_item(work_id)
+    assert stored is not None
+    assert stored["status"] == "completed"
+    assert k.read_events(type="ExecuteRequested", aggregate_id=f"exec_{work_id}") == []
+    restored = k.read_events(type="WorkItemStatusChanged", aggregate_id=work_id)
+    assert restored[-2].payload.get("status") == "pending"
+    assert restored[-2].payload.get("reason") == "rework_restore"
+    assert restored[-1].payload.get("status") == "completed"
+    assert restored[-1].payload.get("reason") == "rework_restore"
+    assert restored[-1].payload.get("reason") != "rerun_restore"
+    assert _is_completion(restored[-1]) is False
+    _assert_rerun_progress(k, work_id)
+    assert read_ports.query_work_item(successor["id"])["status"] == "pending"
+    assert _status_names(k, successor["id"]) == []
+
+
+def test_rework_restores_failed_when_execute_fails_after_stash(isolated_kernel, monkeypatch):
+    """打开前是 failed 时，执行请求失败收回 failed，而不是 completed。"""
+    k, _db = isolated_kernel
+    item = _brief_task_with_steps()
+    work_id = item["id"]
+    published = publish_delivery(
+        work_id, content="第一期", summary="第一期", sources=[],
+        execution_id="rework-failed-emit",
+    )
+    k.emit_event(
+        "WorkItemStatusChanged", "work_item", work_id,
+        payload={"status": "failed"}, actor="executor",
+    )
+    _seed_rerun_progress(k, work_id)
+
+    def drop_execute(_work_id: str):
+        raise RuntimeError("execute request dropped")
+
+    monkeypatch.setattr(read_ports, "request_work_item_execute", drop_execute)
+    with pytest.raises(RuntimeError, match="execute request dropped"):
+        request_rework(
+            work_id, published["delivery_id"], reason="需要补风险",
+            idempotency_key="rework-failed-stash",
+        )
+
+    stored = read_ports.query_work_item(work_id)
+    assert stored is not None
+    assert stored["status"] == "failed"
+    restored = k.read_events(type="WorkItemStatusChanged", aggregate_id=work_id)
+    assert restored[-1].payload.get("status") == "failed"
+    assert restored[-1].payload.get("reason") == "rework_restore"
+    assert restored[-1].payload.get("reason") != "rerun_restore"
+    _assert_rerun_progress(k, work_id)
+    assert k.read_events(type="ExecuteRequested", aggregate_id=f"exec_{work_id}") == []
+
+
+def test_rework_retry_restores_stashed_open_without_executing(isolated_kernel, monkeypatch):
+    """进程死在暂存之后时，再次提交同一返工只收回，不再派发。"""
+    from app.core.runtime.plan_resume import take_plan_resumes_for_work_item
+
+    k, _db = isolated_kernel
+    item = _brief_task_with_steps()
+    work_id = item["id"]
+    published = publish_delivery(
+        work_id, content="第一期", summary="第一期", sources=[],
+        execution_id="rework-retry-open",
+    )
+    _seed_rerun_progress(k, work_id)
+    k.emit_event(
+        "WorkItemStatusChanged", "work_item", work_id,
+        payload={"status": "pending", "reason": "rework_restore"},
+        actor="user",
+    )
+    assert take_plan_resumes_for_work_item(work_id, kernel=k)
+
+    def boom(_work_id: str):
+        raise AssertionError("execute should not run")
+
+    monkeypatch.setattr(read_ports, "request_work_item_execute", boom)
+    monkeypatch.setattr(read_ports, "ensure_work_item_execute_requested", boom)
+
+    result = request_rework(
+        work_id, published["delivery_id"], reason="需要补风险",
+        idempotency_key="rework-retry-stash",
+    )
+    assert result["restored_status"] == "completed"
+    assert result["work"]["status"] == "completed"
+    restored = k.read_events(type="WorkItemStatusChanged", aggregate_id=work_id)
+    assert restored[-1].payload.get("status") == "completed"
+    assert restored[-1].payload.get("reason") == "rework_restore"
+    assert restored[-1].payload.get("reason") != "rerun_restore"
+    _assert_rerun_progress(k, work_id)
+    assert k.read_events(type="ExecuteRequested", aggregate_id=f"exec_{work_id}") == []
+
+
 def test_rerun_same_brief_rejects_missing_delivery_and_other_work(isolated_kernel):
     item = _brief_task_with_steps()
     with pytest.raises(DeliveryValidationError, match="还没有可对照的交付"):
