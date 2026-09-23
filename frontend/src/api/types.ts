@@ -289,6 +289,50 @@ export interface WorkDeliveryDecision {
   idempotency_key?: string | null;
 }
 
+export interface WorkDeliveryChangeFinding {
+  text: string;
+  kind?: string;
+  source_ids?: string[];
+  previous_kind?: string;
+  previous_source_ids?: string[];
+}
+
+export interface WorkDeliveryChangeSource {
+  id: string;
+  type?: string;
+  title?: string;
+  locator?: string;
+  previous_type?: string;
+  previous_title?: string;
+  previous_locator?: string;
+}
+
+export interface WorkDeliveryChangeAction {
+  title: string;
+  reason?: string;
+  source_ids?: string[];
+  previous_reason?: string;
+  previous_source_ids?: string[];
+}
+
+export interface WorkDeliveryChanges {
+  previous_delivery_id?: string | null;
+  previous_version: number;
+  summary_changed: boolean;
+  content_changed: boolean;
+  findings_added: WorkDeliveryChangeFinding[];
+  findings_removed: WorkDeliveryChangeFinding[];
+  findings_changed: WorkDeliveryChangeFinding[];
+  sources_added: WorkDeliveryChangeSource[];
+  sources_removed: WorkDeliveryChangeSource[];
+  sources_changed: WorkDeliveryChangeSource[];
+  limitations_added: string[];
+  limitations_removed: string[];
+  actions_added: WorkDeliveryChangeAction[];
+  actions_removed: WorkDeliveryChangeAction[];
+  actions_changed: WorkDeliveryChangeAction[];
+}
+
 export interface WorkDelivery {
   delivery_id: string;
   version: number;
@@ -308,6 +352,7 @@ export interface WorkDelivery {
   qualified: boolean;
   review_status: WorkDeliveryReviewStatus;
   latest_decision?: WorkDeliveryDecision | null;
+  changes_from_previous?: WorkDeliveryChanges | null;
 }
 
 export interface WorkDeliveryBundle {

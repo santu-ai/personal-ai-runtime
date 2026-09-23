@@ -14,6 +14,7 @@ import json
 import logging
 import threading
 import uuid
+from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -183,28 +184,31 @@ def fold_delivery_history(work_id: str) -> dict[str, Any]:
             if decision
             else REVIEW_UNREVIEWED
         )
-        summaries.append(
-            _public_delivery(
-                row,
-                review_status=status,
-                include_content=False,
-                latest_decision=decision,
-            )
+        public = _public_delivery(
+            row,
+            review_status=status,
+            include_content=False,
+            latest_decision=decision,
         )
+        assert public is not None
+        public["changes_from_previous"] = _changes_for(row, by_id)
+        summaries.append(public)
+
+    current_public = None
+    if current:
+        current_public = _public_delivery(
+            current,
+            review_status=review_status,
+            include_content=True,
+            latest_decision=current_decision,
+        )
+        assert current_public is not None
+        current_public["changes_from_previous"] = _changes_for(current, by_id)
 
     return {
         "work_id": work_id,
         "deliveries": summaries,
-        "current": (
-            _public_delivery(
-                current,
-                review_status=review_status,
-                include_content=True,
-                latest_decision=current_decision,
-            )
-            if current
-            else None
-        ),
+        "current": current_public,
         "current_review_status": review_status if current else None,
         "latest_decision": current_decision,
         "_by_id": by_id,
@@ -262,6 +266,193 @@ def _public_delivery(
         content = str(row.get("content") or "")
         out["content_length"] = len(content)
     return out
+
+
+def _plain_text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _dict_rows(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _id_key(value: Any) -> tuple[str, ...]:
+    return tuple(sorted(_string_list(value)))
+
+
+def _finding_view(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "text": _plain_text(item.get("text")),
+        "kind": _plain_text(item.get("kind")) or "change",
+        "source_ids": _string_list(item.get("source_ids")),
+    }
+
+
+def _source_view(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": _plain_text(item.get("id")),
+        "type": _plain_text(item.get("type")),
+        "title": _plain_text(item.get("title")),
+        "locator": _plain_text(item.get("locator")),
+    }
+
+
+def _action_view(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "title": _plain_text(item.get("title")),
+        "reason": _plain_text(item.get("reason")),
+        "source_ids": _string_list(item.get("source_ids")),
+    }
+
+
+def _partition_changes(
+    previous: list[dict[str, Any]],
+    current: list[dict[str, Any]],
+    *,
+    key_of,
+    same,
+    view,
+    changed_view,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Match rows by a stable key. Same key with different fields is a rewrite."""
+    unused = list(previous)
+    added: list[dict[str, Any]] = []
+    changed: list[dict[str, Any]] = []
+    for item in current:
+        key = key_of(item)
+        match_at = next((index for index, old in enumerate(unused) if key_of(old) == key), None)
+        if match_at is None:
+            added.append(view(item))
+            continue
+        old = unused.pop(match_at)
+        if not same(old, item):
+            changed.append(changed_view(old, item))
+    removed = [view(old) for old in unused]
+    return added, removed, changed
+
+
+def _string_delta(previous: list[str], current: list[str]) -> tuple[list[str], list[str]]:
+    previous_counts = Counter(previous)
+    added: list[str] = []
+    for item in current:
+        if previous_counts[item]:
+            previous_counts[item] -= 1
+        else:
+            added.append(item)
+    current_counts = Counter(current)
+    removed: list[str] = []
+    for item in previous:
+        if current_counts[item]:
+            current_counts[item] -= 1
+        else:
+            removed.append(item)
+    return added, removed
+
+
+def _changes_from_previous(previous: dict[str, Any], current: dict[str, Any]) -> dict[str, Any]:
+    """Structured delta already stored on the two delivery payloads.
+
+    The result cites findings, sources, limitations, and suggested actions.
+    It does not copy either version's full body.
+    """
+    prev_findings = _dict_rows(previous.get("findings"))
+    next_findings = _dict_rows(current.get("findings"))
+    findings_added, findings_removed, findings_changed = _partition_changes(
+        prev_findings,
+        next_findings,
+        key_of=lambda item: _plain_text(item.get("text")),
+        same=lambda old, item: (
+            (_plain_text(old.get("kind")) or "change")
+            == (_plain_text(item.get("kind")) or "change")
+            and _id_key(old.get("source_ids")) == _id_key(item.get("source_ids"))
+        ),
+        view=_finding_view,
+        changed_view=lambda old, item: {
+            **_finding_view(item),
+            "previous_kind": _plain_text(old.get("kind")) or "change",
+            "previous_source_ids": _string_list(old.get("source_ids")),
+        },
+    )
+    prev_sources = _dict_rows(previous.get("sources"))
+    next_sources = _dict_rows(current.get("sources"))
+
+    def _source_key(item: dict[str, Any]) -> str:
+        source_id = _plain_text(item.get("id"))
+        if source_id:
+            return f"id:{source_id}"
+        return f"title:{_plain_text(item.get('title'))}"
+
+    sources_added, sources_removed, sources_changed = _partition_changes(
+        prev_sources,
+        next_sources,
+        key_of=_source_key,
+        same=lambda old, item: _source_view(old) == _source_view(item),
+        view=_source_view,
+        changed_view=lambda old, item: {
+            **_source_view(item),
+            "previous_title": _plain_text(old.get("title")),
+            "previous_locator": _plain_text(old.get("locator")),
+            "previous_type": _plain_text(old.get("type")),
+        },
+    )
+    prev_actions = _dict_rows(previous.get("suggested_actions"))
+    next_actions = _dict_rows(current.get("suggested_actions"))
+    actions_added, actions_removed, actions_changed = _partition_changes(
+        prev_actions,
+        next_actions,
+        key_of=lambda item: _plain_text(item.get("title")),
+        same=lambda old, item: (
+            _plain_text(old.get("reason")) == _plain_text(item.get("reason"))
+            and _id_key(old.get("source_ids")) == _id_key(item.get("source_ids"))
+        ),
+        view=_action_view,
+        changed_view=lambda old, item: {
+            **_action_view(item),
+            "previous_reason": _plain_text(old.get("reason")),
+            "previous_source_ids": _string_list(old.get("source_ids")),
+        },
+    )
+    limitations_added, limitations_removed = _string_delta(
+        _string_list(previous.get("limitations")),
+        _string_list(current.get("limitations")),
+    )
+    return {
+        "previous_delivery_id": previous.get("delivery_id"),
+        "previous_version": int(previous.get("version") or 0),
+        "summary_changed": (
+            _plain_text(previous.get("summary")) != _plain_text(current.get("summary"))
+        ),
+        "content_changed": str(previous.get("content") or "") != str(current.get("content") or ""),
+        "findings_added": findings_added,
+        "findings_removed": findings_removed,
+        "findings_changed": findings_changed,
+        "sources_added": sources_added,
+        "sources_removed": sources_removed,
+        "sources_changed": sources_changed,
+        "limitations_added": limitations_added,
+        "limitations_removed": limitations_removed,
+        "actions_added": actions_added,
+        "actions_removed": actions_removed,
+        "actions_changed": actions_changed,
+    }
+
+
+def _changes_for(row: dict[str, Any], by_id: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
+    previous_id = str(row.get("supersedes_delivery_id") or "").strip()
+    if not previous_id:
+        return None
+    previous = by_id.get(previous_id)
+    if not isinstance(previous, dict):
+        return None
+    return _changes_from_previous(previous, row)
 
 
 def _coerce_action_index(value: Any) -> int | None:
@@ -350,6 +541,7 @@ def get_delivery(work_id: str, delivery_id: str) -> dict[str, Any]:
         latest_decision=latest,
     )
     assert public is not None
+    public["changes_from_previous"] = _changes_for(row, folded["_by_id"])
     _annotate_adoptions(
         public,
         _live_adopted_indexes(folded.get("_adoptions") or [], delivery_id),
@@ -407,6 +599,7 @@ def publish_delivery(
                         latest_decision=decision,
                     )
                     assert public is not None
+                    public["changes_from_previous"] = _changes_for(existing, folded["_by_id"])
                     return public
 
         current = folded["current"]
@@ -441,6 +634,7 @@ def publish_delivery(
             payload_body, review_status=REVIEW_UNREVIEWED, include_content=True,
         )
         assert public is not None
+        public["changes_from_previous"] = _changes_for(payload_body, folded["_by_id"])
         return public
 
 

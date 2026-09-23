@@ -840,4 +840,142 @@ describe("TasksPage", () => {
     expect(screen.getAllByText("已要求返工").length).toBeGreaterThan(0);
     expect(screen.queryByTestId("rework-reason")).not.toBeInTheDocument();
   });
+
+  it("shows structured changes against the previous delivery", async () => {
+    const task: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        ...briefTask.delivery_bundle!,
+        current: {
+          ...currentDelivery,
+          changes_from_previous: {
+            previous_delivery_id: "d1",
+            previous_version: 1,
+            summary_changed: true,
+            content_changed: true,
+            findings_added: [{ text: "排期推迟", kind: "risk", source_ids: ["email:m1"] }],
+            findings_removed: [{ text: "进度正常", kind: "change", source_ids: [] }],
+            findings_changed: [
+              {
+                text: "范围变化",
+                kind: "risk",
+                source_ids: ["file:1"],
+                previous_kind: "change",
+                previous_source_ids: ["email:m1"],
+              },
+            ],
+            sources_added: [{ id: "email:m1", title: "延期邮件" }],
+            sources_removed: [{ id: "file:old", title: "旧纪要" }],
+            sources_changed: [],
+            limitations_added: ["仅覆盖最近三天"],
+            limitations_removed: [],
+            actions_added: [],
+            actions_removed: [{ title: "旧待办" }],
+            actions_changed: [
+              {
+                title: "核对排期",
+                reason: "新理由",
+                previous_reason: "旧理由",
+              },
+            ],
+          },
+        },
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [task];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(task);
+    renderTasks("/tasks/brief_1");
+
+    const panel = await screen.findByTestId("delivery-version-diff");
+    expect(panel).toHaveTextContent("相对 v1");
+    expect(panel).toHaveTextContent("新增结论：[风险] 排期推迟（email:m1）");
+    expect(panel).toHaveTextContent("去掉的结论：[变化] 进度正常");
+    expect(panel).toHaveTextContent("改写的结论：范围变化，变化 → 风险，来源 email:m1 → file:1");
+    expect(panel).toHaveTextContent("新增来源：email:m1 延期邮件");
+    expect(panel).toHaveTextContent("去掉的来源：file:old 旧纪要");
+    expect(panel).toHaveTextContent("新增限制：仅覆盖最近三天");
+    expect(panel).toHaveTextContent("去掉的待办：旧待办");
+    expect(panel).toHaveTextContent("待办有更新：核对排期，理由 旧理由 → 新理由");
+    expect(panel).toHaveTextContent("摘要已更新");
+    expect(panel).not.toHaveTextContent("正文已更新");
+  });
+
+  it("says the delivery matches the previous version when nothing changed", async () => {
+    const task: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        ...briefTask.delivery_bundle!,
+        current: {
+          ...currentDelivery,
+          changes_from_previous: {
+            previous_delivery_id: "d1",
+            previous_version: 1,
+            summary_changed: false,
+            content_changed: false,
+            findings_added: [],
+            findings_removed: [],
+            findings_changed: [],
+            sources_added: [],
+            sources_removed: [],
+            sources_changed: [],
+            limitations_added: [],
+            limitations_removed: [],
+            actions_added: [],
+            actions_removed: [],
+            actions_changed: [],
+          },
+        },
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [task];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(task);
+    renderTasks("/tasks/brief_1");
+
+    expect(await screen.findByTestId("delivery-version-diff")).toHaveTextContent("与上一版相同");
+  });
+
+  it("shows a body-only change without repeating structured lines", async () => {
+    const task: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        ...briefTask.delivery_bundle!,
+        current: {
+          ...currentDelivery,
+          changes_from_previous: {
+            previous_delivery_id: "d1",
+            previous_version: 1,
+            summary_changed: false,
+            content_changed: true,
+            findings_added: [],
+            findings_removed: [],
+            findings_changed: [],
+            sources_added: [],
+            sources_removed: [],
+            sources_changed: [],
+            limitations_added: [],
+            limitations_removed: [],
+            actions_added: [],
+            actions_removed: [],
+            actions_changed: [],
+          },
+        },
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [task];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(task);
+    renderTasks("/tasks/brief_1");
+
+    const panel = await screen.findByTestId("delivery-version-diff");
+    expect(panel).toHaveTextContent("正文已更新");
+    expect(panel).not.toHaveTextContent("与上一版相同");
+  });
 });
