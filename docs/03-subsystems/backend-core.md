@@ -106,7 +106,7 @@ Kernel 拥有 Chroma 索引。`emit_event` 对 `MEMORY_INDEX_EVENT_TYPES` 在**�
 | 每 10 tick（~1s） | `_check_timers` — 扫描 `timer_events` 投影中 `fire_at <= now` 的项，emit `TimerFired`；对 cron 类型用**同一 aggregate_id** 再 emit `TimerCreated`（`INSERT OR REPLACE` 把行标回 `active`）。重启时 `_init_timers` 只跳过仍为 `active` 的具名行。 |
 | 每 100 tick（~10s） | `_maintenance`（见下） |
 
-`start()` 在进入 tick 循环之前调用 `_recover_interrupted_background_tasks`。仍有未结束 handler 的 Work 留给 Scheduler。最新 `status=running` 之后的请求其 handler 已失败时，仍为 running 的 Work 收成 `failed`，不重新排队，也不另开一轮 retry 预算。handler 已完成且能对上同一次 `ExecuteCompleted` 时同步状态。没有 handler 行时：后台任务回到 pending；有 `executable_plan` 的 task/action 补一次 `ExecuteRequested`；goal 或没有计划则跳过。仍为 pending、最近一次状态是再次运行打开（`reason=rerun_restore`）、且其后没有 `ExecuteRequested` 的简报收回 `completed`（同一 reason）。返工把 `completed` 或 `failed` 收成 pending 时用的是 `reason=rework_restore`，不是 `rerun_restore`。这条打开之后还没有 `ExecuteRequested` 时，启动恢复把 Work 收回打开前的 `completed` 或 `failed`（同一 `rework_restore`），不把它收成普通 `completed`。这次打开若已把计划游标清进 `plan_resumes` 的 `rerun_stash:{work_id}`（再次运行和返工共用这一键），同一轮把游标放回；游标还在原行上时只丢掉暂存，不覆盖。已经发出 `ExecuteRequested` 的暂存直接丢掉，返工打开也不收回。
+`start()` 在进入 tick 循环之前调用 `_recover_interrupted_background_tasks`（当前尝试与半开 pending 的完整边界见 [execution-model.md](../02-concepts/execution-model.md)）。仍有未结束 handler 的 Work 留给 Scheduler。最新 `status=running` 之后的请求其 handler 已失败时，仍为 running 的 Work 收成 `failed`，不重新排队，也不另开一轮 retry 预算。handler 已完成且能对上同一次 `ExecuteCompleted` 时同步状态。没有 handler 行时：后台任务回到 pending；有 `executable_plan` 的 task/action 补一次 `ExecuteRequested`；goal 或没有计划则跳过。仍为 pending、最近一次状态是再次运行打开（`reason=rerun_restore`）、且其后没有 `ExecuteRequested` 的简报收回 `completed`（同一 reason）。返工把 `completed` 或 `failed` 收成 pending 时用的是 `reason=rework_restore`，不是 `rerun_restore`。这条打开之后还没有 `ExecuteRequested` 时，启动恢复把 Work 收回打开前的 `completed` 或 `failed`（同一 `rework_restore`），不把它收成普通 `completed`。这次打开若已把计划游标清进 `plan_resumes` 的 `rerun_stash:{work_id}`（再次运行和返工共用这一键），同一轮把游标放回；游标还在原行上时只丢掉暂存，不覆盖。已经发出 `ExecuteRequested` 的暂存直接丢掉，返工打开也不收回。
 
 `_maintenance`（[`runtime_loop.py`](../../backend/app/core/runtime/runtime_loop.py)）：
 
@@ -126,7 +126,7 @@ cron 表达式解析 `_next_cron_fire(cron_expr, from_ts)`（[`runtime_loop.py`]
 
 | 名称 | Cron | 触发 |
 |---|---|---|
-| morning_brief | 每天 08:00 | `TimerFired` → `handler_name=morning_brief`。应用内通知按本地日期分桶（title `早安简报 - YYYY-MM-DD` + `dedup_key=morning_brief:{date}`），避免 `create_notification` 的 type+title 幂等把次日简报折叠进昨日同一行。通知正文含同一 `read_ports.compare_periods` 的近 7 日对比（完成目标、完成任务、新邮件、采纳率；投影缺失的完成仅在非零时写入 `work_completed_untyped`）；该段读取失败时降级为「获取失败」，不中断简报 |
+| morning_brief | 每天 08:00 | `TimerFired` → `handler_name=morning_brief`。应用内通知按本地日期分桶（title `早安简报 - YYYY-MM-DD` + `dedup_key=morning_brief:{date}`），避免 `create_notification` 的 type+title 幂等把次日简报折叠进昨日同一行。通知正文含同一 `read_ports.compare_periods` 的近 7 日对比（完成目标、完成任务、新邮件、采纳率；投影缺失的完成仅在非零时写入 `work_completed_untyped`；`reason=rerun_restore` 与 `reason=rework_restore` 不计入完成）；该段读取失败时降级为「获取失败」，不中断简报 |
 | deadline_alert | 每天 09:00 | `TimerFired` → `handler_name=deadline_alert`。对 1/3 天后到期的目标发 `goal_deadline` 通知；`dedup_key=deadline_alert:{goal_id}:{date}`，避免固定 title「Deadline 预警」把跨目标/跨天折叠进同一行 |
 | memory_decay | 每天 03:00 | memory_decay |
 | world_model_snapshot | 每周日 06:00 | world_model_snapshot |
@@ -199,7 +199,7 @@ Scheduler 通过 `kernel.set_async_dispatcher()`（[`kernel.py`](../../backend/a
 | [`notification_channel.py`](../../backend/app/core/runtime/notification_channel.py) | 可插拔通道：`DesktopChannel`（WS 广播）、`WebhookChannel`（HTTP POST）、`NtfyChannel`（ntfy.sh）。`NotificationRouter.notify()` 扇出 |
 | [`notification_bridge.py`](../../backend/app/core/runtime/notification_bridge.py) | 同步→异步桥；`push_notification` 持久化+广播，`broadcast_event` 纯传输 |
 | [`telemetry/telemetry.py`](../../backend/app/core/telemetry/telemetry.py) | 记录每次 LLM 调用（`LLMCallRecord`）与工具调用（`ToolCallRecord`）到 `llm_calls`/`tool_calls` 表 |
-| [`world_model.py`](../../backend/app/core/agents/world_model.py) | 30 天滚动生活快照（活跃目标、近期完成、近期活动类型），并附上近 7 日与前 7 日对比（提示词行只写完成目标、完成任务、新邮件、采纳率，来自 `read_ports.compare_periods`，不落新表）。缓存；周 cron 刷新 |
+| [`world_model.py`](../../backend/app/core/agents/world_model.py) | 30 天滚动生活快照（活跃目标、近期完成、近期活动类型），并附上近 7 日与前 7 日对比（提示词行只写完成目标、完成任务、新邮件、采纳率，来自 `read_ports.compare_periods`；`rerun_restore` 与 `rework_restore` 不计入完成，不落新表）。缓存；周 cron 刷新 |
 | [`user_profile.py`](../../backend/app/core/agents/user_profile.py) | 结构化画像（偏好/价值观/关系/健康/财务/职业），置信度评分、30 天时间衰减、冲突解决。经 `UserProfileUpdated` 事件写 |
 | [`startup_health.py`](../../backend/app/core/startup_health.py) | `run_startup_checks()` 校验存储路径、LLM 配置、认证、邮件。`enrich_with_mcp_status`、`sanitize_startup_for_public` |
 | [`rate_limit.py`](../../backend/app/core/rate_limit.py) | 内存令牌桶（按端点前缀）：`/api/chat` 30/60s、`/api/settings/llm/test` 5/60s、`/api/settings/email/test` 5/60s、`/api/inbox/poll` 10/60s、`/api/system/export` 3/60s |

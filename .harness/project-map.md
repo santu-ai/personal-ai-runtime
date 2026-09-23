@@ -36,6 +36,7 @@
 | 想了解 | 读 |
 |---|---|
 | 整体架构 | `docs/01-overview/architecture.md` |
+| 当前尝试 / 半开收回 / 单次交付成本 | `docs/02-concepts/execution-model.md` |
 | 六原语 / 概念压缩 | `docs/02-concepts/runtime-algebra.md` |
 | 工程操作 | `docs/05-engineering/` |
 | API / Makefile / 工具目录 | `docs/06-reference/`（`api-endpoints` / `makefile-targets` / `tool-catalog`，均可 `make docs-gen`） |
