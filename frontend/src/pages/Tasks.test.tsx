@@ -812,6 +812,61 @@ describe("TasksPage", () => {
     });
   });
 
+  it("shows this delivery's model cost, not another attempt", async () => {
+    const priced: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        ...briefTask.delivery_bundle!,
+        current: {
+          ...currentDelivery,
+          model_cost: { llm_cost: 1.25, recovery_interventions: 2 },
+        },
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [priced];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(priced);
+    vi.mocked(getWorkDelivery).mockResolvedValue({
+      ...historyFull,
+      model_cost: { llm_cost: 0.2, recovery_interventions: 1 },
+    });
+    renderTasks("/tasks/brief_1");
+
+    const currentCost = await screen.findByTestId("delivery-model-cost");
+    expect(currentCost).toHaveTextContent("恢复 2 · 模型成本 $1.2500");
+    expect(currentCost).not.toHaveTextContent("未归因");
+    fireEvent.click(screen.getByRole("button", { name: /v1 · 已要求返工/ }));
+    const historyCost = await screen.findByTestId("delivery-model-cost");
+    expect(historyCost).toHaveTextContent("恢复 1 · 模型成本 $0.2000");
+    expect(historyCost).not.toHaveTextContent("$1.2500");
+    expect(historyCost).not.toHaveTextContent("未归因");
+  });
+
+  it("keeps a capped delivery model cost unavailable", async () => {
+    const capped: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        ...briefTask.delivery_bundle!,
+        current: {
+          ...currentDelivery,
+          model_cost: { llm_cost: "unavailable", recovery_interventions: "unavailable" },
+        },
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [capped];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(capped);
+    renderTasks("/tasks/brief_1");
+
+    const line = await screen.findByTestId("delivery-model-cost");
+    expect(line).toHaveTextContent("恢复未分开计 · 模型成本未分开计");
+    expect(line).not.toHaveTextContent("$0");
+  });
+
   it("loads full history version content by delivery id", async () => {
     vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
       if (workType === "task") return [briefTask];

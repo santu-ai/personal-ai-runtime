@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-09-23：Batch 36：任务详情里每个交付版本带 `model_cost`，只计该版本 `execution_id` 的已归因金额和恢复次数。其它执行和缺少 `caused_by` 的金额不并进来。这一读打满上限时两项都是 unavailable，不写成 0。没有 `execution_id` 时为 0。近 N 日汇总仍是窗口合计。不新增事件类型。未改 `read_ports/work.py`。
 - 2026-09-23：Batch 35：`replay_dead_letters` 在领域 Work 已是 `failed` / `completed` / `cancelled` 时不把死信再排成 pending（`work_terminal:<status>`，不发 Execution*）。不是最新 `status=running` 之后那条 `ExecuteRequested` 的死信同样跳过（`not_current_attempt`）。Work 仍为 running 且死信属于当前这次请求时，重放仍排成 pending。没有对应 Work 的执行仍重放。不新增事件类型。`read_ports/work.py` 仍为 600/600。
 - 2026-09-23：Batch 34：返工收回（`reason=rework_restore`）之后，若这次 `changes_requested` 之后或这次打开之后没有 `ExecuteRequested`，任务页不再把当前交付显示成「已要求返工」。读模型把它呈现为待验收，可以再次验收或返工；决定事件仍在。已经派出的返工仍是「已要求返工」。不新增事件类型。未改 `read_ports/work.py`。
 - 2026-09-23：Batch 33：返工把 `completed` 或 `failed` 收成 pending 时带 `reason=rework_restore`，计划游标仍进 `rerun_stash:{work_id}`。`ExecuteRequested` 没落库时，同一次失败、再次提交或启动恢复放回游标，并把 Work 收回打开前的状态。不用 `rerun_restore`，收回不算新的完成，也不启动后继。已经发出 `ExecuteRequested` 的返工打开不收回。不新增事件类型。`read_ports/work.py` 仍为 600/600。

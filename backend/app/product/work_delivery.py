@@ -569,7 +569,7 @@ def get_delivery(work_id: str, delivery_id: str) -> dict[str, Any]:
         public,
         _live_adopted_indexes(folded.get("_adoptions") or [], delivery_id),
     )
-    return public
+    return _with_model_cost(public)
 
 
 def public_bundle(work_id: str) -> dict[str, Any]:
@@ -580,7 +580,14 @@ def public_bundle(work_id: str) -> dict[str, Any]:
         "current": folded["current"],
         "current_review_status": folded["current_review_status"],
     }
-    return _annotate_bundle(bundle, folded.get("_adoptions") or [])
+    bundle = _annotate_bundle(bundle, folded.get("_adoptions") or [])
+    current = bundle.get("current")
+    if isinstance(current, dict):
+        _with_model_cost(current)
+    for row in bundle.get("deliveries") or []:
+        if isinstance(row, dict):
+            _with_model_cost(row)
+    return bundle
 
 
 def publish_delivery(
@@ -623,7 +630,7 @@ def publish_delivery(
                     )
                     assert public is not None
                     public["changes_from_previous"] = _changes_for(existing, folded["_by_id"])
-                    return public
+                    return _with_model_cost(public)
 
         current = folded["current"]
         version = int(current["version"]) + 1 if current else 1
@@ -658,7 +665,7 @@ def publish_delivery(
         )
         assert public is not None
         public["changes_from_previous"] = _changes_for(payload_body, folded["_by_id"])
-        return public
+        return _with_model_cost(public)
 
 
 def _adoption_plan(
@@ -1643,6 +1650,7 @@ def _metric_datetime(value: Any) -> datetime | None:
 
 _APPROVAL_LOOKBACK = timedelta(days=7)
 _COST_LOOKBACK = timedelta(days=1)
+_DELIVERY_MODEL_COST_LIMIT = 5000
 _INTERRUPTION = "interrupted"
 _INTERRUPTED_BEFORE_AUDIT = "interrupted_before_audit"
 
@@ -1960,6 +1968,49 @@ def _attribute_delivery_activity(
         "unattributed_project_brief_calls": unattributed_calls_value,
         "unattributed_project_brief_cost": unattributed_cost_value,
     }, capped
+
+
+def model_cost_for_delivery(
+    execution_id: str | None,
+    *,
+    published_at: Any = None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    """Money and crash-recovery count for one delivery's execution.
+
+    Only ``LLMCallRecorded`` rows whose ``caused_by`` is this execution add
+    to ``llm_cost``. Calls that omit ``caused_by``, and calls for any other
+    execution, stay out of that sum. Recoveries are the same execution's
+    handler replays and unpaired audit gaps — not an earlier or later attempt
+    of the work item. A read that hits its cap leaves both fields
+    ``unavailable`` instead of a partial zero. No ``execution_id`` means there
+    is nothing to attribute: zeros, not the unattributed pool.
+    """
+    resolved = str(execution_id or "").strip()
+    if not resolved:
+        return {"llm_cost": 0.0, "recovery_interventions": 0}
+    moment = datetime.now(UTC)
+    published = _metric_datetime(published_at) or moment
+    until = moment if moment >= published else published
+    attribution, _capped = _attribute_delivery_activity(
+        {resolved},
+        earliest=published,
+        until=until,
+        limit=max(1, int(_DELIVERY_MODEL_COST_LIMIT if limit is None else limit)),
+    )
+    return {
+        "llm_cost": attribution["llm_cost"],
+        "recovery_interventions": attribution["recovery_interventions"],
+    }
+
+
+def _with_model_cost(public: dict[str, Any]) -> dict[str, Any]:
+    """Attach this version's execution cost. Does not fold other attempts."""
+    public["model_cost"] = model_cost_for_delivery(
+        public.get("execution_id"),
+        published_at=public.get("created_at"),
+    )
+    return public
 
 
 def summarize_delivery_metrics(

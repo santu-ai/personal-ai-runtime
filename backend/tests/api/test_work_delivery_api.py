@@ -245,6 +245,62 @@ def test_delivery_metrics_endpoint_reports_project_brief_reviews(client):
     assert body["attribution"]["unattributed_project_brief_cost"] == 0.0
 
 
+def test_work_detail_delivery_reports_its_own_model_cost(client):
+    from app.core.runtime.kernel_instance import kernel
+
+    execution_id = "exec-detail-cost"
+    kernel.emit_event(
+        "ExecutionRequested",
+        "execution",
+        execution_id,
+        payload={"execution_id": execution_id, "correlation_id": "corr-detail-cost"},
+        correlation_id="corr-detail-cost",
+    )
+    kernel.emit_event(
+        "ExecutionRetried",
+        "execution",
+        execution_id,
+        payload={
+            "execution_id": execution_id,
+            "attempt": 1,
+            "reason": "interrupted",
+            "status": "retrying",
+        },
+        correlation_id="corr-detail-cost",
+    )
+    kernel.emit_event(
+        "LLMCallRecorded",
+        "llm_call",
+        "llm-detail",
+        payload={"purpose": "project_brief", "cost": 0.0125, "success": True},
+        caused_by=execution_id,
+    )
+    kernel.emit_event(
+        "LLMCallRecorded",
+        "llm_call",
+        "llm-detail-orphan",
+        payload={"purpose": "project_brief", "cost": 8.0, "success": True},
+    )
+    created = client.post("/api/work-items/project-brief", json={
+        "title": "单次成本", "objective": "列出变化",
+    }).json()
+    delivery = publish_delivery(
+        created["id"], content="full", summary="v1", sources=[],
+        execution_id=execution_id,
+    )
+
+    detail = client.get(f"/api/work-items/{created['id']}?include=deliveries")
+    assert detail.status_code == 200, detail.text
+    cost = detail.json()["delivery_bundle"]["current"]["model_cost"]
+    assert cost == {"llm_cost": 0.0125, "recovery_interventions": 1}
+
+    single = client.get(
+        f"/api/work-items/{created['id']}/deliveries/{delivery['delivery_id']}",
+    )
+    assert single.status_code == 200, single.text
+    assert single.json()["model_cost"] == cost
+
+
 def test_repeat_timer_stores_the_existing_brief_id(client):
     created = client.post("/api/work-items/project-brief", json={
         "title": "周期简报",

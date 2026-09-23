@@ -353,6 +353,11 @@ export interface WorkDelivery {
   review_status: WorkDeliveryReviewStatus;
   latest_decision?: WorkDeliveryDecision | null;
   changes_from_previous?: WorkDeliveryChanges | null;
+  /** This version's execution only. Unattributed spend is not included. */
+  model_cost?: {
+    llm_cost: number | "unavailable";
+    recovery_interventions: number | "unavailable";
+  };
 }
 
 export interface WorkDeliveryBundle {
