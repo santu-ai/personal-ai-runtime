@@ -143,14 +143,17 @@ function formatAttributedCount(value: number | "unavailable", label: string): st
 
 function formatAttributedCost(
   value: number | "unavailable",
-  unattributed: number | "unavailable" | undefined,
+  unattributedCalls: number | "unavailable" | undefined,
+  unattributedCost?: number | "unavailable",
 ): string {
   if (value === "unavailable") return "模型成本未分开计";
   const cost = `模型成本 $${value.toFixed(4)}`;
-  if (typeof unattributed === "number" && unattributed > 0) {
-    return `${cost} · 未归因 ${unattributed} 次`;
+  if (typeof unattributedCalls !== "number" || unattributedCalls <= 0) return cost;
+  if (unattributedCost === "unavailable") return `${cost} · 未归因未分开计`;
+  if (typeof unattributedCost === "number") {
+    return `${cost} · 未归因 $${unattributedCost.toFixed(4)}（${unattributedCalls} 次）`;
   }
-  return cost;
+  return `${cost} · 未归因 ${unattributedCalls} 次`;
 }
 
 function hasDeliveryMetrics(metrics: DeliveryMetrics | null): metrics is DeliveryMetrics {
@@ -536,6 +539,7 @@ export default function TasksPage() {
               {formatAttributedCost(
                 metrics.attribution.llm_cost,
                 metrics.attribution.unattributed_project_brief_calls,
+                metrics.attribution.unattributed_project_brief_cost,
               )}
             </p>
             {metrics.capped ? (
