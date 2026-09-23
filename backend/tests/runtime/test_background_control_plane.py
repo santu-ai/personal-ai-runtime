@@ -1228,6 +1228,200 @@ def test_handler_failed_follows_execute_after_latest_running(kernel, monkeypatch
     assert latest_execute_handler_failed("gap-failed") is False
 
 
+def _approval_resume_then_running(kernel, work_id: str, *, caused_by_request: bool = True):
+    """Approve-resume order: ExecuteRequested, then handler backfills running.
+
+    ``_dispatch_plan_resume`` emits the request while the work item is still
+    ``waiting_approval``. ``on_execute_requested`` then emits
+    ``WorkItemStatusChanged(running)`` with ``caused_by`` set to that request.
+    """
+    kernel.emit_event(
+        EVENT_WORK_ITEM_CREATED,
+        AGGREGATE_WORK_ITEM,
+        work_id,
+        payload={
+            "title": work_id,
+            "work_type": "task",
+            "status": "pending",
+            "executable_plan": '{"steps":[{"tool":"read_file"}]}',
+        },
+        actor="user",
+    )
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED,
+        AGGREGATE_WORK_ITEM,
+        work_id,
+        payload={"status": "running"},
+        actor="user",
+    )
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED,
+        AGGREGATE_WORK_ITEM,
+        work_id,
+        payload={"status": "waiting_approval"},
+        actor="executor",
+    )
+    trigger = kernel.emit_event(
+        "ExecuteRequested",
+        "action",
+        f"exec_{work_id}",
+        payload={
+            "action_id": work_id,
+            "resume_from": 1,
+            "previous_output": {},
+            "approval_id": "appr-1",
+        },
+        actor="executor",
+    )
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED,
+        AGGREGATE_WORK_ITEM,
+        work_id,
+        payload={"status": "running"},
+        actor="executor",
+        caused_by=trigger.id if caused_by_request else "evt-other",
+    )
+    return trigger
+
+
+def _dead_letter_for_trigger(kernel, trigger):
+    from app.core.runtime.execution_events import emit_execution_failed
+
+    item = _pending_execute_execution(kernel, trigger, max_retries=0)
+    item.error = "boom"
+    emit_execution_requested(kernel, item, "user")
+    item.transition_to("failed")
+    emit_execution_failed(kernel, item, terminal=True, dead_letter=True)
+    return item
+
+
+def test_current_attempt_keeps_approval_resume_after_running_backfill(kernel, monkeypatch):
+    """事后补写的 running 仍把引起它的 ExecuteRequested 当作当前尝试。"""
+    from app.core.runtime.read_ports.work import work_item_execution_snapshot
+    from app.core.runtime.runtime_loop import (
+        _current_execute_requested,
+        _snapshot_execute_requested,
+        latest_execute_handler_failed,
+    )
+
+    trigger = _approval_resume_then_running(kernel, "resume-current")
+    running = next(
+        event
+        for event in kernel.read_events(
+            type="WorkItemStatusChanged",
+            aggregate_id="resume-current",
+            order="desc",
+        )
+        if (event.payload or {}).get("status") == "running"
+    )
+    assert int(trigger.seq or 0) < int(running.seq or 0)
+    assert running.caused_by == trigger.id
+
+    current = _current_execute_requested(kernel, "resume-current")
+    snapshot = _snapshot_execute_requested(kernel, "resume-current")
+    assert current is not None and current.id == trigger.id
+    assert snapshot is not None and snapshot.id == trigger.id
+
+    item = _dead_letter_for_trigger(kernel, trigger)
+    _patch_kernel(monkeypatch, kernel)
+    assert latest_execute_handler_failed("resume-current") is True
+    detail = work_item_execution_snapshot("resume-current")
+    assert detail["handler_execution"]["id"] == item.id
+    assert detail["handler_execution"]["status"] == "failed"
+    assert detail["handler_execution"]["dead_letter"] is True
+
+
+def test_recover_closes_approval_resume_instead_of_redispatching(kernel, monkeypatch):
+    """补写 running 之后，启动恢复收成 failed，不再当成没有 handler。"""
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    trigger = _approval_resume_then_running(kernel, "resume-recover")
+    _dead_letter_for_trigger(kernel, trigger)
+    _patch_kernel(monkeypatch, kernel)
+
+    assert RuntimeLoop()._recover_interrupted_background_tasks() == 1
+    assert kernel.query_state("work_items", id="resume-recover", limit=1)[0]["status"] == "failed"
+    assert len(kernel.read_events(type="ExecuteRequested", aggregate_id="exec_resume-recover")) == 1
+
+
+def test_recover_keeps_live_handler_after_approval_resume_backfill(kernel, monkeypatch):
+    """补写 running 之后，未结束的 handler 仍留给调度，不另发 ExecuteRequested。"""
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    trigger = _approval_resume_then_running(kernel, "resume-live")
+    item = _pending_execute_execution(kernel, trigger, max_retries=0)
+    emit_execution_requested(kernel, item, "user")
+    _patch_kernel(monkeypatch, kernel)
+
+    assert RuntimeLoop()._recover_interrupted_background_tasks() == 0
+    assert kernel.query_state("work_items", id="resume-live", limit=1)[0]["status"] == "running"
+    assert len(kernel.read_events(type="ExecuteRequested", aggregate_id="exec_resume-live")) == 1
+
+
+def test_dead_letter_close_folds_approval_resume_backfill(kernel):
+    """死信属于引起最新 running 的那条请求时，仍把 running 收成 failed。"""
+    from app.core.runtime.runtime_loop import close_dead_lettered_domain_work
+
+    trigger = _approval_resume_then_running(kernel, "resume-close")
+    item = _dead_letter_for_trigger(kernel, trigger)
+    stored = kernel.read_scheduled_execution(item.id)
+    assert stored is not None
+    assert close_dead_lettered_domain_work(kernel, stored) is True
+    assert kernel.query_state("work_items", id="resume-close", limit=1)[0]["status"] == "failed"
+
+
+def test_replay_keeps_approval_resume_as_current_attempt(kernel):
+    """补写 running 之后，这条死信不再被记成 not_current_attempt。"""
+    trigger = _approval_resume_then_running(kernel, "resume-replay")
+    item = _dead_letter_for_trigger(kernel, trigger)
+    assert kernel.query_state("work_items", id="resume-replay", limit=1)[0]["status"] == "running"
+
+    with _capture_replay_logs() as records:
+        replayed = kernel.replay_dead_letters(limit=10)
+
+    assert item.id in replayed
+    assert "not_current_attempt" not in _replay_log_text(records)
+    stored = kernel.read_scheduled_execution(item.id)
+    assert stored is not None
+    assert stored.status == "pending"
+    assert stored.dead_letter is False
+
+
+def test_unrelated_running_backfill_is_not_the_current_attempt(kernel, monkeypatch):
+    """caused_by 对不上这条请求时，恢复、重放和快照都不把它当成当前尝试。"""
+    from app.core.runtime.read_ports.work import work_item_execution_snapshot
+    from app.core.runtime.runtime_loop import (
+        RuntimeLoop,
+        _current_execute_requested,
+        _snapshot_execute_requested,
+        close_dead_lettered_domain_work,
+        latest_execute_handler_failed,
+    )
+
+    trigger = _approval_resume_then_running(
+        kernel, "resume-other", caused_by_request=False,
+    )
+    assert _current_execute_requested(kernel, "resume-other") is None
+    assert _snapshot_execute_requested(kernel, "resume-other") is None
+    item = _dead_letter_for_trigger(kernel, trigger)
+    stored = kernel.read_scheduled_execution(item.id)
+    assert stored is not None
+    assert close_dead_lettered_domain_work(kernel, stored) is False
+    _patch_kernel(monkeypatch, kernel)
+    assert latest_execute_handler_failed("resume-other") is False
+    assert work_item_execution_snapshot("resume-other")["handler_execution"] is None
+
+    with _capture_replay_logs() as records:
+        replayed = kernel.replay_dead_letters(limit=10)
+    assert item.id not in replayed
+    assert "reason=not_current_attempt" in _replay_log_text(records)
+
+    assert RuntimeLoop()._recover_interrupted_background_tasks() == 1
+    requests = kernel.read_events(type="ExecuteRequested", aggregate_id="exec_resume-other")
+    assert len(requests) == 2
+    assert kernel.query_state("work_items", id="resume-other", limit=1)[0]["status"] == "running"
+
+
 @pytest.mark.asyncio
 async def test_non_execute_dead_letter_leaves_work_running(kernel):
     from app.core.runtime.agent_scheduler import Scheduler

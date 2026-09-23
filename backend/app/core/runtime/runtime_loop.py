@@ -414,8 +414,11 @@ class RuntimeLoop:
         while the process is still up (``close_dead_lettered_domain_work``).
         A completed handler is not replayed; an ``ExecuteCompleted`` caused by
         that same request can still sync the work-item status. The request that
-        counts is the latest ``ExecuteRequested`` after the latest
-        ``status=running``; an older request belongs to a previous attempt.
+        counts is the current attempt (``_current_execute_requested``): the
+        latest ``ExecuteRequested`` after the latest ``status=running``, or
+        that request when the handler later stamped ``running`` with
+        ``caused_by`` pointing at it. An older request belongs to a previous
+        attempt.
         Only a running row with no handler row for that request is re-queued
         (background) or given the missing ``ExecuteRequested`` (planned
         task/action). A pending row whose latest status event is a brief rerun
@@ -805,43 +808,17 @@ def _status_events(rt_kernel, work_id: str) -> list:
 
 
 def _current_execute_requested(rt_kernel, work_id: str):
-    """Latest ``ExecuteRequested`` strictly after the latest ``status=running``.
+    """``ExecuteRequested`` that is the current attempt, or None.
 
-    ``request_work_item_execute`` emits running, then the request. A request
-    from an earlier attempt has a smaller seq and is not this attempt.
-    Returns None when this attempt has not dispatched yet.
-    """
-    from app.core.runtime.kernel.constants import EVENT_EXECUTE_REQUESTED
-
-    running_seq = next(
-        (
-            int(event.seq or 0)
-            for event in _status_events(rt_kernel, work_id)
-            if isinstance(event.payload, dict)
-            and event.payload.get("status") == "running"
-        ),
-        0,
-    )
-    events = rt_kernel.read_events(
-        type=EVENT_EXECUTE_REQUESTED,
-        aggregate_type="action",
-        aggregate_id=f"exec_{work_id}",
-        order="desc",
-        limit=1,
-    )
-    if not events or int(events[0].seq or 0) <= running_seq:
-        return None
-    return events[0]
-
-
-def _snapshot_execute_requested(rt_kernel, work_id: str):
-    """``ExecuteRequested`` the task detail may treat as the current attempt.
-
-    Same boundary as ``_current_execute_requested``: a request from before
-    the latest ``status=running`` belongs to the previous attempt, and a
-    new attempt with no handler row yet must not surface that failure.
-    The handler may stamp ``running`` after the request (``caused_by`` is
-    that event). That request is still this attempt.
+    ``request_work_item_execute`` emits running, then the request, so the
+    latest request has a greater seq than the latest ``status=running``.
+    Approval resume emits the request while the work item is still
+    ``waiting_approval``; the execute handler then stamps ``running`` with
+    ``caused_by`` set to that request. The request seq is then behind the
+    running event, but it is still this attempt. A request from before the
+    latest running, whose id is not that event's ``caused_by``, belongs to
+    the previous attempt. Returns None when this attempt has not dispatched.
+    Task detail uses the same function via ``_snapshot_execute_requested``.
     """
     from app.core.runtime.kernel.constants import EVENT_EXECUTE_REQUESTED
 
@@ -870,6 +847,15 @@ def _snapshot_execute_requested(rt_kernel, work_id: str):
     if running is not None and getattr(running, "caused_by", None) == latest.id:
         return latest
     return None
+
+
+def _snapshot_execute_requested(rt_kernel, work_id: str):
+    """Task-detail name for :func:`_current_execute_requested`.
+
+    Recovery, dead-letter close, replay, and the task snapshot share this
+    definition, including a handler that stamps ``running`` after the request.
+    """
+    return _current_execute_requested(rt_kernel, work_id)
 
 
 def _half_open_rerun(rt_kernel, work_id: str) -> bool:
@@ -906,9 +892,10 @@ def close_dead_lettered_domain_work(rt_kernel, execution) -> bool:
     """Close a still-running work item when this execution just dead-lettered.
 
     Same predicate as ``RuntimeLoop`` startup recovery for a failed handler:
-    the execution belongs to the ``ExecuteRequested`` after the latest
-    ``status=running``, every handler for that request is terminal, and one
-    of them failed. An older request does not close a newer running attempt.
+    the execution belongs to the current ``ExecuteRequested`` (after the
+    latest ``status=running``, or the request that caused that running),
+    every handler for that request is terminal, and one of them failed.
+    An older request does not close a newer running attempt.
     Emits ``WorkItemStatusChanged(failed)`` only. Does not enqueue another
     ``ExecuteRequested`` or spend a new retry budget.
     """
@@ -973,9 +960,10 @@ def dead_letter_replay_block_reason(rt_kernel, execution) -> str | None:
     ``ExecuteRequested``. ``failed``, ``completed``, and ``cancelled`` are
     refused (``work_terminal:<status>``): recovery and scheduling already
     folded a still-running item into ``failed``, and re-queueing that handler
-    would start it again. An ``ExecuteRequested`` that is not the one after
-    the latest ``status=running`` is a previous attempt
-    (``not_current_attempt``). A resolved work id with no projection row is
+    would start it again. An ``ExecuteRequested`` that is not the current
+    attempt is a previous attempt (``not_current_attempt``). The current
+    attempt includes a request the handler stamped ``running`` for
+    (``caused_by``). A resolved work id with no projection row is
     ``work_missing``. Executions that do not name a work item stay eligible.
     """
     try:
@@ -1028,10 +1016,11 @@ def _work_id_for_execute_execution(rt_kernel, execution) -> str:
 def latest_execute_handler_failed(item_id: str) -> bool:
     """True when this running attempt's ``ExecuteRequested`` has only failed rows.
 
-    The request must come after the latest ``status=running``. An older
-    request, or a running attempt that has not dispatched yet, is not a
-    failed handler. An in-flight handler blocks the answer. Used so a
-    dead-lettered run can be started again without treating a live row as idle.
+    The request is the current attempt: after the latest ``status=running``,
+    or the request that caused that running. An older request, or a running
+    attempt that has not dispatched yet, is not a failed handler. An in-flight
+    handler blocks the answer. Used so a dead-lettered run can be started
+    again without treating a live row as idle.
     """
     current = _current_execute_requested(kernel, item_id)
     if current is None:

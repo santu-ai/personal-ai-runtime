@@ -13,7 +13,7 @@
 
 1. **E-1** 步骤幂等：`idem:{correlation_id}:{step}` 成功结果可跳过重放  
 2. **E-2** 进度：`progress:{action_id}` 记录 resume_from  
-3. **E-3** DLQ：`dead_letter` 标志 + list/replay。重放前读领域 Work：已是 `failed` / `completed` / `cancelled`，或该死信不是最新 `status=running` 之后的 `ExecuteRequested`，则留下死信、不发 `ExecutionRetried`。没有对应 Work 的执行仍重放。  
+3. **E-3** DLQ：`dead_letter` 标志 + list/replay。重放前读领域 Work：已是 `failed` / `completed` / `cancelled`，或该死信不是当前尝试的 `ExecuteRequested`（最新 `status=running` 之后，或 handler 事后补写的 running 且 `caused_by` 指向该请求），则留下死信、不发 `ExecutionRetried`。没有对应 Work 的执行仍重放。  
 4. **E-4** Lease：stale running reclaim  
 5. **E-5** 进度键与 plan resume 共存于 `plan_resumes`。再次运行或返工清游标时同一事务写入 `rerun_stash:{work_id}`，`ExecuteRequested` 落库后删除；进程死在打开与派发之间时，启动恢复把暂存放回（原行还在则只删暂存）。返工收回打开前的 `completed` 或 `failed`，reason 为 `rework_restore`，不是 `rerun_restore`。这两种收回都不是新的完成：依赖钩子忽略，周期统计的完成计数也排除  
 6. **E-6** 审批 take-first：原子 `take_plan_resume`  
