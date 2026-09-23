@@ -285,6 +285,171 @@ describe("TasksPage", () => {
     expect(within(log).getByText(/on_execute_requested/)).toBeInTheDocument();
   });
 
+  it("shows a stored failure reason beside the rerun hint", async () => {
+    const failed: WorkItem = {
+      ...sampleTask,
+      status: "failed",
+      execution: {
+        steps: [{ tool: "write_file" }],
+        resume_from: 0,
+        previous_output: {},
+        handler_execution: {
+          id: "wi_hint",
+          status: "failed",
+          dead_letter: true,
+          retry_count: 1,
+          handler_name: "on_execute_requested",
+          started_at: "2026-08-06T00:00:00Z",
+          completed_at: "2026-08-06T00:01:00Z",
+          error: "Timeout after 30.0s",
+        },
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [failed];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(failed);
+    renderTasks("/tasks/task_1");
+
+    const hint = await screen.findByText("上次执行已失败。可以重新执行。");
+    const reason = screen.getByTestId("rerun-failure-reason");
+    expect(reason).toHaveTextContent("Timeout after 30.0s");
+    expect(hint.parentElement).toContainElement(reason);
+    expect(screen.getByRole("region", { name: "执行状态" })).not.toContainElement(reason);
+  });
+
+  it("shows a rework failure reason above the existing delivery while the log stays collapsed", async () => {
+    const rework: WorkItem = {
+      ...briefTask,
+      status: "failed",
+      execution: {
+        ...briefTask.execution!,
+        handler_execution: {
+          id: "wi_rework",
+          status: "completed",
+          dead_letter: false,
+          retry_count: 0,
+          handler_name: "on_execute_requested",
+          started_at: "2026-08-06T00:00:00Z",
+          completed_at: "2026-08-06T00:01:00Z",
+          error: "tool step failed: disk full",
+        },
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [rework];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(rework);
+    renderTasks("/tasks/brief_1");
+
+    const reason = await screen.findByTestId("rerun-failure-reason");
+    expect(reason).toHaveTextContent("tool step failed: disk full");
+    expect(screen.getByText("有进度风险")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重新执行" })).toBeInTheDocument();
+    const log = screen.getByRole("button", { name: /执行日志/ });
+    expect(log).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("region", { name: "执行状态" })).not.toBeInTheDocument();
+
+    fireEvent.click(log);
+    const status = await screen.findByRole("region", { name: "执行状态" });
+    expect(status).toHaveTextContent("tool step failed: disk full");
+    expect(status).not.toContainElement(reason);
+    expect(screen.getAllByText("tool step failed: disk full")).toHaveLength(2);
+  });
+
+  it("shows a running dead-letter reason beside the rerun hint", async () => {
+    const stuck: WorkItem = {
+      ...sampleTask,
+      status: "running",
+      execution: {
+        steps: [{ tool: "write_file" }],
+        resume_from: 0,
+        previous_output: {},
+        handler_execution: {
+          id: "wi_stuck",
+          status: "failed",
+          dead_letter: true,
+          retry_count: 2,
+          handler_name: "on_execute_requested",
+          started_at: "2026-08-06T00:00:00Z",
+          completed_at: "2026-08-06T00:01:00Z",
+          error: "interrupted",
+        },
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [stuck];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(stuck);
+    renderTasks("/tasks/task_1");
+
+    const hint = await screen.findByText("上次执行已失败，任务仍显示为进行中。可以重新执行。");
+    const reason = screen.getByTestId("rerun-failure-reason");
+    expect(reason).toHaveTextContent("interrupted");
+    expect(hint.parentElement).toContainElement(reason);
+  });
+
+  it("omits a blank failure reason next to the rerun hint", async () => {
+    const failed: WorkItem = {
+      ...sampleTask,
+      status: "failed",
+      execution: {
+        ...sampleTask.execution!,
+        handler_execution: {
+          id: "wi_blank",
+          status: "failed",
+          dead_letter: false,
+          retry_count: 0,
+          handler_name: "on_execute_requested",
+          started_at: "2026-08-06T00:00:00Z",
+          completed_at: "2026-08-06T00:01:00Z",
+          error: "   ",
+        },
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [failed];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(failed);
+    renderTasks("/tasks/task_1");
+
+    expect(await screen.findByText("上次执行已失败。可以重新执行。")).toBeInTheDocument();
+    expect(screen.queryByTestId("rerun-failure-reason")).not.toBeInTheDocument();
+  });
+
+  it("does not surface a handler error on a completed delivery", async () => {
+    const done: WorkItem = {
+      ...briefTask,
+      execution: {
+        ...briefTask.execution!,
+        handler_execution: {
+          id: "wi_done",
+          status: "completed",
+          dead_letter: false,
+          retry_count: 0,
+          handler_name: "on_execute_requested",
+          started_at: "2026-08-06T00:00:00Z",
+          completed_at: "2026-08-06T00:01:00Z",
+          error: "stale boom",
+        },
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [done];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(done);
+    renderTasks("/tasks/brief_1");
+
+    expect(await screen.findByText("有进度风险")).toBeInTheDocument();
+    expect(screen.queryByTestId("rerun-failure-reason")).not.toBeInTheDocument();
+    expect(screen.queryByText("stale boom")).not.toBeInTheDocument();
+  });
+
   it("shows a plan failure reason when the handler row itself completed", async () => {
     const failed: WorkItem = {
       ...sampleTask,
