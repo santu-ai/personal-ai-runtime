@@ -20,20 +20,42 @@ let backendPort = 0;
 let fakeLlmPort = 0;
 let backendEnv: NodeJS.ProcessEnv = {};
 
-async function freePort(): Promise<number> {
-  return await new Promise((resolve, reject) => {
+function bindEphemeral(): Promise<net.Server> {
+  return new Promise((resolve, reject) => {
     const server = net.createServer();
-    server.listen(0, "127.0.0.1", () => {
-      const addr = server.address();
-      if (!addr || typeof addr === "string") {
-        reject(new Error("Could not allocate port"));
-        return;
-      }
-      const port = addr.port;
-      server.close(() => resolve(port));
-    });
-    server.on("error", reject);
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => resolve(server));
   });
+}
+
+function portOf(server: net.Server): number {
+  const addr = server.address();
+  if (!addr || typeof addr === "string") {
+    throw new Error("Could not allocate port");
+  }
+  return addr.port;
+}
+
+function closeServer(server: net.Server): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.close((err) => (err ? reject(err) : resolve()));
+  });
+}
+
+/**
+ * Hold two listeners at once so the kernel cannot hand the same ephemeral
+ * port to both. The fake LLM answers GET with 501; a shared port makes
+ * /api/system/health hit that server for the whole startup window.
+ */
+async function reserveDistinctPorts(): Promise<[net.Server, net.Server]> {
+  const first = await bindEphemeral();
+  const second = await bindEphemeral();
+  if (portOf(first) === portOf(second)) {
+    await closeServer(first);
+    await closeServer(second);
+    throw new Error("Ephemeral ports collided");
+  }
+  return [first, second];
 }
 
 function waitForHealth(healthUrl: string, maxRetries = 60): Promise<void> {
@@ -81,6 +103,9 @@ async function startBackend(): Promise<void> {
     env: backendEnv,
     stdio: ["ignore", "pipe", "pipe"],
   });
+  // stdout is unused by the test, but an undrained pipe stalls the process
+  // once the 64KiB buffer fills (model download / progress bars).
+  backendProc.stdout!.resume();
   backendProc.stderr!.on("data", (d: Buffer) => process.stderr.write(`[backend] ${d}`));
   backendProc.once("error", (err) => {
     throw err;
@@ -114,8 +139,10 @@ test.describe("Real backend E2E — SSE chat + approval flow", () => {
       "backend",
       `.e2e-write-${process.pid}-${Date.now()}.txt`,
     );
-    fakeLlmPort = await freePort();
-    backendPort = await freePort();
+    const [fakeHolder, backendHolder] = await reserveDistinctPorts();
+    fakeLlmPort = portOf(fakeHolder);
+    backendPort = portOf(backendHolder);
+    await closeServer(fakeHolder);
 
     fakeLlmProc = spawn(PYTHON, [
       path.join(REPO_ROOT, "backend", "scripts", "fake_llm_server.py"),
@@ -141,6 +168,7 @@ test.describe("Real backend E2E — SSE chat + approval flow", () => {
         else reject(new Error(`Unexpected fake LLM output: ${data}`));
       });
     });
+    fakeLlmProc.stdout!.resume();
 
     // Minimal env — do not inherit provider keys that could fall through to real APIs.
     backendEnv = {
@@ -166,6 +194,8 @@ test.describe("Real backend E2E — SSE chat + approval flow", () => {
       MAX_TOOL_ITERATIONS: "2",
     };
 
+    // Release only now so the port stays reserved while the fake LLM binds.
+    await closeServer(backendHolder);
     await startBackend();
   });
 
