@@ -528,10 +528,16 @@ def ensure_work_item_execute_requested(item_id: str) -> dict[str, Any]:
 
 
 def work_item_execution_snapshot(item_id: str, item: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Plan steps, progress, and the Lane-A row (scheduler or plan error) for Tasks."""
+    """Plan steps, progress, and this attempt's Lane-A row for Tasks.
+
+    Only the ``ExecuteRequested`` after the latest ``status=running`` counts.
+    A handler-stamped running (``caused_by`` that request) still counts.
+    No handler row yet leaves ``handler_execution`` empty.
+    """
     import json
 
     from app.core.runtime.plan_resume import load_plan_progress
+    from app.core.runtime.runtime_loop import _snapshot_execute_requested
 
     row = item if item is not None else query_work_item(item_id)
     if row is None:
@@ -551,18 +557,12 @@ def work_item_execution_snapshot(item_id: str, item: dict[str, Any] | None = Non
     resume_from = int(progress.resume_from) if progress is not None else 0
     previous_output = dict(progress.previous_output or {}) if progress else {}
 
-    execute_events = kernel().read_events(
-        type="ExecuteRequested",
-        aggregate_type="action",
-        aggregate_id=f"exec_{item_id}",
-        order="desc",
-    )
-    event_ids = {event.id for event in execute_events}
+    current = _snapshot_execute_requested(kernel(), item_id)
     scheduled = max(
         (
             row
             for row in kernel().read_scheduled_executions()
-            if row.event_id in event_ids
+            if current is not None and row.event_id == current.id
         ),
         key=lambda row: (row.event_seq, row.created_at),
         default=None,

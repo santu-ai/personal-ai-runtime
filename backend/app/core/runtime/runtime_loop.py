@@ -824,6 +824,44 @@ def _current_execute_requested(rt_kernel, work_id: str):
     return events[0]
 
 
+def _snapshot_execute_requested(rt_kernel, work_id: str):
+    """``ExecuteRequested`` the task detail may treat as the current attempt.
+
+    Same boundary as ``_current_execute_requested``: a request from before
+    the latest ``status=running`` belongs to the previous attempt, and a
+    new attempt with no handler row yet must not surface that failure.
+    The handler may stamp ``running`` after the request (``caused_by`` is
+    that event). That request is still this attempt.
+    """
+    from app.core.runtime.kernel.constants import EVENT_EXECUTE_REQUESTED
+
+    running = next(
+        (
+            event
+            for event in _status_events(rt_kernel, work_id)
+            if isinstance(event.payload, dict)
+            and event.payload.get("status") == "running"
+        ),
+        None,
+    )
+    running_seq = int(getattr(running, "seq", 0) or 0) if running is not None else 0
+    events = rt_kernel.read_events(
+        type=EVENT_EXECUTE_REQUESTED,
+        aggregate_type="action",
+        aggregate_id=f"exec_{work_id}",
+        order="desc",
+        limit=1,
+    )
+    if not events:
+        return None
+    latest = events[0]
+    if int(latest.seq or 0) > running_seq:
+        return latest
+    if running is not None and getattr(running, "caused_by", None) == latest.id:
+        return latest
+    return None
+
+
 def _half_open_rerun(rt_kernel, work_id: str) -> bool:
     """True when a rerun reopen is still pending and execute never started."""
     from app.core.runtime.kernel.constants import EVENT_EXECUTE_REQUESTED
