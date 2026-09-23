@@ -251,7 +251,7 @@ P1 的启动依据是重复使用和真实阻塞。若用户仍需大量重写�
 | POST | `/api/work-items/{id}/deliveries/{delivery_id}/rework` | 返工（理由必填） |
 | POST | `/api/work-items/{id}/deliveries/{delivery_id}/actions/{index}/adopt` | 将当前版本的一条建议待办转为子任务；重复请求返回同一任务 |
 
-错误：404 未找到；400 校验失败（含空返工理由）；409 版本冲突。旧任务无交付时列表 `current=null`，执行行为不变。
+错误：404 未找到；400 校验失败（含空返工理由）；409 版本冲突。旧任务无交付时列表 `current=null`，执行行为不变。交付列表、详情 `delivery_bundle` 和单版本读取的每个版本都带 `latest_decision`（与 `get_delivery` 相同的决定，含 `reason`）。没有决定时为 null。任务页在「已要求返工」下显示非空理由；空白理由不显示。
 
 ### 执行
 
@@ -293,4 +293,4 @@ P1 的启动依据是重复使用和真实阻塞。若用户仍需大量重写�
 | T4 | 完成：真实后端 create → execute → 交付 → 验收/返工 → 重启回归，含中断恢复 |
 | T5 | 完成：docs 已同步；merge-gate 整包通过。真 LLM / 真实邮箱日用仍待用户显式试用（第 10 节） |
 
-P1：建议待办可转为现有 Work，同一交付下标重复请求返回同一任务。简报自己的首版采纳、返工、已转任务和评审耗时见 `GET /api/work-items/delivery-metrics`。审批次数与崩溃恢复按交付 `execution_id` 关联既有 `CapabilityDenied` / 高风险 `ApprovalRequested` / `ExecutionRetried` / `CapabilityFailed`；模型成本汇总 `caused_by` 指向该执行的 `LLMCallRecorded`。同一次中断只计一次：`ExecutionRetried(reason=interrupted, status=retrying)` 或 `ExecutionFailed(error=interrupted)` 与带同一执行、同一 `retry_count` 的 `CapabilityFailed(error=interrupted_before_audit)` 不重复计数；没有这些字段的旧事件仍按 correlation 并入已有 handler replay。读上限打满时审批、恢复、模型成本、未归因简报调用次数和未归因金额都是 unavailable。全局周期对比（`GET /api/dashboard/periods`）、Chat 澄清（`ask_user`，ADR-R011）和工具/记忆采纳率（`GET /api/telemetry/governance`）是另一组指标。缺少 `caused_by` 的历史 `project_brief` 调用计入 `unattributed_project_brief_calls`，其金额合计为 `unattributed_project_brief_cost`，不并入已归因金额，也不把已归因金额改成 unavailable。
+P1：建议待办可转为现有 Work，同一交付下标重复请求返回同一任务。简报自己的首版采纳、返工、已转任务和评审耗时见 `GET /api/work-items/delivery-metrics`。审批次数与崩溃恢复按交付 `execution_id` 关联既有 `CapabilityDenied` / 高风险 `ApprovalRequested` / `ExecutionRetried` / `CapabilityFailed`；模型成本汇总 `caused_by` 指向该执行的 `LLMCallRecorded`。同一次中断只计一次：`ExecutionRetried(reason=interrupted, status=retrying)` 或 `ExecutionFailed(error=interrupted)` 与带同一执行、同一 `retry_count` 的 `CapabilityFailed(error=interrupted_before_audit)` 不重复计数；没有这些字段的旧事件仍按 correlation 并入已有 handler replay。读上限打满时审批、恢复、模型成本、未归因简报调用次数和未归因金额都是 unavailable。全局周期对比（`GET /api/dashboard/periods`）、Chat 澄清（`ask_user`，ADR-R011）和工具/记忆采纳率（`GET /api/telemetry/governance`）是另一组指标。缺少 `caused_by` 的历史 `project_brief` 调用计入 `unattributed_project_brief_calls`，其金额合计为 `unattributed_project_brief_cost`，不并入已归因金额，也不把已归因金额改成 unavailable。任务页在「已要求返工」时显示该版本 `latest_decision.reason`。周期运行仍未接入：现有 timer/monitor 还没有把每次运行和交付分开，也没有相对上一期交付的变化；`GET /api/dashboard/periods` 仍是全局对比。

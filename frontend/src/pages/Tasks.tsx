@@ -60,6 +60,12 @@ function reviewLabel(status: string | null | undefined): string {
   return "无交付";
 }
 
+function deliveryReworkReason(delivery: WorkDelivery | null | undefined): string {
+  if (!delivery || delivery.review_status !== "changes_requested") return "";
+  const reason = delivery.latest_decision?.reason;
+  return typeof reason === "string" ? reason.trim() : "";
+}
+
 function stepToolName(step: Record<string, unknown>): string {
   const tool = step.tool ?? step.name ?? step.action;
   return typeof tool === "string" ? tool : "step";
@@ -677,6 +683,15 @@ export default function TasksPage() {
                             {reviewLabel(shownDelivery.review_status)}
                             {shownDelivery.qualified ? "" : " · 非完整合格简报"}
                           </p>
+                          {deliveryReworkReason(shownDelivery) ? (
+                            <p
+                              className="text-sm text-fg-secondary mt-1 whitespace-pre-wrap break-words"
+                              data-testid="rework-reason"
+                            >
+                              <span className="text-fg-tertiary">返工理由：</span>
+                              {deliveryReworkReason(shownDelivery)}
+                            </p>
+                          ) : null}
                         </div>
                         {!viewingHistory && shownDelivery.review_status === "unreviewed" && (
                           <div className="flex gap-2">
@@ -809,8 +824,11 @@ export default function TasksPage() {
                                 )
                               }
                             >
-                              v{row.version} · {reviewLabel(row.review_status)} ·{" "}
-                              {row.summary || "无摘要"}
+                              {`v${row.version} · ${reviewLabel(row.review_status)}${
+                                deliveryReworkReason(row)
+                                  ? ` · ${deliveryReworkReason(row).replace(/\s+/g, " ")}`
+                                  : ""
+                              } · ${row.summary || "无摘要"}`}
                             </button>
                           </li>
                         ))}

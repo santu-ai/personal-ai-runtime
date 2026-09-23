@@ -178,14 +178,19 @@ def fold_delivery_history(work_id: str) -> dict[str, Any]:
     for row in deliveries:
         did = str(row["delivery_id"])
         decision = latest_by_delivery.get(did)
-        status = REVIEW_UNREVIEWED
-        if decision:
-            raw = str(decision.get("decision") or "")
-            if raw == DECISION_ACCEPTED:
-                status = REVIEW_ACCEPTED
-            elif raw == DECISION_CHANGES_REQUESTED:
-                status = REVIEW_CHANGES_REQUESTED
-        summaries.append(_public_delivery(row, review_status=status, include_content=False))
+        status = (
+            _review_status_from_decision(str(decision.get("decision") or ""))
+            if decision
+            else REVIEW_UNREVIEWED
+        )
+        summaries.append(
+            _public_delivery(
+                row,
+                review_status=status,
+                include_content=False,
+                latest_decision=decision,
+            )
+        )
 
     return {
         "work_id": work_id,
@@ -195,6 +200,7 @@ def fold_delivery_history(work_id: str) -> dict[str, Any]:
                 current,
                 review_status=review_status,
                 include_content=True,
+                latest_decision=current_decision,
             )
             if current
             else None
@@ -211,11 +217,24 @@ def fold_delivery_history(work_id: str) -> dict[str, Any]:
     }
 
 
+def _decision_for(
+    decisions: list[dict[str, Any]],
+    delivery_id: str,
+) -> dict[str, Any] | None:
+    """Latest ``delivery_decision`` for one version, in event order."""
+    latest = None
+    for decision in decisions:
+        if str(decision.get("delivery_id") or "") == delivery_id:
+            latest = decision
+    return latest
+
+
 def _public_delivery(
     row: dict[str, Any] | None,
     *,
     review_status: str,
     include_content: bool,
+    latest_decision: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     if not row:
         return None
@@ -235,6 +254,7 @@ def _public_delivery(
         "schema_version": int(row.get("schema_version") or DELIVERY_SCHEMA_VERSION),
         "qualified": bool(row.get("qualified", True)),
         "review_status": review_status,
+        "latest_decision": dict(latest_decision) if latest_decision else None,
     }
     if include_content:
         out["content"] = row.get("content") or ""
@@ -317,20 +337,19 @@ def get_delivery(work_id: str, delivery_id: str) -> dict[str, Any]:
     row = folded["_by_id"].get(delivery_id)
     if not row:
         raise DeliveryNotFoundError(delivery_id)
-    latest = None
-    for decision in folded["_decisions"]:
-        if str(decision.get("delivery_id")) == delivery_id:
-            latest = decision
-    status = REVIEW_UNREVIEWED
-    if latest:
-        raw = str(latest.get("decision") or "")
-        if raw == DECISION_ACCEPTED:
-            status = REVIEW_ACCEPTED
-        elif raw == DECISION_CHANGES_REQUESTED:
-            status = REVIEW_CHANGES_REQUESTED
-    public = _public_delivery(row, review_status=status, include_content=True)
+    latest = _decision_for(folded["_decisions"], delivery_id)
+    status = (
+        _review_status_from_decision(str(latest.get("decision") or ""))
+        if latest
+        else REVIEW_UNREVIEWED
+    )
+    public = _public_delivery(
+        row,
+        review_status=status,
+        include_content=True,
+        latest_decision=latest,
+    )
     assert public is not None
-    public["latest_decision"] = latest
     _annotate_adoptions(
         public,
         _live_adopted_indexes(folded.get("_adoptions") or [], delivery_id),
@@ -374,12 +393,18 @@ def publish_delivery(
         if execution_id:
             for existing in folded["_by_id"].values():
                 if str(existing.get("execution_id") or "") == execution_id:
-                    status = REVIEW_UNREVIEWED
-                    current = folded["current"]
-                    if current and current.get("delivery_id") == existing.get("delivery_id"):
-                        status = folded["current_review_status"] or REVIEW_UNREVIEWED
+                    did = str(existing.get("delivery_id") or "")
+                    decision = _decision_for(folded["_decisions"], did)
+                    status = (
+                        _review_status_from_decision(str(decision.get("decision") or ""))
+                        if decision
+                        else REVIEW_UNREVIEWED
+                    )
                     public = _public_delivery(
-                        existing, review_status=status, include_content=True,
+                        existing,
+                        review_status=status,
+                        include_content=True,
+                        latest_decision=decision,
                     )
                     assert public is not None
                     return public

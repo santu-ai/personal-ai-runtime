@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.product.work_delivery import publish_delivery
+from app.product.work_delivery import publish_delivery, request_rework
 
 
 def test_create_project_brief_keeps_readable_objective(client):
@@ -94,6 +94,36 @@ def test_accept_rework_conflict_and_idempotency(client):
         json={"reason": ""},
     )
     assert empty_rework.status_code == 400
+
+
+def test_delivery_reads_include_rework_reason(client):
+    created = client.post("/api/work-items/project-brief", json={
+        "title": "简报",
+        "objective": "列出变化",
+    })
+    work_id = created.json()["id"]
+    v1 = publish_delivery(
+        work_id,
+        content="full-v1",
+        summary="v1",
+        sources=[],
+        execution_id="e-reason",
+    )
+    request_rework(work_id, v1["delivery_id"], reason="需要补风险", dispatch=False)
+
+    detail = client.get(f"/api/work-items/{work_id}?include=deliveries")
+    assert detail.status_code == 200
+    current = detail.json()["delivery_bundle"]["current"]
+    assert current["latest_decision"]["reason"] == "需要补风险"
+    assert current["review_status"] == "changes_requested"
+
+    listed = client.get(f"/api/work-items/{work_id}/deliveries")
+    assert listed.json()["deliveries"][0]["latest_decision"]["reason"] == "需要补风险"
+
+    single = client.get(f"/api/work-items/{work_id}/deliveries/{v1['delivery_id']}")
+    assert single.status_code == 200
+    assert single.json()["latest_decision"]["reason"] == "需要补风险"
+    assert single.json()["latest_decision"]["decision_id"] == current["latest_decision"]["decision_id"]
 
 
 def test_old_task_without_delivery_endpoints(client):
