@@ -238,6 +238,124 @@ def test_recover_restores_half_open_rerun_left_pending(kernel, monkeypatch):
     assert kernel.query_state("work_items", id="half-successor", limit=1)[0]["status"] == "pending"
 
 
+def _seed_taken_progress(kernel, work_id: str, *, resume_from: int = 2) -> None:
+    from app.core.runtime.plan_resume import (
+        record_step_success,
+        save_plan_progress,
+        take_plan_resumes_for_work_item,
+    )
+
+    save_plan_progress(
+        work_id,
+        resume_from=resume_from,
+        previous_output={"step_1_output": "ok"},
+        kernel=kernel,
+    )
+    record_step_success("corr-half", 0, "step-ok", action_id=work_id, kernel=kernel)
+    take_plan_resumes_for_work_item(work_id, kernel=kernel)
+
+
+def test_recover_half_open_rerun_restores_plan_cursor(kernel, monkeypatch):
+    """清掉的计划游标留在 rerun_stash 里，半开恢复时和 completed 一起放回。"""
+    from app.core.runtime.plan_resume import (
+        load_plan_progress,
+        lookup_action_step_success,
+        peek_plan_resume,
+        rerun_stash_key,
+    )
+    from app.core.runtime.read_ports import WORK_STATUS_REASON_RERUN_RESTORE
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    _running_with_execute(kernel, "cursor")
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, "cursor",
+        payload={"status": "completed"}, actor="executor",
+    )
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, "cursor",
+        payload={"status": "pending", "reason": WORK_STATUS_REASON_RERUN_RESTORE},
+        actor="user",
+    )
+    _seed_taken_progress(kernel, "cursor")
+    _patch_kernel(monkeypatch, kernel)
+
+    assert RuntimeLoop()._recover_interrupted_background_tasks() == 1
+
+    row = kernel.query_state("work_items", id="cursor", limit=1)[0]
+    assert row["status"] == "completed"
+    progress = load_plan_progress("cursor", kernel=kernel)
+    assert progress is not None
+    assert progress.resume_from == 2
+    assert progress.previous_output == {"step_1_output": "ok"}
+    assert lookup_action_step_success("cursor", 0, kernel=kernel) == "step-ok"
+    assert peek_plan_resume(rerun_stash_key("cursor"), kernel=kernel) is None
+
+
+def test_recover_half_open_keeps_live_cursor_over_stale_stash(kernel, monkeypatch):
+    """清游标没提交时，启动不能用上一份暂存盖掉还在的进度。"""
+    from app.core.runtime.plan_resume import (
+        load_plan_progress,
+        peek_plan_resume,
+        rerun_stash_key,
+        save_plan_progress,
+    )
+    from app.core.runtime.read_ports import WORK_STATUS_REASON_RERUN_RESTORE
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    _running_with_execute(kernel, "live-cursor")
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, "live-cursor",
+        payload={"status": "pending", "reason": WORK_STATUS_REASON_RERUN_RESTORE},
+        actor="user",
+    )
+    _seed_taken_progress(kernel, "live-cursor", resume_from=2)
+    save_plan_progress(
+        "live-cursor",
+        resume_from=4,
+        previous_output={"step_3_output": "newer"},
+        kernel=kernel,
+    )
+    _patch_kernel(monkeypatch, kernel)
+
+    assert RuntimeLoop()._recover_interrupted_background_tasks() == 1
+    progress = load_plan_progress("live-cursor", kernel=kernel)
+    assert progress is not None
+    assert progress.resume_from == 4
+    assert peek_plan_resume(rerun_stash_key("live-cursor"), kernel=kernel) is None
+
+
+def test_recover_drops_plan_stash_once_execute_was_requested(kernel, monkeypatch):
+    from app.core.runtime.plan_resume import (
+        load_plan_progress,
+        peek_plan_resume,
+        rerun_stash_key,
+    )
+    from app.core.runtime.read_ports import WORK_STATUS_REASON_RERUN_RESTORE
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    _running_with_execute(kernel, "stash-drop")
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, "stash-drop",
+        payload={"status": "completed"}, actor="executor",
+    )
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, "stash-drop",
+        payload={"status": "pending", "reason": WORK_STATUS_REASON_RERUN_RESTORE},
+        actor="user",
+    )
+    _seed_taken_progress(kernel, "stash-drop")
+    kernel.emit_event(
+        "ExecuteRequested", "action", "exec_stash-drop",
+        payload={"action_id": "stash-drop"}, actor="user",
+    )
+    _patch_kernel(monkeypatch, kernel)
+
+    assert RuntimeLoop()._recover_interrupted_background_tasks() == 0
+    assert kernel.query_state("work_items", id="stash-drop", limit=1)[0]["status"] == "pending"
+    assert load_plan_progress("stash-drop", kernel=kernel) is None
+    assert peek_plan_resume(rerun_stash_key("stash-drop"), kernel=kernel) is None
+
+
 def test_recover_leaves_ordinary_and_unmarked_pending(kernel, monkeypatch):
     from app.core.runtime.runtime_loop import RuntimeLoop
 

@@ -491,7 +491,9 @@ def request_work_item_execute(item_id: str) -> dict[str, Any]:
         payload={"action_id": item_id},
         actor="user",
     )
+    from app.core.runtime.plan_resume import discard_rerun_plan_stash
 
+    discard_rerun_plan_stash(item_id, kernel=k)
     updated = query_work_item(item_id)
     if updated is None:
         raise RuntimeError("Work item missing after execute request")
@@ -499,13 +501,9 @@ def request_work_item_execute(item_id: str) -> dict[str, Any]:
 
 
 def ensure_work_item_execute_requested(item_id: str) -> dict[str, Any]:
-    """Emit ``ExecuteRequested`` when status is already ``running``.
-
-    Recovers the window after ``WorkItemStatusChanged(running)`` and before
-    ``ExecuteRequested``. Does not change Work status or replay plan steps.
-    """
+    """Emit ``ExecuteRequested`` for a work item that is already running."""
     from app.core.runtime.kernel.constants import EVENT_EXECUTE_REQUESTED
-
+    from app.core.runtime.plan_resume import discard_rerun_plan_stash
     item = query_work_item(item_id)
     if item is None:
         raise KeyError(item_id)
@@ -514,13 +512,15 @@ def ensure_work_item_execute_requested(item_id: str) -> dict[str, Any]:
         raise ValueError(
             f"Work item must be running to ensure execute requested (status={status})"
         )
-    kernel().emit_event(
+    k = kernel()
+    k.emit_event(
         EVENT_EXECUTE_REQUESTED,
         "action",
         f"exec_{item_id}",
         payload={"action_id": item_id},
         actor="user",
     )
+    discard_rerun_plan_stash(item_id, kernel=k)
     updated = query_work_item(item_id)
     if updated is None:
         raise RuntimeError("Work item missing after execute request")
@@ -591,7 +591,7 @@ def work_item_execution_snapshot(item_id: str, item: dict[str, Any] | None = Non
 
 
 def reset_work_item_plan_progress(item_id: str, *, snapshot: list | None = None) -> list:
-    """Clear plan resumes, or restore ``snapshot`` when a rerun did not start."""
+    """Stash plan resumes, or restore ``snapshot`` when a rerun did not start."""
     from app.core.runtime import plan_resume as resumes
 
     k = kernel()

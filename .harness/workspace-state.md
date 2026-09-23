@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-09-23：Batch 31：再次运行清计划游标时，同一事务把行写入 `plan_resumes` 的 `rerun_stash:{work_id}`。`ExecuteRequested` 落库后删掉暂存。进程死在打开与派发之间时，启动恢复放回游标并收回 `completed`；原行还在则只删暂存。不新增事件类型。`read_ports/work.py` 仍为 600/600。
 - 2026-09-23：Batch 30：死信收口和「最新 handler 已失败」都改成只认最新 `status=running` 之后的 `ExecuteRequested`。再次运行打开成 pending 时带上已有的 `reason=rerun_restore`；进程若死在执行请求落库前，启动恢复用同一条 `WorkItemStatusChanged(completed)` 收回。已经清掉的计划游标补不回来。不新增事件类型。`read_ports/work.py` 仍为 600/600。
 - 2026-09-23：修复近 24 小时审查发现的三处回归：启动恢复只关联最近一次进入 running 后的 ExecuteRequested，周期统计排除 rerun_restore，重跑清理进度失败会收回 completed。新增三项故障回归测试；后端 1708 passed、lint、boundary、layer-deps、architecture-check 通过。
 - 2026-09-23：审查近 24 小时提交（0406412..259f762）：前端 298 测试及构建、后端重点 77 测试、boundary/layer-deps/architecture-check 通过；临时故障用例复现三处缺口：重跑派发中断恢复误用上一轮完成、rerun_restore 被周期统计计作完成、清理计划进度失败后停在 pending。临时用例已移除，未修改业务代码。

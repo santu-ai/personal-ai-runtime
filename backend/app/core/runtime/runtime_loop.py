@@ -421,6 +421,8 @@ class RuntimeLoop:
         task/action). A pending row whose latest status event is a brief rerun
         reopen (``reason=rerun_restore``) and that has no later
         ``ExecuteRequested`` is put back to ``completed`` with the same reason.
+        The plan cursor stashed at clear time is put back in that same pass.
+        A stash whose reopen already dispatched is dropped.
         """
         from app.core.runtime.kernel.constants import (
             AGGREGATE_WORK_ITEM,
@@ -500,12 +502,17 @@ class RuntimeLoop:
         ``rerun_project_brief`` marks the reopen with ``reason=rerun_restore``.
         That pending event is still the latest status, and no
         ``ExecuteRequested`` follows it, only when the process died before
-        dispatch. Emit ``WorkItemStatusChanged(completed)`` with the same
-        reason. Plan-cursor rows already deleted in that window stay gone.
+        dispatch. Put back the ``rerun_stash`` cursor when the clear committed,
+        then emit ``WorkItemStatusChanged(completed)`` with the same reason.
+        Stashes for reopens that already dispatched are dropped.
         """
         from app.core.runtime.kernel.constants import (
             AGGREGATE_WORK_ITEM,
             EVENT_WORK_ITEM_STATUS_CHANGED,
+        )
+        from app.core.runtime.plan_resume import (
+            release_finished_rerun_stashes,
+            restore_rerun_plan_stash,
         )
 
         try:
@@ -516,7 +523,7 @@ class RuntimeLoop:
             )
         except Exception:
             logger.exception("Half-open rerun recovery scan failed")
-            return 0
+            rows = []
 
         restored = 0
         for row in rows:
@@ -524,6 +531,7 @@ class RuntimeLoop:
             try:
                 if not _half_open_rerun(kernel, work_id):
                     continue
+                restore_rerun_plan_stash(work_id, kernel=kernel)
                 kernel.emit_event(
                     EVENT_WORK_ITEM_STATUS_CHANGED,
                     AGGREGATE_WORK_ITEM,
@@ -543,6 +551,13 @@ class RuntimeLoop:
                 logger.exception(
                     "Failed to restore half-open rerun %s", work_id
                 )
+        try:
+            release_finished_rerun_stashes(
+                lambda work_id: _half_open_rerun(kernel, work_id),
+                kernel=kernel,
+            )
+        except Exception:
+            logger.exception("Failed to release finished rerun plan stashes")
         return restored
 
     def _reconcile_interrupted_capability_intents(self) -> int:

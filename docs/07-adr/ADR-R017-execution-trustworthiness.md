@@ -15,7 +15,7 @@
 2. **E-2** 进度：`progress:{action_id}` 记录 resume_from  
 3. **E-3** DLQ：`dead_letter` 标志 + list/replay  
 4. **E-4** Lease：stale running reclaim  
-5. **E-5** 进度键与 plan resume 共存于 `plan_resumes`  
+5. **E-5** 进度键与 plan resume 共存于 `plan_resumes`。再次运行清游标时同一事务写入 `rerun_stash:{work_id}`，`ExecuteRequested` 落库后删除；进程死在打开与派发之间时，启动恢复把暂存放回（原行还在则只删暂存）  
 6. **E-6** 审批 take-first：原子 `take_plan_resume`  
 7. **E-7** Scheduler 非阻塞填槽  
 8. **E-8** 背景任务超时 → failed（非挂起）  

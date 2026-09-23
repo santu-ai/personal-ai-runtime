@@ -41,7 +41,7 @@ Personal AI Runtime 的所有执行路径用**一套三车道语义**解释。�
 | Lease / multi-worker ownership | Absent / **Non-goal** | 单进程；见 [runtime-invariants.md](runtime-invariants.md) INV-W6；`check_single_process_control_plane.py` |
 | Quota | Partial | HTTP/WS rate limits；tool-loop token/iteration caps；无 per-tenant scheduler quota |
 | Backpressure | Present | `scheduler_max_pending` → `queue_full` |
-| Durable continuation | Yes | `plan_resumes` for Execute/Approve；Chat 工具环 `chat_ckpt:{correlation_id}` 供 interrupt 重放与审批后续写（ADR-R011） |
+| Durable continuation | Yes | `plan_resumes` for Execute/Approve；再次运行清游标前写入 `rerun_stash:{work_id}`，半开恢复放回；Chat 工具环 `chat_ckpt:{correlation_id}` 供 interrupt 重放与审批后续写（ADR-R011） |
 
 ## 负空间登记（Negative Space）
 

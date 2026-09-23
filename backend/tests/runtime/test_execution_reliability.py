@@ -297,3 +297,45 @@ def test_approve_take_before_resume(tmp_path):
     finally:
         clear_plan_resumes()
         configure_plan_resume_db(None)
+
+
+def test_empty_rerun_clear_drops_previous_stash(kernel):
+    """第二次清空没有游标时，不能把上一份暂存留到下次恢复。"""
+    from app.core.runtime.plan_resume import (
+        load_plan_progress,
+        peek_plan_resume,
+        rerun_stash_key,
+        restore_rerun_plan_stash,
+        save_plan_progress,
+        take_plan_resumes_for_work_item,
+    )
+
+    save_plan_progress(
+        "w", resume_from=2, previous_output={"step_1_output": "ok"}, kernel=kernel,
+    )
+    assert len(take_plan_resumes_for_work_item("w", kernel=kernel)) == 1
+    assert peek_plan_resume(rerun_stash_key("w"), kernel=kernel) is not None
+    assert take_plan_resumes_for_work_item("w", kernel=kernel) == []
+    assert restore_rerun_plan_stash("w", kernel=kernel) == 0
+    assert load_plan_progress("w", kernel=kernel) is None
+    assert peek_plan_resume(rerun_stash_key("w"), kernel=kernel) is None
+
+
+def test_corrupt_rerun_stash_is_dropped(kernel):
+    from app.core.runtime.plan_resume import (
+        peek_plan_resume,
+        rerun_stash_key,
+        restore_rerun_plan_stash,
+    )
+
+    key = rerun_stash_key("w")
+    with kernel._db.get_db() as conn:
+        conn.execute(
+            """INSERT INTO plan_resumes
+               (approval_id, kind, resume_from, previous_output_json,
+                action_id, task_id, plan_json, created_at)
+               VALUES (?, 'execute', 0, ?, '', '', '', 'now')""",
+            (key, "not-json"),
+        )
+    assert restore_rerun_plan_stash("w", kernel=kernel) == 0
+    assert peek_plan_resume(key, kernel=kernel) is None
