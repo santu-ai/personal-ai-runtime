@@ -149,6 +149,19 @@ function hasDeliveryMetrics(metrics: DeliveryMetrics | null): metrics is Deliver
   return Boolean(metrics && (metrics.reviewed_tasks > 0 || metrics.adopted_action_count > 0));
 }
 
+function RerunFailureReason({ reason }: { reason: string }) {
+  const text = reason.trim();
+  if (!text) return null;
+  return (
+    <p
+      className="whitespace-pre-wrap break-all text-sm text-danger"
+      data-testid="rerun-failure-reason"
+    >
+      {text}
+    </p>
+  );
+}
+
 export default function TasksPage() {
   const { taskId: urlTaskId } = useParams();
   const navigate = useNavigate();
@@ -459,6 +472,7 @@ export default function TasksPage() {
   const executionFailed = handler?.status === "failed" || Boolean(handler?.dead_letter);
   const rerun =
     selected?.status === "failed" || (executionFailed && selected?.status === "running");
+  const failureReason = rerun ? (handler?.error ?? "") : "";
   const canExecute =
     selected &&
     !isAdoptedSuggestion(selected) &&
@@ -633,6 +647,9 @@ export default function TasksPage() {
                   {viewingHistory && historyError && (
                     <p className="text-sm text-danger">{historyError}</p>
                   )}
+                  {shownDelivery && failureReason ? (
+                    <RerunFailureReason reason={failureReason} />
+                  ) : null}
                   {shownDelivery ? (
                     <section className="space-y-3 rounded-xl border border-border-subtle p-4">
                       <div className="flex items-start justify-between gap-3">
@@ -736,18 +753,29 @@ export default function TasksPage() {
                       )}
                     </section>
                   ) : isProjectBrief(selected) ? (
-                    <p className="text-sm text-fg-tertiary">
-                      {selected.status === "failed" || executionFailed
-                        ? "执行失败，尚未发布合格交付。可查看执行日志后重试。"
-                        : "还没有交付结果。确认资料范围后执行任务。"}
-                    </p>
+                    <div className="space-y-2">
+                      <p className="text-sm text-fg-tertiary">
+                        {selected.status === "failed" || executionFailed
+                          ? "执行失败，尚未发布合格交付。可查看执行日志后重试。"
+                          : "还没有交付结果。确认资料范围后执行任务。"}
+                      </p>
+                      <RerunFailureReason reason={failureReason} />
+                    </div>
                   ) : selected.status === "failed" && canExecute ? (
-                    <p className="text-sm text-danger">上次执行已失败。可以重新执行。</p>
+                    <div className="space-y-2">
+                      <p className="text-sm text-danger">上次执行已失败。可以重新执行。</p>
+                      <RerunFailureReason reason={failureReason} />
+                    </div>
                   ) : executionFailed && selected.status === "running" ? (
-                    <p className="text-sm text-danger">
-                      上次执行已失败，任务仍显示为进行中。可以重新执行。
-                    </p>
-                  ) : null}
+                    <div className="space-y-2">
+                      <p className="text-sm text-danger">
+                        上次执行已失败，任务仍显示为进行中。可以重新执行。
+                      </p>
+                      <RerunFailureReason reason={failureReason} />
+                    </div>
+                  ) : (
+                    <RerunFailureReason reason={failureReason} />
+                  )}
 
                   {bundle && bundle.deliveries.length > 1 && (
                     <section className="space-y-2">
