@@ -465,8 +465,7 @@ def request_work_item_execute(item_id: str) -> dict[str, Any]:
     status = item.get("status") or "pending"
     if status in _TERMINAL_EXECUTE_STATUSES:
         raise ValueError(f"Work item already terminal ({status})")
-    # Dead-letter normally closes the work item as failed. A leftover
-    # ``running`` row (crash before that close) is not in-flight and can restart.
+    # A leftover running row after dead-letter is not in-flight and can restart.
     handler_failed = False
     if status == "running":
         from app.core.runtime.runtime_loop import latest_execute_handler_failed
@@ -591,8 +590,11 @@ def work_item_execution_snapshot(item_id: str, item: dict[str, Any] | None = Non
     }
 
 
-def reset_work_item_plan_progress(item_id: str) -> None:
-    """Clear operational plan resume/progress so a rework run starts from step 0."""
-    from app.core.runtime.plan_resume import clear_plan_resumes_for_work_item
+def reset_work_item_plan_progress(item_id: str, *, snapshot: list | None = None) -> list:
+    """Clear plan resumes, or restore ``snapshot`` when a rerun did not start."""
+    from app.core.runtime import plan_resume as resumes
 
-    clear_plan_resumes_for_work_item(item_id, kernel=kernel())
+    k = kernel()
+    if snapshot is not None:
+        return resumes.restore_plan_resumes_for_work_item(snapshot, kernel=k)
+    return resumes.take_plan_resumes_for_work_item(item_id, kernel=k)

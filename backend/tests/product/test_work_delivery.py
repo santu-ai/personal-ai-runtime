@@ -1306,9 +1306,23 @@ def test_rerun_same_brief_reexecutes_without_a_review_decision(isolated_kernel):
         execution_id="rerun-v1",
     )
 
+    from app.core.runtime.plan_resume import (
+        load_plan_progress,
+        lookup_action_step_success,
+        record_step_success,
+        save_plan_progress,
+    )
+
+    save_plan_progress(
+        work_id, resume_from=2, previous_output={"step_1_output": "ok"}, kernel=k,
+    )
+    record_step_success("corr-rerun", 0, "step-ok", action_id=work_id, kernel=k)
+
     result = rerun_project_brief(work_id)
     assert result["supersedes_delivery_id"] == v1["delivery_id"]
     assert result["work"]["status"] == "running"
+    assert load_plan_progress(work_id, kernel=k) is None
+    assert lookup_action_step_success(work_id, 0, kernel=k) is None
     stored = read_ports.query_work_item(work_id)
     assert stored is not None
     assert stored["executable_plan"] == plan_before
@@ -1340,6 +1354,108 @@ def test_rerun_same_brief_reexecutes_without_a_review_decision(isolated_kernel):
     bundle = public_bundle(work_id)
     assert bundle["current_review_status"] == "unreviewed"
     assert bundle["current"]["version"] == 2
+
+
+def _status_names(kernel, work_id: str) -> list[str]:
+    return [
+        str((event.payload or {}).get("status") or "")
+        for event in kernel.read_events(
+            type="WorkItemStatusChanged",
+            aggregate_id=work_id,
+        )
+    ]
+
+
+def _seed_rerun_progress(kernel, work_id: str) -> None:
+    from app.core.runtime.plan_resume import record_step_success, save_plan_progress
+
+    save_plan_progress(
+        work_id, resume_from=2, previous_output={"step_1_output": "ok"}, kernel=kernel,
+    )
+    record_step_success("corr-rerun", 0, "step-ok", action_id=work_id, kernel=kernel)
+
+
+def _assert_rerun_progress(kernel, work_id: str) -> None:
+    from app.core.runtime.plan_resume import (
+        load_plan_progress,
+        lookup_action_step_success,
+        lookup_step_success,
+    )
+
+    progress = load_plan_progress(work_id, kernel=kernel)
+    assert progress is not None
+    assert progress.resume_from == 2
+    assert progress.previous_output == {"step_1_output": "ok"}
+    assert lookup_action_step_success(work_id, 0, kernel=kernel) == "step-ok"
+    assert lookup_step_success("corr-rerun", 0, kernel=kernel) == "step-ok"
+
+
+def test_rerun_rejects_unexecutable_plan_without_reopening(isolated_kernel):
+    """计划在打开前就不能执行时，不改已完成状态，也不清进度。"""
+    k, _db = isolated_kernel
+    item = read_ports.create_work_item(
+        "坏步骤简报",
+        work_type="task",
+        executable_plan=(
+            '{"kind":"project_brief","contract":{"contract_version":1,'
+            '"output_kind":"project_brief"},"steps":["bad"]}'
+        ),
+        status="completed",
+    )
+    work_id = item["id"]
+    published = publish_delivery(
+        work_id, content="第一期", summary="第一期", sources=[],
+        execution_id="rerun-bad-plan",
+    )
+    _seed_rerun_progress(k, work_id)
+    before = _status_names(k, work_id)
+
+    with pytest.raises(DeliveryValidationError, match="no steps"):
+        rerun_project_brief(work_id)
+
+    stored = read_ports.query_work_item(work_id)
+    assert stored is not None
+    assert stored["status"] == "completed"
+    assert _status_names(k, work_id) == before
+    assert fold_delivery_history(work_id)["current"]["delivery_id"] == published["delivery_id"]
+    assert k.read_events(type="ExecuteRequested", aggregate_id=f"exec_{work_id}") == []
+    _assert_rerun_progress(k, work_id)
+
+
+def test_rerun_restores_completed_delivery_when_execute_request_fails(isolated_kernel, monkeypatch):
+    """执行请求在重新打开之后失败时，收回 completed，当前交付和计划进度都还在。"""
+    k, _db = isolated_kernel
+    item = _brief_task_with_steps()
+    work_id = item["id"]
+    published = publish_delivery(
+        work_id, content="第一期", summary="第一期", sources=[],
+        execution_id="rerun-emit-fail",
+    )
+    _seed_rerun_progress(k, work_id)
+    original = k.emit_event
+
+    def drop_execute(*args, **kwargs):
+        event_type = kwargs.get("type")
+        if event_type is None and args:
+            event_type = args[0]
+        if event_type == "ExecuteRequested":
+            raise RuntimeError("execute request dropped")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(k, "emit_event", drop_execute)
+
+    with pytest.raises(RuntimeError, match="execute request dropped"):
+        rerun_project_brief(work_id)
+
+    stored = read_ports.query_work_item(work_id)
+    assert stored is not None
+    assert stored["status"] == "completed"
+    assert "rework_notes" not in stored["executable_plan"]
+    assert fold_delivery_history(work_id)["current"]["delivery_id"] == published["delivery_id"]
+    assert k.read_events(type="ExecuteRequested", aggregate_id=f"exec_{work_id}") == []
+    assert _status_names(k, work_id)[-2:] == ["running", "completed"]
+    _assert_rerun_progress(k, work_id)
+    assert [row["work_id"] for row in list_rerunnable_briefs()] == [work_id]
 
 
 def test_rerun_same_brief_rejects_missing_delivery_and_other_work(isolated_kernel):

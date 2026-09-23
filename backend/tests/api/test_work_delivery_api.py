@@ -314,3 +314,36 @@ def test_rerun_completed_brief_uses_the_same_work_item(client):
 
     second = client.post(f"/api/work-items/{work_id}/rerun")
     assert second.status_code == 409
+
+
+def test_rerun_api_restores_completed_when_execute_fails(client, monkeypatch):
+    created = client.post("/api/work-items/project-brief", json={
+        "title": "周期简报",
+        "objective": "列出变化",
+    })
+    assert created.status_code == 200, created.text
+    work_id = created.json()["id"]
+    delivery = publish_delivery(
+        work_id,
+        content="第一期",
+        summary="第一期",
+        sources=[],
+        execution_id="api-rerun-fail",
+    )
+    read_ports.update_work_item_status(work_id, "completed")
+
+    def boom(_item_id: str) -> None:
+        raise ValueError("executable_plan has no steps")
+
+    monkeypatch.setattr(read_ports, "request_work_item_execute", boom)
+    failed = client.post(f"/api/work-items/{work_id}/rerun")
+    assert failed.status_code == 400
+    assert "no steps" in failed.json()["detail"]
+
+    stored = read_ports.query_work_item(work_id)
+    assert stored is not None
+    assert stored["status"] == "completed"
+    bundle = client.get(f"/api/work-items/{work_id}/deliveries")
+    assert bundle.status_code == 200
+    assert bundle.json()["current"]["delivery_id"] == delivery["delivery_id"]
+    assert bundle.json()["current_review_status"] == "unreviewed"

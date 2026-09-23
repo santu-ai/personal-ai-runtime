@@ -1263,22 +1263,99 @@ def _require_completed_brief(work_id: str) -> tuple[dict[str, Any], str]:
     return item, str(current.get("delivery_id") or "")
 
 
+def _reject_unexecutable_plan(item: dict[str, Any]) -> None:
+    """Refuse plans ``request_work_item_execute`` would reject before any emit.
+
+    ``completed`` is not checked here: rerun leaves that status on purpose.
+    A failure at this step does not reopen the brief.
+    """
+    if item.get("work_type") == "goal":
+        raise DeliveryValidationError(
+            "Goals cannot be executed; run child actions instead",
+        )
+    plan_raw = item.get("executable_plan")
+    if not isinstance(plan_raw, str) or not plan_raw.strip():
+        raise DeliveryValidationError("Work item has no executable_plan")
+    try:
+        plan_obj = json.loads(plan_raw)
+    except json.JSONDecodeError as exc:
+        raise DeliveryValidationError(f"invalid executable_plan JSON: {exc}") from exc
+    if not isinstance(plan_obj, dict) or not isinstance(plan_obj.get("steps"), list):
+        raise DeliveryValidationError(
+            "executable_plan must be an object with a steps list",
+        )
+    if not any(isinstance(step, dict) for step in plan_obj["steps"]):
+        raise DeliveryValidationError("executable_plan has no steps")
+
+
+def _execute_requested_ids(work_id: str) -> set[str]:
+    events = kernel.read_events(
+        type=EVENT_EXECUTE_REQUESTED,
+        aggregate_type="action",
+        aggregate_id=f"exec_{work_id}",
+    )
+    return {str(getattr(event, "id", "") or "") for event in events}
+
+
+def _restore_completed_brief(
+    work_id: str,
+    snapshot: list,
+    before_ids: set[str],
+) -> None:
+    """Put a brief back on its completed delivery when execute never started.
+
+    Each Kernel emit is its own transaction, so reopen and ``ExecuteRequested``
+    cannot commit together. If the request is already in the log, leave the
+    running brief alone.
+    """
+    if _execute_requested_ids(work_id) - before_ids:
+        return
+    item = read_ports.query_work_item(work_id)
+    status = str((item or {}).get("status") or "")
+    if status in {"pending", "running"}:
+        read_ports.update_work_item_status(work_id, "completed")
+    read_ports.reset_work_item_plan_progress(work_id, snapshot=snapshot)
+    logger.info("restored completed brief %s after execute request failed", work_id)
+
+
 def rerun_project_brief(work_id: str) -> dict[str, Any]:
     """Re-execute a completed project brief on the same work item.
 
     Does not record a review decision and does not append rework notes.
     Reopens ``completed`` → ``pending``, clears plan progress, then uses the
-    existing ``ExecuteRequested`` path. The next published delivery supersedes
-    the current one.
+    existing ``ExecuteRequested`` path. Kernel commits each event alone, so a
+    failure after that reopen restores ``completed`` and the cleared plan
+    rows. The current delivery stays. The next published delivery supersedes
+    it. A plan that cannot run is rejected before the reopen.
     """
     with _work_lock(work_id):
-        _item, previous_id = _require_completed_brief(work_id)
+        item, previous_id = _require_completed_brief(work_id)
+        _reject_unexecutable_plan(item)
+        before_ids = _execute_requested_ids(work_id)
         read_ports.update_work_item_status(work_id, "pending")
-        read_ports.reset_work_item_plan_progress(work_id)
+        snapshot = read_ports.reset_work_item_plan_progress(work_id)
         try:
             work = read_ports.request_work_item_execute(work_id)
-        except ValueError as exc:
-            raise DeliveryValidationError(str(exc)) from exc
+        except Exception as exc:
+            if _execute_requested_ids(work_id) - before_ids:
+                started = read_ports.query_work_item(work_id)
+                if started is not None:
+                    logger.info(
+                        "brief rerun kept %s after %s", work_id, type(exc).__name__,
+                    )
+                    return {
+                        "work_id": work_id,
+                        "supersedes_delivery_id": previous_id,
+                        "work": started,
+                    }
+            try:
+                _restore_completed_brief(work_id, snapshot, before_ids)
+            except Exception:
+                logger.exception("brief rerun restore failed for %s", work_id)
+                raise
+            if isinstance(exc, ValueError):
+                raise DeliveryValidationError(str(exc)) from exc
+            raise
         return {
             "work_id": work_id,
             "supersedes_delivery_id": previous_id,

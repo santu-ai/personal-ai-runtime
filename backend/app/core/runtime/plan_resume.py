@@ -284,6 +284,36 @@ def clear_plan_resumes_for_work_item(
         return int(cur.rowcount or 0)
 
 
+def take_plan_resumes_for_work_item(
+    work_item_id: str,
+    *,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> list[tuple[str, PlanResume]]:
+    """Delete and return operational resumes for one work item."""
+    if not work_item_id:
+        return []
+    database = _resolve_db(db if db is not None else _db_from_kernel(kernel))
+    with database.get_db() as conn:
+        rows = conn.execute(
+            "DELETE FROM plan_resumes WHERE kind = ? AND action_id = ? RETURNING *",
+            ("execute", work_item_id),
+        ).fetchall()
+    return [(str(row["approval_id"]), PlanResume.from_row(row)) for row in rows]
+
+
+def restore_plan_resumes_for_work_item(
+    rows: list[tuple[str, PlanResume]],
+    *,
+    db: Any | None = None,
+    kernel: Any | None = None,
+) -> list[tuple[str, PlanResume]]:
+    """Put back resumes taken by ``take_plan_resumes_for_work_item``."""
+    for approval_id, resume in rows:
+        register_plan_resume(approval_id, resume, db=db, kernel=kernel)
+    return list(rows)
+
+
 def clear_plan_resumes(*, db: Any | None = None) -> None:
     """删除全部恢复行（测试助手）。"""
     database = _resolve_db(db)
