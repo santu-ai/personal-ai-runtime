@@ -87,10 +87,7 @@ export default function TimerBriefPanel({ timers, activeTimers, briefs }: TimerB
           <ul className="space-y-1.5">
             {briefs.map((brief) => (
               <li key={brief.work_id} className="text-xs">
-                <Link
-                  to={taskPath(brief.work_id)}
-                  className="text-fg-primary hover:underline"
-                >
+                <Link to={taskPath(brief.work_id)} className="text-fg-primary hover:underline">
                   {brief.title || "项目简报"} · 当前 v{brief.version}
                 </Link>
               </li>

@@ -786,10 +786,7 @@ export default function TasksPage() {
   const bundle = selected?.delivery_bundle;
   const currentDelivery = bundle?.current ?? null;
   const canRerunSameBrief = Boolean(
-    selected &&
-      isProjectBrief(selected) &&
-      selected.status === "completed" &&
-      currentDelivery,
+    selected && isProjectBrief(selected) && selected.status === "completed" && currentDelivery,
   );
   const viewingHistory = Boolean(
     historyId && currentDelivery && historyId !== currentDelivery.delivery_id,
