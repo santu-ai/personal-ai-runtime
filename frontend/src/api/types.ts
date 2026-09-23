@@ -278,6 +278,17 @@ export interface WorkDeliveryAction {
   adopted_work_id?: string;
 }
 
+export interface WorkDeliveryDecision {
+  decision_id?: string;
+  delivery_id?: string;
+  delivery_version?: number;
+  decision?: string;
+  reason?: string;
+  actor?: string;
+  created_at?: string | null;
+  idempotency_key?: string | null;
+}
+
 export interface WorkDelivery {
   delivery_id: string;
   version: number;
@@ -296,6 +307,7 @@ export interface WorkDelivery {
   schema_version: number;
   qualified: boolean;
   review_status: WorkDeliveryReviewStatus;
+  latest_decision?: WorkDeliveryDecision | null;
 }
 
 export interface WorkDeliveryBundle {

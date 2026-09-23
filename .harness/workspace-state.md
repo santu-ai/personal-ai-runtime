@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-09-23：Batch 21：任务页交付包和 `WorkDelivery` 带上该版本已有的 `latest_decision`（含 `reason`）。「已要求返工」时交付区显示返工理由，版本历史同一行也写出。空白理由不显示。不新增事件类型。未改 `read_ports/work.py`。
 - 2026-09-23：Batch 20：交付指标对缺少 `caused_by` 的成功 `project_brief` 调用另计 `unattributed_project_brief_cost`，不并入 `llm_cost`；读上限打满时该金额与次数仍是 unavailable。任务页在未归因次数旁写出这笔金额。不新增事件类型。未改 `read_ports/work.py`。
 - 2026-09-23：Batch 19：交付指标里缺少 `caused_by` 的成功 `project_brief` 调用另计 `unattributed_project_brief_calls`，已归因金额照常加总；读上限打满时金额和次数仍是 unavailable。任务页在金额后标出未归因次数。不新增事件类型。未改 `read_ports/work.py`。
 - 2026-09-23：Batch 18：任务已失败，或仍为 running 且 handler 已失败/死信时，非空白的 `handler_execution.error` 显示在「重新执行」提示旁；已有交付、日志默认折叠时，显示在交付区上方。日志里的原文仍保留。不改 Kernel，不改 `read_ports`。

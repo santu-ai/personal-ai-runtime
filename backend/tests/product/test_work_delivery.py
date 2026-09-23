@@ -11,6 +11,7 @@ from app.product.work_delivery import (
     accept_delivery,
     adopt_suggested_action,
     fold_delivery_history,
+    get_delivery,
     list_unreviewed_deliveries,
     public_bundle,
     publish_delivery,
@@ -105,6 +106,67 @@ def test_publish_accept_rework_rebuild(isolated_kernel):
     assert folded["current_review_status"] == "accepted"
     assert folded["current"]["version"] == 2
     assert any(d["delivery_id"] == v1["delivery_id"] for d in folded["deliveries"])
+
+
+def test_public_delivery_keeps_rework_reason(isolated_kernel):
+    k, _db = isolated_kernel
+    item = _create_task()
+    work_id = item["id"]
+    v1 = publish_delivery(
+        work_id,
+        content="v1 body",
+        summary="v1",
+        sources=[],
+        execution_id="exec-reason",
+    )
+    assert v1["latest_decision"] is None
+
+    request_rework(
+        work_id,
+        v1["delivery_id"],
+        reason="  需要补风险  ",
+        dispatch=False,
+    )
+    bundle = public_bundle(work_id)
+    decision = bundle["current"]["latest_decision"]
+    assert bundle["current"]["review_status"] == "changes_requested"
+    assert decision["reason"] == "需要补风险"
+    assert decision["decision"] == "changes_requested"
+    assert bundle["deliveries"][0]["latest_decision"]["reason"] == "需要补风险"
+
+    single = get_delivery(work_id, v1["delivery_id"])
+    assert single["latest_decision"]["reason"] == "需要补风险"
+    assert single["latest_decision"]["decision_id"] == decision["decision_id"]
+
+    v2 = publish_delivery(
+        work_id,
+        content="v2 body",
+        summary="v2",
+        sources=[],
+        execution_id="exec-reason-2",
+    )
+    assert v2["latest_decision"] is None
+    assert v2["review_status"] == "unreviewed"
+
+    again = publish_delivery(
+        work_id,
+        content="ignored",
+        summary="ignored",
+        sources=[],
+        execution_id="exec-reason",
+    )
+    assert again["delivery_id"] == v1["delivery_id"]
+    assert again["review_status"] == "changes_requested"
+    assert again["latest_decision"]["reason"] == "需要补风险"
+
+    k.rebuild_all()
+    bundle = public_bundle(work_id)
+    assert bundle["current"]["delivery_id"] == v2["delivery_id"]
+    assert bundle["current"]["latest_decision"] is None
+    old = next(row for row in bundle["deliveries"] if row["delivery_id"] == v1["delivery_id"])
+    assert old["review_status"] == "changes_requested"
+    assert old["latest_decision"]["reason"] == "需要补风险"
+    assert "content" not in old
 
 
 def test_old_work_without_delivery_still_reads(isolated_kernel):

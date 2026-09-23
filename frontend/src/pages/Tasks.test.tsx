@@ -754,4 +754,90 @@ describe("TasksPage", () => {
     expect(await screen.findByText("历史版本完整正文甲")).toBeInTheDocument();
     expect(screen.queryByText("完整正文超过预览长度".repeat(20))).not.toBeInTheDocument();
   });
+
+  it("shows the stored rework reason on the current delivery", async () => {
+    const reason = "需要补上风险，并给每条结论带来源";
+    const reworked: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        work_id: "brief_1",
+        current_review_status: "changes_requested",
+        current: {
+          ...currentDelivery,
+          review_status: "changes_requested",
+          latest_decision: { decision: "changes_requested", reason },
+        },
+        deliveries: [currentSummary],
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [reworked];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(reworked);
+    renderTasks("/tasks/brief_1");
+
+    expect(await screen.findByText("有进度风险")).toBeInTheDocument();
+    expect(screen.getAllByText("已要求返工").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("rework-reason")).toHaveTextContent(`返工理由：${reason}`);
+  });
+
+  it("shows a historical version's rework reason", async () => {
+    const reason = "第一版缺少风险";
+    const task: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        ...briefTask.delivery_bundle!,
+        deliveries: [
+          {
+            ...historySummary,
+            latest_decision: { decision: "changes_requested", reason: `  ${reason}\n` },
+          },
+          currentSummary,
+        ],
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [task];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(task);
+    vi.mocked(getWorkDelivery).mockResolvedValue({
+      ...historyFull,
+      latest_decision: { decision: "changes_requested", reason },
+    });
+    renderTasks("/tasks/brief_1");
+
+    const historyButton = await screen.findByRole("button", {
+      name: new RegExp(`v1 · 已要求返工 · ${reason}`),
+    });
+    fireEvent.click(historyButton);
+    expect(await screen.findByTestId("rework-reason")).toHaveTextContent(`返工理由：${reason}`);
+  });
+
+  it("omits a blank rework reason", async () => {
+    const reworked: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        work_id: "brief_1",
+        current_review_status: "changes_requested",
+        current: {
+          ...currentDelivery,
+          review_status: "changes_requested",
+          latest_decision: { decision: "changes_requested", reason: "   " },
+        },
+        deliveries: [currentSummary],
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [reworked];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(reworked);
+    renderTasks("/tasks/brief_1");
+
+    expect(await screen.findByText("有进度风险")).toBeInTheDocument();
+    expect(screen.getAllByText("已要求返工").length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("rework-reason")).not.toBeInTheDocument();
+  });
 });
