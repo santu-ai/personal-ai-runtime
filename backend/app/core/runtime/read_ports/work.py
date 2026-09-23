@@ -529,12 +529,7 @@ def ensure_work_item_execute_requested(item_id: str) -> dict[str, Any]:
 
 
 def work_item_execution_snapshot(item_id: str, item: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Aggregate plan steps + progress + Lane-A execution row for the Tasks UI.
-
-    ``handler_execution.error`` is the text already stored on the scheduled
-    execution (``ExecutionFailed.error`` / ``ExecutionRetried.reason``). Blank
-    text is returned as ``None``.
-    """
+    """Plan steps, progress, and the Lane-A row (stored error included) for Tasks."""
     import json
 
     from app.core.runtime.plan_resume import load_plan_progress
