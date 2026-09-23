@@ -1084,6 +1084,86 @@ def test_close_uses_execute_after_latest_running(kernel):
     assert _failed_status_events(kernel, "gap-close") == []
 
 
+def _dead_letter_current_execute(kernel, work_id: str):
+    from app.core.runtime.execution_events import emit_execution_failed
+
+    trigger = _running_with_execute(kernel, work_id)
+    item = _pending_execute_execution(kernel, trigger, max_retries=0)
+    item.error = "boom"
+    emit_execution_requested(kernel, item, "user")
+    item.transition_to("failed")
+    emit_execution_failed(kernel, item, terminal=True, dead_letter=True)
+    return item
+
+
+@pytest.mark.parametrize("status", ["failed", "completed", "cancelled"])
+def test_replay_skips_dead_letter_when_work_is_terminal(kernel, caplog, status):
+    """领域 Work 已终态时，死信重放不把同一条执行再排成 pending。"""
+    item = _dead_letter_current_execute(kernel, f"replay-{status}")
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED,
+        AGGREGATE_WORK_ITEM,
+        f"replay-{status}",
+        payload={"status": status, "error": "boom"} if status == "failed" else {"status": status},
+        actor="kernel",
+    )
+
+    with caplog.at_level("INFO"):
+        replayed = kernel.replay_dead_letters(limit=10)
+
+    assert item.id not in replayed
+    assert f"reason=work_terminal:{status}" in caplog.text
+    stored = kernel.read_scheduled_execution(item.id)
+    assert stored is not None
+    assert stored.status == "failed"
+    assert stored.dead_letter is True
+    assert kernel.read_events(type="ExecutionRetried", aggregate_id=item.id) == []
+    assert kernel.query_state(
+        "work_items", id=f"replay-{status}", limit=1,
+    )[0]["status"] == status
+
+
+def test_replay_requeues_when_work_still_running(kernel):
+    """Work 仍是 running、且死信属于当前这次执行时，重放仍排成 pending。"""
+    item = _dead_letter_current_execute(kernel, "replay-live")
+    assert kernel.query_state("work_items", id="replay-live", limit=1)[0]["status"] == "running"
+
+    replayed = kernel.replay_dead_letters(limit=10)
+
+    assert item.id in replayed
+    stored = kernel.read_scheduled_execution(item.id)
+    assert stored is not None
+    assert stored.status == "pending"
+    assert stored.dead_letter is False
+    retried = kernel.read_events(type="ExecutionRetried", aggregate_id=item.id)
+    assert retried
+    assert all((event.payload or {}).get("reason") == "dead_letter_replay" for event in retried)
+
+
+def test_replay_skips_stale_execute_while_work_still_running(kernel, caplog):
+    """更新的 ExecuteRequested 才是当前尝试；更早的死信不重放。"""
+    item = _dead_letter_current_execute(kernel, "replay-stale")
+    kernel.emit_event(
+        "ExecuteRequested",
+        "action",
+        "exec_replay-stale",
+        payload={"action_id": "replay-stale"},
+        actor="user",
+    )
+
+    with caplog.at_level("INFO"):
+        replayed = kernel.replay_dead_letters(limit=10)
+
+    assert item.id not in replayed
+    assert "reason=not_current_attempt" in caplog.text
+    stored = kernel.read_scheduled_execution(item.id)
+    assert stored is not None
+    assert stored.status == "failed"
+    assert stored.dead_letter is True
+    assert kernel.query_state("work_items", id="replay-stale", limit=1)[0]["status"] == "running"
+    assert kernel.read_events(type="ExecutionRetried", aggregate_id=item.id) == []
+
+
 def test_handler_failed_follows_execute_after_latest_running(kernel, monkeypatch):
     from app.core.runtime.execution_events import (
         emit_execution_failed,

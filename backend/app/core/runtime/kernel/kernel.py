@@ -326,7 +326,12 @@ class Kernel(QueryStateMixin, SovereigntyMixin):
         )
 
     def replay_dead_letters(self, *, limit: int = 50) -> list[str]:
-        """Re-queue dead-lettered executions as pending (E-3)."""
+        """Re-queue dead-lettered executions as pending (E-3).
+
+        Leaves a row dead-lettered when its domain Work is already
+        failed, completed, or cancelled, or when the row is not the
+        current ExecuteRequested attempt.
+        """
         from . import execution_repository
         return execution_repository.replay_dead_letters(self, limit=limit)
 

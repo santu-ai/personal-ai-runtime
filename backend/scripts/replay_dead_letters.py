@@ -27,13 +27,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     from app.core.runtime.kernel_instance import kernel
+    from app.core.runtime.runtime_loop import dead_letter_replay_block_reason
 
     items = kernel.list_dead_letter_executions()
     print(f"dead_letter count: {len(items)}")
     for item in items[: args.limit]:
+        reason = dead_letter_replay_block_reason(kernel, item)
+        skip = f" skip_reason={reason}" if reason else ""
         print(
             f"  {item.id} handler={item.handler_name} "
-            f"error={item.error!r} retries={item.retry_count}"
+            f"error={item.error!r} retries={item.retry_count}{skip}"
         )
     if args.dry_run:
         return 0
