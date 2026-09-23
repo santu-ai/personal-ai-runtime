@@ -129,9 +129,16 @@ def fold_delivery_history(work_id: str) -> dict[str, Any]:
     dispatches: list[dict[str, Any]] = []
     adoptions: list[dict[str, Any]] = []
     by_id: dict[str, dict[str, Any]] = {}
+    status_rows: list[tuple[int, str, str]] = []
 
     for event in _read_work_events(work_id):
         payload = event.payload or {}
+        if event.type == EVENT_WORK_ITEM_STATUS_CHANGED:
+            status_rows.append((
+                int(getattr(event, "seq", 0) or 0),
+                str(payload.get("status") or ""),
+                str(payload.get("reason") or ""),
+            ))
         published = payload.get(PAYLOAD_DELIVERY_PUBLISHED)
         if isinstance(published, dict) and published.get("delivery_id"):
             row = dict(published)
@@ -175,16 +182,27 @@ def fold_delivery_history(work_id: str) -> dict[str, Any]:
         review_status = _review_status_from_decision(
             str(current_decision.get("decision") or ""),
         )
+    # A changes_requested that never got an ExecuteRequested is not an
+    # in-progress rework. The decision event stays on ``latest_decision`` /
+    # ``_decisions`` so a retry can still finish the dispatch. The presented
+    # status is unreviewed, so the task page can accept or ask again.
+    withdrawn = _rework_request_withdrawn(work_id, current_decision, status_rows)
+    shown_status = REVIEW_UNREVIEWED if withdrawn else review_status
+    shown_decision = None if withdrawn else current_decision
 
     summaries = []
     for row in deliveries:
         did = str(row["delivery_id"])
         decision = latest_by_delivery.get(did)
-        status = (
-            _review_status_from_decision(str(decision.get("decision") or ""))
-            if decision
-            else REVIEW_UNREVIEWED
-        )
+        if withdrawn and did == current_id:
+            decision = None
+            status = REVIEW_UNREVIEWED
+        else:
+            status = (
+                _review_status_from_decision(str(decision.get("decision") or ""))
+                if decision
+                else REVIEW_UNREVIEWED
+            )
         public = _public_delivery(
             row,
             review_status=status,
@@ -199,9 +217,9 @@ def fold_delivery_history(work_id: str) -> dict[str, Any]:
     if current:
         current_public = _public_delivery(
             current,
-            review_status=review_status,
+            review_status=shown_status,
             include_content=True,
-            latest_decision=current_decision,
+            latest_decision=shown_decision,
         )
         assert current_public is not None
         current_public["changes_from_previous"] = _changes_for(current, by_id)
@@ -210,7 +228,7 @@ def fold_delivery_history(work_id: str) -> dict[str, Any]:
         "work_id": work_id,
         "deliveries": summaries,
         "current": current_public,
-        "current_review_status": review_status if current else None,
+        "current_review_status": shown_status if current else None,
         "latest_decision": current_decision,
         "_by_id": by_id,
         "_decisions": decisions,
@@ -219,6 +237,7 @@ def fold_delivery_history(work_id: str) -> dict[str, Any]:
         "_adoptions": adoptions,
         "_by_adoption_key": _adoption_idempotency_index(adoptions),
         "_current_id": current_id,
+        "_rework_withdrawn": withdrawn,
     }
 
 
@@ -535,6 +554,9 @@ def get_delivery(work_id: str, delivery_id: str) -> dict[str, Any]:
         if latest
         else REVIEW_UNREVIEWED
     )
+    if delivery_id == str(folded.get("_current_id") or "") and folded.get("_rework_withdrawn"):
+        latest = None
+        status = REVIEW_UNREVIEWED
     public = _public_delivery(
         row,
         review_status=status,
@@ -925,6 +947,39 @@ def _execute_requested_since(work_id: str, after_seq: int) -> bool:
         limit=1,
     )
     return bool(events)
+
+
+def _rework_request_withdrawn(
+    work_id: str,
+    decision: dict[str, Any] | None,
+    status_rows: list[tuple[int, str, str]],
+) -> bool:
+    """True when this changes_requested never became an in-progress rework.
+
+    ``status_rows`` are ``(seq, status, reason)`` from ``WorkItemStatusChanged``.
+    A ``rework_restore`` after the decision is the rework open (pending) or the
+    put-back (completed/failed). No ``ExecuteRequested`` after that decision,
+    or none after the pending open, means the dispatch was withdrawn. The
+    decision event is kept; callers present the delivery as unreviewed.
+    """
+    if not isinstance(decision, dict):
+        return False
+    if str(decision.get("decision") or "") != DECISION_CHANGES_REQUESTED:
+        return False
+    decision_seq = int(decision.get("event_seq") or 0)
+    restores = [
+        (seq, status)
+        for seq, status, reason in status_rows
+        if reason == read_ports.WORK_STATUS_REASON_REWORK_RESTORE and seq > decision_seq
+    ]
+    if not restores:
+        return False
+    open_seq = next((seq for seq, status in restores if status == "pending"), None)
+    if not _execute_requested_since(work_id, decision_seq):
+        return True
+    if open_seq is not None and not _execute_requested_since(work_id, open_seq):
+        return True
+    return False
 
 
 def _has_rework_note(notes: list[Any], delivery_id: str, reason: str) -> bool:
