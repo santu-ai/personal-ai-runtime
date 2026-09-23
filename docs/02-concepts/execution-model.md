@@ -37,7 +37,7 @@ Personal AI Runtime 的所有执行路径用**一套三车道语义**解释。�
 |-----------|--------|------------------|
 | Retry | Present | Lane A `_maybe_retry` + ExecutionRetried；`test_scheduler*` / policy |
 | Cancellation (mid-flight) | Present (durable) | `Scheduler.request_cancel` → ExecutionFailed before `task.cancel`；BG via WorkItemStatusChanged；`test_background_control_plane` |
-| Recovery | Present | `recover_scheduled_executions` + 没有 handler 行的 BG running→pending；非 goal 且带 `executable_plan` 的 task/action 若已是 running 但还没有 handler 行，补一次 `ExecuteRequested`；goal 或没有计划则跳过。已结束的 handler 不重跑。该请求的 handler 都已终态且至少一条失败时，把仍为 running 的 Work 收成 `failed`（不另开一轮 retry 预算）。`ExecuteCompleted` 能对上同一次请求时，同步 Work 状态。interrupted 重放计入 retry 预算（超限走 ExecutionFailed / DLQ，不再重放）。`kernel.expire_stale_running_leases` 在终态死信时走与 Scheduler 相同的领域 Work 收口，但不重新入队剩余重试。启动另扫 pending：`reason=rerun_restore` 且其后没有 `ExecuteRequested` 收回 `completed`；`reason=rework_restore` 收回打开前的 `completed` 或 `failed`。`replay_dead_letters` 在对应领域 Work 已是 `failed` / `completed` / `cancelled` 时不把该死信再排成 pending（日志 `reason=work_terminal:<status>`，不发 Execution*）；不是最新 `status=running` 之后那条 `ExecuteRequested` 的死信同样跳过（`not_current_attempt`）。没有对应 Work 的执行仍可重放。详见下文；scheduler/runtime_loop tests |
+| Recovery | Present | `recover_scheduled_executions` + 没有 handler 行的 BG running→pending；非 goal 且带 `executable_plan` 的 task/action 若已是 running 但还没有 handler 行，补一次 `ExecuteRequested`；goal 或没有计划则跳过。已结束的 handler 不重跑。该请求的 handler 都已终态且至少一条失败时，把仍为 running 的 Work 收成 `failed`（不另开一轮 retry 预算）。`ExecuteCompleted` 能对上同一次请求时，同步 Work 状态。interrupted 重放计入 retry 预算（超限走 ExecutionFailed / DLQ，不再重放）。`kernel.expire_stale_running_leases` 在终态死信时走与 Scheduler 相同的领域 Work 收口，但不重新入队剩余重试。启动另扫 pending：`reason=rerun_restore` 且其后没有 `ExecuteRequested` 收回 `completed`；`reason=rework_restore` 收回打开前的 `completed` 或 `failed`。`replay_dead_letters` 在对应领域 Work 已是 `failed` / `completed` / `cancelled` 时不把该死信再排成 pending（日志 `reason=work_terminal:<status>`，不发 Execution*）；不是当前尝试的死信同样跳过（`not_current_attempt`）。handler 在请求之后补写的 `status=running`（`caused_by` 指向该请求）仍算当前尝试，不因此记成 `not_current_attempt`。没有对应 Work 的执行仍可重放。详见下文；scheduler/runtime_loop tests |
 | Lease / multi-worker ownership | Absent / **Non-goal** | 单进程；见 [runtime-invariants.md](runtime-invariants.md) INV-W6；`check_single_process_control_plane.py` |
 | Quota | Partial | HTTP/WS rate limits；tool-loop token/iteration caps；无 per-tenant scheduler quota |
 | Backpressure | Present | `scheduler_max_pending` → `queue_full` |
@@ -57,7 +57,7 @@ Personal AI Runtime 的所有执行路径用**一套三车道语义**解释。�
 | Concept | Create | Start | End | Retry | Recover | Destroy/GC |
 |---------|--------|-------|-----|-------|---------|------------|
 | **ScheduledExecution** | ExecutionRequested | ExecutionStarted | Completed/Failed | ExecutionRetried (Lane A) | running→retrying→pending；retry 预算尽则 ExecutionFailed / DLQ | Soft-prune terminal rows (`handler_executions_retention_days`) |
-| **WorkItem** | WorkItemCreated | StatusChanged(running) 或用户 pending→completed | completed/cancelled | Domain re-open: failed→pending、completed→pending；running 且最新 `status=running` 之后的 `ExecuteRequested` 已失败时可再次 `ExecuteRequested` | 无 handler 行的 BG running→pending；有计划的 task/action 在 running 且无 handler 行时补 `ExecuteRequested`；goal 或没有计划则跳过。该请求的 handler 都已终态且至少一条失败则收成 `failed`。pending 且 `reason=rerun_restore`、其后没有 `ExecuteRequested` 时收回 `completed` 并放回 `rerun_stash`。pending 且 `reason=rework_restore`、其后没有 `ExecuteRequested` 时收回打开前的 `completed` 或 `failed`，并放回同一暂存 | Domain delete events |
+| **WorkItem** | WorkItemCreated | StatusChanged(running) 或用户 pending→completed | completed/cancelled | Domain re-open: failed→pending、completed→pending；running 且当前尝试的 `ExecuteRequested` 已失败时可再次 `ExecuteRequested`（含 handler 事后补写 running、`caused_by` 指向该请求） | 无 handler 行的 BG running→pending；有计划的 task/action 在 running 且无 handler 行时补 `ExecuteRequested`；goal 或没有计划则跳过。该请求的 handler 都已终态且至少一条失败则收成 `failed`。审批恢复先写请求、再补 running 时，这一条仍算当前尝试，不当成没有 handler。pending 且 `reason=rerun_restore`、其后没有 `ExecuteRequested` 时收回 `completed` 并放回 `rerun_stash`。pending 且 `reason=rework_restore`、其后没有 `ExecuteRequested` 时收回打开前的 `completed` 或 `failed`，并放回同一暂存 | Domain delete events |
 | **PlanResume** | register on pending approval | — | take on approve/deny | — | SQLite durable | clear on cancel/deny/expire |
 | **Chat tool loop** | ChatRequested | Brain.chat_stream | ChatCompleted / confirmation_required | Lane A `max_retries=2` | `chat_ckpt:{correlation_id}` on interrupt replay | — |
 
@@ -69,14 +69,14 @@ Domain FSM 不含 `retrying`；操作层重试由 Lane A（`ScheduledExecution`�
 
 ### 当前尝试
 
-当前尝试是最新一条 `status=running` 之后的那条 `ExecuteRequested`（`request_work_item_execute` 先写 running，再写请求；更早的请求属于上一轮）。
+当前尝试是最新一条 `ExecuteRequested`，并且它要么排在最新一条 `status=running` 之后（`request_work_item_execute` 先写 running，再写请求），要么就是引起这条 running 的请求。审批恢复（`_dispatch_plan_resume`）在 Work 仍为 `waiting_approval` 时先写 `ExecuteRequested`，执行 handler 再补 `WorkItemStatusChanged(running)`，`caused_by` 指向该请求。补写之后请求的 seq 不再大于最新 running，但它仍是当前尝试。更早的请求，或 `caused_by` 对不上这条请求的 running，属于上一轮。`_current_execute_requested` 与任务详情的 `_snapshot_execute_requested` 是同一函数。
 
 这条边界同时用于：
 
-- 启动恢复（`_recover_interrupted_background_tasks`）：只看这一条请求的 handler。都已终态且至少一条失败时，仍为 running 的 Work 收成 `failed`，不重新排队，也不另开一轮 retry 预算。能对上同一次 `ExecuteCompleted` 时同步状态。还没有 handler 行时，后台任务回到 pending；有 `executable_plan` 的 task/action 补一次 `ExecuteRequested`；goal 或没有计划则跳过。
+- 启动恢复（`_recover_interrupted_background_tasks`）：只看这一条请求的 handler。都已终态且至少一条失败时，仍为 running 的 Work 收成 `failed`，不重新排队，也不另开一轮 retry 预算。能对上同一次 `ExecuteCompleted` 时同步状态。还没有 handler 行时，后台任务回到 pending；有 `executable_plan` 的 task/action 补一次 `ExecuteRequested`；goal 或没有计划则跳过。审批恢复补写 running 之后，已有 handler 的那条请求不当成「还没派发」。
 - 当场死信收口（`close_dead_lettered_domain_work`）与 `kernel.expire_stale_running_leases` 的终态死信：只在该死信就是这一条请求、且该请求的 handler 都已终态并至少一条失败时，把仍为 running 的领域 Work 收成 `failed`。更早一次请求不会收口后来进入 running 的尝试。
 - `latest_execute_handler_failed`：这一条请求的 handler 都已终态且至少一条失败时为真。还没派发出去、或仍有未结束 handler 时为假。任务页据此把「重新执行」和上一轮失败分开。
-- 任务详情快照（`work_item_execution_snapshot`）：同一条边界。这条请求还没有 handler 行时 `handler_execution` 为空，不把上一轮失败当成当前尝试。handler 在请求之后补写的 `status=running`（`caused_by` 指向该请求）仍算这一次；启动恢复和死信收口用的严格「请求 seq 在 running 之后」不靠这条补写。
+- 任务详情快照（`work_item_execution_snapshot`）：同一判定。这条请求还没有 handler 行时 `handler_execution` 为空，不把上一轮失败当成当前尝试。上面的事后 running 对快照、启动恢复、死信收口、`latest_execute_handler_failed` 和死信重放都算这一次。
 
 ### 再次运行的半开收回
 
@@ -109,7 +109,7 @@ Kernel 每次 emit 单独提交，所以打开和派发不是一个事务。打�
 `replay_dead_letters`（`python -m scripts.replay_dead_letters`）在把死信排成 pending 之前读领域 Work：
 
 - 状态已是 `failed`、`completed` 或 `cancelled`：留下死信，日志 `reason=work_terminal:<status>`，不发 `ExecutionRetried`。用户另行「重新执行」是一条新的 `ExecuteRequested`，不是把旧 handler 行再排成 pending。
-- 该死信不是最新 `status=running` 之后的那条 `ExecuteRequested`：跳过，`not_current_attempt`。
+- 该死信不是当前尝试：跳过，`not_current_attempt`。当前尝试含「请求 seq 在最新 running 之后」，以及 handler 事后补写的 running 且 `caused_by` 指向该请求。更早一次请求仍跳过。
 - 解析出了 work id 但投影行不在：`work_missing`。读状态失败：`work_status_unreadable`。
 - 执行并不指向领域 Work（例如 `TimerFired`）：仍可重放。Work 仍为 running 且死信就是当前这次请求时，重放行为不变。
 
