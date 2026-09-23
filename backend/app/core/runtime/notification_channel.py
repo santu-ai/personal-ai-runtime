@@ -155,6 +155,8 @@ class NotificationRouter:
         persist: bool = False,
         kernel: "Kernel | None" = None,
         dedup_key: str | None = None,
+        related_id: str | None = None,
+        related_type: str | None = None,
     ) -> dict:
         """投递给桌面 / webhook / ntfy。
 
@@ -172,7 +174,13 @@ class NotificationRouter:
             from app.core.runtime.notification_bridge import push_notification
 
             push_notification(
-                type_, title, content, kernel=kernel, dedup_key=dedup_key,
+                type_,
+                title,
+                content,
+                kernel=kernel,
+                dedup_key=dedup_key,
+                related_id=related_id,
+                related_type=related_type,
             )
             results["persisted"] = True
         else:

@@ -80,6 +80,20 @@ describe("NotificationDetailModal", () => {
     expect(mockNavigate).toHaveBeenCalledWith("/goals");
   });
 
+  it("opens the same task when a reminder names that work item", () => {
+    const onClose = vi.fn();
+    const reminder: Notification = {
+      ...sampleNotification,
+      type: "reminder",
+      title: "提醒",
+      related_type: "work_item",
+      related_id: "brief_1",
+    };
+    renderWithRouter(<NotificationDetailModal notification={reminder} onClose={onClose} />);
+    fireEvent.click(screen.getByText("查看相关页面"));
+    expect(mockNavigate).toHaveBeenCalledWith("/tasks/brief_1");
+  });
+
   it("navigates to dashboard for generic notification type", () => {
     const onClose = vi.fn();
     const generic: Notification = {

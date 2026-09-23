@@ -13,6 +13,7 @@ import {
   getWorkItem,
   listWorkItems,
   rerunProjectBrief,
+  scheduleBriefRepeat,
   reworkWorkDelivery,
   type WorkDelivery,
   type WorkItem,
@@ -27,6 +28,11 @@ vi.mock("../api/client", async (importOriginal) => {
     getWorkDelivery: vi.fn(),
     executeWorkItem: vi.fn().mockResolvedValue({}),
     rerunProjectBrief: vi.fn().mockResolvedValue({}),
+    scheduleBriefRepeat: vi.fn().mockResolvedValue({
+      work_id: "brief_1",
+      timer_id: "t_1",
+      fire_at: "2026-09-24T08:00:00Z",
+    }),
     cancelWorkItem: vi.fn(),
     createProjectBrief: vi.fn(),
     acceptWorkDelivery: vi.fn().mockResolvedValue({ replayed: false }),
@@ -1270,5 +1276,27 @@ describe("TasksPage", () => {
     await waitFor(() => expect(rerunProjectBrief).toHaveBeenCalledWith("brief_1"));
     expect(executeWorkItem).not.toHaveBeenCalled();
     expect(reworkWorkDelivery).not.toHaveBeenCalled();
+  });
+
+  it("schedules a repeat of the same brief", async () => {
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [briefTask];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(briefTask);
+    renderTasks("/tasks/brief_1");
+
+    fireEvent.click(await screen.findByRole("button", { name: "定时再次运行" }));
+    expect(await screen.findByText(/不会为这次触发另建交付/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("小时"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "确认定时" }));
+    await waitFor(() =>
+      expect(scheduleBriefRepeat).toHaveBeenCalledWith("brief_1", { hours: 2, minutes: 0 }),
+    );
+    expect(await screen.findByTestId("scheduled-repeat-note")).toHaveTextContent(
+      "2026-09-24T08:00:00Z",
+    );
+    expect(rerunProjectBrief).not.toHaveBeenCalled();
+    expect(screen.getByTestId("scheduled-repeat-note")).toHaveTextContent("这一份任务");
   });
 });
