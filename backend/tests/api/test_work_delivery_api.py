@@ -134,6 +134,42 @@ def test_delivery_reads_include_rework_reason(client):
     assert single.json()["latest_decision"]["decision_id"] == current["latest_decision"]["decision_id"]
 
 
+def test_delivery_reads_include_accept_reason(client):
+    created = client.post("/api/work-items/project-brief", json={
+        "title": "简报",
+        "objective": "列出变化",
+    })
+    work_id = created.json()["id"]
+    v1 = publish_delivery(
+        work_id,
+        content="full-v1",
+        summary="v1",
+        sources=[],
+        execution_id="e-accept-note",
+    )
+    accepted = client.post(
+        f"/api/work-items/{work_id}/deliveries/{v1['delivery_id']}/accept",
+        json={"reason": "  来源齐全  ", "idempotency_key": "accept-note"},
+    )
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["decision"]["reason"] == "来源齐全"
+    assert accepted.json()["decision"]["decision"] == "accepted"
+
+    detail = client.get(f"/api/work-items/{work_id}?include=deliveries")
+    assert detail.status_code == 200
+    current = detail.json()["delivery_bundle"]["current"]
+    assert current["latest_decision"]["reason"] == "来源齐全"
+    assert current["review_status"] == "accepted"
+
+    listed = client.get(f"/api/work-items/{work_id}/deliveries")
+    assert listed.json()["deliveries"][0]["latest_decision"]["reason"] == "来源齐全"
+
+    single = client.get(f"/api/work-items/{work_id}/deliveries/{v1['delivery_id']}")
+    assert single.status_code == 200
+    assert single.json()["latest_decision"]["reason"] == "来源齐全"
+    assert single.json()["latest_decision"]["decision_id"] == current["latest_decision"]["decision_id"]
+
+
 def test_old_task_without_delivery_endpoints(client):
     created = client.post("/api/work-items/", json={"title": "旧任务", "work_type": "task"})
     work_id = created.json()["id"]

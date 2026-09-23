@@ -294,7 +294,7 @@ async def get_work_delivery(item_id: str, delivery_id: str):
 
 @router.post("/{item_id}/deliveries/{delivery_id}/accept")
 async def accept_work_delivery(item_id: str, delivery_id: str, body: DeliveryDecisionRequest):
-    """Accept a specific delivery version. Does not skip tool approval."""
+    """Accept a delivery version. An optional reason is stored; blank stays blank."""
     from app.product.work_delivery import accept_delivery
 
     if not read_ports.query_work_item(item_id):
