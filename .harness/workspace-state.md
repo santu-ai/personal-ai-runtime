@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-09-23：Batch 12：仪表盘「执行」的最近失败和死信，在触发事件已有任务 id 且 `work_items` 仍有该行时带上 `work_id`，并打开 `/tasks/:id`。`correlation_id` 不当作任务 id。没有关联的行保持纯文本。不新增事件类型。
 - 2026-09-22：Batch 11：任务列表把失败且带 `executable_plan`、且不是简报待办的任务留在「进行中」，行上标「可重新执行」。没有计划的失败、已完成和已取消仍在「历史」。未改执行 API。
 - 2026-09-22：Batch 10：任务页在 Work 已是 `failed` 且仍可执行时，主按钮与提示改为「重新执行」；`running` 且 handler 失败/死信的旧窗口保持原提示。执行仍走原来的 `executeWorkItem`。
 - 2026-09-22：Batch 9：`kernel.expire_stale_running_leases` 在本批行都失败后，对终态死信调用与 Scheduler 相同的 `close_dead_lettered_domain_work`。仍有未结束的 sibling 时不收口；剩余重试不重新入队。不新增事件类型。

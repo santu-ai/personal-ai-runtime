@@ -252,25 +252,80 @@ def _public_execution(item: Any) -> dict[str, Any]:
     }
 
 
-def _newest_executions(items: list[Any], limit: int) -> list[dict[str, Any]]:
+def _work_id_on_execute_event(event: Any) -> str:
+    """Work id already stored on an ``ExecuteRequested`` trigger.
+
+    Same association as ``runtime_loop._work_id_for_execute_execution``:
+    ``payload.action_id``, otherwise the ``exec_`` aggregate id. An explicit
+    ``action_id`` is not replaced by the aggregate suffix.
+    """
+    from app.core.runtime.kernel.constants import EVENT_EXECUTE_REQUESTED
+
+    if getattr(event, "type", None) != EVENT_EXECUTE_REQUESTED:
+        return ""
+    payload = event.payload if isinstance(getattr(event, "payload", None), dict) else {}
+    action_id = str(payload.get("action_id") or "").strip()
+    if action_id:
+        return action_id
+    aggregate_id = str(getattr(event, "aggregate_id", "") or "")
+    prefix = "exec_"
+    if aggregate_id.startswith(prefix):
+        return aggregate_id[len(prefix):].strip()
+    return ""
+
+
+def _associated_work_id(runtime: Any, item: Any, cache: dict[str, str | None]) -> str | None:
+    """Expose a work id only when the trigger event and work_items row already agree.
+
+    ``correlation_id`` is not a work id. Rows without this association stay unset.
+    """
+    from app.core.runtime.kernel.constants import EVENT_EXECUTE_REQUESTED
+
+    if (getattr(item, "event_type", "") or "") != EVENT_EXECUTE_REQUESTED:
+        return None
+    event_id = str(getattr(item, "event_id", "") or "").strip()
+    if not event_id:
+        return None
+    if event_id not in cache:
+        found = runtime.read_events(id=event_id, limit=1)
+        candidate = _work_id_on_execute_event(found[0]) if found else ""
+        if not candidate:
+            cache[event_id] = None
+        else:
+            rows = runtime.query_state("work_items", id=candidate, limit=1)
+            row_id = str(rows[0].get("id") or "") if rows else ""
+            cache[event_id] = candidate if row_id == candidate else None
+    return cache[event_id]
+
+
+def _trust_execution_row(
+    runtime: Any,
+    item: Any,
+    cache: dict[str, str | None],
+    *,
+    rename_retry: bool = False,
+) -> dict[str, Any]:
+    row = _public_execution(item)
+    if rename_retry and row.get("status") == STATUS_RETRYING:
+        row = {**row, "status": _TRUST_STATUS_IN_RETRY}
+    return {**row, "work_id": _associated_work_id(runtime, item, cache)}
+
+
+def _newest_executions(
+    items: list[Any],
+    limit: int,
+    *,
+    runtime: Any,
+    cache: dict[str, str | None],
+    rename_retry: bool = False,
+) -> list[dict[str, Any]]:
     """Execution repository results are ascending by created_at."""
     if limit <= 0 or not items:
         return []
-    return [_public_execution(item) for item in reversed(items[-limit:])]
-
-
-def _public_execution_for_trust(item: Any) -> dict[str, Any]:
-    """Trust summary row — map Lane A scheduler status to product-facing names."""
-    row = _public_execution(item)
-    if row.get("status") == STATUS_RETRYING:
-        row = {**row, "status": _TRUST_STATUS_IN_RETRY}
-    return row
-
-
-def _newest_trust_executions(items: list[Any], limit: int) -> list[dict[str, Any]]:
-    if limit <= 0 or not items:
-        return []
-    return [_public_execution_for_trust(item) for item in reversed(items[-limit:])]
+    return [
+        _trust_execution_row(runtime, item, cache, rename_retry=rename_retry)
+        for item in reversed(items[-limit:])
+    ]
 
 
 def _trust_by_status(raw: dict[str, int] | None) -> dict[str, int]:
@@ -284,20 +339,27 @@ def _trust_by_status(raw: dict[str, int] | None) -> dict[str, int]:
 def query_execution_trust_summary(*, recent_limit: int = 5) -> dict[str, Any]:
     """Dashboard-facing Lane A health: pending / failed / retry / dead-letter."""
     runtime = kernel()
+    cache: dict[str, str | None] = {}
     by_status = runtime.count_scheduled_executions_by_status()
     failed_rows = runtime.read_scheduled_executions(status="failed")
     in_retry_rows = runtime.read_scheduled_executions(status=STATUS_RETRYING)
     completed_rows = runtime.read_scheduled_executions(status="completed")
     dead_rows = runtime.list_dead_letter_executions()
-    failed = _newest_executions(failed_rows, recent_limit)
-    last_completed = _newest_executions(completed_rows, 1)
+    failed = _newest_executions(failed_rows, recent_limit, runtime=runtime, cache=cache)
+    last_completed = _newest_executions(
+        completed_rows, 1, runtime=runtime, cache=cache,
+    )
     last_failed = failed[:1]
     return {
         "by_status": _trust_by_status(by_status),
         "pending_approvals": int(query_pending_approval_count() or 0),
         "failed": failed,
-        "in_retry": _newest_trust_executions(in_retry_rows, recent_limit),
-        "dead_letter": _newest_executions(dead_rows, recent_limit),
+        "in_retry": _newest_executions(
+            in_retry_rows, recent_limit, runtime=runtime, cache=cache, rename_retry=True,
+        ),
+        "dead_letter": _newest_executions(
+            dead_rows, recent_limit, runtime=runtime, cache=cache,
+        ),
         "dead_letter_count": len(dead_rows),
         "last_completed": last_completed[0] if last_completed else None,
         "last_failed": last_failed[0] if last_failed else None,

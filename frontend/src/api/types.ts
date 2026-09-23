@@ -442,6 +442,8 @@ export interface ExecutionTrustItem {
   created_at: string;
   completed_at: string | null;
   correlation_id: string;
+  /** Set only when the trigger event already names a work item that still exists. */
+  work_id?: string | null;
 }
 
 export interface ExecutionTrust {
