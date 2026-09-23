@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-09-23：Batch 29：再次运行失败收回的 `WorkItemStatusChanged(completed)` 带 `reason=rerun_restore`。依赖钩子只启动 `dependencies_json` 列出这一项且依赖都已完成的待执行后继；收回和没有依赖的待办都不会被标成 `running`。不新增事件类型。`read_ports/work.py` 仍为 600/600。
 - 2026-09-23：Batch 28：再次运行已完成简报时，执行请求若在重新打开之后失败，用既有 `WorkItemStatusChanged(completed)` 收回状态，并放回刚才清掉的计划进度。当前交付不变。计划在打开前就不能执行时不改状态。定时到点走同一条路径。不新增事件类型。`read_ports/work.py` 仍为 600/600。
 - 2026-09-23：Batch 27：文档对齐 #88–#113 之后仍漂移的陈述。测试文件数为 203；删掉不存在的 `trigger_evaluation` cron，补上 `telegram_poll` 与 `reminder` 的 `work_id` 行为；启动恢复写明 task/action 与终态失败条件；toast 在右下。全局周期对比与简报版本差仍分开写。未改守卫脚本。
 - 2026-09-23：Batch 26：已完成且已有交付的项目简报可以「定时再次运行」。既有 `set_timer` 的 payload 写入这一份的 `work_id`。到点若仍可再次运行，就跑同一份任务；否则提醒只打开它。不新建任务，不为这次触发另建交付。`GET /api/dashboard/periods` 仍是全局对比。不新增事件类型。未改 `read_ports/work.py`。
