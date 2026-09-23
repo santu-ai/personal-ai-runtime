@@ -1207,12 +1207,15 @@ def _attribute_delivery_activity(
     no matching handler replay still counts. Events without the stamp stay
     twins of a handler replay on the same correlation. Model cost sums
     ``LLMCallRecorded`` with ``purpose=project_brief`` and ``caused_by`` equal
-    to the execution id. Calls that omit ``caused_by`` stay unattributable.
+    to the execution id. Successful calls that omit ``caused_by`` increment
+    ``unattributed_project_brief_calls`` and leave that sum in place. A read
+    that hits its cap marks both values ``unavailable``.
     """
     zeros = {
         "approval_interventions": 0,
         "recovery_interventions": 0,
         "llm_cost": 0.0,
+        "unattributed_project_brief_calls": 0,
     }
     if not execution_ids:
         return zeros, False
@@ -1348,14 +1351,14 @@ def _attribute_delivery_activity(
     if len(llm_events) >= limit:
         capped = True
     linked_cost = 0.0
-    unlinked = False
+    unattributed_calls = 0
     for event in llm_events:
         payload = _event_payload(event)
         if payload.get("purpose") != "project_brief" or not payload.get("success", True):
             continue
         caused = str(event.caused_by or "").strip()
         if not caused:
-            unlinked = True
+            unattributed_calls += 1
             continue
         if caused not in execution_ids:
             continue
@@ -1364,10 +1367,12 @@ def _attribute_delivery_activity(
         except (TypeError, ValueError):
             continue
 
-    if capped or unlinked:
+    if capped:
         cost_value: Any = "unavailable"
+        unattributed_value: Any = "unavailable"
     else:
         cost_value = round(linked_cost, 6)
+        unattributed_value = unattributed_calls
     if capped:
         approval_value: Any = "unavailable"
         recovery_value: Any = "unavailable"
@@ -1378,6 +1383,7 @@ def _attribute_delivery_activity(
         "approval_interventions": approval_value,
         "recovery_interventions": recovery_value,
         "llm_cost": cost_value,
+        "unattributed_project_brief_calls": unattributed_value,
     }, capped
 
 
@@ -1394,9 +1400,11 @@ def summarize_delivery_metrics(
     crash-recovery count, and model cost are joined from the delivery's
     ``execution_id`` onto existing correlation and execution events. An
     ``interrupted_before_audit`` closure twins the handler replay of the same
-    attempt via ``retry_count``, not a clock window. Model cost stays
-    ``unavailable`` when a ``project_brief`` call in the lookback has no
-    ``caused_by``, or when a read hits its cap.
+    attempt via ``retry_count``, not a clock window. Model cost is the sum of
+    attributable calls. Successful ``project_brief`` calls in the lookback
+    that omit ``caused_by`` increment ``unattributed_project_brief_calls``
+    and do not replace that sum with ``unavailable``. Both stay
+    ``unavailable`` when a read hits its cap.
     """
     days = min(365, max(1, int(days)))
     limit = max(1, int(limit))

@@ -44,6 +44,7 @@ vi.mock("../api/client", async (importOriginal) => {
         approval_interventions: "unavailable",
         recovery_interventions: "unavailable",
         llm_cost: "unavailable",
+        unattributed_project_brief_calls: "unavailable",
       },
       capped: false,
       cap_limit: 5000,
@@ -195,6 +196,7 @@ describe("TasksPage", () => {
         approval_interventions: 2,
         recovery_interventions: 1,
         llm_cost: "unavailable",
+        unattributed_project_brief_calls: 0,
       },
       capped: false,
       cap_limit: 5000,
@@ -205,6 +207,33 @@ describe("TasksPage", () => {
     expect(screen.getByText("首版采纳 50%（1/2）")).toBeInTheDocument();
     expect(screen.getByText(/返工 1 · 已转任务 1 · 平均评审 1.5 小时/)).toBeInTheDocument();
     expect(screen.getByText("审批 2 · 恢复 1 · 模型成本未分开计")).toBeInTheDocument();
+  });
+
+  it("shows attributed brief cost beside unattributed calls", async () => {
+    vi.mocked(getDeliveryMetrics).mockResolvedValue({
+      window_days: 30,
+      reviewed_tasks: 1,
+      accepted_tasks: 1,
+      first_reviewed_tasks: 1,
+      first_version_accepted_tasks: 1,
+      first_version_acceptance_rate: 1,
+      rework_count: 0,
+      adopted_action_count: 0,
+      average_review_latency_hours: null,
+      attribution: {
+        approval_interventions: 0,
+        recovery_interventions: 0,
+        llm_cost: 0.0125,
+        unattributed_project_brief_calls: 2,
+      },
+      capped: false,
+      cap_limit: 5000,
+      items: [],
+    });
+    renderTasks("/tasks");
+    expect(
+      await screen.findByText("审批 0 · 恢复 0 · 模型成本 $0.0125 · 未归因 2 次"),
+    ).toBeInTheDocument();
   });
 
   it("renders empty tasks shell", async () => {
