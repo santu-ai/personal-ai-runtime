@@ -169,6 +169,69 @@ def test_public_delivery_keeps_rework_reason(isolated_kernel):
     assert "content" not in old
 
 
+def test_public_delivery_keeps_accept_reason(isolated_kernel):
+    k, _db = isolated_kernel
+    item = _create_task()
+    work_id = item["id"]
+    v1 = publish_delivery(
+        work_id,
+        content="v1 body",
+        summary="v1",
+        sources=[],
+        execution_id="exec-accept-note",
+    )
+    accepted = accept_delivery(
+        work_id,
+        v1["delivery_id"],
+        reason="  来源齐全  ",
+        idempotency_key="accept-note",
+    )
+    assert accepted["replayed"] is False
+    assert accepted["decision"]["reason"] == "来源齐全"
+    assert accepted["decision"]["decision"] == "accepted"
+
+    bundle = public_bundle(work_id)
+    decision = bundle["current"]["latest_decision"]
+    assert bundle["current"]["review_status"] == "accepted"
+    assert decision["reason"] == "来源齐全"
+    assert bundle["deliveries"][0]["latest_decision"]["reason"] == "来源齐全"
+
+    single = get_delivery(work_id, v1["delivery_id"])
+    assert single["latest_decision"]["reason"] == "来源齐全"
+    assert single["latest_decision"]["decision_id"] == decision["decision_id"]
+
+    replay = accept_delivery(
+        work_id,
+        v1["delivery_id"],
+        reason="来源齐全",
+        idempotency_key="accept-note",
+    )
+    assert replay["replayed"] is True
+    assert replay["decision"]["reason"] == "来源齐全"
+
+    k.rebuild_all()
+    bundle = public_bundle(work_id)
+    assert bundle["current"]["latest_decision"]["reason"] == "来源齐全"
+    assert bundle["current"]["review_status"] == "accepted"
+
+
+def test_blank_accept_reason_stays_blank(isolated_kernel):
+    item = _create_task()
+    work_id = item["id"]
+    published = publish_delivery(
+        work_id,
+        content="v1 body",
+        summary="v1",
+        sources=[],
+        execution_id="exec-accept-blank",
+    )
+    accepted = accept_delivery(work_id, published["delivery_id"], reason="   ")
+    assert accepted["decision"]["reason"] == ""
+    bundle = public_bundle(work_id)
+    assert bundle["current"]["review_status"] == "accepted"
+    assert bundle["current"]["latest_decision"]["reason"] == ""
+
+
 def test_changes_from_previous_use_stored_delivery_fields(isolated_kernel):
     k, _db = isolated_kernel
     item = _create_task()

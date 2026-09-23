@@ -728,12 +728,54 @@ describe("TasksPage", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "验收" }));
+    expect(acceptWorkDelivery).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "验收交付" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "确认验收" }));
     await waitFor(() => {
-      expect(acceptWorkDelivery).toHaveBeenCalledWith(
-        "brief_1",
-        "d2",
-        expect.objectContaining({ idempotency_key: expect.any(String) }),
-      );
+      expect(acceptWorkDelivery).toHaveBeenCalledWith("brief_1", "d2", {
+        idempotency_key: expect.any(String),
+      });
+    });
+  });
+
+  it("sends a trimmed acceptance note", async () => {
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [briefTask];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(briefTask);
+    renderTasks("/tasks/brief_1");
+
+    fireEvent.click(await screen.findByRole("button", { name: "验收" }));
+    fireEvent.change(screen.getByPlaceholderText("例如：结论和来源都齐了。"), {
+      target: { value: "  来源齐全\n可以归档  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "确认验收" }));
+    await waitFor(() => {
+      expect(acceptWorkDelivery).toHaveBeenCalledWith("brief_1", "d2", {
+        reason: "来源齐全\n可以归档",
+        idempotency_key: expect.any(String),
+      });
+    });
+  });
+
+  it("omits a whitespace-only acceptance note", async () => {
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [briefTask];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(briefTask);
+    renderTasks("/tasks/brief_1");
+
+    fireEvent.click(await screen.findByRole("button", { name: "验收" }));
+    fireEvent.change(screen.getByPlaceholderText("例如：结论和来源都齐了。"), {
+      target: { value: "   \n  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "确认验收" }));
+    await waitFor(() => {
+      expect(acceptWorkDelivery).toHaveBeenCalledWith("brief_1", "d2", {
+        idempotency_key: expect.any(String),
+      });
     });
   });
 
@@ -839,6 +881,95 @@ describe("TasksPage", () => {
     expect(await screen.findByText("有进度风险")).toBeInTheDocument();
     expect(screen.getAllByText("已要求返工").length).toBeGreaterThan(0);
     expect(screen.queryByTestId("rework-reason")).not.toBeInTheDocument();
+  });
+
+  it("shows the stored accept reason on the current delivery", async () => {
+    const reason = "结论和来源都齐了，可以归档";
+    const accepted: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        work_id: "brief_1",
+        current_review_status: "accepted",
+        current: {
+          ...currentDelivery,
+          review_status: "accepted",
+          latest_decision: { decision: "accepted", reason },
+        },
+        deliveries: [currentSummary],
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [accepted];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(accepted);
+    renderTasks("/tasks/brief_1");
+
+    expect(await screen.findByText("有进度风险")).toBeInTheDocument();
+    expect(screen.getAllByText("已验收").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("accept-reason")).toHaveTextContent(`验收说明：${reason}`);
+    expect(screen.queryByTestId("rework-reason")).not.toBeInTheDocument();
+  });
+
+  it("shows a historical version's accept reason", async () => {
+    const reason = "第一版可以归档";
+    const task: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        ...briefTask.delivery_bundle!,
+        deliveries: [
+          {
+            ...historySummary,
+            review_status: "accepted",
+            latest_decision: { decision: "accepted", reason: `  ${reason}\n` },
+          },
+          currentSummary,
+        ],
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [task];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(task);
+    vi.mocked(getWorkDelivery).mockResolvedValue({
+      ...historyFull,
+      review_status: "accepted",
+      latest_decision: { decision: "accepted", reason },
+    });
+    renderTasks("/tasks/brief_1");
+
+    const historyButton = await screen.findByRole("button", {
+      name: `v1 · 已验收 · ${reason} · 第一版摘要`,
+    });
+    fireEvent.click(historyButton);
+    expect(await screen.findByTestId("accept-reason")).toHaveTextContent(`验收说明：${reason}`);
+  });
+
+  it("omits a blank accept reason", async () => {
+    const accepted: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        work_id: "brief_1",
+        current_review_status: "accepted",
+        current: {
+          ...currentDelivery,
+          review_status: "accepted",
+          latest_decision: { decision: "accepted", reason: "   " },
+        },
+        deliveries: [currentSummary],
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [accepted];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(accepted);
+    renderTasks("/tasks/brief_1");
+
+    expect(await screen.findByText("有进度风险")).toBeInTheDocument();
+    expect(screen.getAllByText("已验收").length).toBeGreaterThan(0);
+    expect(screen.queryByTestId("accept-reason")).not.toBeInTheDocument();
   });
 
   it("shows structured changes against the previous delivery", async () => {

@@ -64,10 +64,21 @@ function reviewLabel(status: string | null | undefined): string {
   return "无交付";
 }
 
-function deliveryReworkReason(delivery: WorkDelivery | null | undefined): string {
-  if (!delivery || delivery.review_status !== "changes_requested") return "";
+function deliveryDecisionReason(
+  delivery: WorkDelivery | null | undefined,
+  status: "accepted" | "changes_requested",
+): string {
+  if (!delivery || delivery.review_status !== status) return "";
   const reason = delivery.latest_decision?.reason;
   return typeof reason === "string" ? reason.trim() : "";
+}
+
+function deliveryReworkReason(delivery: WorkDelivery | null | undefined): string {
+  return deliveryDecisionReason(delivery, "changes_requested");
+}
+
+function deliveryAcceptReason(delivery: WorkDelivery | null | undefined): string {
+  return deliveryDecisionReason(delivery, "accepted");
 }
 
 function checkResultLabel(result: string): string {
@@ -154,10 +165,11 @@ function deliveryCheckSummary(delivery: WorkDelivery | null | undefined): string
 }
 
 function deliveryVersionLabel(row: WorkDelivery): string {
+  const note = deliveryReworkReason(row) || deliveryAcceptReason(row);
   return [
     `v${row.version}`,
     reviewLabel(row.review_status),
-    deliveryReworkReason(row).replace(/\s+/g, " "),
+    note.replace(/\s+/g, " "),
     deliveryCheckSummary(row),
     row.summary || "无摘要",
   ]
@@ -443,6 +455,8 @@ export default function TasksPage() {
   const [filePaths, setFilePaths] = useState("");
   const [reworkOpen, setReworkOpen] = useState(false);
   const [reworkReason, setReworkReason] = useState("");
+  const [acceptTarget, setAcceptTarget] = useState<WorkDelivery | null>(null);
+  const [acceptNote, setAcceptNote] = useState("");
   const [historyId, setHistoryId] = useState<string | null>(null);
   const [historyFull, setHistoryFull] = useState<WorkDelivery | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -463,6 +477,8 @@ export default function TasksPage() {
     setConfirmExecute(false);
     setReworkOpen(false);
     setReworkReason("");
+    setAcceptTarget(null);
+    setAcceptNote("");
     setHistoryId(null);
     setHistoryFull(null);
     setHistoryError(null);
@@ -604,14 +620,18 @@ export default function TasksPage() {
     }
   };
 
-  const handleAccept = async (delivery: WorkDelivery) => {
-    if (!selected) return;
+  const handleAccept = async () => {
+    if (!selected || !acceptTarget) return;
+    const note = acceptNote.trim();
     setBusy(true);
     if (!acceptKey.current) acceptKey.current = newIdempotencyKey("accept");
     try {
-      await acceptWorkDelivery(selected.id, delivery.delivery_id, {
+      await acceptWorkDelivery(selected.id, acceptTarget.delivery_id, {
+        ...(note ? { reason: note } : {}),
         idempotency_key: acceptKey.current,
       });
+      setAcceptTarget(null);
+      setAcceptNote("");
       invalidate();
       setMetricsRefresh((value) => value + 1);
     } catch (err) {
@@ -934,12 +954,21 @@ export default function TasksPage() {
                               {deliveryReworkReason(shownDelivery)}
                             </p>
                           ) : null}
+                          {deliveryAcceptReason(shownDelivery) ? (
+                            <p
+                              className="text-sm text-fg-secondary mt-1 whitespace-pre-wrap break-words"
+                              data-testid="accept-reason"
+                            >
+                              <span className="text-fg-tertiary">验收说明：</span>
+                              {deliveryAcceptReason(shownDelivery)}
+                            </p>
+                          ) : null}
                         </div>
                         {!viewingHistory && shownDelivery.review_status === "unreviewed" && (
                           <div className="flex gap-2">
                             <Button
                               size="sm"
-                              onClick={() => void handleAccept(shownDelivery)}
+                              onClick={() => setAcceptTarget(shownDelivery)}
                               disabled={busy}
                             >
                               验收
@@ -1258,6 +1287,26 @@ export default function TasksPage() {
               />
             </label>
           </div>
+        </Dialog>
+
+        <Dialog
+          open={Boolean(acceptTarget)}
+          title="验收交付"
+          description="可以留下验收说明。留空则直接验收，说明不会显示。"
+          confirmLabel="确认验收"
+          cancelLabel="取消"
+          confirmDisabled={busy}
+          onConfirm={() => {
+            void handleAccept();
+          }}
+          onCancel={() => setAcceptTarget(null)}
+        >
+          <textarea
+            className="w-full min-h-24 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm"
+            value={acceptNote}
+            onChange={(e) => setAcceptNote(e.target.value)}
+            placeholder="例如：结论和来源都齐了。"
+          />
         </Dialog>
 
         <Dialog
