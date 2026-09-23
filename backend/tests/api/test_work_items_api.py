@@ -282,6 +282,63 @@ async def test_execution_detail_shows_in_handler_exception(client, monkeypatch):
     assert completed[-1].payload["error"] == "disk full"
 
 
+async def test_execution_detail_shows_tool_step_failure(client, monkeypatch):
+    """A failed or denied tool step returns normally; its reason is on ExecuteCompleted."""
+    from app.core.runtime.execution import ExecutionContext
+    from app.core.runtime.execution_events import (
+        emit_execution_completed,
+        emit_execution_requested,
+    )
+    from app.core.runtime.handlers.execute_handlers import on_execute_requested
+    from app.core.runtime.kernel_instance import kernel
+    from app.core.runtime.scheduled_execution import ScheduledExecution
+
+    created = client.post("/api/work-items/", json={
+        "title": "Tool denied",
+        "work_type": "task",
+        "executable_plan": '{"steps":[{"tool":"shell_exec","params":{"command":"ls"}}]}',
+    }).json()
+    item_id = created["id"]
+    trigger = kernel.emit_event(
+        "ExecuteRequested", "action", f"exec_{item_id}",
+        payload={"action_id": item_id}, actor="user",
+    )
+    scheduled = ScheduledExecution(
+        event_id=trigger.id,
+        event_seq=trigger.seq or 0,
+        event_type=trigger.type,
+        handler_name="on_execute_requested",
+    )
+    emit_execution_requested(kernel, scheduled, "executor")
+
+    async def _denied(**_kwargs):
+        return {"status": "denied", "error": "forbidden_by_policy"}
+
+    monkeypatch.setattr(kernel, "invoke_capability", _denied)
+    await on_execute_requested(
+        ExecutionContext(
+            instance_id="runtime:test",
+            actor="executor",
+            correlation_id="corr-tool",
+            _kernel=kernel,
+            execution_id=scheduled.id,
+        ),
+        trigger,
+    )
+    emit_execution_completed(kernel, scheduled)
+
+    response = client.get(f"/api/work-items/{item_id}?include=execution")
+
+    assert response.status_code == 200
+    handler = response.json()["execution"]["handler_execution"]
+    assert handler["status"] == "completed"
+    assert handler["error"] == "forbidden_by_policy"
+    completed = kernel.read_events(type="ExecuteCompleted", aggregate_id=f"exec_{item_id}")
+    assert completed[-1].payload["status"] == "error"
+    assert completed[-1].payload["error"] == "forbidden_by_policy"
+    assert "forbidden_by_policy" in completed[-1].payload["results"][0]["result_preview"]
+
+
 def test_execute_retries_running_task_after_failed_handler(client):
     from app.core.runtime.execution_events import (
         emit_execution_failed,

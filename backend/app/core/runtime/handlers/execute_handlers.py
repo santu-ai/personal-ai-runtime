@@ -108,6 +108,38 @@ def _progress_ratio(completed_steps: int, total_steps: int) -> float:
     )
 
 
+def _step_failure_reason(results: list[Any]) -> str | None:
+    """Text already stored on the step that stopped the plan.
+
+    ``plan_runner`` writes failed and denied capability results as
+    ``{"error": "..."}``. Task detail reads ``ExecuteCompleted.error``, so the
+    same string has to be copied onto that field. Blank text is omitted.
+    """
+    failed = next(
+        (item for item in reversed(results) if getattr(item, "status", None) == "failed"),
+        None,
+    )
+    if failed is None:
+        return None
+    raw = getattr(failed, "result", "")
+    text = raw.strip() if isinstance(raw, str) else ""
+    if not text:
+        return None
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return text
+    if not isinstance(parsed, dict):
+        return text
+    err = parsed.get("error")
+    if isinstance(err, str):
+        return err.strip() or None
+    if err is None:
+        return None
+    rendered = str(err).strip()
+    return rendered or None
+
+
 def _plan_object(plan_raw: Any) -> dict[str, Any]:
     if isinstance(plan_raw, dict):
         return plan_raw
@@ -408,6 +440,10 @@ async def on_execute_requested(ctx: "ExecutionContext", event: "Event") -> None:
         extra["next_resume_from"] = outcome.next_resume_from
     if compile_error:
         extra["error"] = compile_error
+    elif status == "error":
+        reason = _step_failure_reason(outcome.results)
+        if reason:
+            extra["error"] = reason
 
     _emit_execute_completed(
         ctx,
