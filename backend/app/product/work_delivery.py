@@ -1337,13 +1337,16 @@ def rerun_project_brief(work_id: str) -> dict[str, Any]:
     """Re-execute a completed project brief on the same work item.
 
     Does not record a review decision and does not append rework notes.
-    Reopens ``completed`` → ``pending``, clears plan progress, then uses the
-    existing ``ExecuteRequested`` path. Kernel commits each event alone, so a
-    failure after that reopen restores ``completed`` (``reason=rerun_restore``)
-    and the cleared plan rows. That reason is not a new completion, so the
-    dependency hook does not start other pending tasks. The current delivery
-    stays. The next published delivery supersedes it. A plan that cannot run
-    is rejected before the reopen.
+    Reopens ``completed`` → ``pending`` with ``reason=rerun_restore``, clears
+    plan progress, then uses the existing ``ExecuteRequested`` path. Kernel
+    commits each event alone, so a failure after that reopen restores
+    ``completed`` (same reason) and the cleared plan rows. That reason is not
+    a new completion, so the dependency hook does not start other pending
+    tasks. If the process dies while the brief is still that pending reopen
+    and no later ``ExecuteRequested`` landed, startup recovery emits the same
+    completed event. It cannot put back a plan cursor that was already
+    cleared. The current delivery stays. The next published delivery
+    supersedes it. A plan that cannot run is rejected before the reopen.
     """
     with _work_lock(work_id):
         item, previous_id = _require_completed_brief(work_id)
@@ -1353,7 +1356,11 @@ def rerun_project_brief(work_id: str) -> dict[str, Any]:
         reopened = False
         progress_cleared = False
         try:
-            read_ports.update_work_item_status(work_id, "pending")
+            read_ports.update_work_item_status(
+                work_id,
+                "pending",
+                reason=read_ports.WORK_STATUS_REASON_RERUN_RESTORE,
+            )
             reopened = True
             snapshot = read_ports.reset_work_item_plan_progress(work_id)
             progress_cleared = True

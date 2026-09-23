@@ -240,10 +240,10 @@ def update_work_item_fields(
     )
 
 
-def update_work_item_status(item_id: str, new_status: str) -> dict[str, Any] | None:
+def update_work_item_status(item_id: str, new_status: str, **extra: Any) -> dict[str, Any] | None:
     from app.core.runtime.work_item_engine import update_work_item_status as _update
 
-    return _update(item_id, new_status)
+    return _update(item_id, new_status, **extra)
 
 
 def delete_work_item(item_id: str, *, cascade: bool = False) -> None:

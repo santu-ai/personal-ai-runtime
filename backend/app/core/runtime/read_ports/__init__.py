@@ -150,8 +150,10 @@ from app.core.runtime.read_ports.work import (
     work_item_execution_snapshot,
 )
 
-# WorkItemStatusChanged.payload.reason：再次运行失败后收回 completed。
-# 依赖钩子看到它就不当成新的完成。不是新事件类型。
+# WorkItemStatusChanged.payload.reason：再次运行把已完成简报先收成 pending，
+# 以及这次打开没有执行起来时收回 completed。pending 上的标记让启动恢复认出
+# 「打开了但执行请求还没落库」；completed 上的标记让依赖钩子和周期对比不当成
+# 新的完成。不是新事件类型。
 WORK_STATUS_REASON_RERUN_RESTORE = "rerun_restore"
 
 __all__ = [
