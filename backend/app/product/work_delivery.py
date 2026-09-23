@@ -30,6 +30,7 @@ from app.core.runtime.kernel.constants import (
     EVENT_EXECUTION_REQUESTED,
     EVENT_EXECUTION_RETRIED,
     EVENT_LLM_CALL_RECORDED,
+    EVENT_WORK_ITEM_STATUS_CHANGED,
     EVENT_WORK_ITEM_UPDATED,
 )
 from app.core.runtime.kernel_instance import get_current_execution_id, kernel
@@ -1313,7 +1314,18 @@ def _restore_completed_brief(
     item = read_ports.query_work_item(work_id)
     status = str((item or {}).get("status") or "")
     if status in {"pending", "running"}:
-        read_ports.update_work_item_status(work_id, "completed")
+        # pending/running → completed is already a legal transition. The reason
+        # marks a restore so the dependency hook does not treat it as a new finish.
+        kernel.emit_event(
+            EVENT_WORK_ITEM_STATUS_CHANGED,
+            AGGREGATE_WORK_ITEM,
+            work_id,
+            payload={
+                "status": "completed",
+                "reason": read_ports.WORK_STATUS_REASON_RERUN_RESTORE,
+            },
+            actor="user",
+        )
     read_ports.reset_work_item_plan_progress(work_id, snapshot=snapshot)
     logger.info("restored completed brief %s after execute request failed", work_id)
 
@@ -1324,9 +1336,11 @@ def rerun_project_brief(work_id: str) -> dict[str, Any]:
     Does not record a review decision and does not append rework notes.
     Reopens ``completed`` → ``pending``, clears plan progress, then uses the
     existing ``ExecuteRequested`` path. Kernel commits each event alone, so a
-    failure after that reopen restores ``completed`` and the cleared plan
-    rows. The current delivery stays. The next published delivery supersedes
-    it. A plan that cannot run is rejected before the reopen.
+    failure after that reopen restores ``completed`` (``reason=rerun_restore``)
+    and the cleared plan rows. That reason is not a new completion, so the
+    dependency hook does not start other pending tasks. The current delivery
+    stays. The next published delivery supersedes it. A plan that cannot run
+    is rejected before the reopen.
     """
     with _work_lock(work_id):
         item, previous_id = _require_completed_brief(work_id)

@@ -54,6 +54,148 @@ async def test_on_work_item_status_changed_starts_dependents(tmp_path, monkeypat
     assert task2["status"] == "running"
 
 
+def _pending(k, item_id: str, title: str, *, dependencies_json: str | None = None) -> None:
+    payload: dict = {"title": title, "status": "pending"}
+    if dependencies_json is not None:
+        payload["dependencies_json"] = dependencies_json
+    k.emit_event("WorkItemCreated", "work_item", item_id, payload=payload)
+
+
+def test_completion_does_not_start_unrelated_pending_tasks(tmp_path, monkeypatch):
+    """别人完成时，没有依赖、或依赖别人的待执行任务保持 pending。"""
+    from app.core.runtime.kernel import Kernel
+    from app.core.runtime.kernel.event import Event
+    from app.store.database import Database
+
+    k = Kernel(db=Database(db_path=str(tmp_path / "sched_unrelated.db")))
+    monkeypatch.setattr("app.core.runtime.cron_registry.kernel", k)
+    monkeypatch.setattr("app.core.runtime.work_item_engine.kernel", k)
+    monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", k)
+
+    k.emit_event("WorkItemCreated", "work_item", "done", payload={"title": "已完成的依赖", "status": "completed"})
+    _pending(k, "dep", "刚完成")
+    _pending(k, "successor", "后继", dependencies_json='["dep"]')
+    _pending(k, "unrelated", "无关")
+    _pending(k, "other", "依赖别人", dependencies_json='["done"]')
+    k.emit_event(
+        "WorkItemStatusChanged", "work_item", "dep",
+        payload={"status": "completed"}, actor="user",
+    )
+
+    from app.core.runtime.cron_registry import _on_work_item_status_changed
+
+    _on_work_item_status_changed(Event(
+        type="WorkItemStatusChanged",
+        aggregate_type="work_item",
+        aggregate_id="dep",
+        payload={"status": "completed"},
+    ))
+
+    assert k.query_state("work_items", id="successor")[0]["status"] == "running"
+    assert k.query_state("work_items", id="unrelated")[0]["status"] == "pending"
+    assert k.query_state("work_items", id="other")[0]["status"] == "pending"
+
+
+def test_rerun_restore_does_not_start_dependents(tmp_path, monkeypatch):
+    """收回 completed 的 reason 不启动列出这项的后继。"""
+    from app.core.runtime.kernel import Kernel
+    from app.core.runtime.read_ports import WORK_STATUS_REASON_RERUN_RESTORE
+    from app.core.runtime.kernel.event import Event
+    from app.store.database import Database
+
+    k = Kernel(db=Database(db_path=str(tmp_path / "sched_restore.db")))
+    monkeypatch.setattr("app.core.runtime.cron_registry.kernel", k)
+    monkeypatch.setattr("app.core.runtime.work_item_engine.kernel", k)
+    monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", k)
+
+    _pending(k, "brief", "简报")
+    _pending(k, "successor", "后继", dependencies_json='["brief"]')
+    _pending(k, "unrelated", "无关")
+    k.emit_event(
+        "WorkItemStatusChanged", "work_item", "brief",
+        payload={"status": "completed", "reason": WORK_STATUS_REASON_RERUN_RESTORE},
+        actor="user",
+    )
+
+    from app.core.runtime.cron_registry import _on_work_item_status_changed
+
+    _on_work_item_status_changed(Event(
+        type="WorkItemStatusChanged",
+        aggregate_type="work_item",
+        aggregate_id="brief",
+        payload={"status": "completed", "reason": WORK_STATUS_REASON_RERUN_RESTORE},
+    ))
+
+    assert k.query_state("work_items", id="successor")[0]["status"] == "pending"
+    assert k.query_state("work_items", id="unrelated")[0]["status"] == "pending"
+
+
+def test_subscribed_hook_skips_restore_and_unrelated_tasks(tmp_path, monkeypatch):
+    """emit 本身会叫醒已订阅的钩子：普通完成只拉起后继，收回不会。"""
+    from app.core.runtime.cron_registry import _on_work_item_status_changed
+    from app.core.runtime.kernel import Kernel
+    from app.core.runtime.read_ports import WORK_STATUS_REASON_RERUN_RESTORE
+    from app.store.database import Database
+
+    k = Kernel(db=Database(db_path=str(tmp_path / "sched_subscribed.db")))
+    monkeypatch.setattr("app.core.runtime.cron_registry.kernel", k)
+    monkeypatch.setattr("app.core.runtime.work_item_engine.kernel", k)
+    monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", k)
+    unsub = k.subscribe_events(_on_work_item_status_changed, type="WorkItemStatusChanged")
+    try:
+        _pending(k, "dep", "依赖")
+        _pending(k, "successor", "后继", dependencies_json='["dep"]')
+        _pending(k, "unrelated", "无关")
+        k.emit_event(
+            "WorkItemStatusChanged", "work_item", "dep",
+            payload={"status": "completed"}, actor="user",
+        )
+        assert k.query_state("work_items", id="successor")[0]["status"] == "running"
+        assert k.query_state("work_items", id="unrelated")[0]["status"] == "pending"
+
+        _pending(k, "brief", "简报")
+        _pending(k, "brief_next", "简报后继", dependencies_json='["brief"]')
+        k.emit_event(
+            "WorkItemStatusChanged", "work_item", "brief",
+            payload={"status": "completed", "reason": WORK_STATUS_REASON_RERUN_RESTORE},
+            actor="user",
+        )
+        assert k.query_state("work_items", id="brief_next")[0]["status"] == "pending"
+    finally:
+        unsub()
+
+
+def test_failed_dependency_does_not_start_pending_tasks(tmp_path, monkeypatch):
+    from app.core.runtime.kernel import Kernel
+    from app.core.runtime.kernel.event import Event
+    from app.store.database import Database
+
+    k = Kernel(db=Database(db_path=str(tmp_path / "sched_failed.db")))
+    monkeypatch.setattr("app.core.runtime.cron_registry.kernel", k)
+    monkeypatch.setattr("app.core.runtime.work_item_engine.kernel", k)
+    monkeypatch.setattr("app.core.runtime.kernel_instance.kernel", k)
+
+    _pending(k, "dep", "失败项")
+    _pending(k, "successor", "后继", dependencies_json='["dep"]')
+    _pending(k, "unrelated", "无关")
+    k.emit_event(
+        "WorkItemStatusChanged", "work_item", "dep",
+        payload={"status": "failed"}, actor="user",
+    )
+
+    from app.core.runtime.cron_registry import _on_work_item_status_changed
+
+    _on_work_item_status_changed(Event(
+        type="WorkItemStatusChanged",
+        aggregate_type="work_item",
+        aggregate_id="dep",
+        payload={"status": "failed"},
+    ))
+
+    assert k.query_state("work_items", id="successor")[0]["status"] == "pending"
+    assert k.query_state("work_items", id="unrelated")[0]["status"] == "pending"
+
+
 def test_shutdown_scheduler_unsubscribes_triggers(tmp_path, monkeypatch):
     """shutdown_scheduler clears WorkItem* subscriptions from init_scheduler."""
     from app.core.runtime import cron_registry as cr

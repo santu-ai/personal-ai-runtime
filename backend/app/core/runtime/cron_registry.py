@@ -6,6 +6,7 @@ TimerCreated 行与依赖触发器；``shutdown_scheduler`` 移除这些事件�
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Callable
@@ -62,17 +63,44 @@ def _init_timers():
         )
 
 
+def _dependency_ids(item: dict) -> set[str]:
+    """Ids listed in ``dependencies_json``. Empty when the row has no deps."""
+    raw = item.get("dependencies_json")
+    if not isinstance(raw, str) or not raw.strip():
+        return set()
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return set()
+    if not isinstance(parsed, list):
+        return set()
+    return {dep for dep in parsed if isinstance(dep, str) and dep}
+
+
 def _on_work_item_status_changed(event):
-    """工作项完成时，启动依赖已满足的后继任务。"""
-    if event.type == "WorkItemStatusChanged":
-        status = (event.payload or {}).get("status")
-        if status not in ("completed", "failed"):
-            return
+    """启动把刚结束的这项写进依赖、且依赖都已完成的后继。
+
+    没有依赖的待执行任务不会被别人的完成拉起。``rerun_restore`` 只是把
+    再次运行失败的简报收回 ``completed``，不是新的完成。
+    """
+    if getattr(event, "type", None) != "WorkItemStatusChanged":
+        return
+    payload = event.payload if isinstance(event.payload, dict) else {}
+    status = payload.get("status")
+    if status not in ("completed", "failed"):
+        return
+    if payload.get("reason") == read_ports.WORK_STATUS_REASON_RERUN_RESTORE:
+        return
+    changed_id = str(getattr(event, "aggregate_id", "") or "")
+    if not changed_id:
+        return
 
     from app.core.runtime.work_item_engine import are_dependencies_met
 
     rows = read_ports.query_pending_work_items(limit=100)
     for item in rows:
+        if changed_id not in _dependency_ids(item):
+            continue
         if are_dependencies_met(item["id"]):
             kernel.emit_event(
                 "WorkItemStatusChanged", "work_item", item["id"],

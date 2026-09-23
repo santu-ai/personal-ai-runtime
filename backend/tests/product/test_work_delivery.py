@@ -1454,8 +1454,54 @@ def test_rerun_restores_completed_delivery_when_execute_request_fails(isolated_k
     assert fold_delivery_history(work_id)["current"]["delivery_id"] == published["delivery_id"]
     assert k.read_events(type="ExecuteRequested", aggregate_id=f"exec_{work_id}") == []
     assert _status_names(k, work_id)[-2:] == ["running", "completed"]
+    restored = k.read_events(type="WorkItemStatusChanged", aggregate_id=work_id)
+    assert restored[-1].payload.get("reason") == "rerun_restore"
     _assert_rerun_progress(k, work_id)
     assert [row["work_id"] for row in list_rerunnable_briefs()] == [work_id]
+
+
+def test_rerun_restore_does_not_mark_other_pending_tasks_running(isolated_kernel, monkeypatch):
+    """依赖钩子已订阅时，收回 completed 不把无关待办或后继标成运行中。"""
+    from app.core.runtime.cron_registry import _on_work_item_status_changed
+
+    k, _db = isolated_kernel
+    unsub = k.subscribe_events(_on_work_item_status_changed, type="WorkItemStatusChanged")
+    try:
+        item = _brief_task_with_steps()
+        work_id = item["id"]
+        publish_delivery(
+            work_id, content="第一期", summary="第一期", sources=[],
+            execution_id="rerun-hook",
+        )
+        unrelated = read_ports.create_work_item("无关待办", work_type="task")
+        dependent = read_ports.create_work_item(
+            "后继待办", work_type="task", dependencies=[work_id],
+        )
+        original = k.emit_event
+
+        def drop_execute(*args, **kwargs):
+            event_type = kwargs.get("type")
+            if event_type is None and args:
+                event_type = args[0]
+            if event_type == "ExecuteRequested":
+                raise RuntimeError("execute request dropped")
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(k, "emit_event", drop_execute)
+
+        with pytest.raises(RuntimeError, match="execute request dropped"):
+            rerun_project_brief(work_id)
+    finally:
+        unsub()
+
+    assert read_ports.query_work_item(work_id)["status"] == "completed"
+    assert read_ports.query_work_item(unrelated["id"])["status"] == "pending"
+    assert read_ports.query_work_item(dependent["id"])["status"] == "pending"
+    assert _status_names(k, unrelated["id"]) == []
+    assert _status_names(k, dependent["id"]) == []
+    restored = k.read_events(type="WorkItemStatusChanged", aggregate_id=work_id)
+    assert restored[-1].payload.get("status") == "completed"
+    assert restored[-1].payload.get("reason") == "rerun_restore"
 
 
 def test_rerun_same_brief_rejects_missing_delivery_and_other_work(isolated_kernel):

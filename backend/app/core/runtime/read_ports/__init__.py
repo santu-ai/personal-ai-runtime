@@ -150,6 +150,10 @@ from app.core.runtime.read_ports.work import (
     work_item_execution_snapshot,
 )
 
+# WorkItemStatusChanged.payload.reason：再次运行失败后收回 completed。
+# 依赖钩子看到它就不当成新的完成。不是新事件类型。
+WORK_STATUS_REASON_RERUN_RESTORE = "rerun_restore"
+
 __all__ = [
     "count_active_goals",
     "count_completed_goals",
@@ -176,6 +180,7 @@ __all__ = [
     "work_item_execution_snapshot",
     "update_work_item_fields",
     "update_work_item_status",
+    "WORK_STATUS_REASON_RERUN_RESTORE",
     "delete_work_item",
     "get_sub_work_items",
     "get_work_item_tree",

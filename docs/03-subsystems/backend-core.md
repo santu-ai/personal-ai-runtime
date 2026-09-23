@@ -136,7 +136,7 @@ cron 表达式解析 `_next_cron_fire(cron_expr, from_ts)`（[`runtime_loop.py`]
 | url_monitor | 每 30 分钟 | url_monitor |
 | telegram_poll | 每 1 分钟 | `TimerFired` → `handler_name=telegram_poll`。后台 `poll_once`；网关未启用时返回 `disabled`，不拉更新 |
 
-`init_scheduler()` 订阅 `WorkItemStatusChanged`。状态变为 `completed` 或 `failed` 时，启动依赖已满足的后继任务（`_on_work_item_status_changed`，[`cron_registry.py`](../../backend/app/core/runtime/cron_registry.py)）。
+`init_scheduler()` 订阅 `WorkItemStatusChanged`。状态变为 `completed` 或 `failed` 时，只启动 `dependencies_json` 列出这一项、且依赖全部已是 `completed` 的待执行后继（`_on_work_item_status_changed`，[`cron_registry.py`](../../backend/app/core/runtime/cron_registry.py)）。没有依赖、或依赖别人的待执行任务不会因此变成 `running`。`reason=rerun_restore` 是再次运行失败后的收回，不启动后继。失败的依赖本身不是 `completed`，所以也不会放行它的后继。
 
 ## Agent / 执行模型
 
@@ -156,7 +156,7 @@ Handlers（[`handlers/`](../../backend/app/core/agents/handlers/)）：
 | `approve_handlers.py`（`runtime/handlers/`） | `ApproveRequested` | 解决审批；有 checkpoint 时恢复 Chat 工具环，否则 `continue_after_tool_result` |
 | `execute_handlers.py`（`runtime/handlers/`） | `ExecuteRequested` | 执行 work item 的 `executable_plan`（含 `work_type=background`）。计划执行中抛出的异常把异常文本写入已有 `ExecuteCompleted.error` 后正常返回，不再写成字面量 `handler_failed`。工具步骤返回 failed 或 denied 时，步骤结果里已有的失败原因同样写入该字段；空白原因不写。`continue_on_error` 之后计划仍完成的，不写 `error`。简报编译失败仍优先用编译错误文本 |
 | `inbox_poll_handlers.py`（`runtime/handlers/`） | `InboxPollRequested` | 经 capability 拉未读邮件 |
-| `timer_trigger_handler.py` | `TimerFired` | 按 `handler_name` 分派：`deadline_alert`、`memory_decay`、`world_model_snapshot`、`projection_snapshots`、`inbox_poll`、`inbox_digest`、`morning_brief`、`reminder`、`url_monitor`、`telegram_poll`。`inbox_poll` 发出 `InboxPollRequested` 后返回，不在这条定时 Work 里等待完成。`url_monitor` 与 `telegram_poll` 用 `asyncio.create_task` 放到后台，避免 30s ExecutionPolicy 超时。`reminder` 只在 payload 里已有非空 `work_id` 且任务仍在时再次运行或打开这一份任务；执行请求失败时收回 `completed`，不留下半开的 pending。任务已删除、该键为空白，或没有该键时仍是普通提醒，不改去读 `action_id`。不新建任务、不为这次触发另建交付 |
+| `timer_trigger_handler.py` | `TimerFired` | 按 `handler_name` 分派：`deadline_alert`、`memory_decay`、`world_model_snapshot`、`projection_snapshots`、`inbox_poll`、`inbox_digest`、`morning_brief`、`reminder`、`url_monitor`、`telegram_poll`。`inbox_poll` 发出 `InboxPollRequested` 后返回，不在这条定时 Work 里等待完成。`url_monitor` 与 `telegram_poll` 用 `asyncio.create_task` 放到后台，避免 30s ExecutionPolicy 超时。`reminder` 只在 payload 里已有非空 `work_id` 且任务仍在时再次运行或打开这一份任务；执行请求失败时收回 `completed`（`reason=rerun_restore`），不留下半开的 pending，也不把别的待执行任务标成 `running`。任务已删除、该键为空白，或没有该键时仍是普通提醒，不改去读 `action_id`。不新建任务、不为这次触发另建交付 |
 
 ## Scheduler — WorkItem 执行引擎
 
