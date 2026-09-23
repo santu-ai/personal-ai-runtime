@@ -253,6 +253,38 @@ describe("TasksPage", () => {
     });
   });
 
+  it("shows the handler error already stored on the execution row", async () => {
+    const failed: WorkItem = {
+      ...sampleTask,
+      status: "failed",
+      execution: {
+        steps: [{ tool: "write_file" }],
+        resume_from: 0,
+        previous_output: {},
+        handler_execution: {
+          id: "wi_err",
+          status: "failed",
+          dead_letter: true,
+          retry_count: 3,
+          handler_name: "on_execute_requested",
+          started_at: "2026-08-06T00:00:00Z",
+          completed_at: "2026-08-06T00:01:00Z",
+          error: "Timeout after 30.0s",
+        },
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [failed];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(failed);
+    renderTasks("/tasks/task_1");
+
+    const log = await screen.findByRole("region", { name: "执行状态" });
+    expect(within(log).getByText("Timeout after 30.0s")).toBeInTheDocument();
+    expect(within(log).getByText(/on_execute_requested/)).toBeInTheDocument();
+  });
+
   it("offers retry when a running task's handler has already failed", async () => {
     const stuck: WorkItem = {
       ...sampleTask,

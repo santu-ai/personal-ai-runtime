@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-09-23：Batch 15：任务详情 `include=execution` 的 `handler_execution` 带上调度行已有的 `error`（空白为 null），执行日志直接显示。不新增事件类型。
 - 2026-09-23：Batch 14：仪表盘「执行」把 `failed` 里除最近一条以外的失败也列出来（最新在前）。与最近失败或死信列表相同的 `id` 不重复；有 `work_id` 时打开 `/tasks/:id`。重试中的错误写在行内。`correlation_id` 不参与去重，也不当作任务 id。不新增事件类型。
 - 2026-09-23：Batch 13：仪表盘「执行」的重试行在已有 `work_id` 时打开 `/tasks/:id`。同一条执行（相同 id）已作为最近失败显示时，不再在死信列表里重复；`correlation_id` 不参与去重，也不当作任务 id。不新增事件类型。
 - 2026-09-23：Batch 12：仪表盘「执行」的最近失败和死信，在触发事件已有任务 id 且 `work_items` 仍有该行时带上 `work_id`，并打开 `/tasks/:id`。`correlation_id` 不当作任务 id。没有关联的行保持纯文本。不新增事件类型。

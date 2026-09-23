@@ -838,13 +838,18 @@ export default function TasksPage() {
                       )}
 
                       {handler && (
-                        <section className="space-y-1 text-sm">
+                        <section className="space-y-1 text-sm" aria-label="执行状态">
                           <h3 className="text-sm font-medium text-fg-primary">执行状态</h3>
                           <p className="text-fg-secondary">
                             handler: {handler.handler_name || "—"} · {handler.status}
                             {handler.dead_letter ? " · dead_letter" : ""}
                             {handler.retry_count > 0 ? ` · 重试 ${handler.retry_count}` : ""}
                           </p>
+                          {handler.error ? (
+                            <p className="whitespace-pre-wrap break-all text-xs text-danger">
+                              {handler.error}
+                            </p>
+                          ) : null}
                         </section>
                       )}
 
