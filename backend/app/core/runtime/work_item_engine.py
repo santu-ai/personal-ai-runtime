@@ -253,7 +253,9 @@ def _get_subtree(item_id: str) -> list[dict]:
     return sub_items
 
 
-def update_work_item_status(item_id: str, new_status: str) -> dict | None:
+def update_work_item_status(
+    item_id: str, new_status: str, *, reason: str | None = None,
+) -> dict | None:
     item = get_work_item(item_id)
     if not item:
         return None
@@ -262,11 +264,14 @@ def update_work_item_status(item_id: str, new_status: str) -> dict | None:
     to_status = WorkItemStatus(new_status)
     state_manager.transition(item_id, "work_item", from_status, to_status)
 
+    payload: dict = {"status": new_status}
+    if reason:
+        payload["reason"] = reason
     kernel.emit_event(
         type="WorkItemStatusChanged",
         aggregate_type="work_item",
         aggregate_id=item_id,
-        payload={"status": new_status},
+        payload=payload,
         actor="user",
     )
     return get_work_item(item_id)

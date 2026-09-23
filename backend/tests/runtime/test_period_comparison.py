@@ -26,6 +26,28 @@ def test_rerun_restore_is_not_a_completion():
     assert _is_completion(event) is False
 
 
+def test_compare_periods_excludes_rerun_restore(isolated_kernel, monkeypatch):
+    """收回 completed 不进入近 7 日与前 7 日的完成数。"""
+    kernel, _db = isolated_kernel
+    _emit_at(
+        monkeypatch, kernel, NOW - timedelta(hours=1),
+        "WorkItemCreated", "work_item", "brief_restore",
+        payload={"work_type": "task", "title": "收回的简报", "status": "pending"},
+    )
+    _emit_at(
+        monkeypatch, kernel, NOW - timedelta(minutes=30),
+        "WorkItemStatusChanged", "work_item", "brief_restore",
+        payload={"status": "completed", "reason": "rerun_restore"},
+    )
+
+    from app.core.runtime.read_ports.events import compare_periods
+
+    result = compare_periods(days=7, now=NOW)
+    assert result["signals"]["tasks_completed"]["current"] == 0
+    assert result["signals"]["goals_completed"]["current"] == 0
+    assert result["signals"]["work_completed_untyped"]["current"] == 0
+
+
 def _emit_at(monkeypatch, kernel, when: datetime, *args, **kwargs):
     class _Clock(datetime):
         @classmethod

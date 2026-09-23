@@ -413,18 +413,23 @@ class RuntimeLoop:
         The scheduler applies that same close when it dead-letters the handler
         while the process is still up (``close_dead_lettered_domain_work``).
         A completed handler is not replayed; an ``ExecuteCompleted`` caused by
-        that same request can still sync the work-item status. Only a running
-        row with no handler row is re-queued (background) or given the missing
-        ``ExecuteRequested`` (planned task/action).
+        that same request can still sync the work-item status. The request that
+        counts is the latest ``ExecuteRequested`` after the latest
+        ``status=running``; an older request belongs to a previous attempt.
+        Only a running row with no handler row for that request is re-queued
+        (background) or given the missing ``ExecuteRequested`` (planned
+        task/action). A pending row whose latest status event is a brief rerun
+        reopen (``reason=rerun_restore``) and that has no later
+        ``ExecuteRequested`` is put back to ``completed`` with the same reason.
         """
         from app.core.runtime.kernel.constants import (
             AGGREGATE_WORK_ITEM,
             EVENT_EXECUTE_COMPLETED,
-            EVENT_EXECUTE_REQUESTED,
             EVENT_WORK_ITEM_STATUS_CHANGED,
             EVENT_WORK_ITEM_UPDATED,
         )
 
+        recovered = 0
         try:
             rows = read_ports.query_work_items(
                 status="running",
@@ -433,44 +438,13 @@ class RuntimeLoop:
             )
         except Exception:
             logger.exception("Background task recovery scan failed")
-            return 0
+            rows = []
 
-        recovered = 0
         scheduled = kernel.read_scheduled_executions()
         for row in rows:
             work_id = row["id"]
             try:
-                status_events = kernel.read_events(
-                    aggregate_type=AGGREGATE_WORK_ITEM,
-                    aggregate_id=work_id,
-                    types=[
-                        "WorkItemCreated",
-                        EVENT_WORK_ITEM_STATUS_CHANGED,
-                        EVENT_WORK_ITEM_UPDATED,
-                    ],
-                    order="desc",
-                )
-                running_seq = next(
-                    (
-                        int(event.seq or 0)
-                        for event in status_events
-                        if isinstance(event.payload, dict)
-                        and event.payload.get("status") == "running"
-                    ),
-                    0,
-                )
-                events = kernel.read_events(
-                    type=EVENT_EXECUTE_REQUESTED,
-                    aggregate_type="action",
-                    aggregate_id=f"exec_{work_id}",
-                    order="desc",
-                    limit=1,
-                )
-                current = (
-                    events[0]
-                    if events and int(events[0].seq or 0) > running_seq
-                    else None
-                )
+                current = _current_execute_requested(kernel, work_id)
                 latest_id = current.id if current else None
                 handlers = [
                     item for item in scheduled if latest_id and item.event_id == latest_id
@@ -518,7 +492,58 @@ class RuntimeLoop:
                 logger.exception(
                     "Failed to recover interrupted work item %s", work_id
                 )
-        return recovered
+        return recovered + self._restore_half_open_reruns()
+
+    def _restore_half_open_reruns(self) -> int:
+        """Put back briefs left pending when a rerun died before execute.
+
+        ``rerun_project_brief`` marks the reopen with ``reason=rerun_restore``.
+        That pending event is still the latest status, and no
+        ``ExecuteRequested`` follows it, only when the process died before
+        dispatch. Emit ``WorkItemStatusChanged(completed)`` with the same
+        reason. Plan-cursor rows already deleted in that window stay gone.
+        """
+        from app.core.runtime.kernel.constants import (
+            AGGREGATE_WORK_ITEM,
+            EVENT_WORK_ITEM_STATUS_CHANGED,
+        )
+
+        try:
+            rows = read_ports.query_work_items(
+                status="pending",
+                limit=5000,
+                order="created_at_asc",
+            )
+        except Exception:
+            logger.exception("Half-open rerun recovery scan failed")
+            return 0
+
+        restored = 0
+        for row in rows:
+            work_id = row["id"]
+            try:
+                if not _half_open_rerun(kernel, work_id):
+                    continue
+                kernel.emit_event(
+                    EVENT_WORK_ITEM_STATUS_CHANGED,
+                    AGGREGATE_WORK_ITEM,
+                    work_id,
+                    payload={
+                        "status": "completed",
+                        "reason": read_ports.WORK_STATUS_REASON_RERUN_RESTORE,
+                    },
+                    actor="kernel",
+                )
+                restored += 1
+                logger.info(
+                    "Restored completed brief %s left pending by a rerun",
+                    work_id,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to restore half-open rerun %s", work_id
+                )
+        return restored
 
     def _reconcile_interrupted_capability_intents(self) -> int:
         """为上个进程遗留的 capability 调用意图补发审计事件。
@@ -735,12 +760,92 @@ def _emit_running_work_failed(rt_kernel, work_id: str, error: str) -> None:
     )
 
 
+def _status_events(rt_kernel, work_id: str) -> list:
+    from app.core.runtime.kernel.constants import (
+        AGGREGATE_WORK_ITEM,
+        EVENT_WORK_ITEM_STATUS_CHANGED,
+        EVENT_WORK_ITEM_UPDATED,
+    )
+
+    return rt_kernel.read_events(
+        aggregate_type=AGGREGATE_WORK_ITEM,
+        aggregate_id=work_id,
+        types=[
+            "WorkItemCreated",
+            EVENT_WORK_ITEM_STATUS_CHANGED,
+            EVENT_WORK_ITEM_UPDATED,
+        ],
+        order="desc",
+    )
+
+
+def _current_execute_requested(rt_kernel, work_id: str):
+    """Latest ``ExecuteRequested`` strictly after the latest ``status=running``.
+
+    ``request_work_item_execute`` emits running, then the request. A request
+    from an earlier attempt has a smaller seq and is not this attempt.
+    Returns None when this attempt has not dispatched yet.
+    """
+    from app.core.runtime.kernel.constants import EVENT_EXECUTE_REQUESTED
+
+    running_seq = next(
+        (
+            int(event.seq or 0)
+            for event in _status_events(rt_kernel, work_id)
+            if isinstance(event.payload, dict)
+            and event.payload.get("status") == "running"
+        ),
+        0,
+    )
+    events = rt_kernel.read_events(
+        type=EVENT_EXECUTE_REQUESTED,
+        aggregate_type="action",
+        aggregate_id=f"exec_{work_id}",
+        order="desc",
+        limit=1,
+    )
+    if not events or int(events[0].seq or 0) <= running_seq:
+        return None
+    return events[0]
+
+
+def _half_open_rerun(rt_kernel, work_id: str) -> bool:
+    """True when a rerun reopen is still pending and execute never started."""
+    from app.core.runtime.kernel.constants import EVENT_EXECUTE_REQUESTED
+
+    latest = next(
+        (
+            event
+            for event in _status_events(rt_kernel, work_id)
+            if isinstance(event.payload, dict) and "status" in event.payload
+        ),
+        None,
+    )
+    if latest is None:
+        return False
+    payload = latest.payload if isinstance(latest.payload, dict) else {}
+    if payload.get("status") != "pending":
+        return False
+    if payload.get("reason") != read_ports.WORK_STATUS_REASON_RERUN_RESTORE:
+        return False
+    pending_seq = int(latest.seq or 0)
+    requests = rt_kernel.read_events(
+        type=EVENT_EXECUTE_REQUESTED,
+        aggregate_type="action",
+        aggregate_id=f"exec_{work_id}",
+        order="desc",
+        limit=1,
+    )
+    return not (requests and int(requests[0].seq or 0) > pending_seq)
+
+
 def close_dead_lettered_domain_work(rt_kernel, execution) -> bool:
     """Close a still-running work item when this execution just dead-lettered.
 
     Same predicate as ``RuntimeLoop`` startup recovery for a failed handler:
-    the execution belongs to that work item's latest ``ExecuteRequested``,
-    every handler for that request is terminal, and one of them failed.
+    the execution belongs to the ``ExecuteRequested`` after the latest
+    ``status=running``, every handler for that request is terminal, and one
+    of them failed. An older request does not close a newer running attempt.
     Emits ``WorkItemStatusChanged(failed)`` only. Does not enqueue another
     ``ExecuteRequested`` or spend a new retry budget.
     """
@@ -772,14 +877,8 @@ def _close_dead_lettered_domain_work(rt_kernel, execution) -> bool:
     rows = rt_kernel.query_state("work_items", id=work_id, limit=1)
     if not rows or rows[0].get("status") != "running":
         return False
-    events = rt_kernel.read_events(
-        type=EVENT_EXECUTE_REQUESTED,
-        aggregate_type="action",
-        aggregate_id=f"exec_{work_id}",
-        order="desc",
-        limit=1,
-    )
-    if not events or events[0].id != event_id:
+    current = _current_execute_requested(rt_kernel, work_id)
+    if current is None or current.id != event_id:
         return False
     handlers = [
         item
@@ -818,23 +917,17 @@ def _work_id_for_execute_execution(rt_kernel, execution) -> str:
 
 
 def latest_execute_handler_failed(item_id: str) -> bool:
-    """True when the newest ``ExecuteRequested`` has only terminal failed rows.
+    """True when this running attempt's ``ExecuteRequested`` has only failed rows.
 
-    An in-flight handler blocks the answer. Used so a dead-lettered run can be
-    started again without treating a live ``running`` row as idle.
+    The request must come after the latest ``status=running``. An older
+    request, or a running attempt that has not dispatched yet, is not a
+    failed handler. An in-flight handler blocks the answer. Used so a
+    dead-lettered run can be started again without treating a live row as idle.
     """
-    from app.core.runtime.kernel.constants import EVENT_EXECUTE_REQUESTED
-
-    events = kernel.read_events(
-        type=EVENT_EXECUTE_REQUESTED,
-        aggregate_type="action",
-        aggregate_id=f"exec_{item_id}",
-        order="desc",
-        limit=1,
-    )
-    if not events:
+    current = _current_execute_requested(kernel, item_id)
+    if current is None:
         return False
-    event_id = events[0].id
+    event_id = current.id
     rows = [
         item
         for item in kernel.read_scheduled_executions()

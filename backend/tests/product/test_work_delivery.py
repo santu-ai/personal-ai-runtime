@@ -1455,6 +1455,8 @@ def test_rerun_restores_completed_delivery_when_execute_request_fails(isolated_k
     assert k.read_events(type="ExecuteRequested", aggregate_id=f"exec_{work_id}") == []
     assert _status_names(k, work_id)[-2:] == ["running", "completed"]
     restored = k.read_events(type="WorkItemStatusChanged", aggregate_id=work_id)
+    pending = [event for event in restored if event.payload.get("status") == "pending"]
+    assert pending[-1].payload.get("reason") == "rerun_restore"
     assert restored[-1].payload.get("reason") == "rerun_restore"
     _assert_rerun_progress(k, work_id)
     assert [row["work_id"] for row in list_rerunnable_briefs()] == [work_id]
@@ -1485,6 +1487,10 @@ def test_rerun_restores_completed_when_progress_clear_fails(isolated_kernel, mon
     assert k.read_events(
         type="ExecuteRequested", aggregate_id=f"exec_{work_id}",
     ) == []
+    restored = k.read_events(type="WorkItemStatusChanged", aggregate_id=work_id)
+    assert restored[-2].payload.get("status") == "pending"
+    assert restored[-2].payload.get("reason") == "rerun_restore"
+    assert restored[-1].payload.get("reason") == "rerun_restore"
 
 
 def test_rerun_restore_does_not_mark_other_pending_tasks_running(isolated_kernel, monkeypatch):

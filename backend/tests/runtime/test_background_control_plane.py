@@ -171,6 +171,128 @@ def test_recover_rerun_gap_ignores_previous_completed_execution(kernel, monkeypa
     )
     assert len(requests) == 2
     assert requests[-1].seq > trigger.seq
+    assert kernel.query_state("work_items", id="rerun-gap", limit=1)[0]["status"] == "running"
+    completed = [
+        event
+        for event in kernel.read_events(
+            type=EVENT_WORK_ITEM_STATUS_CHANGED, aggregate_id="rerun-gap",
+        )
+        if (event.payload or {}).get("status") == "completed"
+    ]
+    assert len(completed) == 1
+    assert completed[0].actor == "executor"
+
+
+def test_recover_restores_half_open_rerun_left_pending(kernel, monkeypatch):
+    """进程死在重新打开之后、执行请求之前时，启动恢复收回 completed。"""
+    from app.core.runtime.cron_registry import _on_work_item_status_changed
+    from app.core.runtime.read_ports import WORK_STATUS_REASON_RERUN_RESTORE
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    trigger = _running_with_execute(kernel, "half-open")
+    kernel.emit_event(
+        "ExecuteCompleted", "action", "exec_half-open",
+        payload={"action_id": "half-open", "status": "success"},
+        actor="executor", caused_by=trigger.id,
+    )
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, "half-open",
+        payload={"status": "completed"}, actor="executor",
+    )
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, "half-open",
+        payload={"status": "pending", "reason": WORK_STATUS_REASON_RERUN_RESTORE},
+        actor="user",
+    )
+    kernel.emit_event(
+        EVENT_WORK_ITEM_CREATED, AGGREGATE_WORK_ITEM, "half-successor",
+        payload={
+            "title": "后继",
+            "work_type": "task",
+            "status": "pending",
+            "dependencies_json": '["half-open"]',
+        },
+        actor="user",
+    )
+    _patch_kernel(monkeypatch, kernel)
+    monkeypatch.setattr("app.core.runtime.cron_registry.kernel", kernel)
+    monkeypatch.setattr("app.core.runtime.work_item_engine.kernel", kernel)
+    unsub = kernel.subscribe_events(
+        _on_work_item_status_changed, type="WorkItemStatusChanged",
+    )
+    try:
+        assert RuntimeLoop()._recover_interrupted_background_tasks() == 1
+    finally:
+        unsub()
+
+    row = kernel.query_state("work_items", id="half-open", limit=1)[0]
+    assert row["status"] == "completed"
+    restored = kernel.read_events(
+        type=EVENT_WORK_ITEM_STATUS_CHANGED, aggregate_id="half-open",
+    )
+    assert restored[-1].payload.get("status") == "completed"
+    assert restored[-1].payload.get("reason") == WORK_STATUS_REASON_RERUN_RESTORE
+    assert restored[-1].actor == "kernel"
+    requests = kernel.read_events(type="ExecuteRequested", aggregate_id="exec_half-open")
+    assert [event.id for event in requests] == [trigger.id]
+    assert kernel.query_state("work_items", id="half-successor", limit=1)[0]["status"] == "pending"
+
+
+def test_recover_leaves_ordinary_and_unmarked_pending(kernel, monkeypatch):
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    kernel.emit_event(
+        EVENT_WORK_ITEM_CREATED, AGGREGATE_WORK_ITEM, "plain-pending",
+        payload={"title": "待办", "work_type": "task", "status": "pending"},
+        actor="user",
+    )
+    kernel.emit_event(
+        EVENT_WORK_ITEM_CREATED, AGGREGATE_WORK_ITEM, "manual-reopen",
+        payload={"title": "手动打开", "work_type": "task", "status": "completed"},
+        actor="user",
+    )
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, "manual-reopen",
+        payload={"status": "pending"}, actor="user",
+    )
+    _patch_kernel(monkeypatch, kernel)
+
+    assert RuntimeLoop()._recover_interrupted_background_tasks() == 0
+    assert kernel.query_state("work_items", id="plain-pending", limit=1)[0]["status"] == "pending"
+    assert kernel.query_state("work_items", id="manual-reopen", limit=1)[0]["status"] == "pending"
+
+
+def test_recover_keeps_marked_pending_once_execute_was_requested(kernel, monkeypatch):
+    from app.core.runtime.read_ports import WORK_STATUS_REASON_RERUN_RESTORE
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    kernel.emit_event(
+        EVENT_WORK_ITEM_CREATED, AGGREGATE_WORK_ITEM, "rerun-started",
+        payload={
+            "title": "已派发",
+            "work_type": "task",
+            "status": "pending",
+            "executable_plan": '{"steps":[{"tool":"read_file"}]}',
+        },
+        actor="user",
+    )
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, "rerun-started",
+        payload={"status": "pending", "reason": WORK_STATUS_REASON_RERUN_RESTORE},
+        actor="user",
+    )
+    kernel.emit_event(
+        "ExecuteRequested", "action", "exec_rerun-started",
+        payload={"action_id": "rerun-started"}, actor="user",
+    )
+    _patch_kernel(monkeypatch, kernel)
+
+    assert RuntimeLoop()._recover_interrupted_background_tasks() == 0
+    row = kernel.query_state("work_items", id="rerun-started", limit=1)[0]
+    assert row["status"] == "pending"
+    assert len(kernel.read_events(
+        type="ExecuteRequested", aggregate_id="exec_rerun-started",
+    )) == 1
 
 
 def test_recover_running_task_with_scheduled_execution_is_idempotent(kernel, monkeypatch):
@@ -645,6 +767,68 @@ async def test_stale_execute_dead_letter_does_not_close_newer_run(kernel):
 
     assert kernel.query_state("work_items", id="newer-run", limit=1)[0]["status"] == "running"
     assert _failed_status_events(kernel, "newer-run") == []
+
+
+def test_close_uses_execute_after_latest_running(kernel):
+    """最新 running 之后才有的执行请求才能收口；更早的死信不动这次 running。"""
+    from app.core.runtime.execution_events import (
+        emit_execution_failed,
+        emit_execution_requested,
+    )
+    from app.core.runtime.runtime_loop import close_dead_lettered_domain_work
+
+    current = _running_with_execute(kernel, "current-close")
+    current_item = _pending_execute_execution(kernel, current, max_retries=0)
+    current_item.error = "boom"
+    emit_execution_requested(kernel, current_item, "user")
+    current_item.transition_to("failed")
+    emit_execution_failed(kernel, current_item, terminal=True, dead_letter=True)
+    stored_current = kernel.read_scheduled_execution(current_item.id)
+    assert stored_current is not None
+    assert stored_current.event_type == "ExecuteRequested"
+    assert stored_current.status == "failed"
+    assert stored_current.dead_letter is True
+    assert close_dead_lettered_domain_work(kernel, stored_current) is True
+    assert kernel.query_state("work_items", id="current-close", limit=1)[0]["status"] == "failed"
+
+    stale = _running_with_execute(kernel, "gap-close")
+    stale_item = _pending_execute_execution(kernel, stale, max_retries=0)
+    stale_item.error = "boom"
+    emit_execution_requested(kernel, stale_item, "user")
+    stale_item.transition_to("failed")
+    emit_execution_failed(kernel, stale_item, terminal=True, dead_letter=True)
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, "gap-close",
+        payload={"status": "running"}, actor="user",
+    )
+    stored_stale = kernel.read_scheduled_execution(stale_item.id)
+    assert stored_stale is not None
+    assert close_dead_lettered_domain_work(kernel, stored_stale) is False
+    assert kernel.query_state("work_items", id="gap-close", limit=1)[0]["status"] == "running"
+    assert _failed_status_events(kernel, "gap-close") == []
+
+
+def test_handler_failed_follows_execute_after_latest_running(kernel, monkeypatch):
+    from app.core.runtime.execution_events import (
+        emit_execution_failed,
+        emit_execution_requested,
+    )
+    from app.core.runtime.runtime_loop import latest_execute_handler_failed
+
+    trigger = _running_with_execute(kernel, "gap-failed")
+    item = _pending_execute_execution(kernel, trigger, max_retries=0)
+    item.error = "boom"
+    emit_execution_requested(kernel, item, "user")
+    item.transition_to("failed")
+    emit_execution_failed(kernel, item, terminal=True, dead_letter=True)
+    _patch_kernel(monkeypatch, kernel)
+
+    assert latest_execute_handler_failed("gap-failed") is True
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, "gap-failed",
+        payload={"status": "running"}, actor="user",
+    )
+    assert latest_execute_handler_failed("gap-failed") is False
 
 
 @pytest.mark.asyncio
