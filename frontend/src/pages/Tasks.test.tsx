@@ -9,6 +9,7 @@ import {
   createProjectBrief,
   executeWorkItem,
   getDeliveryMetrics,
+  getInboxEmailDetail,
   getWorkDelivery,
   getWorkItem,
   listWorkItems,
@@ -39,6 +40,7 @@ vi.mock("../api/client", async (importOriginal) => {
     reworkWorkDelivery: vi.fn().mockResolvedValue({ replayed: false }),
     adoptSuggestedAction: vi.fn().mockResolvedValue({ replayed: false, work: { id: "todo_1" } }),
     updateWorkItemStatus: vi.fn().mockResolvedValue({}),
+    getInboxEmailDetail: vi.fn(),
     getDeliveryMetrics: vi.fn().mockResolvedValue({
       window_days: 30,
       reviewed_tasks: 0,
@@ -59,6 +61,19 @@ vi.mock("../api/client", async (importOriginal) => {
       capped: false,
       cap_limit: 5000,
       items: [],
+    }),
+  };
+});
+
+vi.mock("../api/inbox", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/inbox")>();
+  return {
+    ...actual,
+    getInboxEmailSummary: vi.fn().mockResolvedValue({
+      email_id: "m1",
+      subject: "延期邮件",
+      sender: "a@example.com",
+      summary: "排期推迟",
     }),
   };
 });
@@ -1414,5 +1429,94 @@ describe("TasksPage", () => {
     );
     expect(rerunProjectBrief).not.toHaveBeenCalled();
     expect(screen.getByTestId("scheduled-repeat-note")).toHaveTextContent("这一份任务");
+  });
+
+  it("scrolls cited source ids to the source row and opens email detail", async () => {
+    const cited = {
+      ...currentDelivery,
+      findings: [
+        {
+          text: "排期推迟",
+          kind: "risk",
+          source_ids: ["email:m1", "file:abc", "email:missing"],
+        },
+      ],
+      suggested_actions: [{ title: "核对排期", reason: "邮件提到延期", source_ids: ["email:m1"] }],
+      sources: [
+        { id: "email:m1", type: "email", title: "延期邮件", locator: "a@example.com" },
+        { id: "email:m10", type: "email", title: "另一封", locator: "b@example.com" },
+        { id: "file:abc", type: "file", title: "纪要", locator: "C:\\notes\\a.md" },
+      ],
+    };
+    const task: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        ...briefTask.delivery_bundle!,
+        current: cited,
+        deliveries: [historySummary, { ...currentSummary, ...cited }],
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [task];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(task);
+    vi.mocked(getInboxEmailDetail).mockResolvedValue({
+      id: "m1",
+      sender: "a@example.com",
+      subject: "延期邮件全文",
+      preview: "延期",
+      received_at: "2026-09-20T00:00:00Z",
+      category: "actionable",
+      importance: 0.5,
+      reason: "需要跟进",
+      notified: 0,
+      digested: 0,
+      status: "pending",
+      created_at: "2026-09-20T00:00:00Z",
+    });
+    const scrolled: HTMLElement[] = [];
+    const previousScroll = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = function (this: HTMLElement) {
+      scrolled.push(this);
+    };
+    try {
+      renderTasks("/tasks/brief_1");
+
+      const findings = await screen.findByTestId("delivery-findings");
+      const fileRow = screen.getByTestId("delivery-source-file:abc");
+      const emailRow = screen.getByTestId("delivery-source-email:m1");
+      expect(fileRow).toHaveAttribute("data-delivery-source-id", "file:abc");
+      expect(fileRow).toHaveTextContent("C:\\notes\\a.md");
+      expect(within(fileRow).queryByRole("button")).not.toBeInTheDocument();
+      expect(
+        within(emailRow).getByRole("button", { name: "打开邮件 延期邮件" }),
+      ).toBeInTheDocument();
+
+      fireEvent.click(within(findings).getByRole("button", { name: "来源 file:abc" }));
+      expect(scrolled).toEqual([fileRow]);
+      expect(getInboxEmailDetail).not.toHaveBeenCalled();
+
+      scrolled.length = 0;
+      fireEvent.click(within(findings).getByRole("button", { name: "来源 email:missing" }));
+      expect(scrolled).toEqual([]);
+      expect(getInboxEmailDetail).not.toHaveBeenCalled();
+
+      const suggestions = screen.getByRole("heading", { name: "建议待办" }).closest("div");
+      expect(suggestions).toBeTruthy();
+      fireEvent.click(
+        within(suggestions as HTMLElement).getByRole("button", { name: "来源 email:m1" }),
+      );
+      expect(scrolled).toEqual([emailRow]);
+      expect(scrolled).not.toContain(screen.getByTestId("delivery-source-email:m10"));
+      await waitFor(() => expect(getInboxEmailDetail).toHaveBeenCalledWith("m1"));
+      expect(await screen.findByRole("heading", { name: "延期邮件全文" })).toBeInTheDocument();
+
+      fireEvent.click(within(emailRow).getByRole("button", { name: "打开邮件 延期邮件" }));
+      await waitFor(() => expect(getInboxEmailDetail).toHaveBeenCalledTimes(2));
+      expect(getInboxEmailDetail).toHaveBeenNthCalledWith(2, "m1");
+    } finally {
+      HTMLElement.prototype.scrollIntoView = previousScroll;
+    }
   });
 });

@@ -8,11 +8,13 @@ import {
   createProjectBrief,
   executeWorkItem,
   getDeliveryMetrics,
+  getInboxEmailDetail,
   getWorkDelivery,
   reworkWorkDelivery,
   rerunProjectBrief,
   scheduleBriefRepeat,
   updateWorkItemStatus,
+  type InboxEmail,
   type WorkDelivery,
   type WorkDeliveryChangeAction,
   type WorkDeliveryChangeFinding,
@@ -29,6 +31,13 @@ import Disclosure from "../components/ui/Disclosure";
 import EmptyState from "../components/ui/EmptyState";
 import { Input } from "../components/ui/Input";
 import PageHeader from "../components/ui/PageHeader";
+import InboxEmailDetailModal from "../components/inbox/InboxEmailDetailModal";
+import {
+  deliverySourceRowId,
+  emailMessageId,
+  findDeliverySource,
+  scrollToDeliverySource,
+} from "../utils/deliverySourceNav";
 import { timeAgo } from "../utils/timeUtils";
 import { toolLabel } from "../utils/toolLabels";
 import { ListTodo } from "lucide-react";
@@ -207,6 +216,108 @@ function findingKindLabel(kind: string | undefined): string {
   if (kind === "action") return "行动";
   if (!kind || kind === "change") return "变化";
   return kind;
+}
+
+function SourceIdChips({
+  ids,
+  onCite,
+}: {
+  ids: string[] | undefined;
+  onCite: (sourceId: string) => void;
+}) {
+  const clean = (ids ?? []).map((id) => id.trim()).filter(Boolean);
+  if (clean.length === 0) return null;
+  return (
+    <span className="ml-2 inline-flex flex-wrap gap-1 align-middle">
+      {clean.map((sourceId, index) => (
+        <button
+          key={`${sourceId}-${index}`}
+          type="button"
+          className="rounded-full border border-border-subtle bg-surface-overlay px-2 py-0.5 font-mono text-xs text-insight hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+          onClick={() => onCite(sourceId)}
+          aria-label={`来源 ${sourceId}`}
+        >
+          {sourceId}
+        </button>
+      ))}
+    </span>
+  );
+}
+
+function DeliveryFindings({
+  delivery,
+  onCite,
+}: {
+  delivery: WorkDelivery;
+  onCite: (sourceId: string) => void;
+}) {
+  const findings = delivery.findings ?? [];
+  if (findings.length === 0) return null;
+  return (
+    <div className="space-y-1" data-testid="delivery-findings">
+      <h4 className="text-xs font-medium text-fg-tertiary">结论</h4>
+      <ul className="text-sm text-fg-secondary space-y-1">
+        {findings.map((item, index) => (
+          <li key={`${item.text}-${index}`}>
+            <span className="text-fg-tertiary">[{findingKindLabel(item.kind)}]</span> {item.text}
+            <SourceIdChips ids={item.source_ids} onCite={onCite} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function DeliverySources({
+  sources,
+  activeSourceId,
+  onOpenEmail,
+}: {
+  sources: WorkDelivery["sources"];
+  activeSourceId: string | null;
+  onOpenEmail: (sourceId: string) => void;
+}) {
+  if (sources.length === 0) return null;
+  return (
+    <div>
+      <h4 className="text-xs font-medium text-fg-tertiary mb-1">来源</h4>
+      <ul className="text-sm text-fg-secondary space-y-1" data-testid="delivery-sources">
+        {sources.map((src, index) => {
+          const messageId = emailMessageId(src);
+          const active = activeSourceId === src.id;
+          const body = (
+            <>
+              <span className="font-mono text-xs text-fg-tertiary mr-2">{src.id}</span>
+              {src.title}
+              {src.locator ? ` · ${src.locator}` : ""}
+            </>
+          );
+          return (
+            <li
+              key={`${src.id}-${index}`}
+              id={deliverySourceRowId(src.id, index)}
+              data-delivery-source-id={src.id}
+              data-testid={`delivery-source-${src.id}`}
+              className={active ? "rounded-md bg-insight/10 px-1 -mx-1" : undefined}
+            >
+              {messageId ? (
+                <button
+                  type="button"
+                  className="text-left text-insight hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+                  aria-label={`打开邮件 ${src.title.trim() || src.id}`}
+                  onClick={() => onOpenEmail(src.id)}
+                >
+                  {body}
+                </button>
+              ) : (
+                body
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
 }
 
 function joinedIds(ids: string[] | undefined): string {
@@ -482,6 +593,9 @@ export default function TasksPage() {
   const [historyFull, setHistoryFull] = useState<WorkDelivery | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
+  const [inboxEmail, setInboxEmail] = useState<InboxEmail | null>(null);
+  const citeRequest = useRef(0);
   const [metrics, setMetrics] = useState<DeliveryMetrics | null>(null);
   const [metricsRefresh, setMetricsRefresh] = useState(0);
   const executeInFlight = useRef(false);
@@ -544,7 +658,10 @@ export default function TasksPage() {
   useEffect(() => {
     setScheduledRepeatNote(null);
     setConfirmSchedule(false);
-  }, [urlTaskId]);
+    setActiveSourceId(null);
+    setInboxEmail(null);
+    citeRequest.current += 1;
+  }, [urlTaskId, historyId]);
 
   useEffect(() => {
     if (listError) {
@@ -744,6 +861,24 @@ export default function TasksPage() {
       addError(err instanceof ApiError ? err.message : "完成任务失败", "任务");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const openCitedSource = async (sourceId: string, sources: WorkDelivery["sources"]) => {
+    const matched = findDeliverySource(sources, sourceId);
+    const targetId = matched?.id ?? sourceId.trim();
+    setActiveSourceId(targetId || null);
+    scrollToDeliverySource(targetId);
+    const messageId = matched ? emailMessageId(matched) : null;
+    if (!messageId) return;
+    const requestId = ++citeRequest.current;
+    try {
+      const detail = await getInboxEmailDetail(messageId);
+      if (citeRequest.current !== requestId) return;
+      setInboxEmail(detail);
+    } catch (err) {
+      if (citeRequest.current !== requestId) return;
+      addError(err instanceof ApiError ? err.message : "加载邮件详情失败", "任务");
     }
   };
 
@@ -1105,22 +1240,17 @@ export default function TasksPage() {
                           </ul>
                         </div>
                       )}
-                      {shownDelivery.sources.length > 0 && (
-                        <div>
-                          <h4 className="text-xs font-medium text-fg-tertiary mb-1">来源</h4>
-                          <ul className="text-sm text-fg-secondary space-y-1">
-                            {shownDelivery.sources.map((src) => (
-                              <li key={src.id}>
-                                <span className="font-mono text-xs text-fg-tertiary mr-2">
-                                  {src.id}
-                                </span>
-                                {src.title}
-                                {src.locator ? ` · ${src.locator}` : ""}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
+                      <DeliveryFindings
+                        delivery={shownDelivery}
+                        onCite={(sourceId) => void openCitedSource(sourceId, shownDelivery.sources)}
+                      />
+                      <DeliverySources
+                        sources={shownDelivery.sources}
+                        activeSourceId={activeSourceId}
+                        onOpenEmail={(sourceId) =>
+                          void openCitedSource(sourceId, shownDelivery.sources)
+                        }
+                      />
                       {shownDelivery.suggested_actions.length > 0 && (
                         <div>
                           <h4 className="text-xs font-medium text-fg-tertiary mb-1">建议待办</h4>
@@ -1133,6 +1263,12 @@ export default function TasksPage() {
                                 <span>
                                   {action.title}
                                   {action.reason ? ` — ${action.reason}` : ""}
+                                  <SourceIdChips
+                                    ids={action.source_ids}
+                                    onCite={(sourceId) =>
+                                      void openCitedSource(sourceId, shownDelivery.sources)
+                                    }
+                                  />
                                 </span>
                                 {!viewingHistory && action.adopted_work_id ? (
                                   <Button
@@ -1478,6 +1614,7 @@ export default function TasksPage() {
             placeholder="例如：补上风险，并给每条结论带来源。"
           />
         </Dialog>
+        <InboxEmailDetailModal email={inboxEmail} onClose={() => setInboxEmail(null)} />
       </div>
     </div>
   );
