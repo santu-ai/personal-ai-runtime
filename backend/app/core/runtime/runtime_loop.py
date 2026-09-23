@@ -440,6 +440,25 @@ class RuntimeLoop:
         for row in rows:
             work_id = row["id"]
             try:
+                status_events = kernel.read_events(
+                    aggregate_type=AGGREGATE_WORK_ITEM,
+                    aggregate_id=work_id,
+                    types=[
+                        "WorkItemCreated",
+                        EVENT_WORK_ITEM_STATUS_CHANGED,
+                        EVENT_WORK_ITEM_UPDATED,
+                    ],
+                    order="desc",
+                )
+                running_seq = next(
+                    (
+                        int(event.seq or 0)
+                        for event in status_events
+                        if isinstance(event.payload, dict)
+                        and event.payload.get("status") == "running"
+                    ),
+                    0,
+                )
                 events = kernel.read_events(
                     type=EVENT_EXECUTE_REQUESTED,
                     aggregate_type="action",
@@ -447,7 +466,12 @@ class RuntimeLoop:
                     order="desc",
                     limit=1,
                 )
-                latest_id = events[0].id if events else None
+                current = (
+                    events[0]
+                    if events and int(events[0].seq or 0) > running_seq
+                    else None
+                )
+                latest_id = current.id if current else None
                 handlers = [
                     item for item in scheduled if latest_id and item.event_id == latest_id
                 ]

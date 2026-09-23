@@ -5,6 +5,8 @@
 
 ## 当前状态
 
+- 2026-09-23：修复近 24 小时审查发现的三处回归：启动恢复只关联最近一次进入 running 后的 ExecuteRequested，周期统计排除 rerun_restore，重跑清理进度失败会收回 completed。新增三项故障回归测试；后端 1708 passed、lint、boundary、layer-deps、architecture-check 通过。
+- 2026-09-23：审查近 24 小时提交（0406412..259f762）：前端 298 测试及构建、后端重点 77 测试、boundary/layer-deps/architecture-check 通过；临时故障用例复现三处缺口：重跑派发中断恢复误用上一轮完成、rerun_restore 被周期统计计作完成、清理计划进度失败后停在 pending。临时用例已移除，未修改业务代码。
 - 2026-09-23：Batch 29：再次运行失败收回的 `WorkItemStatusChanged(completed)` 带 `reason=rerun_restore`。依赖钩子只启动 `dependencies_json` 列出这一项且依赖都已完成的待执行后继；收回和没有依赖的待办都不会被标成 `running`。不新增事件类型。`read_ports/work.py` 仍为 600/600。
 - 2026-09-23：Batch 28：再次运行已完成简报时，执行请求若在重新打开之后失败，用既有 `WorkItemStatusChanged(completed)` 收回状态，并放回刚才清掉的计划进度。当前交付不变。计划在打开前就不能执行时不改状态。定时到点走同一条路径。不新增事件类型。`read_ports/work.py` 仍为 600/600。
 - 2026-09-23：Batch 27：文档对齐 #88–#113 之后仍漂移的陈述。测试文件数为 203；删掉不存在的 `trigger_evaluation` cron，补上 `telegram_poll` 与 `reminder` 的 `work_id` 行为；启动恢复写明 task/action 与终态失败条件；toast 在右下。全局周期对比与简报版本差仍分开写。未改守卫脚本。

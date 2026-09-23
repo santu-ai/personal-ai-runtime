@@ -1302,6 +1302,8 @@ def _restore_completed_brief(
     work_id: str,
     snapshot: list,
     before_ids: set[str],
+    *,
+    restore_progress: bool = True,
 ) -> None:
     """Put a brief back on its completed delivery when execute never started.
 
@@ -1326,7 +1328,8 @@ def _restore_completed_brief(
             },
             actor="user",
         )
-    read_ports.reset_work_item_plan_progress(work_id, snapshot=snapshot)
+    if restore_progress:
+        read_ports.reset_work_item_plan_progress(work_id, snapshot=snapshot)
     logger.info("restored completed brief %s after execute request failed", work_id)
 
 
@@ -1346,9 +1349,14 @@ def rerun_project_brief(work_id: str) -> dict[str, Any]:
         item, previous_id = _require_completed_brief(work_id)
         _reject_unexecutable_plan(item)
         before_ids = _execute_requested_ids(work_id)
-        read_ports.update_work_item_status(work_id, "pending")
-        snapshot = read_ports.reset_work_item_plan_progress(work_id)
+        snapshot: list = []
+        reopened = False
+        progress_cleared = False
         try:
+            read_ports.update_work_item_status(work_id, "pending")
+            reopened = True
+            snapshot = read_ports.reset_work_item_plan_progress(work_id)
+            progress_cleared = True
             work = read_ports.request_work_item_execute(work_id)
         except Exception as exc:
             if _execute_requested_ids(work_id) - before_ids:
@@ -1362,11 +1370,17 @@ def rerun_project_brief(work_id: str) -> dict[str, Any]:
                         "supersedes_delivery_id": previous_id,
                         "work": started,
                     }
-            try:
-                _restore_completed_brief(work_id, snapshot, before_ids)
-            except Exception:
-                logger.exception("brief rerun restore failed for %s", work_id)
-                raise
+            if reopened:
+                try:
+                    _restore_completed_brief(
+                        work_id,
+                        snapshot,
+                        before_ids,
+                        restore_progress=progress_cleared,
+                    )
+                except Exception:
+                    logger.exception("brief rerun restore failed for %s", work_id)
+                    raise
             if isinstance(exc, ValueError):
                 raise DeliveryValidationError(str(exc)) from exc
             raise

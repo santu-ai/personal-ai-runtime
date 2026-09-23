@@ -1460,6 +1460,33 @@ def test_rerun_restores_completed_delivery_when_execute_request_fails(isolated_k
     assert [row["work_id"] for row in list_rerunnable_briefs()] == [work_id]
 
 
+def test_rerun_restores_completed_when_progress_clear_fails(isolated_kernel, monkeypatch):
+    """清理执行游标失败发生在派发前，简报不能留在 pending。"""
+    k, _db = isolated_kernel
+    item = _brief_task_with_steps()
+    work_id = item["id"]
+    published = publish_delivery(
+        work_id, content="第一期", summary="第一期", sources=[],
+        execution_id="rerun-progress-clear-fail",
+    )
+
+    def fail_clear(*args, **kwargs):
+        raise RuntimeError("progress storage unavailable")
+
+    monkeypatch.setattr(read_ports, "reset_work_item_plan_progress", fail_clear)
+
+    with pytest.raises(RuntimeError, match="progress storage unavailable"):
+        rerun_project_brief(work_id)
+
+    stored = read_ports.query_work_item(work_id)
+    assert stored is not None
+    assert stored["status"] == "completed"
+    assert fold_delivery_history(work_id)["current"]["delivery_id"] == published["delivery_id"]
+    assert k.read_events(
+        type="ExecuteRequested", aggregate_id=f"exec_{work_id}",
+    ) == []
+
+
 def test_rerun_restore_does_not_mark_other_pending_tasks_running(isolated_kernel, monkeypatch):
     """依赖钩子已订阅时，收回 completed 不把无关待办或后继标成运行中。"""
     from app.core.runtime.cron_registry import _on_work_item_status_changed

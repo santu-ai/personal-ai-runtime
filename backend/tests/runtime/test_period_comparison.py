@@ -6,10 +6,24 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 
+from app.core.runtime.kernel.event import Event
+
 NOW = datetime(2026, 9, 22, 12, 0, tzinfo=UTC)
 CURRENT_START = NOW - timedelta(days=7)
 PREVIOUS = NOW - timedelta(days=10)
 OUTSIDE = NOW - timedelta(days=20)
+
+
+def test_rerun_restore_is_not_a_completion():
+    from app.core.runtime.read_ports.events import _is_completion
+
+    event = Event(
+        type="WorkItemStatusChanged",
+        aggregate_type="work_item",
+        aggregate_id="brief",
+        payload={"status": "completed", "reason": "rerun_restore"},
+    )
+    assert _is_completion(event) is False
 
 
 def _emit_at(monkeypatch, kernel, when: datetime, *args, **kwargs):

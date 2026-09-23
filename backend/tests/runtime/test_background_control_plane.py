@@ -139,6 +139,40 @@ def test_recover_running_task_missing_execute_dispatch(kernel, monkeypatch):
     assert len(events) == 1
 
 
+def test_recover_rerun_gap_ignores_previous_completed_execution(kernel, monkeypatch):
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    trigger = _running_with_execute(kernel, "rerun-gap")
+    item = ScheduledExecution(event_id=trigger.id, event_seq=trigger.seq or 0)
+    emit_execution_requested(kernel, item, "user")
+    emit_execution_completed(kernel, item)
+    kernel.emit_event(
+        "ExecuteCompleted", "action", "exec_rerun-gap",
+        payload={"action_id": "rerun-gap", "status": "success"},
+        actor="executor", caused_by=trigger.id,
+    )
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, "rerun-gap",
+        payload={"status": "completed"}, actor="executor",
+    )
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, "rerun-gap",
+        payload={"status": "pending"}, actor="user",
+    )
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, "rerun-gap",
+        payload={"status": "running"}, actor="user",
+    )
+    _patch_kernel(monkeypatch, kernel)
+
+    assert RuntimeLoop()._recover_interrupted_background_tasks() == 1
+    requests = kernel.read_events(
+        type="ExecuteRequested", aggregate_id="exec_rerun-gap",
+    )
+    assert len(requests) == 2
+    assert requests[-1].seq > trigger.seq
+
+
 def test_recover_running_task_with_scheduled_execution_is_idempotent(kernel, monkeypatch):
     from app.core.runtime.runtime_loop import RuntimeLoop
 
