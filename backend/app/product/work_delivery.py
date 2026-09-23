@@ -1102,6 +1102,14 @@ def _safe_int(value: Any) -> int:
         return 0
 
 
+def _recorded_cost(payload: dict[str, Any]) -> float:
+    """Dollar amount on an ``LLMCallRecorded`` payload, or 0 when unusable."""
+    try:
+        return float(payload.get("cost") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _event_correlation(event: Any) -> str:
     payload = _event_payload(event)
     return str(event.correlation_id or payload.get("correlation_id") or "").strip()
@@ -1208,14 +1216,17 @@ def _attribute_delivery_activity(
     twins of a handler replay on the same correlation. Model cost sums
     ``LLMCallRecorded`` with ``purpose=project_brief`` and ``caused_by`` equal
     to the execution id. Successful calls that omit ``caused_by`` increment
-    ``unattributed_project_brief_calls`` and leave that sum in place. A read
-    that hits its cap marks both values ``unavailable``.
+    ``unattributed_project_brief_calls`` and add their ``cost`` to
+    ``unattributed_project_brief_cost``. That amount stays separate from
+    attributable ``llm_cost``. A read that hits its cap marks the attributable
+    cost, the unattributed count, and the unattributed cost ``unavailable``.
     """
     zeros = {
         "approval_interventions": 0,
         "recovery_interventions": 0,
         "llm_cost": 0.0,
         "unattributed_project_brief_calls": 0,
+        "unattributed_project_brief_cost": 0.0,
     }
     if not execution_ids:
         return zeros, False
@@ -1352,6 +1363,7 @@ def _attribute_delivery_activity(
         capped = True
     linked_cost = 0.0
     unattributed_calls = 0
+    unattributed_cost = 0.0
     for event in llm_events:
         payload = _event_payload(event)
         if payload.get("purpose") != "project_brief" or not payload.get("success", True):
@@ -1359,20 +1371,20 @@ def _attribute_delivery_activity(
         caused = str(event.caused_by or "").strip()
         if not caused:
             unattributed_calls += 1
+            unattributed_cost += _recorded_cost(payload)
             continue
         if caused not in execution_ids:
             continue
-        try:
-            linked_cost += float(payload.get("cost") or 0)
-        except (TypeError, ValueError):
-            continue
+        linked_cost += _recorded_cost(payload)
 
     if capped:
         cost_value: Any = "unavailable"
-        unattributed_value: Any = "unavailable"
+        unattributed_calls_value: Any = "unavailable"
+        unattributed_cost_value: Any = "unavailable"
     else:
         cost_value = round(linked_cost, 6)
-        unattributed_value = unattributed_calls
+        unattributed_calls_value = unattributed_calls
+        unattributed_cost_value = round(unattributed_cost, 6)
     if capped:
         approval_value: Any = "unavailable"
         recovery_value: Any = "unavailable"
@@ -1383,7 +1395,8 @@ def _attribute_delivery_activity(
         "approval_interventions": approval_value,
         "recovery_interventions": recovery_value,
         "llm_cost": cost_value,
-        "unattributed_project_brief_calls": unattributed_value,
+        "unattributed_project_brief_calls": unattributed_calls_value,
+        "unattributed_project_brief_cost": unattributed_cost_value,
     }, capped
 
 
@@ -1403,7 +1416,10 @@ def summarize_delivery_metrics(
     attempt via ``retry_count``, not a clock window. Model cost is the sum of
     attributable calls. Successful ``project_brief`` calls in the lookback
     that omit ``caused_by`` increment ``unattributed_project_brief_calls``
-    and do not replace that sum with ``unavailable``. Both stay
+    and add their dollars to ``unattributed_project_brief_cost``. That amount
+    is not merged into the attributable sum, and a missing ``caused_by`` does
+    not replace the attributable sum with ``unavailable``. The attributable
+    cost, the unattributed count, and the unattributed cost stay
     ``unavailable`` when a read hits its cap.
     """
     days = min(365, max(1, int(days)))

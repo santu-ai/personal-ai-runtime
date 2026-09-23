@@ -165,3 +165,4 @@ def test_delivery_metrics_endpoint_reports_project_brief_reviews(client):
     assert body["attribution"]["recovery_interventions"] == 0
     assert body["attribution"]["llm_cost"] == 0.0
     assert body["attribution"]["unattributed_project_brief_calls"] == 0
+    assert body["attribution"]["unattributed_project_brief_cost"] == 0.0
