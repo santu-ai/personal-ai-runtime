@@ -121,7 +121,45 @@ def test_execution_detail_uses_scheduler_record_for_trigger_event(client):
     response = client.get(f"/api/work-items/{created['id']}?include=execution")
 
     assert response.status_code == 200
-    assert response.json()["execution"]["handler_execution"]["id"] == scheduled.id
+    handler = response.json()["execution"]["handler_execution"]
+    assert handler["id"] == scheduled.id
+    assert handler["error"] is None
+
+
+def test_execution_detail_includes_scheduled_execution_error(client):
+    """Task detail reads the error already stored on the handler row."""
+    from app.core.runtime.execution_events import (
+        emit_execution_failed,
+        emit_execution_requested,
+    )
+    from app.core.runtime.kernel_instance import kernel
+    from app.core.runtime.scheduled_execution import ScheduledExecution
+
+    created = client.post(
+        "/api/work-items/", json={"title": "Failed run", "work_type": "task"},
+    ).json()
+    trigger = kernel.emit_event(
+        "ExecuteRequested", "action", f"exec_{created['id']}",
+        payload={"action_id": created["id"]}, actor="user",
+    )
+    scheduled = ScheduledExecution(
+        event_id=trigger.id,
+        event_seq=trigger.seq or 0,
+        event_type=trigger.type,
+        handler_name="on_execute_requested",
+    )
+    scheduled.error = "Timeout after 30.0s"
+    emit_execution_requested(kernel, scheduled, "user")
+    emit_execution_failed(kernel, scheduled, terminal=True, dead_letter=True)
+
+    response = client.get(f"/api/work-items/{created['id']}?include=execution")
+
+    assert response.status_code == 200
+    handler = response.json()["execution"]["handler_execution"]
+    assert handler["id"] == scheduled.id
+    assert handler["status"] == "failed"
+    assert handler["dead_letter"] is True
+    assert handler["error"] == "Timeout after 30.0s"
 
 
 def test_execute_retries_running_task_after_failed_handler(client):

@@ -208,6 +208,8 @@ export interface WorkItemExecutionHandler {
   handler_name: string;
   started_at: string | null;
   completed_at: string | null;
+  /** ScheduledExecution.error already stored on the handler row. */
+  error?: string | null;
 }
 
 export interface WorkItemExecution {
