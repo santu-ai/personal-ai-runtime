@@ -106,7 +106,7 @@ Kernel 拥有 Chroma 索引。`emit_event` 对 `MEMORY_INDEX_EVENT_TYPES` 在**�
 | 每 10 tick（~1s） | `_check_timers` — 扫描 `timer_events` 投影中 `fire_at <= now` 的项，emit `TimerFired`；对 cron 类型用**同一 aggregate_id** 再 emit `TimerCreated`（`INSERT OR REPLACE` 把行标回 `active`）。重启时 `_init_timers` 只跳过仍为 `active` 的具名行。 |
 | 每 100 tick（~10s） | `_maintenance`（见下） |
 
-`start()` 在进入 tick 循环之前调用 `_recover_interrupted_background_tasks`。仍有未结束 handler 的 Work 留给 Scheduler。最新 `status=running` 之后的请求其 handler 已失败时，仍为 running 的 Work 收成 `failed`，不重新排队，也不另开一轮 retry 预算。handler 已完成且能对上同一次 `ExecuteCompleted` 时同步状态。没有 handler 行时：后台任务回到 pending；有 `executable_plan` 的 task/action 补一次 `ExecuteRequested`；goal 或没有计划则跳过。仍为 pending、最近一次状态是再次运行打开（`reason=rerun_restore`）、且其后没有 `ExecuteRequested` 的简报收回 `completed`（同一 reason）。这次打开若已把计划游标清进 `plan_resumes` 的 `rerun_stash:{work_id}`，同一轮把游标放回；游标还在原行上时只丢掉暂存，不覆盖。已经发出 `ExecuteRequested` 的暂存直接丢掉。
+`start()` 在进入 tick 循环之前调用 `_recover_interrupted_background_tasks`。仍有未结束 handler 的 Work 留给 Scheduler。最新 `status=running` 之后的请求其 handler 已失败时，仍为 running 的 Work 收成 `failed`，不重新排队，也不另开一轮 retry 预算。handler 已完成且能对上同一次 `ExecuteCompleted` 时同步状态。没有 handler 行时：后台任务回到 pending；有 `executable_plan` 的 task/action 补一次 `ExecuteRequested`；goal 或没有计划则跳过。仍为 pending、最近一次状态是再次运行打开（`reason=rerun_restore`）、且其后没有 `ExecuteRequested` 的简报收回 `completed`（同一 reason）。返工把 `completed` 或 `failed` 收成 pending 时用的是 `reason=rework_restore`，不是 `rerun_restore`。这条打开之后还没有 `ExecuteRequested` 时，启动恢复把 Work 收回打开前的 `completed` 或 `failed`（同一 `rework_restore`），不把它收成普通 `completed`。这次打开若已把计划游标清进 `plan_resumes` 的 `rerun_stash:{work_id}`（再次运行和返工共用这一键），同一轮把游标放回；游标还在原行上时只丢掉暂存，不覆盖。已经发出 `ExecuteRequested` 的暂存直接丢掉，返工打开也不收回。
 
 `_maintenance`（[`runtime_loop.py`](../../backend/app/core/runtime/runtime_loop.py)）：
 
@@ -136,7 +136,7 @@ cron 表达式解析 `_next_cron_fire(cron_expr, from_ts)`（[`runtime_loop.py`]
 | url_monitor | 每 30 分钟 | url_monitor |
 | telegram_poll | 每 1 分钟 | `TimerFired` → `handler_name=telegram_poll`。后台 `poll_once`；网关未启用时返回 `disabled`，不拉更新 |
 
-`init_scheduler()` 订阅 `WorkItemStatusChanged`。状态变为 `completed` 或 `failed` 时，只启动 `dependencies_json` 列出这一项、且依赖全部已是 `completed` 的待执行后继（`_on_work_item_status_changed`，[`cron_registry.py`](../../backend/app/core/runtime/cron_registry.py)）。没有依赖、或依赖别人的待执行任务不会因此变成 `running`。`reason=rerun_restore` 是再次运行失败后的收回，不启动后继。失败的依赖本身不是 `completed`，所以也不会放行它的后继。
+`init_scheduler()` 订阅 `WorkItemStatusChanged`。状态变为 `completed` 或 `failed` 时，只启动 `dependencies_json` 列出这一项、且依赖全部已是 `completed` 的待执行后继（`_on_work_item_status_changed`，[`cron_registry.py`](../../backend/app/core/runtime/cron_registry.py)）。没有依赖、或依赖别人的待执行任务不会因此变成 `running`。`reason=rerun_restore` 是再次运行失败后的收回，不启动后继。`reason=rework_restore` 是返工打开没有派发时的收回（`completed` 或 `failed`），同样不启动后继。失败的依赖本身不是 `completed`，所以也不会放行它的后继。
 
 ## Agent / 执行模型
 

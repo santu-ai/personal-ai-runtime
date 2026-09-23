@@ -41,7 +41,7 @@ Personal AI Runtime 的所有执行路径用**一套三车道语义**解释。�
 | Lease / multi-worker ownership | Absent / **Non-goal** | 单进程；见 [runtime-invariants.md](runtime-invariants.md) INV-W6；`check_single_process_control_plane.py` |
 | Quota | Partial | HTTP/WS rate limits；tool-loop token/iteration caps；无 per-tenant scheduler quota |
 | Backpressure | Present | `scheduler_max_pending` → `queue_full` |
-| Durable continuation | Yes | `plan_resumes` for Execute/Approve；再次运行清游标前写入 `rerun_stash:{work_id}`，半开恢复放回；Chat 工具环 `chat_ckpt:{correlation_id}` 供 interrupt 重放与审批后续写（ADR-R011） |
+| Durable continuation | Yes | `plan_resumes` for Execute/Approve；再次运行或返工清游标前写入 `rerun_stash:{work_id}`，半开恢复放回。返工收回打开前的 `completed` 或 `failed`（`reason=rework_restore`），不用 `rerun_restore`。Chat 工具环 `chat_ckpt:{correlation_id}` 供 interrupt 重放与审批后续写（ADR-R011） |
 
 ## 负空间登记（Negative Space）
 
@@ -57,7 +57,7 @@ Personal AI Runtime 的所有执行路径用**一套三车道语义**解释。�
 | Concept | Create | Start | End | Retry | Recover | Destroy/GC |
 |---------|--------|-------|-----|-------|---------|------------|
 | **ScheduledExecution** | ExecutionRequested | ExecutionStarted | Completed/Failed | ExecutionRetried (Lane A) | running→retrying→pending；retry 预算尽则 ExecutionFailed / DLQ | Soft-prune terminal rows (`handler_executions_retention_days`) |
-| **WorkItem** | WorkItemCreated | StatusChanged(running) 或用户 pending→completed | completed/cancelled | Domain re-open: failed→pending、completed→pending；running 且最新 `status=running` 之后的 `ExecuteRequested` 已失败时可再次 `ExecuteRequested` | 无 handler 行的 BG running→pending；有计划的 task/action 在 running 且无 handler 行时补 `ExecuteRequested`；goal 或没有计划则跳过。该请求的 handler 都已终态且至少一条失败则收成 `failed` | Domain delete events |
+| **WorkItem** | WorkItemCreated | StatusChanged(running) 或用户 pending→completed | completed/cancelled | Domain re-open: failed→pending、completed→pending；running 且最新 `status=running` 之后的 `ExecuteRequested` 已失败时可再次 `ExecuteRequested` | 无 handler 行的 BG running→pending；有计划的 task/action 在 running 且无 handler 行时补 `ExecuteRequested`；goal 或没有计划则跳过。该请求的 handler 都已终态且至少一条失败则收成 `failed`。pending 且 `reason=rework_restore`、其后没有 `ExecuteRequested` 时收回打开前的 `completed` 或 `failed`，并放回 `rerun_stash` | Domain delete events |
 | **PlanResume** | register on pending approval | — | take on approve/deny | — | SQLite durable | clear on cancel/deny/expire |
 | **Chat tool loop** | ChatRequested | Brain.chat_stream | ChatCompleted / confirmation_required | Lane A `max_retries=2` | `chat_ckpt:{correlation_id}` on interrupt replay | — |
 

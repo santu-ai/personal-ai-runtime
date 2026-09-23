@@ -413,6 +413,164 @@ def test_recover_keeps_marked_pending_once_execute_was_requested(kernel, monkeyp
     )) == 1
 
 
+def test_recover_restores_half_open_rework_left_pending(kernel, monkeypatch):
+    """进程死在返工打开之后、执行请求之前时，启动恢复收回原来的 completed。"""
+    from app.core.runtime.cron_registry import _on_work_item_status_changed
+    from app.core.runtime.read_ports import WORK_STATUS_REASON_REWORK_RESTORE
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    kernel.emit_event(
+        EVENT_WORK_ITEM_CREATED, AGGREGATE_WORK_ITEM, "rework-open",
+        payload={
+            "title": "返工半开",
+            "work_type": "task",
+            "status": "completed",
+            "executable_plan": '{"steps":[{"tool":"echo"}]}',
+        },
+        actor="user",
+    )
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, "rework-open",
+        payload={"status": "pending", "reason": WORK_STATUS_REASON_REWORK_RESTORE},
+        actor="user",
+    )
+    kernel.emit_event(
+        EVENT_WORK_ITEM_CREATED, AGGREGATE_WORK_ITEM, "rework-successor",
+        payload={
+            "title": "后继",
+            "work_type": "task",
+            "status": "pending",
+            "dependencies_json": '["rework-open"]',
+        },
+        actor="user",
+    )
+    _patch_kernel(monkeypatch, kernel)
+    monkeypatch.setattr("app.core.runtime.cron_registry.kernel", kernel)
+    monkeypatch.setattr("app.core.runtime.work_item_engine.kernel", kernel)
+    unsub = kernel.subscribe_events(
+        _on_work_item_status_changed, type="WorkItemStatusChanged",
+    )
+    try:
+        assert RuntimeLoop()._recover_interrupted_background_tasks() == 1
+    finally:
+        unsub()
+
+    row = kernel.query_state("work_items", id="rework-open", limit=1)[0]
+    assert row["status"] == "completed"
+    restored = kernel.read_events(
+        type=EVENT_WORK_ITEM_STATUS_CHANGED, aggregate_id="rework-open",
+    )
+    assert restored[-1].payload.get("status") == "completed"
+    assert restored[-1].payload.get("reason") == WORK_STATUS_REASON_REWORK_RESTORE
+    assert restored[-1].payload.get("reason") != "rerun_restore"
+    assert restored[-1].actor == "kernel"
+    assert kernel.read_events(type="ExecuteRequested", aggregate_id="exec_rework-open") == []
+    assert kernel.query_state("work_items", id="rework-successor", limit=1)[0]["status"] == "pending"
+
+
+def test_recover_half_open_rework_restores_plan_cursor(kernel, monkeypatch):
+    """返工清掉的计划游标留在 rerun_stash 里，半开恢复时和原状态一起放回。"""
+    from app.core.runtime.plan_resume import (
+        load_plan_progress,
+        lookup_action_step_success,
+        peek_plan_resume,
+        rerun_stash_key,
+    )
+    from app.core.runtime.read_ports import WORK_STATUS_REASON_REWORK_RESTORE
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    kernel.emit_event(
+        EVENT_WORK_ITEM_CREATED, AGGREGATE_WORK_ITEM, "rework-cursor",
+        payload={"title": "游标", "work_type": "task", "status": "completed"},
+        actor="user",
+    )
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, "rework-cursor",
+        payload={"status": "pending", "reason": WORK_STATUS_REASON_REWORK_RESTORE},
+        actor="user",
+    )
+    _seed_taken_progress(kernel, "rework-cursor")
+    _patch_kernel(monkeypatch, kernel)
+
+    assert RuntimeLoop()._recover_interrupted_background_tasks() == 1
+    row = kernel.query_state("work_items", id="rework-cursor", limit=1)[0]
+    assert row["status"] == "completed"
+    progress = load_plan_progress("rework-cursor", kernel=kernel)
+    assert progress is not None
+    assert progress.resume_from == 2
+    assert lookup_action_step_success("rework-cursor", 0, kernel=kernel) == "step-ok"
+    assert peek_plan_resume(rerun_stash_key("rework-cursor"), kernel=kernel) is None
+    restored = kernel.read_events(
+        type=EVENT_WORK_ITEM_STATUS_CHANGED, aggregate_id="rework-cursor",
+    )
+    assert restored[-1].payload.get("reason") == WORK_STATUS_REASON_REWORK_RESTORE
+
+
+def test_recover_half_open_rework_restores_failed(kernel, monkeypatch):
+    """返工打开前是 failed 时，启动恢复收回 failed，而不是 completed。"""
+    from app.core.runtime.read_ports import WORK_STATUS_REASON_REWORK_RESTORE
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    kernel.emit_event(
+        EVENT_WORK_ITEM_CREATED, AGGREGATE_WORK_ITEM, "rework-failed",
+        payload={"title": "失败", "work_type": "task", "status": "failed"},
+        actor="user",
+    )
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, "rework-failed",
+        payload={"status": "pending", "reason": WORK_STATUS_REASON_REWORK_RESTORE},
+        actor="user",
+    )
+    _seed_taken_progress(kernel, "rework-failed", resume_from=1)
+    _patch_kernel(monkeypatch, kernel)
+
+    assert RuntimeLoop()._recover_interrupted_background_tasks() == 1
+    row = kernel.query_state("work_items", id="rework-failed", limit=1)[0]
+    assert row["status"] == "failed"
+    restored = kernel.read_events(
+        type=EVENT_WORK_ITEM_STATUS_CHANGED, aggregate_id="rework-failed",
+    )
+    assert restored[-1].payload.get("status") == "failed"
+    assert restored[-1].payload.get("reason") == WORK_STATUS_REASON_REWORK_RESTORE
+    assert restored[-1].payload.get("reason") != "rerun_restore"
+
+
+def test_recover_keeps_rework_pending_once_execute_was_requested(kernel, monkeypatch):
+    from app.core.runtime.plan_resume import load_plan_progress, peek_plan_resume, rerun_stash_key
+    from app.core.runtime.read_ports import WORK_STATUS_REASON_REWORK_RESTORE
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    kernel.emit_event(
+        EVENT_WORK_ITEM_CREATED, AGGREGATE_WORK_ITEM, "rework-started",
+        payload={
+            "title": "已派发返工",
+            "work_type": "task",
+            "status": "completed",
+            "executable_plan": '{"steps":[{"tool":"read_file"}]}',
+        },
+        actor="user",
+    )
+    kernel.emit_event(
+        EVENT_WORK_ITEM_STATUS_CHANGED, AGGREGATE_WORK_ITEM, "rework-started",
+        payload={"status": "pending", "reason": WORK_STATUS_REASON_REWORK_RESTORE},
+        actor="user",
+    )
+    _seed_taken_progress(kernel, "rework-started")
+    kernel.emit_event(
+        "ExecuteRequested", "action", "exec_rework-started",
+        payload={"action_id": "rework-started"}, actor="user",
+    )
+    _patch_kernel(monkeypatch, kernel)
+
+    assert RuntimeLoop()._recover_interrupted_background_tasks() == 0
+    assert kernel.query_state("work_items", id="rework-started", limit=1)[0]["status"] == "pending"
+    assert load_plan_progress("rework-started", kernel=kernel) is None
+    assert peek_plan_resume(rerun_stash_key("rework-started"), kernel=kernel) is None
+    assert len(kernel.read_events(
+        type="ExecuteRequested", aggregate_id="exec_rework-started",
+    )) == 1
+
+
 def test_recover_running_task_with_scheduled_execution_is_idempotent(kernel, monkeypatch):
     from app.core.runtime.runtime_loop import RuntimeLoop
 

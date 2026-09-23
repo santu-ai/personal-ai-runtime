@@ -441,9 +441,10 @@ def _is_completion(event: Any) -> bool:
     event_type = getattr(event, "type", "")
     status = payload.get("status")
     if event_type == "WorkItemStatusChanged":
+        # rerun_restore / rework_restore put an item back. Not a new completion.
         return (
             status == "completed"
-            and payload.get("reason") != "rerun_restore"
+            and payload.get("reason") not in {"rerun_restore", "rework_restore"}
         )
     if event_type != "WorkItemUpdated":
         return False

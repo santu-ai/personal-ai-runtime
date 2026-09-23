@@ -167,7 +167,7 @@ frozenset({
 | `activity_log` | 人类可读活动日志 | event_log 投影派生 |
 | `app_settings` | UI 偏好、LLM/Email 连接配置 | 本地运营配置 |
 | `memory_index_repairs` | ChromaDB 索引修复队列 | 权威记录是 `MemoryDerived/Updated` 事件；由 RuntimeLoop 重试 |
-| `plan_resumes` | 审批暂停后的计划续跑坐标，以及再次运行清游标时的 `rerun_stash:{work_id}` | 运营续跑态；审批行仍是治理权威；跨进程恢复即可。暂存行 `action_id` 为空，执行请求落库后删除；半开恢复在清游标已提交且原行已空时放回 |
+| `plan_resumes` | 审批暂停后的计划续跑坐标，以及再次运行或返工清游标时的 `rerun_stash:{work_id}` | 运营续跑态；审批行仍是治理权威；跨进程恢复即可。暂存行 `action_id` 为空，执行请求落库后删除；半开恢复在清游标已提交且原行已空时放回。返工与再次运行共用该键；返工收回的 reason 是 `rework_restore` |
 
 ## ChromaDB Collections
 
