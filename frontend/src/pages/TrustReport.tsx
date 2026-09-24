@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Shield,
   Database,
@@ -15,7 +16,9 @@ import {
   Download,
 } from "lucide-react";
 import { retryMemoryIndexRepair } from "../api/telemetry";
-import { useTrustReportQuery, useInvalidateTrustReport } from "../hooks/useTrustReportQuery";
+import type { TrustReportData } from "../api/trustReport";
+import { useTrustReportQuery } from "../hooks/useTrustReportQuery";
+import { queryKeys } from "../hooks/useWsInvalidationBridge";
 import LoadErrorNotice, { useHeldQueryError } from "../components/ui/LoadErrorNotice";
 import { AdoptionSummaryView, formatAdoptionRate } from "../components/dashboard/AdoptionSummary";
 
@@ -30,6 +33,47 @@ const FLOW_COLORS: Record<string, string> = {
 /** 待审批行只在已有 id 时打开审批页。空白 id 与 correlation_id 都不编造链接。 */
 function approvalsHref(id: string | null | undefined): "/approvals" | null {
   return id?.trim() ? "/approvals" : null;
+}
+
+interface RepairHandoff {
+  id: number;
+  /** 成功后要落到的下一条；失败或这一条还在时仍是刚才这一条。没有可落的按钮则为 null。 */
+  targetId: number | null;
+}
+
+/** 焦点在页面空白处，或还停在这次点的按钮上，才可以把焦点挪走。 */
+function focusIsIdle(repairId: number): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  return (
+    active instanceof HTMLButtonElement &&
+    active.getAttribute("data-repair-id") === String(repairId)
+  );
+}
+
+function focusRetry(id: number): boolean {
+  for (const node of document.querySelectorAll<HTMLButtonElement>("button[data-repair-id]")) {
+    if (node.getAttribute("data-repair-id") !== String(id) || node.disabled) continue;
+    node.focus();
+    return document.activeElement === node;
+  }
+  return false;
+}
+
+function focusDashboardBack(): boolean {
+  const node = document.querySelector<HTMLButtonElement>("[data-dashboard-back]");
+  if (!node || node.disabled) return false;
+  node.focus();
+  return document.activeElement === node;
+}
+
+function freshFailedIds(queryClient: ReturnType<typeof useQueryClient>): number[] | null {
+  const cached = queryClient.getQueryData<TrustReportData>(queryKeys.trustReport);
+  if (!cached?.memoryIndexRepairs) return null;
+  return cached.memoryIndexRepairs.items
+    .filter((row) => row.status === "failed_permanent")
+    .map((row) => row.id);
 }
 
 /** Trust report content — embedded as a Dashboard tab; also used by tests. */
@@ -48,20 +92,74 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
     "加载信任报告失败",
     "trust-report",
   );
-  const invalidate = useInvalidateTrustReport();
-  const [retryingId, setRetryingId] = useState<number | null>(null);
+  const queryClient = useQueryClient();
+  const retryingRef = useRef(new Set<number>());
+  const [retryingIds, setRetryingIds] = useState<Set<number>>(() => new Set());
   const [actionError, setActionError] = useState<string | null>(null);
+  const focusAfter = useRef<RepairHandoff | null>(null);
+  const failedRepairs =
+    data?.memoryIndexRepairs?.items.filter((row) => row.status === "failed_permanent") ?? [];
+  const failedRepairCount = data?.memoryIndexRepairs?.failed_permanent ?? failedRepairs.length;
+  const repairKey = failedRepairs.map((row) => row.id).join("\0");
+
+  const publishRetrying = () => {
+    setRetryingIds(new Set(retryingRef.current));
+  };
+
+  useEffect(() => {
+    const pending = focusAfter.current;
+    if (!pending || retryingIds.has(pending.id)) return;
+    if (!focusIsIdle(pending.id)) {
+      focusAfter.current = null;
+      return;
+    }
+    if (pending.targetId != null && focusRetry(pending.targetId)) {
+      focusAfter.current = null;
+      return;
+    }
+    const listed =
+      pending.targetId != null && repairKey.split("\0").includes(String(pending.targetId));
+    if (listed) return;
+    focusDashboardBack();
+    focusAfter.current = null;
+  }, [retryingIds, repairKey]);
 
   const handleRetryRepair = async (repairId: number) => {
-    setRetryingId(repairId);
+    if (retryingRef.current.has(repairId)) return;
+    retryingRef.current.add(repairId);
+    publishRetrying();
+    const order = failedRepairs.map((row) => row.id);
+    focusAfter.current = { id: repairId, targetId: repairId };
     setActionError(null);
+    let failed = false;
     try {
       await retryMemoryIndexRepair(repairId);
-      invalidate();
+      try {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.trustReport });
+      } catch {
+        // 写已经成功。列表没刷新时这一条还在，焦点留在按钮上。
+      }
     } catch (e: unknown) {
+      failed = true;
       setActionError(e instanceof Error ? e.message : "重试索引修复失败");
     } finally {
-      setRetryingId(null);
+      if (!failed && focusAfter.current?.id === repairId) {
+        const fresh = freshFailedIds(queryClient);
+        if (!fresh || fresh.includes(repairId)) {
+          focusAfter.current = { id: repairId, targetId: repairId };
+        } else {
+          const index = order.indexOf(repairId);
+          const next = order.slice(index + 1).find((id) => fresh.includes(id)) ?? null;
+          const prev =
+            order
+              .slice(0, index)
+              .reverse()
+              .find((id) => fresh.includes(id)) ?? null;
+          focusAfter.current = { id: repairId, targetId: next ?? prev };
+        }
+      }
+      retryingRef.current.delete(repairId);
+      publishRetrying();
     }
   };
 
@@ -92,9 +190,6 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
 
   const sov = data?.dashboard?.data_sovereignty;
   const pendingCount = data?.approvals?.length ?? 0;
-  const failedRepairs =
-    data?.memoryIndexRepairs?.items.filter((r) => r.status === "failed_permanent") ?? [];
-  const failedRepairCount = data?.memoryIndexRepairs?.failed_permanent ?? failedRepairs.length;
   const tc = data?.cost?.total_calls ?? 0;
   const tcost = data?.cost?.total_cost ?? 0;
   const alat = data?.cost?.avg_latency_ms ?? 0;
@@ -271,11 +366,14 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
                   <button
                     type="button"
                     aria-label="重试索引"
-                    disabled={retryingId === repair.id}
+                    data-repair-id={repair.id}
+                    aria-busy={retryingIds.has(repair.id) || undefined}
                     onClick={() => void handleRetryRepair(repair.id)}
-                    className="shrink-0 px-3 py-1.5 text-xs bg-danger/20 text-danger rounded-lg hover:bg-danger/30 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                    className={`shrink-0 px-3 py-1.5 text-xs bg-danger/20 text-danger rounded-lg hover:bg-danger/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring${
+                      retryingIds.has(repair.id) ? " opacity-50" : ""
+                    }`}
                   >
-                    {retryingId === repair.id ? "重试中…" : "重试索引"}
+                    {retryingIds.has(repair.id) ? "重试中…" : "重试索引"}
                   </button>
                 </div>
               ))}
