@@ -72,6 +72,29 @@ describe("Dialog", () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
+  it("ignores Escape, backdrop, and cancel while confirm is busy", () => {
+    const onCancel = vi.fn();
+    const onConfirm = vi.fn();
+    const { container } = render(
+      <Dialog
+        open
+        title="忘掉"
+        confirmLabel="忘掉中..."
+        confirmBusy
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+      />,
+    );
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(container.firstChild as HTMLElement);
+    const cancel = screen.getByRole("button", { name: "取消" });
+    expect(cancel).toBeDisabled();
+    fireEvent.click(cancel);
+    fireEvent.click(screen.getByRole("button", { name: "忘掉中..." }));
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
   it("disables confirm when confirmDisabled is set", () => {
     const onConfirm = vi.fn();
     render(<Dialog open title="删除" confirmDisabled onConfirm={onConfirm} onCancel={vi.fn()} />);

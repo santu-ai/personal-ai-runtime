@@ -190,6 +190,24 @@ const briefTask: WorkItem = {
   },
 };
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+function mockBriefList() {
+  vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+    if (workType === "task") return [briefTask];
+    return [];
+  });
+  vi.mocked(getWorkItem).mockResolvedValue(briefTask);
+}
+
 function renderTasks(path: string) {
   return renderWithRouter(
     <Routes>
@@ -2676,5 +2694,287 @@ describe("TasksPage", () => {
     expect(screen.queryByText("暂无任务")).not.toBeInTheDocument();
     await waitFor(() => expect(within(list).getByRole("button", { name: "重试" })).toHaveFocus());
     expect(within(metrics).getByRole("button", { name: "重试" })).not.toHaveFocus();
+  });
+
+  it("keeps the brief draft until create succeeds and ignores dismiss while creating", async () => {
+    const pending = deferred<WorkItem>();
+    vi.mocked(createProjectBrief).mockImplementationOnce(() => pending.promise);
+    renderTasks("/tasks");
+
+    fireEvent.click(screen.getByRole("button", { name: "新建简报" }));
+    const dialog = await screen.findByRole("dialog", { name: "新建项目资料简报" });
+    const title = within(dialog).getByPlaceholderText("项目 A 简报");
+    const objective = within(dialog).getByPlaceholderText(/整理最近三天的邮件/);
+    const query = within(dialog).getByPlaceholderText("关键词（可选）");
+    const days = within(dialog).getByPlaceholderText("最近天数");
+    const files = within(dialog).getByPlaceholderText("C:\\notes\\project-a.md");
+    const mailbox = within(dialog).getByRole("checkbox", { name: "读取已配置邮箱" });
+    fireEvent.change(title, { target: { value: "  项目 A 简报  " } });
+    fireEvent.change(objective, { target: { value: "  整理最近三天邮件  " } });
+    fireEvent.change(query, { target: { value: "账单" } });
+    fireEvent.change(days, { target: { value: "9" } });
+    fireEvent.change(files, { target: { value: "  C:\\notes\\a.md  " } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "创建" }));
+
+    const creating = await within(dialog).findByRole("button", { name: "创建中..." });
+    expect(creating).toBeDisabled();
+    expect(creating).toHaveAttribute("aria-busy", "true");
+    fireEvent.click(creating);
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(dialog.parentElement as HTMLElement);
+    const cancel = within(dialog).getByRole("button", { name: "取消" });
+    expect(cancel).toBeDisabled();
+    fireEvent.click(cancel);
+
+    expect(createProjectBrief).toHaveBeenCalledTimes(1);
+    expect(createProjectBrief).toHaveBeenCalledWith({
+      title: "项目 A 简报",
+      objective: "整理最近三天邮件",
+      source_scope: {
+        email: { enabled: true, query: "账单", days: 9 },
+        files: [{ path: "C:\\notes\\a.md" }],
+      },
+    });
+    expect(title).toHaveValue("  项目 A 简报  ");
+    expect(objective).toHaveValue("  整理最近三天邮件  ");
+    expect(query).toHaveValue("账单");
+    expect(days).toHaveValue("9");
+    expect(files).toHaveValue("  C:\\notes\\a.md  ");
+    expect(title).toBeDisabled();
+    expect(objective).toBeDisabled();
+    expect(mailbox).toBeChecked();
+    expect(mailbox).toBeDisabled();
+    expect(dialog).toBeInTheDocument();
+
+    pending.reject(new ApiError("创建任务失败", 500));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("创建任务失败", "任务"));
+    expect(dialog).toBeInTheDocument();
+    expect(title).toHaveValue("  项目 A 简报  ");
+    expect(objective).toHaveValue("  整理最近三天邮件  ");
+    expect(files).toHaveValue("  C:\\notes\\a.md  ");
+    expect(title).toBeEnabled();
+    expect(mailbox).toBeEnabled();
+
+    vi.mocked(createProjectBrief).mockResolvedValueOnce(briefTask);
+    fireEvent.click(within(dialog).getByRole("button", { name: "创建" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "新建项目资料简报" })).not.toBeInTheDocument(),
+    );
+    expect(createProjectBrief).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the acceptance note until accept succeeds and ignores dismiss while accepting", async () => {
+    mockBriefList();
+    const pending = deferred<Awaited<ReturnType<typeof acceptWorkDelivery>>>();
+    vi.mocked(acceptWorkDelivery).mockImplementationOnce(() => pending.promise);
+    renderTasks("/tasks/brief_1");
+
+    fireEvent.click(await screen.findByRole("button", { name: "验收" }));
+    const dialog = await screen.findByRole("dialog", { name: "验收交付" });
+    const note = within(dialog).getByPlaceholderText("例如：结论和来源都齐了。");
+    fireEvent.change(note, { target: { value: "  来源齐全  " } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认验收" }));
+
+    const accepting = await within(dialog).findByRole("button", { name: "验收中..." });
+    expect(accepting).toBeDisabled();
+    expect(accepting).toHaveAttribute("aria-busy", "true");
+    fireEvent.click(accepting);
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(dialog.parentElement as HTMLElement);
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+
+    expect(acceptWorkDelivery).toHaveBeenCalledTimes(1);
+    expect(acceptWorkDelivery).toHaveBeenCalledWith("brief_1", "d2", {
+      reason: "来源齐全",
+      idempotency_key: expect.any(String),
+    });
+    expect(note).toHaveValue("  来源齐全  ");
+    expect(note).toBeDisabled();
+    expect(dialog).toBeInTheDocument();
+
+    pending.reject(new ApiError("验收失败", 500));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("验收失败", "任务"));
+    expect(dialog).toBeInTheDocument();
+    expect(note).toHaveValue("  来源齐全  ");
+    expect(note).toBeEnabled();
+
+    const key = vi.mocked(acceptWorkDelivery).mock.calls[0]?.[2]?.idempotency_key;
+    vi.mocked(acceptWorkDelivery).mockResolvedValueOnce({
+      replayed: false,
+      work_id: "brief_1",
+      decision: {},
+      bundle: briefTask.delivery_bundle!,
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认验收" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "验收交付" })).not.toBeInTheDocument(),
+    );
+    expect(acceptWorkDelivery).toHaveBeenCalledTimes(2);
+    expect(acceptWorkDelivery).toHaveBeenLastCalledWith("brief_1", "d2", {
+      reason: "来源齐全",
+      idempotency_key: key,
+    });
+  });
+
+  it("keeps the rework reason until rework succeeds and ignores dismiss while submitting", async () => {
+    mockBriefList();
+    const pending = deferred<Awaited<ReturnType<typeof reworkWorkDelivery>>>();
+    vi.mocked(reworkWorkDelivery).mockImplementationOnce(() => pending.promise);
+    renderTasks("/tasks/brief_1");
+
+    fireEvent.click(await screen.findByRole("button", { name: "返工" }));
+    const dialog = await screen.findByRole("dialog", { name: "请求返工" });
+    const reason = within(dialog).getByPlaceholderText("例如：补上风险，并给每条结论带来源。");
+    fireEvent.change(reason, { target: { value: "  补上风险  " } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认返工" }));
+
+    const submitting = await within(dialog).findByRole("button", { name: "返工中..." });
+    expect(submitting).toBeDisabled();
+    expect(submitting).toHaveAttribute("aria-busy", "true");
+    fireEvent.click(submitting);
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(dialog.parentElement as HTMLElement);
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+
+    expect(reworkWorkDelivery).toHaveBeenCalledTimes(1);
+    expect(reworkWorkDelivery).toHaveBeenCalledWith("brief_1", "d2", {
+      reason: "补上风险",
+      idempotency_key: expect.any(String),
+    });
+    expect(reason).toHaveValue("  补上风险  ");
+    expect(reason).toBeDisabled();
+    expect(dialog).toBeInTheDocument();
+
+    pending.reject(new ApiError("返工失败", 500));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("返工失败", "任务"));
+    expect(dialog).toBeInTheDocument();
+    expect(reason).toHaveValue("  补上风险  ");
+    expect(reason).toBeEnabled();
+
+    vi.mocked(reworkWorkDelivery).mockResolvedValueOnce({
+      replayed: false,
+      work_id: "brief_1",
+      decision: {},
+      bundle: briefTask.delivery_bundle!,
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认返工" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "请求返工" })).not.toBeInTheDocument(),
+    );
+    expect(reworkWorkDelivery).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the schedule until it is set and ignores dismiss while submitting", async () => {
+    mockBriefList();
+    const pending = deferred<Awaited<ReturnType<typeof scheduleBriefRepeat>>>();
+    vi.mocked(scheduleBriefRepeat).mockImplementationOnce(() => pending.promise);
+    renderTasks("/tasks/brief_1");
+
+    fireEvent.click(await screen.findByRole("button", { name: "定时再次运行" }));
+    const dialog = await screen.findByRole("dialog", { name: "定时再次运行这一份简报" });
+    const hours = within(dialog).getByLabelText("小时");
+    const minutes = within(dialog).getByLabelText("分钟");
+    fireEvent.change(hours, { target: { value: "2" } });
+    fireEvent.change(minutes, { target: { value: "15" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认定时" }));
+
+    const setting = await within(dialog).findByRole("button", { name: "设定中..." });
+    expect(setting).toBeDisabled();
+    expect(setting).toHaveAttribute("aria-busy", "true");
+    fireEvent.click(setting);
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(dialog.parentElement as HTMLElement);
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+
+    expect(scheduleBriefRepeat).toHaveBeenCalledTimes(1);
+    expect(scheduleBriefRepeat).toHaveBeenCalledWith("brief_1", { hours: 2, minutes: 15 });
+    expect(hours).toHaveValue("2");
+    expect(minutes).toHaveValue("15");
+    expect(hours).toBeDisabled();
+    expect(dialog).toBeInTheDocument();
+    expect(screen.queryByTestId("scheduled-repeat-note")).not.toBeInTheDocument();
+
+    pending.reject(new ApiError("设定定时失败", 500));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("设定定时失败", "任务"));
+    expect(dialog).toBeInTheDocument();
+    expect(hours).toHaveValue("2");
+    expect(minutes).toHaveValue("15");
+    expect(hours).toBeEnabled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认定时" }));
+    expect(await screen.findByTestId("scheduled-repeat-note")).toHaveTextContent(
+      "2026-09-24T08:00:00Z",
+    );
+    expect(
+      screen.queryByRole("dialog", { name: "定时再次运行这一份简报" }),
+    ).not.toBeInTheDocument();
+    expect(scheduleBriefRepeat).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the execute confirm open until it succeeds and ignores dismiss while starting", async () => {
+    const pending = deferred<WorkItem>();
+    vi.mocked(executeWorkItem).mockImplementationOnce(() => pending.promise);
+    renderTasks("/tasks/task_1");
+
+    fireEvent.click(await screen.findByRole("button", { name: "执行" }));
+    const dialog = await screen.findByRole("dialog", { name: "确认执行计划" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认执行" }));
+
+    const starting = await within(dialog).findByRole("button", { name: "执行中..." });
+    expect(starting).toBeDisabled();
+    expect(starting).toHaveAttribute("aria-busy", "true");
+    fireEvent.click(starting);
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(dialog.parentElement as HTMLElement);
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+
+    expect(executeWorkItem).toHaveBeenCalledTimes(1);
+    expect(executeWorkItem).toHaveBeenCalledWith("task_1");
+    expect(dialog).toBeInTheDocument();
+
+    pending.reject(new ApiError("启动任务失败", 500));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("启动任务失败", "任务"));
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "确认执行" })).toBeEnabled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认执行" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "确认执行计划" })).not.toBeInTheDocument(),
+    );
+    expect(executeWorkItem).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the rerun confirm open until it succeeds and ignores dismiss while starting", async () => {
+    mockBriefList();
+    const pending = deferred<Awaited<ReturnType<typeof rerunProjectBrief>>>();
+    vi.mocked(rerunProjectBrief).mockImplementationOnce(() => pending.promise);
+    renderTasks("/tasks/brief_1");
+
+    fireEvent.click(await screen.findByRole("button", { name: "再次运行" }));
+    const dialog = await screen.findByRole("dialog", { name: "再次运行同一份简报" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认再次运行" }));
+
+    const starting = await within(dialog).findByRole("button", { name: "再次运行中..." });
+    expect(starting).toBeDisabled();
+    expect(starting).toHaveAttribute("aria-busy", "true");
+    fireEvent.click(starting);
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(dialog.parentElement as HTMLElement);
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+
+    expect(rerunProjectBrief).toHaveBeenCalledTimes(1);
+    expect(rerunProjectBrief).toHaveBeenCalledWith("brief_1");
+    expect(dialog).toBeInTheDocument();
+
+    pending.reject(new ApiError("再次运行失败", 500));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("再次运行失败", "任务"));
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "确认再次运行" })).toBeEnabled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认再次运行" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "再次运行同一份简报" })).not.toBeInTheDocument(),
+    );
+    expect(rerunProjectBrief).toHaveBeenCalledTimes(2);
   });
 });

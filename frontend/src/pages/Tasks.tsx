@@ -929,6 +929,8 @@ export default function TasksPage() {
   const invalidate = useInvalidateTasks();
   const addError = useErrorStore((s) => s.addError);
   const [busy, setBusy] = useState(false);
+  const dialogLock = useRef(false);
+  const [dialogBusy, setDialogBusy] = useState(false);
   const [confirmExecute, setConfirmExecute] = useState(false);
   const [confirmRerun, setConfirmRerun] = useState(false);
   const [confirmSchedule, setConfirmSchedule] = useState(false);
@@ -981,7 +983,6 @@ export default function TasksPage() {
   const [metricsError, setMetricsError] = useState<string | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [metricsRefresh, setMetricsRefresh] = useState(0);
-  const executeInFlight = useRef(false);
   const acceptKey = useRef<string | null>(null);
   const adoptKeys = useRef<Record<number, string>>({});
 
@@ -1123,26 +1124,45 @@ export default function TasksPage() {
     return { active, terminal };
   }, [items]);
 
-  const handleCreate = async () => {
-    if (!newTitle.trim() || !objective.trim()) return;
+  const beginDialog = () => {
+    if (dialogLock.current) return false;
+    dialogLock.current = true;
+    setDialogBusy(true);
     setBusy(true);
+    return true;
+  };
+
+  const endDialog = () => {
+    dialogLock.current = false;
+    setDialogBusy(false);
+    setBusy(false);
+  };
+
+  const dismissDialog = (close: () => void) => {
+    if (dialogLock.current) return;
+    close();
+  };
+
+  const handleCreate = async () => {
+    const title = newTitle.trim();
+    const goal = objective.trim();
+    if (!title || !goal) return;
+    const files = filePaths
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((path) => ({ path }));
+    const email = {
+      enabled: emailEnabled,
+      query: emailQuery.trim(),
+      days: Math.max(0, Number(emailDays) || 3),
+    };
+    if (!beginDialog()) return;
     try {
-      const files = filePaths
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .map((path) => ({ path }));
       const item = await createProjectBrief({
-        title: newTitle.trim(),
-        objective: objective.trim(),
-        source_scope: {
-          email: {
-            enabled: emailEnabled,
-            query: emailQuery.trim(),
-            days: Math.max(0, Number(emailDays) || 3),
-          },
-          files,
-        },
+        title,
+        objective: goal,
+        source_scope: { email, files },
       });
       setShowCreate(false);
       setNewTitle("");
@@ -1154,39 +1174,33 @@ export default function TasksPage() {
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "创建任务失败", "任务");
     } finally {
-      setBusy(false);
+      endDialog();
     }
   };
 
   const handleExecute = async () => {
-    if (!selected || executeInFlight.current) return;
-    executeInFlight.current = true;
-    setBusy(true);
-    setConfirmExecute(false);
+    if (!selected || !beginDialog()) return;
     try {
       await executeWorkItem(selected.id);
+      setConfirmExecute(false);
       invalidate();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "启动任务失败", "任务");
     } finally {
-      executeInFlight.current = false;
-      setBusy(false);
+      endDialog();
     }
   };
 
   const handleRerun = async () => {
-    if (!selected || executeInFlight.current) return;
-    executeInFlight.current = true;
-    setBusy(true);
-    setConfirmRerun(false);
+    if (!selected || !beginDialog()) return;
     try {
       await rerunProjectBrief(selected.id);
+      setConfirmRerun(false);
       invalidate();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "再次运行失败", "任务");
     } finally {
-      executeInFlight.current = false;
-      setBusy(false);
+      endDialog();
     }
   };
 
@@ -1201,14 +1215,12 @@ export default function TasksPage() {
   };
 
   const handleScheduleRepeat = async () => {
-    if (!selected || executeInFlight.current) return;
+    if (!selected) return;
     const delay = scheduleDelay();
-    if (!delay) return;
-    executeInFlight.current = true;
-    setBusy(true);
-    setConfirmSchedule(false);
+    if (!delay || !beginDialog()) return;
     try {
       const scheduled = await scheduleBriefRepeat(selected.id, delay);
+      setConfirmSchedule(false);
       setScheduledRepeatNote(
         scheduled.fire_at
           ? `已设定，将在 ${scheduled.fire_at} 再次运行这一份任务。`
@@ -1217,8 +1229,7 @@ export default function TasksPage() {
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "设定定时失败", "任务");
     } finally {
-      executeInFlight.current = false;
-      setBusy(false);
+      endDialog();
     }
   };
 
@@ -1236,9 +1247,8 @@ export default function TasksPage() {
   };
 
   const handleAccept = async () => {
-    if (!selected || !acceptTarget) return;
+    if (!selected || !acceptTarget || !beginDialog()) return;
     const note = acceptNote.trim();
-    setBusy(true);
     if (!acceptKey.current) acceptKey.current = newIdempotencyKey("accept");
     try {
       await acceptWorkDelivery(selected.id, acceptTarget.delivery_id, {
@@ -1252,7 +1262,7 @@ export default function TasksPage() {
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "验收失败", "任务");
     } finally {
-      setBusy(false);
+      endDialog();
     }
   };
 
@@ -1326,11 +1336,11 @@ export default function TasksPage() {
   const handleRework = async () => {
     if (!selected) return;
     const current = selected.delivery_bundle?.current;
-    if (!current || !reworkReason.trim()) return;
-    setBusy(true);
+    const reason = reworkReason.trim();
+    if (!current || !reason || !beginDialog()) return;
     try {
       await reworkWorkDelivery(selected.id, current.delivery_id, {
-        reason: reworkReason.trim(),
+        reason,
         idempotency_key: newIdempotencyKey("rework"),
       });
       setReworkOpen(false);
@@ -1340,7 +1350,7 @@ export default function TasksPage() {
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "返工失败", "任务");
     } finally {
-      setBusy(false);
+      endDialog();
     }
   };
 
@@ -2057,42 +2067,45 @@ export default function TasksPage() {
         )}
 
         <Dialog
-          open={confirmExecute && Boolean(selected && canExecute)}
+          open={confirmExecute && (dialogBusy || Boolean(selected && canExecute))}
           title="确认执行计划"
           description={formatPlanConfirmDescription(steps, resumeFrom)}
-          confirmLabel="确认执行"
+          confirmLabel={dialogBusy ? "执行中..." : "确认执行"}
           cancelLabel="取消"
           confirmDisabled={busy}
+          confirmBusy={dialogBusy}
           onConfirm={() => {
             void handleExecute();
           }}
-          onCancel={() => setConfirmExecute(false)}
+          onCancel={() => dismissDialog(() => setConfirmExecute(false))}
         />
 
         <Dialog
-          open={confirmRerun && canRerunSameBrief}
+          open={confirmRerun && (dialogBusy || canRerunSameBrief)}
           title="再次运行同一份简报"
           description="将重新执行这份简报，不另建任务，也不记成返工。完成后的新版本会对照当前这一版，显示相对上一版的变化。"
-          confirmLabel="确认再次运行"
+          confirmLabel={dialogBusy ? "再次运行中..." : "确认再次运行"}
           cancelLabel="取消"
           confirmDisabled={busy}
+          confirmBusy={dialogBusy}
           onConfirm={() => {
             void handleRerun();
           }}
-          onCancel={() => setConfirmRerun(false)}
+          onCancel={() => dismissDialog(() => setConfirmRerun(false))}
         />
 
         <Dialog
-          open={confirmSchedule && canRerunSameBrief}
+          open={confirmSchedule && (dialogBusy || canRerunSameBrief)}
           title="定时再次运行这一份简报"
           description="到点后只再次运行这一份任务。不会新开一份简报，也不会为这次触发另建交付。若到点时它已经不能再次运行，提醒只会打开这一份任务。"
-          confirmLabel="确认定时"
+          confirmLabel={dialogBusy ? "设定中..." : "确认定时"}
           cancelLabel="取消"
-          confirmDisabled={busy || scheduleDelay() === null}
+          confirmDisabled={busy || dialogBusy || scheduleDelay() === null}
+          confirmBusy={dialogBusy}
           onConfirm={() => {
             void handleScheduleRepeat();
           }}
-          onCancel={() => setConfirmSchedule(false)}
+          onCancel={() => dismissDialog(() => setConfirmSchedule(false))}
         >
           <div className="grid grid-cols-2 gap-2 text-sm">
             <label className="block space-y-1">
@@ -2100,6 +2113,7 @@ export default function TasksPage() {
               <Input
                 inputMode="decimal"
                 value={scheduleHours}
+                disabled={dialogBusy}
                 onChange={(e) => setScheduleHours(e.target.value)}
                 placeholder="0"
               />
@@ -2109,6 +2123,7 @@ export default function TasksPage() {
               <Input
                 inputMode="decimal"
                 value={scheduleMinutes}
+                disabled={dialogBusy}
                 onChange={(e) => setScheduleMinutes(e.target.value)}
                 placeholder="0"
               />
@@ -2120,19 +2135,21 @@ export default function TasksPage() {
           open={showCreate}
           title="新建项目资料简报"
           description="指定资料范围、时间范围和验收要求。原始需求会保留在任务说明中。"
-          confirmLabel="创建"
+          confirmLabel={dialogBusy ? "创建中..." : "创建"}
           cancelLabel="取消"
-          confirmDisabled={busy || !newTitle.trim() || !objective.trim()}
+          confirmDisabled={busy || dialogBusy || !newTitle.trim() || !objective.trim()}
+          confirmBusy={dialogBusy}
           onConfirm={() => {
             void handleCreate();
           }}
-          onCancel={() => setShowCreate(false)}
+          onCancel={() => dismissDialog(() => setShowCreate(false))}
         >
           <div className="space-y-3 text-sm">
             <label className="block space-y-1">
               <span className="text-xs text-fg-tertiary">标题</span>
               <Input
                 value={newTitle}
+                disabled={dialogBusy}
                 onChange={(e) => setNewTitle(e.target.value)}
                 placeholder="项目 A 简报"
               />
@@ -2140,8 +2157,9 @@ export default function TasksPage() {
             <label className="block space-y-1">
               <span className="text-xs text-fg-tertiary">目标与验收要求</span>
               <textarea
-                className="w-full min-h-24 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm"
+                className="w-full min-h-24 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                 value={objective}
+                disabled={dialogBusy}
                 onChange={(e) => setObjective(e.target.value)}
                 placeholder="整理最近三天的邮件和指定资料，列出变化、风险和建议待办。每条关键结论附来源。"
               />
@@ -2149,7 +2167,9 @@ export default function TasksPage() {
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
+                className="disabled:opacity-50"
                 checked={emailEnabled}
+                disabled={dialogBusy}
                 onChange={(e) => setEmailEnabled(e.target.checked)}
               />
               <span>读取已配置邮箱</span>
@@ -2158,11 +2178,13 @@ export default function TasksPage() {
               <div className="grid grid-cols-2 gap-2">
                 <Input
                   value={emailQuery}
+                  disabled={dialogBusy}
                   onChange={(e) => setEmailQuery(e.target.value)}
                   placeholder="关键词（可选）"
                 />
                 <Input
                   value={emailDays}
+                  disabled={dialogBusy}
                   onChange={(e) => setEmailDays(e.target.value)}
                   placeholder="最近天数"
                 />
@@ -2171,8 +2193,9 @@ export default function TasksPage() {
             <label className="block space-y-1">
               <span className="text-xs text-fg-tertiary">资料路径（每行一个）</span>
               <textarea
-                className="w-full min-h-16 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm"
+                className="w-full min-h-16 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                 value={filePaths}
+                disabled={dialogBusy}
                 onChange={(e) => setFilePaths(e.target.value)}
                 placeholder="C:\notes\project-a.md"
               />
@@ -2184,17 +2207,19 @@ export default function TasksPage() {
           open={Boolean(acceptTarget)}
           title="验收交付"
           description="可以留下验收说明。留空则直接验收，说明不会显示。"
-          confirmLabel="确认验收"
+          confirmLabel={dialogBusy ? "验收中..." : "确认验收"}
           cancelLabel="取消"
           confirmDisabled={busy}
+          confirmBusy={dialogBusy}
           onConfirm={() => {
             void handleAccept();
           }}
-          onCancel={() => setAcceptTarget(null)}
+          onCancel={() => dismissDialog(() => setAcceptTarget(null))}
         >
           <textarea
-            className="w-full min-h-24 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm"
+            className="w-full min-h-24 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
             value={acceptNote}
+            disabled={dialogBusy}
             onChange={(e) => setAcceptNote(e.target.value)}
             placeholder="例如：结论和来源都齐了。"
           />
@@ -2204,17 +2229,19 @@ export default function TasksPage() {
           open={reworkOpen}
           title="请求返工"
           description="请填写修改意见。旧版交付会保留，新执行使用原要求与本意见。"
-          confirmLabel="确认返工"
+          confirmLabel={dialogBusy ? "返工中..." : "确认返工"}
           cancelLabel="取消"
-          confirmDisabled={busy || !reworkReason.trim()}
+          confirmDisabled={busy || dialogBusy || !reworkReason.trim()}
+          confirmBusy={dialogBusy}
           onConfirm={() => {
             void handleRework();
           }}
-          onCancel={() => setReworkOpen(false)}
+          onCancel={() => dismissDialog(() => setReworkOpen(false))}
         >
           <textarea
-            className="w-full min-h-24 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm"
+            className="w-full min-h-24 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
             value={reworkReason}
+            disabled={dialogBusy}
             onChange={(e) => setReworkReason(e.target.value)}
             placeholder="例如：补上风险，并给每条结论带来源。"
           />
