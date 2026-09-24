@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { createGoal, updateGoal, deleteGoal, ApiError, type WorkItem } from "../api/client";
 import { useErrorStore } from "../stores/errorStore";
 import { useQuickChat } from "../hooks/useQuickChat";
@@ -12,6 +12,16 @@ import PageHeader from "../components/ui/PageHeader";
 import { goalProgressPercent } from "../utils/goalProgress";
 import { timeAgo, isStagnant } from "../utils/timeUtils";
 import GoalDetailPanel from "../components/goals/GoalDetailPanel";
+
+const focusRing =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-app";
+const backLinkClass = `inline-flex items-center justify-center rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${focusRing}`;
+const backLinkSecondary = `${backLinkClass} border border-border-subtle bg-surface-raised text-fg-primary hover:bg-surface-hover`;
+const backLinkPrimary = `${backLinkClass} bg-insight-strong text-fg-on-accent shadow-sm hover:bg-insight`;
+
+function goalPageHref(goalId: string): string {
+  return `/goals/${encodeURIComponent(goalId)}`;
+}
 
 export default function GoalsPage() {
   const { goalId: urlGoalId } = useParams();
@@ -50,10 +60,6 @@ export default function GoalsPage() {
       addError(msg, "目标");
     }
   }, [detailError, addError]);
-
-  const handleSelectGoal = (goalId: string) => {
-    navigate(`/goals/${goalId}`);
-  };
 
   const handleStartChatAboutGoal = (goal: WorkItem) => {
     quickChat({
@@ -159,11 +165,7 @@ export default function GoalsPage() {
               {goals.length === 0 ? (
                 <p className="text-sm text-fg-tertiary">暂无其他目标</p>
               ) : (
-                <GoalGroupedList
-                  goals={goals}
-                  selectedId={selectedGoal?.id}
-                  onSelect={handleSelectGoal}
-                />
+                <GoalGroupedList goals={goals} selectedId={selectedGoal?.id} />
               )}
             </section>
 
@@ -173,9 +175,9 @@ export default function GoalsPage() {
             >
               {detailOpen && !goalNotFound && (
                 <div className="mb-4 lg:hidden">
-                  <Button size="sm" variant="secondary" onClick={() => navigate("/goals")}>
+                  <Link to="/goals" className={backLinkSecondary}>
                     返回列表
-                  </Button>
+                  </Link>
                 </div>
               )}
               {goalNotFound ? (
@@ -183,9 +185,9 @@ export default function GoalsPage() {
                   title="目标不存在"
                   description="该目标可能已被删除，或链接无效。"
                   action={
-                    <Button size="sm" onClick={() => navigate("/goals")}>
+                    <Link to="/goals" className={backLinkPrimary}>
                       返回列表
-                    </Button>
+                    </Link>
                   }
                 />
               ) : selectedGoal ? (
@@ -238,38 +240,20 @@ export default function GoalsPage() {
   );
 }
 
-function GoalGroupedList({
-  goals,
-  selectedId,
-  onSelect,
-}: {
-  goals: WorkItem[];
-  selectedId?: string;
-  onSelect: (goalId: string) => void;
-}) {
+function GoalGroupedList({ goals, selectedId }: { goals: WorkItem[]; selectedId?: string }) {
   const activeOrPaused = goals.filter((g) => g.status !== "completed");
   const completed = goals.filter((g) => g.status === "completed");
 
   return (
     <div className="space-y-2">
       {activeOrPaused.map((goal) => (
-        <GoalListItem
-          key={goal.id}
-          goal={goal}
-          selected={goal.id === selectedId}
-          onSelect={onSelect}
-        />
+        <GoalListItem key={goal.id} goal={goal} selected={goal.id === selectedId} />
       ))}
       {completed.length > 0 && (
         <>
           <p className="section-label px-1 pb-1 pt-3">已完成 ({completed.length})</p>
           {completed.map((goal) => (
-            <GoalListItem
-              key={goal.id}
-              goal={goal}
-              selected={goal.id === selectedId}
-              onSelect={onSelect}
-            />
+            <GoalListItem key={goal.id} goal={goal} selected={goal.id === selectedId} />
           ))}
         </>
       )}
@@ -277,23 +261,14 @@ function GoalGroupedList({
   );
 }
 
-function GoalListItem({
-  goal,
-  selected,
-  onSelect,
-}: {
-  goal: WorkItem;
-  selected: boolean;
-  onSelect: (goalId: string) => void;
-}) {
+function GoalListItem({ goal, selected }: { goal: WorkItem; selected: boolean }) {
   const progressPct = Math.round(goalProgressPercent(goal.progress));
 
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(goal.id)}
-      aria-current={selected ? "true" : undefined}
-      className={`w-full rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
+    <Link
+      to={goalPageHref(goal.id)}
+      aria-current={selected ? "page" : undefined}
+      className={`block w-full rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
         selected
           ? "border-insight/40 bg-insight/10"
           : "border-border-subtle bg-surface-raised shadow-sm hover:border-border-strong hover:bg-surface-hover/40"
@@ -329,6 +304,6 @@ function GoalListItem({
       <div className="ml-4 mt-2 h-1 overflow-hidden rounded-full bg-surface-overlay">
         <div className="h-full rounded-full bg-insight" style={{ width: `${progressPct}%` }} />
       </div>
-    </button>
+    </Link>
   );
 }

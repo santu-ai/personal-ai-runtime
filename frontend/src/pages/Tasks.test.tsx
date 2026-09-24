@@ -374,7 +374,10 @@ describe("TasksPage", () => {
   it("keeps the list and detail placeholder in one page shell", async () => {
     renderTasks("/tasks");
 
-    expect(await screen.findByRole("button", { name: /整理报告/ })).toBeInTheDocument();
+    const row = await screen.findByRole("link", { name: /整理报告/ });
+    expect(row).toHaveAttribute("href", "/tasks/task_1");
+    expect(row).toHaveClass("focus-visible:ring-focus-ring");
+    expect(row).not.toHaveAttribute("aria-current");
     const list = screen.getByRole("region", { name: "任务列表" });
     const detail = screen.getByRole("region", { name: "任务详情" });
     expect(list).not.toHaveClass("hidden");
@@ -389,7 +392,24 @@ describe("TasksPage", () => {
     expect(await screen.findByText("最近一步输出（预览）")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "任务列表" })).toHaveClass("hidden", "lg:block");
     expect(screen.getByRole("region", { name: "任务详情" })).not.toHaveClass("hidden");
-    expect(screen.getByRole("button", { name: "返回列表" }).parentElement).toHaveClass("lg:hidden");
+    const back = screen.getByRole("link", { name: "返回列表" });
+    expect(back).toHaveAttribute("href", "/tasks");
+    expect(back).toHaveClass("focus-visible:ring-focus-ring");
+    expect(back.parentElement).toHaveClass("lg:hidden");
+    expect(screen.getByRole("link", { name: /整理报告/ })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("encodes a task id that contains a slash", async () => {
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [{ ...sampleTask, id: "task/9", title: "斜杠任务" }];
+      return [];
+    });
+    renderTasks("/tasks");
+
+    expect(await screen.findByRole("link", { name: /斜杠任务/ })).toHaveAttribute(
+      "href",
+      "/tasks/task%2F9",
+    );
   });
 
   it("shows previous_output and asks for plan confirmation before execute", async () => {
@@ -855,6 +875,41 @@ describe("TasksPage", () => {
         idempotency_key: expect.any(String),
       });
     });
+  });
+
+  it("links a non-empty adopted task id and leaves a blank id as text", async () => {
+    const adopted: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        ...briefTask.delivery_bundle!,
+        current: {
+          ...currentDelivery,
+          suggested_actions: [
+            { title: "核对排期", adopted_work_id: "task/2" },
+            { title: "空白编号", adopted_work_id: "   " },
+            { title: "还没转" },
+          ],
+        },
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [adopted];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(adopted);
+    renderTasks("/tasks/brief_1");
+
+    const link = await screen.findByRole("link", { name: "已转为任务" });
+    expect(link).toHaveAttribute("href", "/tasks/task%2F2");
+    expect(link).toHaveClass("focus-visible:ring-focus-ring");
+    const blank = screen.getByText("空白编号").closest("li");
+    expect(blank).not.toBeNull();
+    expect(
+      within(blank as HTMLElement)
+        .getByText("已转为任务")
+        .closest("a"),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "转为任务" })).toBeInTheDocument();
   });
 
   it("sends a trimmed acceptance note", async () => {
