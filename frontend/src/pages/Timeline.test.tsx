@@ -94,6 +94,73 @@ describe("TimelinePage", () => {
     });
   });
 
+  it("links a non-empty work_id to the encoded task page", async () => {
+    mockList.mockResolvedValue({
+      items: [
+        {
+          ...makeEvent("e1", "完成了目标「周报」", "2026-06-28T08:00:00Z"),
+          work_id: "brief/1",
+          payload_snippet: { correlation_id: "corr-not-a-task" },
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 30,
+      has_more: false,
+      icons: {},
+    });
+    renderWithRouter(<TimelinePage />);
+    const link = await screen.findByRole("link", { name: "完成了目标「周报」" });
+    expect(link).toHaveAttribute("href", "/tasks/brief%2F1");
+  });
+
+  it("encodes a trimmed work_id and ignores surrounding whitespace", async () => {
+    mockList.mockResolvedValue({
+      items: [
+        {
+          ...makeEvent("e1", "更新了目标「计划」", "2026-06-28T08:00:00Z"),
+          work_id: "  task 2  ",
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 30,
+      has_more: false,
+      icons: {},
+    });
+    renderWithRouter(<TimelinePage />);
+    expect(await screen.findByRole("link", { name: "更新了目标「计划」" })).toHaveAttribute(
+      "href",
+      "/tasks/task%202",
+    );
+  });
+
+  it("keeps a blank work_id as plain text and does not link correlation_id", async () => {
+    mockList.mockResolvedValue({
+      items: [
+        {
+          ...makeEvent("e1", "AI 记住了新信息", "2026-06-28T08:00:00Z"),
+          work_id: "   ",
+          payload_snippet: { correlation_id: "corr-blank", task_id: "from-snippet" },
+        },
+        {
+          ...makeEvent("e2", "发起了新对话", "2026-06-28T09:00:00Z"),
+          work_id: null,
+          payload_snippet: { correlation_id: "corr-null" },
+        },
+      ],
+      total: 2,
+      page: 1,
+      page_size: 30,
+      has_more: false,
+      icons: {},
+    });
+    renderWithRouter(<TimelinePage />);
+    expect(await screen.findByText("AI 记住了新信息")).toBeInTheDocument();
+    expect(screen.getByText("发起了新对话")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
   it("shows error with retry", async () => {
     mockList.mockRejectedValue(new Error("加载失败"));
     renderWithRouter(<TimelinePage />);

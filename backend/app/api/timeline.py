@@ -31,6 +31,67 @@ EVENT_LABELS: dict[str, str] = {
     "NotificationCreated": "AI 给出了提醒",
 }
 
+# These events store the work item id on aggregate_id. Their payload usually
+# has title/status, not work_id. Other aggregate types are not work ids.
+_WORK_ITEM_EVENT_TYPES = frozenset({
+    "WorkItemCreated",
+    "WorkItemUpdated",
+    "WorkItemStatusChanged",
+    "WorkItemDeleted",
+})
+_APPROVAL_EVENT_TYPES = frozenset({
+    "ApprovalRequested",
+    "ApprovalGranted",
+    "ApprovalDenied",
+})
+
+
+def _string_id(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _explicit_work_id(mapping: dict) -> tuple[bool, str | None]:
+    """Top-level work_id, else task_id. A present unusable key does not fall through."""
+    if "work_id" in mapping:
+        return True, _string_id(mapping.get("work_id"))
+    if "task_id" in mapping:
+        return True, _string_id(mapping.get("task_id"))
+    return False, None
+
+
+def _timeline_work_id(event) -> str | None:
+    """Work id already stored on the event.
+
+    ``correlation_id``, ``parent_work_id``, ``action_id``, timer ids, and
+    approval ids are not work ids. A present ``work_id`` that is blank or
+    not a string does not fall through to another key.
+    """
+    payload = event.payload if isinstance(getattr(event, "payload", None), dict) else {}
+    found, work_id = _explicit_work_id(payload)
+    if found:
+        return work_id
+
+    event_type = getattr(event, "type", None)
+    if event_type in _APPROVAL_EVENT_TYPES:
+        ctx = payload.get("ctx")
+        if isinstance(ctx, dict) and "task_id" in ctx:
+            return _string_id(ctx.get("task_id"))
+        return None
+
+    if event_type in _WORK_ITEM_EVENT_TYPES:
+        return _string_id(getattr(event, "aggregate_id", None))
+
+    if event_type == "TimerFired":
+        inner = payload.get("payload")
+        if isinstance(inner, dict):
+            inner_found, inner_id = _explicit_work_id(inner)
+            if inner_found:
+                return inner_id
+    return None
+
 
 def _translate_event(event) -> dict:
     """Translate an Event object into a human-readable timeline item."""
@@ -67,6 +128,7 @@ def _translate_event(event) -> dict:
         "description": description,
         "actor": actor,
         "ts": event.ts,
+        "work_id": _timeline_work_id(event),
         "payload_snippet": {
             k: str(v)[:100] for k, v in (payload or {}).items()
             if k not in ("full_text", "raw_body", "params")

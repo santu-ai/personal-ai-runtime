@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-09-24：Batch 47：时间线事件在已有非空 `work_id`（去掉空白后仍非空）时，描述打开 `/tasks/:id`（路径按 id 编码）。空白、null 或只有空白保持纯文本。接口只从事件里已有的 `work_id` / `task_id` 取值：顶层 `work_id` 优先，没有该键才用顶层 `task_id`；键在但空白或不是字符串时不改用别的键。审批的 `task_id` 在 `ctx`。`WorkItem*` 用 `aggregate_id`。`TimerFired` 只读嵌套定时 payload 里的这两个键。不读 `payload_snippet`，不用 `correlation_id`、`parent_work_id`、`action_id`、定时器 id 或审批 id。不新增事件类型，未改 Kernel，未改 `read_ports/work.py`。
 - 2026-09-24：Batch 46：审批卡片在非空 `task_id`（去掉空白后仍非空）时打开 `/tasks/:id`（路径按 id 编码）。空白、null 或只有空白的 `task_id` 保持纯文本，不把 `correlation_id` 当成任务 id。对话来源的 `conversation_id` 续写行为不变。不新增事件类型，未改 Kernel，未改 `read_ports/work.py`。
 - 2026-09-24：修复近 24 小时审查发现的三处回归：后续验收会使旧返工幂等重试变成无副作用回放；死信 `limit` 按实际可重放行计数；单次交付成本从该 execution 的 `ExecutionRequested` 起覆盖完整生命周期。新增三项回归测试；完整后端 1750 passed、9 skipped、6 deselected，lint/boundary/layer-deps/architecture-check/docs-links 通过。
 - 2026-09-24：审查 09-23 11:41 至 09-24 11:41 的提交（75186af..6ead56c）：后端重点 120 测试、前端 311 测试及 boundary/layer-deps/architecture-check 通过。临时用例复现：撤回返工后验收，重试旧幂等键仍派发；死信先截 limit 再过滤导致后续可重放项饥饿；单次交付成本漏掉发布前超过一天的同 execution_id 调用。临时用例已移除，未改业务代码。

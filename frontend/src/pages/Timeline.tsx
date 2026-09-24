@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Link } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
@@ -36,6 +37,14 @@ const ICON_MAP: Record<string, { Icon: LucideIcon; color: string }> = {
   play: { Icon: Play, color: "text-success" },
   activity: { Icon: Activity, color: "text-fg-tertiary" },
 };
+
+/** 非空 work_id 打开任务页。空白不编造链接，也不使用 correlation_id。 */
+function taskPageHref(workId: string | null | undefined): string | undefined {
+  if (typeof workId !== "string") return undefined;
+  const id = workId.trim();
+  if (!id) return undefined;
+  return `/tasks/${encodeURIComponent(id)}`;
+}
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
@@ -151,6 +160,7 @@ export default function TimelinePage() {
                       color: "text-fg-tertiary",
                     };
                     const Icon = iconInfo.Icon;
+                    const taskHref = taskPageHref(event.work_id);
                     return (
                       <div
                         key={event.id}
@@ -158,7 +168,16 @@ export default function TimelinePage() {
                       >
                         <Icon size={16} className={`${iconInfo.color} mt-0.5 shrink-0`} />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-fg-secondary">{event.description}</p>
+                          {taskHref ? (
+                            <Link
+                              to={taskHref}
+                              className="block text-sm text-fg-secondary hover:underline rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                            >
+                              {event.description}
+                            </Link>
+                          ) : (
+                            <p className="text-sm text-fg-secondary">{event.description}</p>
+                          )}
                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-xs text-fg-disabled">{formatDate(event.ts)}</span>
                             {event.actor && event.actor !== "user" && (
