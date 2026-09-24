@@ -53,6 +53,25 @@ describe("Dialog", () => {
     expect(onCancel).toHaveBeenCalledOnce();
   });
 
+  it("marks confirm busy and ignores a second click", () => {
+    const onConfirm = vi.fn();
+    render(
+      <Dialog
+        open
+        title="忘掉"
+        confirmLabel="忘掉中..."
+        confirmBusy
+        onConfirm={onConfirm}
+        onCancel={vi.fn()}
+      />,
+    );
+    const btn = screen.getByRole("button", { name: "忘掉中..." });
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute("aria-busy", "true");
+    fireEvent.click(btn);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
   it("disables confirm when confirmDisabled is set", () => {
     const onConfirm = vi.fn();
     render(<Dialog open title="删除" confirmDisabled onConfirm={onConfirm} onCancel={vi.fn()} />);

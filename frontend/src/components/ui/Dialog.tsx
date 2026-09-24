@@ -11,6 +11,8 @@ interface Props {
   variant?: "danger" | "primary";
   /** Disable confirm while an async action is in flight (prevents double-submit). */
   confirmDisabled?: boolean;
+  /** Confirm is in flight: disabled, and announced as busy. */
+  confirmBusy?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   children?: ReactNode;
@@ -24,6 +26,7 @@ export default function Dialog({
   cancelLabel = "取消",
   variant = "primary",
   confirmDisabled = false,
+  confirmBusy = false,
   onConfirm,
   onCancel,
   children,
@@ -68,7 +71,8 @@ export default function Dialog({
             type="button"
             variant={variant === "danger" ? "danger" : "primary"}
             size="sm"
-            disabled={confirmDisabled}
+            disabled={confirmDisabled || confirmBusy}
+            aria-busy={confirmBusy || undefined}
             onClick={onConfirm}
           >
             {confirmLabel}
