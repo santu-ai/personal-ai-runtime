@@ -16,7 +16,5 @@ export function useNotificationsQuery(limit = 15) {
 
 export function useInvalidateNotifications() {
   const qc = useQueryClient();
-  return () => {
-    void qc.invalidateQueries({ queryKey: queryKeys.notifications });
-  };
+  return () => qc.invalidateQueries({ queryKey: queryKeys.notifications });
 }

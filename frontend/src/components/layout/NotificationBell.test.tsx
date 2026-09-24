@@ -3,14 +3,15 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { renderWithRouter } from "../../test-utils";
 import NotificationBell from "./NotificationBell";
 
-const { listNotifications, addError } = vi.hoisted(() => ({
+const { listNotifications, markAllNotificationsRead, addError } = vi.hoisted(() => ({
   listNotifications: vi.fn(),
+  markAllNotificationsRead: vi.fn(),
   addError: vi.fn(),
 }));
 
 vi.mock("../../api/client", () => ({
   listNotifications,
-  markAllNotificationsRead: vi.fn(),
+  markAllNotificationsRead,
   markNotificationRead: vi.fn(),
 }));
 
@@ -28,10 +29,22 @@ const sample = {
   created_at: "2026-08-17T10:00:00Z",
 };
 
+function holdMarkAll() {
+  let release: () => void = () => {};
+  markAllNotificationsRead.mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+  );
+  return () => release();
+}
+
 describe("NotificationBell", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     listNotifications.mockResolvedValue([sample]);
+    markAllNotificationsRead.mockResolvedValue(undefined);
   });
 
   it("moves focus into the panel and returns it to the bell on Escape", async () => {
@@ -168,5 +181,140 @@ describe("NotificationBell", () => {
     expect(screen.queryByText("暂无通知")).not.toBeInTheDocument();
     expect(screen.queryByTestId("notifications-load-error")).not.toBeInTheDocument();
     await waitFor(() => expect(addError).toHaveBeenCalledWith("刷新失败", "通知"));
+  });
+
+  it("does not send mark-all again while the first request is in flight", async () => {
+    const release = holdMarkAll();
+    renderWithRouter(<NotificationBell />);
+    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    const mark = await screen.findByRole("button", { name: "全部已读" });
+    mark.focus();
+
+    fireEvent.click(mark);
+    fireEvent.click(mark);
+
+    expect(markAllNotificationsRead).toHaveBeenCalledTimes(1);
+    expect(mark).toHaveAttribute("aria-busy", "true");
+    expect(mark).not.toBeDisabled();
+    expect(mark).toHaveFocus();
+    expect(mark).toHaveClass("opacity-50");
+
+    release();
+    await waitFor(() => expect(mark).not.toHaveAttribute("aria-busy"));
+    expect(mark).toHaveFocus();
+  });
+
+  it("keeps mark-all and reports the failure without dropping focus", async () => {
+    markAllNotificationsRead.mockRejectedValueOnce(new Error("   "));
+    renderWithRouter(<NotificationBell />);
+    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    const mark = await screen.findByRole("button", { name: "全部已读" });
+    mark.focus();
+
+    fireEvent.click(mark);
+
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("标记已读失败", "通知"));
+    expect(mark).toBeInTheDocument();
+    expect(mark).toHaveFocus();
+    expect(mark).not.toHaveAttribute("aria-busy");
+    expect(screen.getByRole("button", { name: /待审批/ })).toBeInTheDocument();
+  });
+
+  it("moves focus to the first notification after every row is read", async () => {
+    const release = holdMarkAll();
+    const second = { ...sample, id: "n2", title: "另一条", content: "还在" };
+    listNotifications.mockResolvedValue([sample, second]);
+    renderWithRouter(<NotificationBell />);
+    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    const mark = await screen.findByRole("button", { name: "全部已读" });
+    mark.focus();
+    fireEvent.click(mark);
+    expect(mark).toHaveAttribute("aria-busy", "true");
+
+    listNotifications.mockResolvedValue([
+      { ...sample, read: 1 },
+      { ...second, read: 1 },
+    ]);
+    release();
+
+    const first = await screen.findByRole("button", { name: /待审批/ });
+    await waitFor(() => expect(first).toHaveFocus());
+    expect(screen.queryByRole("button", { name: "全部已读" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /另一条/ })).not.toHaveFocus();
+  });
+
+  it("keeps focus on mark-all when a later read still has unread rows", async () => {
+    const release = holdMarkAll();
+    renderWithRouter(<NotificationBell />);
+    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    const mark = await screen.findByRole("button", { name: "全部已读" });
+    mark.focus();
+    fireEvent.click(mark);
+
+    release();
+    await waitFor(() => expect(mark).not.toHaveAttribute("aria-busy"));
+    expect(mark).toHaveFocus();
+    expect(markAllNotificationsRead).toHaveBeenCalledTimes(1);
+  });
+
+  it("focuses the panel when mark-all leaves no notifications", async () => {
+    const release = holdMarkAll();
+    renderWithRouter(<NotificationBell />);
+    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    const mark = await screen.findByRole("button", { name: "全部已读" });
+    mark.focus();
+    fireEvent.click(mark);
+
+    listNotifications.mockResolvedValue([]);
+    release();
+
+    const panel = await screen.findByRole("dialog", { name: "最近通知" });
+    await waitFor(() => expect(panel).toHaveFocus());
+    expect(screen.getByText("暂无通知")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "全部已读" })).not.toBeInTheDocument();
+  });
+
+  it("does not pull focus back when it already moved away", async () => {
+    const release = holdMarkAll();
+    renderWithRouter(
+      <>
+        <button type="button">旁边</button>
+        <NotificationBell />
+      </>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    const mark = await screen.findByRole("button", { name: "全部已读" });
+    mark.focus();
+    fireEvent.click(mark);
+
+    const other = screen.getByRole("button", { name: "旁边" });
+    other.focus();
+    listNotifications.mockResolvedValue([{ ...sample, read: 1 }]);
+    release();
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "全部已读" })).not.toBeInTheDocument(),
+    );
+    expect(other).toHaveFocus();
+  });
+
+  it("does not restore the panel after it was closed during mark-all", async () => {
+    const release = holdMarkAll();
+    renderWithRouter(<NotificationBell />);
+    const bell = screen.getByRole("button", { name: "通知" });
+    fireEvent.click(bell);
+    const mark = await screen.findByRole("button", { name: "全部已读" });
+    mark.focus();
+    fireEvent.click(mark);
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "最近通知" })).not.toBeInTheDocument();
+    expect(bell).toHaveFocus();
+
+    listNotifications.mockResolvedValue([{ ...sample, read: 1 }]);
+    release();
+    await waitFor(() => expect(markAllNotificationsRead).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("dialog", { name: "最近通知" })).not.toBeInTheDocument();
+    expect(bell).toHaveFocus();
   });
 });
