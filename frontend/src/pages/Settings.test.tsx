@@ -8,6 +8,9 @@ import {
   getLlmSettings,
   getMcpStatus,
   getPromptConfig,
+  testLlmConnection,
+  updateEmailSettings,
+  updateLlmSettings,
 } from "../api/client";
 import { listMcpRegistry } from "../api/connectors";
 import { getTelegramGatewayStatus, type TelegramGatewayStatus } from "../api/settings";
@@ -433,5 +436,185 @@ describe("SettingsPage", () => {
       screen.queryByPlaceholderText("定义 AI 的身份、性格、行为准则..."),
     ).not.toBeInTheDocument();
     await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+  });
+
+  it("shows that the LLM config was saved and clears it after another edit", async () => {
+    vi.mocked(updateLlmSettings).mockResolvedValueOnce({
+      config: {
+        default_provider: "deepseek",
+        temperature: 0.7,
+        max_tokens: 4096,
+        providers: [],
+      },
+      default_model: "deepseek-chat",
+      providers_status: [],
+      presets: {},
+      provider_types: {},
+    });
+    renderWithRouter(<SettingsPage />);
+    const save = await screen.findByRole("button", { name: "保存 LLM 配置" });
+    fireEvent.click(save);
+    expect(await screen.findByTestId("llm-save-notice")).toHaveTextContent("已保存");
+
+    fireEvent.change(screen.getByDisplayValue("deepseek-chat"), {
+      target: { value: "deepseek-reasoner" },
+    });
+    expect(screen.queryByTestId("llm-save-notice")).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue("deepseek-reasoner")).toBeInTheDocument();
+  });
+
+  it("keeps the LLM form and skips the saved notice when saving fails", async () => {
+    vi.mocked(updateLlmSettings).mockRejectedValueOnce(new ApiError("写不进去", 500));
+    renderWithRouter(<SettingsPage />);
+    const save = await screen.findByRole("button", { name: "保存 LLM 配置" });
+    fireEvent.click(save);
+    await waitFor(() => expect(save).toBeEnabled());
+    expect(screen.queryByTestId("llm-save-notice")).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue("deepseek-chat")).toBeInTheDocument();
+  });
+
+  it("does not send a second LLM save while the first is in flight", async () => {
+    let release: ((row: Awaited<ReturnType<typeof updateLlmSettings>>) => void) | undefined;
+    vi.mocked(updateLlmSettings).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<SettingsPage />);
+    const save = await screen.findByRole("button", { name: "保存 LLM 配置" });
+    fireEvent.click(save);
+    fireEvent.click(save);
+    expect(updateLlmSettings).toHaveBeenCalledTimes(1);
+    expect(save).toHaveTextContent("保存中…");
+    expect(save).toBeDisabled();
+
+    release?.({
+      config: {
+        default_provider: "deepseek",
+        temperature: 0.7,
+        max_tokens: 4096,
+        providers: [],
+      },
+      default_model: "deepseek-chat",
+      providers_status: [],
+      presets: {},
+      provider_types: {},
+    });
+    expect(await screen.findByTestId("llm-save-notice")).toHaveTextContent("已保存");
+  });
+
+  it("does not say the LLM config was saved if the form changes before the response", async () => {
+    let release: ((row: Awaited<ReturnType<typeof updateLlmSettings>>) => void) | undefined;
+    vi.mocked(updateLlmSettings).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<SettingsPage />);
+    const save = await screen.findByRole("button", { name: "保存 LLM 配置" });
+    fireEvent.click(save);
+    fireEvent.change(screen.getByDisplayValue("0.7"), { target: { value: "0.2" } });
+    release?.({
+      config: {
+        default_provider: "deepseek",
+        temperature: 0.7,
+        max_tokens: 4096,
+        providers: [],
+      },
+      default_model: "deepseek-chat",
+      providers_status: [],
+      presets: {},
+      provider_types: {},
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "保存 LLM 配置" })).toBeEnabled(),
+    );
+    expect(screen.queryByTestId("llm-save-notice")).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue("0.2")).toBeInTheDocument();
+  });
+
+  it("shows a successful LLM connection test and clears it after that provider changes", async () => {
+    vi.mocked(testLlmConnection).mockResolvedValueOnce({ ok: true, provider: "deepseek" });
+    renderWithRouter(<SettingsPage />);
+    const test = await screen.findByRole("button", { name: "测试" });
+    fireEvent.click(test);
+    expect(await screen.findByTestId("llm-test-ok-deepseek")).toHaveTextContent("连接正常");
+
+    fireEvent.change(screen.getByDisplayValue("deepseek-chat"), {
+      target: { value: "deepseek-reasoner" },
+    });
+    expect(screen.queryByTestId("llm-test-ok-deepseek")).not.toBeInTheDocument();
+  });
+
+  it("does not mark the LLM connection ok when the test fails", async () => {
+    vi.mocked(testLlmConnection).mockResolvedValueOnce({
+      ok: false,
+      provider: "deepseek",
+      error: "超时",
+    });
+    renderWithRouter(<SettingsPage />);
+    const test = await screen.findByRole("button", { name: "测试" });
+    fireEvent.click(test);
+    await waitFor(() => expect(test).toBeEnabled());
+    expect(screen.queryByText("连接正常")).not.toBeInTheDocument();
+  });
+
+  it("does not mark the LLM connection ok if that provider changes before the test returns", async () => {
+    let release: ((row: Awaited<ReturnType<typeof testLlmConnection>>) => void) | undefined;
+    vi.mocked(testLlmConnection).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<SettingsPage />);
+    const test = await screen.findByRole("button", { name: "测试" });
+    fireEvent.click(test);
+    fireEvent.click(test);
+    expect(testLlmConnection).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByDisplayValue("deepseek-chat"), {
+      target: { value: "other-model" },
+    });
+    release?.({ ok: true, provider: "deepseek" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "测试" })).toBeEnabled());
+    expect(screen.queryByText("连接正常")).not.toBeInTheDocument();
+  });
+
+  it("shows that the email config was saved and clears it after another edit", async () => {
+    vi.mocked(updateEmailSettings).mockResolvedValueOnce({
+      config: {
+        provider: "gmail",
+        user: "test@gmail.com",
+        password: "••••••••",
+        imap_host: "imap.gmail.com",
+        smtp_host: "smtp.gmail.com",
+        smtp_port: 465,
+        configured: true,
+      },
+    });
+    renderWithRouter(<SettingsPage />);
+    await expandSection("Gmail 邮箱配置");
+    const save = await screen.findByRole("button", { name: "保存邮箱配置" });
+    fireEvent.click(save);
+    expect(await screen.findByTestId("email-save-notice")).toHaveTextContent("已保存");
+
+    fireEvent.change(screen.getByDisplayValue("test@gmail.com"), {
+      target: { value: "other@gmail.com" },
+    });
+    expect(screen.queryByTestId("email-save-notice")).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue("other@gmail.com")).toBeInTheDocument();
+  });
+
+  it("keeps the email form and skips the saved notice when saving fails", async () => {
+    vi.mocked(updateEmailSettings).mockRejectedValueOnce(new ApiError("写不进去", 500));
+    renderWithRouter(<SettingsPage />);
+    await expandSection("Gmail 邮箱配置");
+    const save = await screen.findByRole("button", { name: "保存邮箱配置" });
+    fireEvent.click(save);
+    await waitFor(() => expect(save).toBeEnabled());
+    expect(screen.queryByTestId("email-save-notice")).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue("test@gmail.com")).toBeInTheDocument();
   });
 });
