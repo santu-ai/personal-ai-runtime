@@ -40,6 +40,32 @@ describe("MemoryListItem", () => {
     expect(screen.getByRole("button", { name: /拒绝/ })).toBeVisible();
   });
 
+  it("holds confirm and reject while that row is ratifying", () => {
+    renderWithRouter(
+      <ul>
+        <MemoryListItem
+          memory={{
+            id: "m1",
+            content: "喜欢早起跑步",
+            origin: "claim",
+            claim_status: "proposed",
+          }}
+          ratifying
+          onRatify={noop}
+          onReject={noop}
+          onEdit={noop}
+          onDelete={noop}
+          onContinueChat={noop}
+          onShowProvenance={noop}
+        />
+      </ul>,
+    );
+    const confirm = screen.getByRole("button", { name: "确认" });
+    expect(confirm).toBeDisabled();
+    expect(confirm).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("button", { name: "拒绝" })).toBeDisabled();
+  });
+
   it("shows reject reason and restore for rejected claims", () => {
     const { onRatify } = renderItem({
       id: "m2",
