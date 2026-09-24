@@ -60,7 +60,9 @@ describe("AdoptionSummaryView", () => {
   it("opens the trust tab when the card is clicked", () => {
     const onOpen = vi.fn();
     renderWithRouter(<AdoptionSummaryView adoption={SAMPLE} onOpen={onOpen} />);
-    screen.getByTestId("adoption-summary").click();
+    const card = screen.getByTestId("adoption-summary");
+    expect(card).toHaveClass("focus-visible:ring-focus-ring");
+    card.click();
     expect(onOpen).toHaveBeenCalledOnce();
   });
 });
