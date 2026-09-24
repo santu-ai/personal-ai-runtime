@@ -384,6 +384,38 @@ export default function GoalDetailPanel({
   );
 }
 
+function actionFieldSelector(goalId: string): string {
+  const escaped =
+    typeof CSS !== "undefined" && typeof CSS.escape === "function"
+      ? CSS.escape(goalId)
+      : goalId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return `input[data-goal-anchor="action"][data-goal-id="${escaped}"]`;
+}
+
+/** 焦点在页面空白处，或还停在这次添加的输入框或「添加」上。 */
+function actionFocusIdle(goalId: string): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  if (active.getAttribute("data-goal-id") !== goalId) return false;
+  const anchor = active.getAttribute("data-goal-anchor");
+  return anchor === "action" || anchor === "action-add";
+}
+
+function actionFocusLost(): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  return false;
+}
+
+function focusActionField(goalId: string): boolean {
+  const input = document.querySelector<HTMLInputElement>(actionFieldSelector(goalId));
+  if (!input || input.disabled) return false;
+  if (document.activeElement !== input) input.focus();
+  return document.activeElement === input;
+}
+
 function NewActionInput({
   goalId,
   onAdd,
@@ -395,19 +427,39 @@ function NewActionInput({
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const goalIdRef = useRef(goalId);
+  const valueRef = useRef("");
+  const handoff = useRef<null | "success" | "failed">(null);
 
   useEffect(() => {
     goalIdRef.current = goalId;
     savingRef.current = false;
+    handoff.current = null;
+    valueRef.current = "";
     setSaving(false);
     setValue("");
   }, [goalId]);
 
+  useEffect(() => {
+    if (saving) return;
+    const pending = handoff.current;
+    if (!pending) return;
+    handoff.current = null;
+    const currentGoal = goalIdRef.current;
+    if (pending === "failed") {
+      if (actionFocusLost()) focusActionField(currentGoal);
+      return;
+    }
+    if (!actionFocusIdle(currentGoal)) return;
+    focusActionField(currentGoal);
+  }, [saving]);
+
   const handleSubmit = async () => {
     const title = value.trim();
     if (!title || savingRef.current) return;
+    const submitted = value;
     const submittedFor = goalId;
     savingRef.current = true;
+    handoff.current = null;
     setSaving(true);
     let ok = false;
     try {
@@ -415,8 +467,12 @@ function NewActionInput({
     } finally {
       if (goalIdRef.current === submittedFor) {
         savingRef.current = false;
+        if (ok && valueRef.current === submitted) {
+          valueRef.current = "";
+          setValue("");
+        }
+        handoff.current = ok ? "success" : "failed";
         setSaving(false);
-        if (ok) setValue("");
       }
     }
   };
@@ -425,21 +481,28 @@ function NewActionInput({
     <div className="flex gap-2">
       <input
         value={value}
-        disabled={saving}
-        onChange={(e) => setValue(e.target.value)}
+        data-goal-anchor="action"
+        data-goal-id={goalId}
+        onChange={(e) => {
+          valueRef.current = e.target.value;
+          setValue(e.target.value);
+        }}
         onKeyDown={(e) => {
           if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
           e.preventDefault();
           void handleSubmit();
         }}
         placeholder="添加行动步骤..."
-        className="flex-1 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary placeholder:text-fg-tertiary outline-none focus:border-focus-ring disabled:opacity-50"
+        className="flex-1 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary placeholder:text-fg-tertiary outline-none focus:border-focus-ring"
       />
       <button
         type="button"
+        data-goal-anchor="action-add"
+        data-goal-id={goalId}
         onClick={() => void handleSubmit()}
-        disabled={saving || !value.trim()}
-        className="px-3 py-2 bg-surface-overlay hover:bg-border-strong rounded-lg text-sm text-fg-primary disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+        disabled={!value.trim()}
+        aria-busy={saving || undefined}
+        className={`px-3 py-2 bg-surface-overlay hover:bg-border-strong rounded-lg text-sm text-fg-primary disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring${saving ? " opacity-50" : ""}`}
       >
         {saving ? "添加中..." : "添加"}
       </button>

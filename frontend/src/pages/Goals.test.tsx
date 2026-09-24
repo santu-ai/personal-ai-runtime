@@ -263,12 +263,14 @@ describe("GoalsPage", () => {
     renderGoals();
     fireEvent.click(screen.getAllByText("+ 新建")[0]);
     const input = screen.getByPlaceholderText("目标名称...");
+    input.focus();
     fireEvent.change(input, { target: { value: "  学习 Rust  " } });
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(addError).toHaveBeenCalledWith("创建目标失败", "目标"));
     expect(createGoal).toHaveBeenCalledWith({ title: "学习 Rust" });
     expect(input).toHaveValue("  学习 Rust  ");
-    expect(screen.getByPlaceholderText("目标名称...")).toBeEnabled();
+    expect(input).toBeEnabled();
+    expect(input).toHaveFocus();
 
     let release: (goal: WorkItem) => void = () => {};
     vi.mocked(createGoal).mockImplementationOnce(
@@ -279,13 +281,80 @@ describe("GoalsPage", () => {
     );
     fireEvent.keyDown(input, { key: "Enter" });
     fireEvent.keyDown(input, { key: "Enter" });
-    await waitFor(() => expect(screen.getByRole("button", { name: "创建中..." })).toBeDisabled());
+    const pending = await screen.findByRole("button", { name: "创建中..." });
+    expect(pending).toBeEnabled();
+    expect(pending).toHaveAttribute("aria-busy", "true");
+    expect(input).toBeEnabled();
+    expect(input).toHaveFocus();
+    fireEvent.click(pending);
     expect(createGoal).toHaveBeenCalledTimes(2);
 
     release({ ...sampleGoal, title: "学习 Rust" });
     await waitFor(() =>
       expect(screen.queryByPlaceholderText("目标名称...")).not.toBeInTheDocument(),
     );
+    const opener = screen.getAllByRole("button", { name: "+ 新建" })[0];
+    await waitFor(() => expect(opener).toHaveFocus());
+  });
+
+  it("moves focus to the new goal after create succeeds from the button", async () => {
+    let release: (goal: WorkItem) => void = () => {};
+    vi.mocked(createGoal).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderGoals();
+    fireEvent.click(screen.getAllByText("+ 新建")[0]);
+    const input = screen.getByPlaceholderText("目标名称...");
+    fireEvent.change(input, { target: { value: "学钢琴" } });
+    const create = screen.getByRole("button", { name: "创建" });
+    create.focus();
+    fireEvent.click(create);
+    const pending = await screen.findByRole("button", { name: "创建中..." });
+    expect(pending).toHaveFocus();
+    expect(pending).toBeEnabled();
+    expect(pending).toHaveAttribute("aria-busy", "true");
+    expect(input).toBeEnabled();
+    fireEvent.click(pending);
+    expect(createGoal).toHaveBeenCalledTimes(1);
+
+    const created = { ...sampleGoal, id: "g-new", title: "学钢琴" };
+    vi.mocked(listGoals).mockResolvedValue([created]);
+    release(created);
+    const row = await screen.findByRole("link", { name: /学钢琴/ });
+    await waitFor(() => expect(row).toHaveFocus());
+    expect(screen.queryByPlaceholderText("目标名称...")).not.toBeInTheDocument();
+  });
+
+  it("keeps a title typed during create and does not pull focus back", async () => {
+    let release: (goal: WorkItem) => void = () => {};
+    vi.mocked(createGoal).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderGoals();
+    fireEvent.click(screen.getAllByText("+ 新建")[0]);
+    const input = screen.getByPlaceholderText("目标名称...");
+    input.focus();
+    fireEvent.change(input, { target: { value: "学钢琴" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await screen.findByRole("button", { name: "创建中..." });
+    fireEvent.change(input, { target: { value: "学钢琴，也学围棋" } });
+    const opener = screen.getAllByRole("button", { name: "+ 新建" })[0];
+    opener.focus();
+
+    release({ ...sampleGoal, id: "g-new", title: "学钢琴" });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "创建中..." })).not.toBeInTheDocument(),
+    );
+    expect(input).toHaveValue("学钢琴，也学围棋");
+    expect(opener).toHaveFocus();
+    expect(createGoal).toHaveBeenCalledTimes(1);
+    expect(createGoal).toHaveBeenCalledWith({ title: "学钢琴" });
   });
 
   it("keeps an action step when create fails and ignores IME Enter", async () => {
@@ -293,6 +362,7 @@ describe("GoalsPage", () => {
     vi.mocked(createGoalAction).mockRejectedValueOnce(new ApiError("创建行动步骤失败", 500));
     renderGoals("/goals/g1");
     const input = await screen.findByPlaceholderText("添加行动步骤...");
+    input.focus();
     fireEvent.change(input, { target: { value: "写测试" } });
     fireEvent.keyDown(input, { key: "Enter", isComposing: true });
     expect(createGoalAction).not.toHaveBeenCalled();
@@ -302,6 +372,65 @@ describe("GoalsPage", () => {
     expect(createGoalAction).toHaveBeenCalledWith("g1", "写测试");
     expect(input).toHaveValue("写测试");
     expect(input).toBeEnabled();
+    expect(input).toHaveFocus();
+  });
+
+  it("keeps the action field while a step is saving, then returns focus to it", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    let release: (goal: WorkItem) => void = () => {};
+    vi.mocked(createGoalAction).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderGoals("/goals/g1");
+    const input = await screen.findByPlaceholderText("添加行动步骤...");
+    fireEvent.change(input, { target: { value: "写测试" } });
+    const add = screen.getByRole("button", { name: "添加" });
+    add.focus();
+    fireEvent.click(add);
+    const pending = await screen.findByRole("button", { name: "添加中..." });
+    expect(pending).toHaveFocus();
+    expect(pending).toBeEnabled();
+    expect(pending).toHaveAttribute("aria-busy", "true");
+    expect(input).toBeEnabled();
+    fireEvent.click(pending);
+    expect(createGoalAction).toHaveBeenCalledTimes(1);
+
+    release(sampleGoal);
+    await waitFor(() => expect(input).toHaveValue(""));
+    await waitFor(() => expect(input).toHaveFocus());
+    expect(input).toBeEnabled();
+  });
+
+  it("keeps text typed during an action save and does not pull focus back", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    let release: (goal: WorkItem) => void = () => {};
+    vi.mocked(createGoalAction).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderGoals("/goals/g1");
+    const input = await screen.findByPlaceholderText("添加行动步骤...");
+    input.focus();
+    fireEvent.change(input, { target: { value: "写测试" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await screen.findByRole("button", { name: "添加中..." });
+    fireEvent.change(input, { target: { value: "写测试，再补文档" } });
+    const chat = screen.getByRole("button", { name: "就此目标对话" });
+    chat.focus();
+
+    release(sampleGoal);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "添加中..." })).not.toBeInTheDocument(),
+    );
+    expect(input).toHaveValue("写测试，再补文档");
+    expect(chat).toHaveFocus();
+    expect(createGoalAction).toHaveBeenCalledTimes(1);
+    expect(createGoalAction).toHaveBeenCalledWith("g1", "写测试");
   });
 
   it("keeps a suggested step when adding it fails", async () => {

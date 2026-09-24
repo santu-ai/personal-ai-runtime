@@ -27,6 +27,47 @@ function goalPageHref(goalId: string): string {
   return `/goals/${encodeURIComponent(goalId)}`;
 }
 
+function goalRowSelector(goalId: string): string {
+  const escaped =
+    typeof CSS !== "undefined" && typeof CSS.escape === "function"
+      ? CSS.escape(goalId)
+      : goalId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return `a[data-goal-id="${escaped}"]`;
+}
+
+/** 焦点在页面空白处，或还停在这次新建的名称框或「创建」上。 */
+function createFocusIdle(): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  const anchor = active.getAttribute("data-goal-anchor");
+  return anchor === "title" || anchor === "create";
+}
+
+function focusLost(): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  return false;
+}
+
+function focusGoalTitle(): boolean {
+  const input = document.querySelector<HTMLInputElement>("[data-goal-anchor='title']");
+  if (!input || input.disabled) return false;
+  if (document.activeElement !== input) input.focus();
+  return document.activeElement === input;
+}
+
+function focusNewGoalButton(): boolean {
+  const button = document.querySelector<HTMLElement>("[data-goal-anchor='new']");
+  if (!button || (button instanceof HTMLButtonElement && button.disabled)) return false;
+  button.focus();
+  return document.activeElement === button;
+}
+
+type CreateHandoff =
+  { kind: "failed" } | { kind: "draft" } | { kind: "created"; id: string; updatedAt: number };
+
 export default function GoalsPage() {
   const { goalId: urlGoalId } = useParams();
   const navigate = useNavigate();
@@ -35,6 +76,8 @@ export default function GoalsPage() {
     error: listError,
     isLoading: listLoading,
     isFetching: listFetching,
+    dataUpdatedAt: listUpdatedAt,
+    errorUpdatedAt: listErrorUpdatedAt,
     refetch: refetchGoals,
   } = useGoalsQuery();
   const {
@@ -49,6 +92,12 @@ export default function GoalsPage() {
   const [newTitle, setNewTitle] = useState("");
   const [loading, setLoading] = useState(false);
   const creatingRef = useRef(false);
+  const titleRef = useRef("");
+  const showCreateRef = useRef(false);
+  const createHandoff = useRef<CreateHandoff | null>(null);
+  const listUpdatedAtRef = useRef(0);
+  const listStamp = Math.max(listUpdatedAt, listErrorUpdatedAt);
+  listUpdatedAtRef.current = listStamp;
   const [deleteTarget, setDeleteTarget] = useState<WorkItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const deletingRef = useRef(false);
@@ -97,21 +146,74 @@ export default function GoalsPage() {
   const handleCreateGoal = async () => {
     const title = newTitle.trim();
     if (!title || creatingRef.current) return;
+    const submitted = newTitle;
     creatingRef.current = true;
+    createHandoff.current = null;
     setLoading(true);
+    let createdId = "";
+    let ok = false;
     try {
-      await createGoal({ title });
-      setNewTitle("");
-      setShowCreate(false);
+      const created = await createGoal({ title });
+      ok = true;
+      createdId = created.id.trim();
       invalidateGoals();
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "创建目标失败";
       addError(msg, "目标");
     } finally {
       creatingRef.current = false;
+      if (ok) {
+        const stillOpen = showCreateRef.current;
+        const keptDraft = titleRef.current !== submitted;
+        if (stillOpen && !keptDraft) {
+          titleRef.current = "";
+          showCreateRef.current = false;
+          setNewTitle("");
+          setShowCreate(false);
+        }
+        createHandoff.current =
+          stillOpen && keptDraft
+            ? { kind: "draft" }
+            : { kind: "created", id: createdId, updatedAt: listUpdatedAtRef.current };
+      } else if (showCreateRef.current) {
+        createHandoff.current = { kind: "failed" };
+      }
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (loading) return;
+    const pending = createHandoff.current;
+    if (!pending) return;
+
+    if (pending.kind === "failed") {
+      createHandoff.current = null;
+      if (focusLost()) focusGoalTitle();
+      return;
+    }
+
+    if (!createFocusIdle()) {
+      createHandoff.current = null;
+      return;
+    }
+
+    if (pending.kind === "draft") {
+      if (focusGoalTitle()) createHandoff.current = null;
+      return;
+    }
+
+    const link = pending.id
+      ? document.querySelector<HTMLElement>(goalRowSelector(pending.id))
+      : null;
+    if (link) {
+      link.focus();
+      if (document.activeElement === link) createHandoff.current = null;
+      return;
+    }
+    if (listStamp === pending.updatedAt) return;
+    if (focusNewGoalButton()) createHandoff.current = null;
+  }, [loading, goals, listStamp, showCreate]);
 
   const handleUpdateStatus = async (goalId: string, status: string): Promise<boolean> => {
     try {
@@ -156,7 +258,14 @@ export default function GoalsPage() {
           title="目标"
           description="追踪进度，拆成下一步行动"
           actions={
-            <Button size="sm" onClick={() => setShowCreate(true)}>
+            <Button
+              size="sm"
+              data-goal-anchor="new"
+              onClick={() => {
+                showCreateRef.current = true;
+                setShowCreate(true);
+              }}
+            >
               + 新建
             </Button>
           }
@@ -167,8 +276,11 @@ export default function GoalsPage() {
             <Input
               autoFocus
               value={newTitle}
-              disabled={loading}
-              onChange={(e) => setNewTitle(e.target.value)}
+              data-goal-anchor="title"
+              onChange={(e) => {
+                titleRef.current = e.target.value;
+                setNewTitle(e.target.value);
+              }}
               onKeyDown={(e) => {
                 if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
                 e.preventDefault();
@@ -178,13 +290,22 @@ export default function GoalsPage() {
               className="w-full"
             />
             <div className="mt-2 flex gap-2">
-              <Button size="sm" onClick={handleCreateGoal} disabled={loading || !newTitle.trim()}>
+              <Button
+                size="sm"
+                data-goal-anchor="create"
+                onClick={handleCreateGoal}
+                disabled={!newTitle.trim()}
+                aria-busy={loading || undefined}
+                className={loading ? "opacity-50" : ""}
+              >
                 {loading ? "创建中..." : "创建"}
               </Button>
               <Button
                 size="sm"
                 variant="secondary"
                 onClick={() => {
+                  titleRef.current = "";
+                  showCreateRef.current = false;
                   setShowCreate(false);
                   setNewTitle("");
                 }}
@@ -281,7 +402,13 @@ export default function GoalsPage() {
             title="暂无目标"
             description="创建第一个目标，让 AI 帮你追踪进度"
             action={
-              <Button size="sm" onClick={() => setShowCreate(true)}>
+              <Button
+                size="sm"
+                onClick={() => {
+                  showCreateRef.current = true;
+                  setShowCreate(true);
+                }}
+              >
                 创建目标
               </Button>
             }
@@ -337,6 +464,7 @@ function GoalListItem({ goal, selected }: { goal: WorkItem; selected: boolean })
   return (
     <Link
       to={goalPageHref(goal.id)}
+      data-goal-id={goal.id}
       aria-current={selected ? "page" : undefined}
       className={`block w-full rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
         selected
