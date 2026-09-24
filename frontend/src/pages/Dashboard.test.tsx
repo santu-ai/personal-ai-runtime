@@ -121,6 +121,7 @@ function mockDashboardData(overrides: Partial<ReturnType<typeof useDashboard>> =
     dashboard: null,
     loading: false,
     error: "",
+    errorBusy: false,
     refresh: vi.fn(),
     ...overrides,
   });
@@ -214,14 +215,37 @@ describe("DashboardPage", () => {
     expect(screen.getAllByText("加载中...")[0]).toBeInTheDocument();
   });
 
-  it("shows error state with retry button", () => {
+  it("shows error state with retry button", async () => {
     const mockRefresh = vi.fn();
     mockDashboardData({ error: "后端连接失败", loading: false, refresh: mockRefresh });
     renderDashboard();
-    expect(screen.getAllByText("后端连接失败")[0]).toBeInTheDocument();
-    const retryButtons = screen.getAllByText("重试");
-    fireEvent.click(retryButtons[0]);
+    const alert = screen.getByTestId("dashboard-load-error");
+    expect(alert).toHaveTextContent("后端连接失败");
+    expect(screen.queryByText("今天暂无紧急事项")).not.toBeInTheDocument();
+    const retry = within(alert).getByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+    fireEvent.click(retry);
     expect(mockRefresh).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the full-page failure on screen while retrying", async () => {
+    const mockRefresh = vi.fn();
+    mockDashboardData({
+      error: "后端连接失败",
+      loading: true,
+      errorBusy: true,
+      refresh: mockRefresh,
+    });
+    renderDashboard();
+    const alert = screen.getByTestId("dashboard-load-error");
+    expect(alert).toHaveTextContent("后端连接失败");
+    expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
+    expect(screen.queryByText("今天暂无紧急事项")).not.toBeInTheDocument();
+    const retry = within(alert).getByRole("button", { name: "重试" });
+    expect(retry).toHaveAttribute("aria-busy", "true");
+    await waitFor(() => expect(retry).toHaveFocus());
+    fireEvent.click(retry);
+    expect(mockRefresh).not.toHaveBeenCalled();
   });
 
   it("renders proactive reminders section", () => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   getCostSummary,
@@ -26,7 +26,16 @@ import { queryKeys } from "./useWsInvalidationBridge";
  *
  * Soft failures (telemetry / notifications) toast but do not blank the page.
  * Full-page error only when we have no useful data after load settles.
+ * 重试会把这次失败清掉并把 isLoading 再置上；原因留着，避免整页闪回「加载中...」。
  */
+
+const DASHBOARD_FATAL_FALLBACK = "无法连接到后端服务，请确认后端已启动";
+
+/** 有原文用原文。空白或不是 Error 时用整页自己的说法，避免把读失败写成空的一天。 */
+function dashboardFatalMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) return error.message.trim();
+  return DASHBOARD_FATAL_FALLBACK;
+}
 
 const DASHBOARD_STALE_MS = 60_000; // 1-minute refetch interval
 
@@ -93,24 +102,33 @@ export function useDashboard() {
   const anyLoading = queries.some((q) => q.isLoading);
   const hasAnyData = queries.some((q) => q.data !== undefined);
   const errors = queries.map((q) => q.error).filter(Boolean);
+  const fetchingWithoutData = !hasAnyData && queries.some((q) => q.isFetching);
+  // 还在首轮加载时不把先失败的一块写成整页失败。全部停下且没有数据，才是这次读失败。
+  const settledFatal =
+    !hasAnyData && !anyLoading && errors.length > 0 ? dashboardFatalMessage(errors[0]) : null;
+  const [heldFatal, setHeldFatal] = useState<string | null>(null);
 
-  // Initial spinner only until at least one subset arrives (or all settle empty).
-  const loading = anyLoading && !hasAnyData;
+  useEffect(() => {
+    if (hasAnyData) {
+      setHeldFatal(null);
+      return;
+    }
+    if (settledFatal) setHeldFatal(settledFatal);
+    else if (!fetchingWithoutData) setHeldFatal(null);
+  }, [hasAnyData, settledFatal, fetchingWithoutData]);
 
-  // Full-page error only when every query failed and nothing rendered.
-  const fatalError =
-    !loading && !hasAnyData && errors.length > 0
-      ? errors[0] instanceof Error
-        ? errors[0].message
-        : "无法连接到后端服务，请确认后端已启动"
-      : null;
+  const shownFatal = hasAnyData ? null : (settledFatal ?? (fetchingWithoutData ? heldFatal : null));
+  // 首轮转圈只到至少一块数据到来，或全部停下。已经写出的失败在重试期间留着。
+  const loading = anyLoading && !hasAnyData && !shownFatal;
+  const errorBusy = Boolean(shownFatal) && fetchingWithoutData;
 
-  const softErrorMsg =
-    !loading && hasAnyData && errors.length > 0
+  const partialErrorMsg =
+    hasAnyData && errors.length > 0
       ? errors[0] instanceof Error
         ? errors[0].message
         : "部分仪表盘数据加载失败"
-      : fatalError;
+      : null;
+  const softErrorMsg = shownFatal ?? partialErrorMsg;
 
   const lastErrorRef = useRef<string | null>(null);
   useEffect(() => {
@@ -150,7 +168,8 @@ export function useDashboard() {
     notificationsPending: notifications.isPending && notifications.data === undefined,
     dashboard: dashboard.data ?? null,
     loading,
-    error: fatalError ?? "",
+    error: shownFatal ?? "",
+    errorBusy,
     refresh,
     retryNotifications,
   };
