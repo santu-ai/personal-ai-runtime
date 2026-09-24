@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Mail, RefreshCw } from "lucide-react";
 import {
   triggerInboxPoll,
@@ -19,6 +19,7 @@ import LoadErrorNotice, {
 } from "../components/ui/LoadErrorNotice";
 import NoticeBanner from "../components/ui/NoticeBanner";
 import PageHeader from "../components/ui/PageHeader";
+import Spinner from "../components/ui/Spinner";
 import InboxEmailDetailModal from "../components/inbox/InboxEmailDetailModal";
 import InboxDigestModal from "../components/inbox/InboxDigestModal";
 
@@ -117,7 +118,21 @@ export default function InboxPage() {
   const [initialPollDone, setInitialPollDone] = useState(false);
   const [selectedEmail, setSelectedEmail] = useState<InboxEmail | null>(null);
   const [digestOpen, setDigestOpen] = useState(false);
-  const [loadingDetail, setLoadingDetail] = useState(false);
+  const detailRequest = useRef(0);
+  const [detailTarget, setDetailTarget] = useState<InboxEmail | null>(null);
+  const [detailError, setDetailError] = useState<unknown>(null);
+  const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
+  const detailBusy = Boolean(
+    detailTarget && detailLoadingId && detailLoadingId === detailTarget.id,
+  );
+  // 重试会把这次错误清掉。原因留着，避免列表上的「查看」再闪成「加载中...」。
+  const shownDetailError = useHeldQueryError(
+    false,
+    detailError,
+    detailBusy,
+    "加载邮件详情失败",
+    detailTarget?.id ?? "",
+  );
   const addError = useErrorStore((s) => s.addError);
   const quickChat = useQuickChat();
 
@@ -168,15 +183,23 @@ export default function InboxPage() {
   };
 
   const handleViewDetail = async (em: InboxEmail) => {
-    setLoadingDetail(true);
+    const requestId = ++detailRequest.current;
+    setDetailTarget(em);
+    setDetailLoadingId(em.id);
+    setDetailError(null);
     try {
       const detail = await getInboxEmailDetail(em.id);
+      if (detailRequest.current !== requestId) return;
       setSelectedEmail(detail);
+      setDetailTarget(null);
+      setDetailError(null);
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : "加载邮件详情失败";
+      if (detailRequest.current !== requestId) return;
+      const msg = queryErrorMessage(err, "加载邮件详情失败");
+      setDetailError(err);
       addError(msg, "收件箱");
     } finally {
-      setLoadingDetail(false);
+      if (detailRequest.current === requestId) setDetailLoadingId(null);
     }
   };
 
@@ -232,6 +255,18 @@ export default function InboxPage() {
           <p className="text-fg-tertiary text-center py-12">加载中...</p>
         ) : (
           <>
+            {shownDetailError ? (
+              <div className="mb-4">
+                <LoadErrorNotice
+                  message={shownDetailError}
+                  busy={detailBusy}
+                  onRetry={() => {
+                    if (detailTarget) void handleViewDetail(detailTarget);
+                  }}
+                  testId="inbox-detail-load-error"
+                />
+              </div>
+            ) : null}
             {emails.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 {COLUMNS.map((col) => (
@@ -244,7 +279,7 @@ export default function InboxPage() {
                         <TriageCard
                           key={em.id}
                           email={em}
-                          loadingDetail={loadingDetail}
+                          loadingDetail={detailLoadingId === em.id}
                           onView={() => handleViewDetail(em)}
                           onMarkRead={() => handleMarkRead(em)}
                           onAiProcess={() => handleAiProcess(em)}
@@ -281,6 +316,7 @@ export default function InboxPage() {
                         padding="sm"
                         className={`p-3 ${unread ? "" : "opacity-70"}`}
                         onClick={() => handleViewDetail(em)}
+                        aria-busy={detailLoadingId === em.id || undefined}
                         aria-label={`${unread ? "未读" : "已读"} ${em.subject || "（无主题）"} ${em.sender}`}
                       >
                         <div className="flex items-baseline gap-2 min-w-0">
@@ -347,9 +383,15 @@ function TriageCard({
           type="button"
           onClick={onView}
           disabled={loadingDetail}
-          className="text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded disabled:opacity-50"
+          aria-busy={loadingDetail || undefined}
+          className="inline-flex items-center gap-1 text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded disabled:opacity-50"
         >
-          {loadingDetail ? "加载中..." : "查看"}
+          {loadingDetail ? (
+            <span aria-hidden="true" className="inline-flex">
+              <Spinner size="sm" />
+            </span>
+          ) : null}
+          查看
         </button>
         <button
           type="button"

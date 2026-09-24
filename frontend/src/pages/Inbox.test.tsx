@@ -2,7 +2,15 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
 import InboxPage from "./Inbox";
-import { ApiError, listInboxEmails, triggerInboxPoll, getInboxSyncStatus } from "../api/client";
+import {
+  ApiError,
+  getInboxEmailDetail,
+  listInboxEmails,
+  triggerInboxPoll,
+  getInboxSyncStatus,
+  type InboxEmail,
+} from "../api/client";
+import { getInboxEmailSummary } from "../api/inbox";
 import { RECENT_INBOX_LIMIT } from "../hooks/useInboxQuery";
 
 const { addError } = vi.hoisted(() => ({ addError: vi.fn() }));
@@ -48,6 +56,19 @@ vi.mock("../api/client", () => ({
     }
   },
 }));
+
+vi.mock("../api/inbox", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/inbox")>();
+  return {
+    ...actual,
+    getInboxEmailSummary: vi.fn().mockResolvedValue({
+      email_id: "e1",
+      subject: "请尽快回复",
+      sender: "boss@corp.com",
+      summary: "需要今天回复",
+    }),
+  };
+});
 
 vi.mock("../stores/errorStore", () => ({
   useErrorStore: (selector: (s: { addError: ReturnType<typeof vi.fn> }) => unknown) =>
@@ -317,5 +338,133 @@ describe("InboxPage", () => {
     expect(screen.getByText("八月账单")).toBeInTheDocument();
     expect(screen.queryByText("还没有同步到邮件")).not.toBeInTheDocument();
     expect(screen.queryByTestId("inbox-load-error")).not.toBeInTheDocument();
+  });
+
+  function pendingMail(id: string, subject: string): InboxEmail {
+    return {
+      id,
+      sender: "boss@corp.com",
+      subject,
+      preview: "预览不出现在列表",
+      received_at: "2026-08-17T01:00:00Z",
+      category: "important",
+      importance: 0.8,
+      reason: "需要回复",
+      notified: 0,
+      digested: 0,
+      status: "pending",
+      created_at: "2026-08-17T01:00:00Z",
+    };
+  }
+
+  it("keeps the mail list and a retry when opening one message fails", async () => {
+    const first = pendingMail("e1", "请尽快回复");
+    const second = pendingMail("e2", "另一封账单");
+    vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") =>
+      status === "pending" ? [first, second] : [],
+    );
+    vi.mocked(getInboxEmailDetail).mockRejectedValue(new ApiError("邮件暂时读不到", 503));
+    renderWithRouter(<InboxPage />);
+
+    const firstCard = (await screen.findByText("请尽快回复")).closest("div.rounded-lg");
+    const secondCard = screen.getByText("另一封账单").closest("div.rounded-lg");
+    expect(firstCard).toBeTruthy();
+    expect(secondCard).toBeTruthy();
+    fireEvent.click(within(firstCard as HTMLElement).getByRole("button", { name: "查看" }));
+
+    const alert = await screen.findByTestId("inbox-detail-load-error");
+    expect(alert).toHaveTextContent("邮件暂时读不到");
+    expect(addError).toHaveBeenCalledWith("邮件暂时读不到", "收件箱");
+    expect(screen.getByText("请尽快回复")).toBeInTheDocument();
+    expect(screen.getByText("另一封账单")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
+    expect(within(firstCard as HTMLElement).getByRole("button", { name: "查看" })).toBeEnabled();
+    expect(
+      within(secondCard as HTMLElement).getByRole("button", { name: "查看" }),
+    ).not.toHaveAttribute("aria-busy");
+    await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+  });
+
+  it("holds the open-mail failure while that reread is in flight", async () => {
+    const first = pendingMail("e1", "请尽快回复");
+    vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") =>
+      status === "pending" ? [first] : [],
+    );
+    vi.mocked(getInboxEmailDetail).mockRejectedValueOnce(new ApiError("邮件暂时读不到", 503));
+    renderWithRouter(<InboxPage />);
+    const card = (await screen.findByText("请尽快回复")).closest("div.rounded-lg") as HTMLElement;
+    fireEvent.click(within(card).getByRole("button", { name: "查看" }));
+    const retry = await screen.findByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+
+    let release: ((row: InboxEmail) => void) | undefined;
+    vi.mocked(getInboxEmailDetail).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    fireEvent.click(retry);
+    await waitFor(() => expect(retry).toHaveAttribute("aria-busy", "true"));
+    expect(retry).toHaveFocus();
+    expect(screen.getByTestId("inbox-detail-load-error")).toHaveTextContent("邮件暂时读不到");
+    expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "查看" })).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByText("请尽快回复")).toBeInTheDocument();
+
+    release?.(first);
+    expect(await screen.findByText("需要今天回复")).toBeInTheDocument();
+    expect(screen.queryByTestId("inbox-detail-load-error")).not.toBeInTheDocument();
+    expect(getInboxEmailSummary).toHaveBeenCalledWith("e1");
+  });
+
+  it("drops the previous mail's open failure when another mail is opened", async () => {
+    const first = pendingMail("e1", "请尽快回复");
+    const second = pendingMail("e2", "另一封账单");
+    vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") =>
+      status === "pending" ? [first, second] : [],
+    );
+    vi.mocked(getInboxEmailDetail).mockImplementation(async (id: string) => {
+      if (id === "e1") throw new ApiError("邮件暂时读不到", 503);
+      return new Promise<InboxEmail>(() => {});
+    });
+    renderWithRouter(<InboxPage />);
+    const firstCard = (await screen.findByText("请尽快回复")).closest(
+      "div.rounded-lg",
+    ) as HTMLElement;
+    const secondCard = screen.getByText("另一封账单").closest("div.rounded-lg") as HTMLElement;
+    fireEvent.click(within(firstCard).getByRole("button", { name: "查看" }));
+    expect(await screen.findByTestId("inbox-detail-load-error")).toHaveTextContent(
+      "邮件暂时读不到",
+    );
+
+    fireEvent.click(within(secondCard).getByRole("button", { name: "查看" }));
+    await waitFor(() =>
+      expect(within(secondCard).getByRole("button", { name: "查看" })).toHaveAttribute(
+        "aria-busy",
+        "true",
+      ),
+    );
+    expect(screen.queryByText("邮件暂时读不到")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("inbox-detail-load-error")).not.toBeInTheDocument();
+    expect(screen.getByText("请尽快回复")).toBeInTheDocument();
+    expect(screen.getByText("另一封账单")).toBeInTheDocument();
+  });
+
+  it("uses the page fallback when opening a message fails without a message", async () => {
+    const first = pendingMail("e1", "请尽快回复");
+    vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") =>
+      status === "pending" ? [first] : [],
+    );
+    vi.mocked(getInboxEmailDetail).mockRejectedValue(new Error("   "));
+    renderWithRouter(<InboxPage />);
+    const card = (await screen.findByText("请尽快回复")).closest("div.rounded-lg") as HTMLElement;
+    fireEvent.click(within(card).getByRole("button", { name: "查看" }));
+    expect(await screen.findByTestId("inbox-detail-load-error")).toHaveTextContent(
+      "加载邮件详情失败",
+    );
+    expect(addError).toHaveBeenCalledWith("加载邮件详情失败", "收件箱");
+    expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
   });
 });
