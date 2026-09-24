@@ -1,4 +1,4 @@
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useChatStore } from "./stores/chatStore";
 import { useErrorStore } from "./stores/errorStore";
@@ -44,6 +44,8 @@ export default function Layout() {
     id: string;
     title: string;
   } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const deletingRef = useRef(false);
   const [showOnboarding, setShowOnboarding] = useState(
     () => !localStorage.getItem("onboarding_done"),
   );
@@ -69,17 +71,22 @@ export default function Layout() {
   };
 
   const confirmDeleteChat = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || deletingRef.current) return;
     const { id } = deleteTarget;
-    setDeleteTarget(null);
+    deletingRef.current = true;
+    setDeleting(true);
     try {
       await deleteConversation(id);
+      setDeleteTarget(null);
       removeConversationCached(id);
       if (activeConversationId === id) {
         navigate("/");
       }
     } catch (e) {
       addError(e instanceof ApiError ? e.message : "删除对话失败", "对话");
+    } finally {
+      deletingRef.current = false;
+      setDeleting(false);
     }
   };
 
@@ -184,10 +191,14 @@ export default function Layout() {
           description={
             deleteTarget ? `确定删除对话「${deleteTarget.title}」？此操作不可撤销。` : undefined
           }
-          confirmLabel="删除"
+          confirmLabel={deleting ? "删除中..." : "删除"}
           variant="danger"
-          onConfirm={confirmDeleteChat}
-          onCancel={() => setDeleteTarget(null)}
+          confirmBusy={deleting}
+          onConfirm={() => void confirmDeleteChat()}
+          onCancel={() => {
+            if (deletingRef.current) return;
+            setDeleteTarget(null);
+          }}
         />
 
         {showOnboarding && <OnboardingWizard onComplete={() => setShowOnboarding(false)} />}

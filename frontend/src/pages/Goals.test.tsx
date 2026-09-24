@@ -9,6 +9,7 @@ import {
   createGoal,
   createGoalAction,
   decomposeGoal,
+  deleteGoal,
   getGoal,
   listGoals,
   type WorkItem,
@@ -313,6 +314,50 @@ describe("GoalsPage", () => {
     fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "添加" }));
     await waitFor(() => expect(addError).toHaveBeenCalledWith("创建行动步骤失败", "目标"));
     expect(screen.getByText("先写测试")).toBeInTheDocument();
+  });
+
+  it("keeps the delete dialog open until delete succeeds and ignores dismiss while deleting", async () => {
+    let fail: (err: unknown) => void = () => {};
+    vi.mocked(deleteGoal).mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    renderGoals("/goals/g1");
+
+    fireEvent.click(await screen.findByRole("button", { name: "删除" }));
+    const dialog = await screen.findByRole("dialog", { name: "删除目标" });
+    expect(dialog).toHaveTextContent("学习 Rust");
+    fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "删除中..." }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(dialog.parentElement as HTMLElement);
+
+    const pending = await within(dialog).findByRole("button", { name: "删除中..." });
+    expect(pending).toBeDisabled();
+    expect(pending).toHaveAttribute("aria-busy", "true");
+    const cancel = within(dialog).getByRole("button", { name: "取消" });
+    expect(cancel).toBeDisabled();
+    fireEvent.click(cancel);
+    expect(deleteGoal).toHaveBeenCalledTimes(1);
+    expect(deleteGoal).toHaveBeenCalledWith("g1");
+    expect(dialog).toHaveTextContent("学习 Rust");
+    expect(dialog).toBeInTheDocument();
+
+    fail(new ApiError("删除目标失败", 500));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("删除目标失败", "目标"));
+    expect(dialog).toBeInTheDocument();
+    expect(dialog).toHaveTextContent("学习 Rust");
+    expect(within(dialog).getByRole("button", { name: "删除" })).toBeEnabled();
+
+    vi.mocked(deleteGoal).mockResolvedValueOnce(undefined);
+    fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "删除目标" })).not.toBeInTheDocument(),
+    );
+    expect(deleteGoal).toHaveBeenCalledTimes(2);
   });
 });
 
