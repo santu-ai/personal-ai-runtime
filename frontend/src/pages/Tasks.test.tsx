@@ -1,5 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+
+const { addError } = vi.hoisted(() => ({
+  addError: vi.fn(),
+}));
 import { Route, Routes } from "react-router-dom";
 import { renderWithRouter } from "../test-utils";
 import TasksPage from "./Tasks";
@@ -80,8 +84,8 @@ vi.mock("../api/inbox", async (importOriginal) => {
 });
 
 vi.mock("../stores/errorStore", () => ({
-  useErrorStore: (selector: (s: { addError: () => void }) => unknown) =>
-    selector({ addError: vi.fn() }),
+  useErrorStore: (selector: (s: { addError: ReturnType<typeof vi.fn> }) => unknown) =>
+    selector({ addError }),
 }));
 
 const sampleTask: WorkItem = {
@@ -2150,5 +2154,94 @@ describe("TasksPage", () => {
     } finally {
       HTMLElement.prototype.scrollIntoView = previousScroll;
     }
+  });
+
+  it("shows a retry when the task list fails to load", async () => {
+    vi.mocked(listWorkItems).mockRejectedValue(new ApiError("加载失败", 500));
+    renderTasks("/tasks");
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("加载失败");
+    expect(addError).toHaveBeenCalledWith("加载失败", "任务");
+    expect(screen.getByRole("heading", { name: "任务" })).toBeInTheDocument();
+    expect(screen.queryByText("暂无任务")).not.toBeInTheDocument();
+    expect(screen.queryByText("从项目资料简报开始：交办后可验收或返工。")).not.toBeInTheDocument();
+    const retry = within(alert).getByRole("button", { name: "重试" });
+    expect(retry).toHaveClass("focus-visible:ring-focus-ring");
+    await waitFor(() => expect(retry).toHaveFocus());
+  });
+
+  it("uses the page fallback when the task list error has no message", async () => {
+    vi.mocked(listWorkItems).mockRejectedValue(new ApiError("   ", 500));
+    renderTasks("/tasks");
+    expect(await screen.findByRole("alert")).toHaveTextContent("加载任务失败");
+    expect(addError).toHaveBeenCalledWith("加载任务失败", "任务");
+    expect(screen.queryByText("暂无任务")).not.toBeInTheDocument();
+  });
+
+  it("keeps the task list retry mounted until the reread finishes", async () => {
+    vi.mocked(listWorkItems).mockRejectedValueOnce(new ApiError("加载失败", 500));
+    renderTasks("/tasks");
+    const retry = await screen.findByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+
+    const pending: Array<(rows: WorkItem[]) => void> = [];
+    vi.mocked(listWorkItems).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          pending.push(resolve);
+        }),
+    );
+    fireEvent.click(retry);
+    await waitFor(() => expect(pending.length).toBeGreaterThanOrEqual(2));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "重试" })).toHaveAttribute("aria-busy", "true"),
+    );
+    expect(screen.getByTestId("tasks-load-error")).toHaveTextContent("加载失败");
+    expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无任务")).not.toBeInTheDocument();
+
+    pending.splice(0).forEach((resolve) => resolve([]));
+    expect(await screen.findByText("暂无任务")).toBeInTheDocument();
+    expect(screen.queryByTestId("tasks-load-error")).not.toBeInTheDocument();
+  });
+
+  it("keeps the task list when the detail read fails and retries", async () => {
+    vi.mocked(getWorkItem).mockRejectedValue(new ApiError("详情失败", 500));
+    renderTasks("/tasks/task_1");
+
+    const alert = await screen.findByTestId("task-detail-load-error", {}, { timeout: 4000 });
+    expect(alert).toHaveTextContent("详情失败");
+    expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
+    expect(screen.queryByText("任务不存在")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /整理报告/ })).toBeInTheDocument();
+    const retry = within(alert).getByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).not.toHaveAttribute("aria-busy", "true"), { timeout: 4000 });
+    await waitFor(() => expect(retry).toHaveFocus());
+
+    vi.mocked(getWorkItem).mockResolvedValue(sampleTask);
+    fireEvent.click(retry);
+    expect(await screen.findByRole("button", { name: "执行" })).toBeInTheDocument();
+    expect(screen.queryByTestId("task-detail-load-error")).not.toBeInTheDocument();
+  });
+
+  it("keeps not-found copy when the task detail is missing", async () => {
+    vi.mocked(getWorkItem).mockRejectedValue(new ApiError("missing", 404));
+    renderTasks("/tasks/missing");
+    expect(await screen.findByText("任务不存在")).toBeInTheDocument();
+    expect(screen.queryByTestId("task-detail-load-error")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无任务")).not.toBeInTheDocument();
+  });
+
+  it("shows the list failure beside an open task without taking focus", async () => {
+    vi.mocked(listWorkItems).mockRejectedValue(new ApiError("列表失败", 500));
+    renderTasks("/tasks/task_1");
+
+    expect(await screen.findByRole("button", { name: "执行" })).toBeInTheDocument();
+    const list = screen.getByRole("region", { name: "任务列表" });
+    const alert = within(list).getByRole("alert");
+    expect(alert).toHaveTextContent("列表失败");
+    expect(within(list).queryByText("暂无其他任务")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无任务")).not.toBeInTheDocument();
+    expect(within(alert).getByRole("button", { name: "重试" })).not.toHaveFocus();
   });
 });

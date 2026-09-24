@@ -30,6 +30,10 @@ import Dialog from "../components/ui/Dialog";
 import Disclosure from "../components/ui/Disclosure";
 import EmptyState from "../components/ui/EmptyState";
 import { Input } from "../components/ui/Input";
+import LoadErrorNotice, {
+  queryErrorMessage,
+  useHeldQueryError,
+} from "../components/ui/LoadErrorNotice";
 import PageHeader from "../components/ui/PageHeader";
 import Spinner from "../components/ui/Spinner";
 import InboxEmailDetailModal from "../components/inbox/InboxEmailDetailModal";
@@ -908,11 +912,19 @@ function RerunFailureReason({ reason }: { reason: string }) {
 export default function TasksPage() {
   const { taskId: urlTaskId } = useParams();
   const navigate = useNavigate();
-  const { data: items = [], error: listError, isLoading } = useTasksQuery();
+  const {
+    data: items = [],
+    error: listError,
+    isLoading,
+    isFetching: listFetching,
+    refetch: refetchTasks,
+  } = useTasksQuery();
   const {
     data: selected,
     error: detailError,
     isError: detailIsError,
+    isFetching: detailFetching,
+    refetch: refetchTask,
   } = useTaskDetailQuery(urlTaskId);
   const invalidate = useInvalidateTasks();
   const addError = useErrorStore((s) => s.addError);
@@ -956,6 +968,20 @@ export default function TasksPage() {
     detailIsError &&
     detailError instanceof ApiError &&
     detailError.status === 404;
+  const shownListError = useHeldQueryError(
+    items.length > 0,
+    listError,
+    listFetching,
+    "加载任务失败",
+    "list",
+  );
+  const shownDetailError = useHeldQueryError(
+    Boolean(selected) || notFound || !urlTaskId,
+    notFound ? null : detailError,
+    detailFetching,
+    "加载任务详情失败",
+    urlTaskId ?? "",
+  );
 
   useEffect(() => {
     setConfirmExecute(false);
@@ -1028,13 +1054,13 @@ export default function TasksPage() {
 
   useEffect(() => {
     if (listError) {
-      addError(listError instanceof ApiError ? listError.message : "加载任务失败", "任务");
+      addError(queryErrorMessage(listError, "加载任务失败"), "任务");
     }
   }, [listError, addError]);
 
   useEffect(() => {
     if (detailError && !(detailError instanceof ApiError && detailError.status === 404)) {
-      addError(detailError instanceof ApiError ? detailError.message : "加载任务详情失败", "任务");
+      addError(queryErrorMessage(detailError, "加载任务详情失败"), "任务");
     }
   }, [detailError, addError]);
 
@@ -1407,7 +1433,14 @@ export default function TasksPage() {
           </section>
         )}
 
-        {isLoading && items.length === 0 && !detailOpen ? (
+        {shownListError && !detailOpen ? (
+          <LoadErrorNotice
+            message={shownListError}
+            busy={listFetching}
+            onRetry={() => void refetchTasks()}
+            testId="tasks-load-error"
+          />
+        ) : isLoading && items.length === 0 && !detailOpen ? (
           <p className="text-sm text-fg-tertiary">加载中…</p>
         ) : showSplit ? (
           <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
@@ -1415,7 +1448,15 @@ export default function TasksPage() {
               aria-label="任务列表"
               className={detailOpen ? "hidden min-w-0 lg:block" : "min-w-0"}
             >
-              {isLoading && items.length === 0 ? (
+              {shownListError ? (
+                <LoadErrorNotice
+                  message={shownListError}
+                  busy={listFetching}
+                  onRetry={() => void refetchTasks()}
+                  testId="tasks-load-error"
+                  autoFocus={false}
+                />
+              ) : isLoading && items.length === 0 ? (
                 <p className="text-sm text-fg-tertiary">加载中…</p>
               ) : items.length === 0 ? (
                 <p className="text-sm text-fg-tertiary">暂无其他任务</p>
@@ -1458,9 +1499,16 @@ export default function TasksPage() {
                   }
                 />
               )}
-              {urlTaskId && !selected && !notFound && (
+              {shownDetailError ? (
+                <LoadErrorNotice
+                  message={shownDetailError}
+                  busy={detailFetching}
+                  onRetry={() => void refetchTask()}
+                  testId="task-detail-load-error"
+                />
+              ) : urlTaskId && !selected && !notFound ? (
                 <p className="py-14 text-center text-sm text-fg-tertiary">加载中…</p>
-              )}
+              ) : null}
               {selected && !notFound && (
                 <div className="space-y-6">
                   <header className="space-y-2">

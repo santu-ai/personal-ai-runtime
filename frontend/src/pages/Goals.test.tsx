@@ -1,9 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, fireEvent } from "@testing-library/react";
+import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { Route, Routes } from "react-router-dom";
 import { renderWithRouter } from "../test-utils";
 import GoalsPage from "./Goals";
-import { getGoal, listGoals, type WorkItem } from "../api/client";
+import { ApiError, getGoal, listGoals, type WorkItem } from "../api/client";
+
+const { addError } = vi.hoisted(() => ({
+  addError: vi.fn(),
+}));
 
 vi.mock("../api/client", () => ({
   listGoals: vi.fn().mockResolvedValue([]),
@@ -24,8 +28,8 @@ vi.mock("../api/client", () => ({
 }));
 
 vi.mock("../stores/errorStore", () => ({
-  useErrorStore: (selector: (s: { addError: () => void }) => unknown) =>
-    selector({ addError: vi.fn() }),
+  useErrorStore: (selector: (s: { addError: ReturnType<typeof vi.fn> }) => unknown) =>
+    selector({ addError }),
 }));
 
 vi.mock("../stores/chatStore", () => ({
@@ -132,5 +136,103 @@ describe("GoalsPage", () => {
       "href",
       "/goals/goal%2F2",
     );
+  });
+
+  it("shows the empty list after a successful read", async () => {
+    renderGoals();
+    expect(await screen.findByText("暂无目标")).toBeInTheDocument();
+    expect(screen.getByText("创建第一个目标，让 AI 帮你追踪进度")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("shows a retry when the goal list fails to load", async () => {
+    vi.mocked(listGoals).mockRejectedValue(new ApiError("加载失败", 500));
+    renderGoals();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("加载失败");
+    expect(addError).toHaveBeenCalledWith("加载失败", "目标");
+    expect(screen.getByRole("heading", { name: "目标" })).toBeInTheDocument();
+    expect(screen.queryByText("暂无目标")).not.toBeInTheDocument();
+    expect(screen.queryByText("创建第一个目标，让 AI 帮你追踪进度")).not.toBeInTheDocument();
+    const retry = within(alert).getByRole("button", { name: "重试" });
+    expect(retry).toHaveClass("focus-visible:ring-focus-ring");
+    await waitFor(() => expect(retry).toHaveFocus());
+  });
+
+  it("uses the page fallback when the goal list error has no message", async () => {
+    vi.mocked(listGoals).mockRejectedValue(new ApiError("   ", 500));
+    renderGoals();
+    expect(await screen.findByRole("alert")).toHaveTextContent("加载目标失败");
+    expect(addError).toHaveBeenCalledWith("加载目标失败", "目标");
+    expect(screen.queryByText("暂无目标")).not.toBeInTheDocument();
+  });
+
+  it("keeps the goal list retry mounted until the reread finishes", async () => {
+    let release: ((rows: WorkItem[]) => void) | undefined;
+    vi.mocked(listGoals).mockRejectedValueOnce(new ApiError("加载失败", 500));
+    renderGoals();
+    const retry = await screen.findByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+
+    vi.mocked(listGoals).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    fireEvent.click(retry);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "重试" })).toHaveAttribute("aria-busy", "true"),
+    );
+    expect(screen.getByTestId("goals-load-error")).toHaveTextContent("加载失败");
+    expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无目标")).not.toBeInTheDocument();
+
+    release?.([]);
+    expect(await screen.findByText("暂无目标")).toBeInTheDocument();
+    expect(screen.queryByTestId("goals-load-error")).not.toBeInTheDocument();
+  });
+
+  it("keeps a loaded goal when the detail read fails and retries", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    vi.mocked(getGoal).mockRejectedValue(new ApiError("详情失败", 500));
+    renderGoals("/goals/g1");
+
+    const alert = await screen.findByTestId("goal-detail-load-error", {}, { timeout: 4000 });
+    expect(alert).toHaveTextContent("详情失败");
+    expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
+    expect(screen.queryByText("目标不存在")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /学习 Rust/ })).toBeInTheDocument();
+    const retry = within(alert).getByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).not.toHaveAttribute("aria-busy", "true"), { timeout: 4000 });
+    await waitFor(() => expect(retry).toHaveFocus());
+
+    vi.mocked(getGoal).mockResolvedValue(sampleGoal);
+    fireEvent.click(retry);
+    expect(await screen.findByText("进度 30%")).toBeInTheDocument();
+    expect(screen.queryByTestId("goal-detail-load-error")).not.toBeInTheDocument();
+  });
+
+  it("keeps not-found copy when the goal detail is missing", async () => {
+    vi.mocked(listGoals).mockResolvedValue([]);
+    vi.mocked(getGoal).mockRejectedValue(new ApiError("missing", 404));
+    renderGoals("/goals/missing");
+    expect(await screen.findByText("目标不存在")).toBeInTheDocument();
+    expect(screen.queryByTestId("goal-detail-load-error")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无目标")).not.toBeInTheDocument();
+  });
+
+  it("shows the list failure beside an open goal without taking focus", async () => {
+    vi.mocked(listGoals).mockRejectedValue(new ApiError("列表失败", 500));
+    vi.mocked(getGoal).mockResolvedValue(sampleGoal);
+    renderGoals("/goals/g1");
+
+    expect(await screen.findByText("进度 30%")).toBeInTheDocument();
+    const list = screen.getByRole("region", { name: "目标列表" });
+    const alert = within(list).getByRole("alert");
+    expect(alert).toHaveTextContent("列表失败");
+    expect(within(list).queryByText("暂无其他目标")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无目标")).not.toBeInTheDocument();
+    expect(within(alert).getByRole("button", { name: "重试" })).not.toHaveFocus();
   });
 });
