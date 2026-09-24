@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import type { InboxEmail } from "../../api/client";
 import { getInboxEmailSummary } from "../../api/inbox";
 import Button from "../ui/Button";
+import LoadErrorNotice, { useHeldQueryError } from "../ui/LoadErrorNotice";
 import { formatTime } from "../../utils/time";
 
 const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
@@ -18,7 +19,26 @@ interface Props {
 export default function InboxEmailDetailModal({ email, onClose }: Props) {
   const [summary, setSummary] = useState<string | null>(null);
   const [summarizing, setSummarizing] = useState(false);
-  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [summaryError, setSummaryError] = useState<unknown>(null);
+  const [attempt, setAttempt] = useState(0);
+  const emailId = email?.id ?? "";
+  const [trackedId, setTrackedId] = useState(emailId);
+  // 换一封邮件时先丢掉上一封的失败，避免那条原因被记到新邮件上。
+  if (emailId !== trackedId) {
+    setTrackedId(emailId);
+    setSummary(null);
+    setSummaryError(null);
+    setSummarizing(false);
+    setAttempt(0);
+  }
+  // 重试会把这次错误清掉。原因留着，避免再闪回「AI 正在生成摘要...」。
+  const shownSummaryError = useHeldQueryError(
+    summary !== null,
+    summaryError,
+    summarizing,
+    "摘要生成失败",
+    email?.id ?? "",
+  );
 
   // Auto-generate summary when a new email is opened.
   useEffect(() => {
@@ -29,12 +49,12 @@ export default function InboxEmailDetailModal({ email, onClose }: Props) {
     setSummarizing(true);
     getInboxEmailSummary(email.id)
       .then((res) => {
-        if (!cancelled) setSummary(res.summary || "（无法生成摘要）");
+        if (cancelled) return;
+        setSummary(res.summary || "（无法生成摘要）");
+        setSummaryError(null);
       })
-      .catch((err) => {
-        if (!cancelled) {
-          setSummaryError(err instanceof Error ? err.message : "摘要生成失败");
-        }
+      .catch((err: unknown) => {
+        if (!cancelled) setSummaryError(err);
       })
       .finally(() => {
         if (!cancelled) setSummarizing(false);
@@ -42,7 +62,7 @@ export default function InboxEmailDetailModal({ email, onClose }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [email]);
+  }, [email, attempt]);
 
   if (!email) return null;
 
@@ -101,10 +121,18 @@ export default function InboxEmailDetailModal({ email, onClose }: Props) {
           )}
           <div>
             <h4 className="text-xs font-medium text-fg-tertiary mb-2">AI 摘要</h4>
-            {summarizing ? (
+            {shownSummaryError ? (
+              <LoadErrorNotice
+                message={shownSummaryError}
+                busy={summarizing}
+                onRetry={() => {
+                  if (summarizing) return;
+                  setAttempt((value) => value + 1);
+                }}
+                testId="inbox-summary-load-error"
+              />
+            ) : summarizing ? (
               <p className="text-sm text-fg-tertiary animate-pulse">AI 正在生成摘要...</p>
-            ) : summaryError ? (
-              <p className="text-sm text-warning">{summaryError}</p>
             ) : (
               <p className="text-sm text-fg-primary leading-relaxed bg-surface-overlay rounded-lg p-3">
                 {summary}
