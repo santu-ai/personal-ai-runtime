@@ -956,7 +956,20 @@ export default function TasksPage() {
   const deliveryTitleRef = useRef<HTMLHeadingElement>(null);
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
   const [inboxEmail, setInboxEmail] = useState<InboxEmail | null>(null);
+  const [citeSourceId, setCiteSourceId] = useState<string | null>(null);
+  const [citeMessageId, setCiteMessageId] = useState<string | null>(null);
+  const [citeError, setCiteError] = useState<unknown>(null);
+  const [citeLoadingId, setCiteLoadingId] = useState<string | null>(null);
   const citeRequest = useRef(0);
+  const citeBusy = Boolean(citeMessageId && citeLoadingId === citeMessageId);
+  // 重试会把这次错误清掉。原因留在交付区，避免来源按钮改成「加载中...」。
+  const shownCiteError = useHeldQueryError(
+    false,
+    citeError,
+    citeBusy,
+    "加载邮件详情失败",
+    citeMessageId ?? "",
+  );
   const [metrics, setMetrics] = useState<DeliveryMetrics | null>(null);
   const [metricsError, setMetricsError] = useState<string | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
@@ -1051,6 +1064,10 @@ export default function TasksPage() {
     setConfirmSchedule(false);
     setActiveSourceId(null);
     setInboxEmail(null);
+    setCiteSourceId(null);
+    setCiteMessageId(null);
+    setCiteError(null);
+    setCiteLoadingId(null);
     citeRequest.current += 1;
   }, [urlTaskId, historyId]);
 
@@ -1270,15 +1287,32 @@ export default function TasksPage() {
     setActiveSourceId(targetId || null);
     scrollToDeliverySource(targetId);
     const messageId = matched ? emailMessageId(matched) : null;
-    if (!messageId) return;
+    if (!messageId) {
+      citeRequest.current += 1;
+      setCiteSourceId(null);
+      setCiteMessageId(null);
+      setCiteError(null);
+      setCiteLoadingId(null);
+      return;
+    }
     const requestId = ++citeRequest.current;
+    setCiteSourceId(targetId);
+    setCiteMessageId(messageId);
+    setCiteLoadingId(messageId);
+    setCiteError(null);
     try {
       const detail = await getInboxEmailDetail(messageId);
       if (citeRequest.current !== requestId) return;
       setInboxEmail(detail);
+      setCiteSourceId(null);
+      setCiteMessageId(null);
+      setCiteError(null);
     } catch (err) {
       if (citeRequest.current !== requestId) return;
-      addError(err instanceof ApiError ? err.message : "加载邮件详情失败", "任务");
+      setCiteError(err);
+      addError(queryErrorMessage(err, "加载邮件详情失败"), "任务");
+    } finally {
+      if (citeRequest.current === requestId) setCiteLoadingId(null);
     }
   };
 
@@ -1753,6 +1787,17 @@ export default function TasksPage() {
                           void openCitedSource(sourceId, shownDelivery.sources)
                         }
                       />
+                      {shownCiteError ? (
+                        <LoadErrorNotice
+                          message={shownCiteError}
+                          busy={citeBusy}
+                          onRetry={() => {
+                            if (!citeSourceId || citeBusy) return;
+                            void openCitedSource(citeSourceId, citeSources);
+                          }}
+                          testId="task-mail-load-error"
+                        />
+                      ) : null}
                       {shownDelivery.suggested_actions.length > 0 && (
                         <div>
                           <h4 className="text-xs font-medium text-fg-tertiary mb-1">建议待办</h4>

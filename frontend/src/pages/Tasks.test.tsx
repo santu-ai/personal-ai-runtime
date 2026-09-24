@@ -2156,6 +2156,172 @@ describe("TasksPage", () => {
     }
   });
 
+  function openedMail(id: string, subject: string) {
+    return {
+      id,
+      sender: "a@example.com",
+      subject,
+      preview: "延期",
+      received_at: "2026-09-20T00:00:00Z",
+      category: "actionable",
+      importance: 0.5,
+      reason: "需要跟进",
+      notified: 0,
+      digested: 0,
+      status: "pending" as const,
+      created_at: "2026-09-20T00:00:00Z",
+    };
+  }
+
+  async function withMailBrief(run: () => Promise<void>) {
+    const cited: WorkDelivery = {
+      ...currentDelivery,
+      findings: [{ text: "排期推迟", kind: "risk", source_ids: ["file:abc"] }],
+      sources: [
+        { id: "email:m1", type: "email", title: "延期邮件" },
+        { id: "email:m10", type: "email", title: "另一封" },
+        { id: "file:abc", type: "file", title: "纪要" },
+      ],
+    };
+    const task: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        ...briefTask.delivery_bundle!,
+        current: cited,
+        deliveries: [historySummary, { ...currentSummary, ...cited }],
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [task];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(task);
+    const previousScroll = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = () => {};
+    try {
+      renderTasks("/tasks/brief_1");
+      await run();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = previousScroll;
+    }
+  }
+
+  it("keeps the delivery and a retry when opening a cited mail fails", async () => {
+    vi.mocked(getInboxEmailDetail).mockRejectedValue(new ApiError("邮件暂时读不到", 503));
+    await withMailBrief(async () => {
+      const emailRow = await screen.findByTestId("delivery-source-email:m1");
+      fireEvent.click(within(emailRow).getByRole("button", { name: "打开邮件 延期邮件" }));
+
+      const alert = await screen.findByTestId("task-mail-load-error");
+      expect(alert).toHaveTextContent("邮件暂时读不到");
+      expect(addError).toHaveBeenCalledWith("邮件暂时读不到", "任务");
+      expect(screen.getByText("有进度风险")).toBeInTheDocument();
+      expect(within(emailRow).getByRole("button", { name: "打开邮件 延期邮件" })).toBeEnabled();
+      expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
+      expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
+      expect(screen.queryByText("延期邮件全文")).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus(),
+      );
+    });
+  });
+
+  it("holds the cited-mail failure while that reread is in flight", async () => {
+    vi.mocked(getInboxEmailDetail).mockRejectedValueOnce(new ApiError("邮件暂时读不到", 503));
+    await withMailBrief(async () => {
+      const emailRow = await screen.findByTestId("delivery-source-email:m1");
+      fireEvent.click(within(emailRow).getByRole("button", { name: "打开邮件 延期邮件" }));
+      const retry = await screen.findByRole("button", { name: "重试" });
+      await waitFor(() => expect(retry).toHaveFocus());
+
+      let release: ((row: ReturnType<typeof openedMail>) => void) | undefined;
+      vi.mocked(getInboxEmailDetail).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          }),
+      );
+      fireEvent.click(retry);
+      await waitFor(() => expect(retry).toHaveAttribute("aria-busy", "true"));
+      expect(retry).toHaveFocus();
+      expect(screen.getByTestId("task-mail-load-error")).toHaveTextContent("邮件暂时读不到");
+      expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
+      expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
+      expect(within(emailRow).getByRole("button", { name: "打开邮件 延期邮件" })).toBeEnabled();
+
+      release?.(openedMail("m1", "延期邮件全文"));
+      expect(await screen.findByText("延期邮件全文")).toBeInTheDocument();
+      expect(screen.queryByTestId("task-mail-load-error")).not.toBeInTheDocument();
+    });
+  });
+
+  it("drops the previous mail's open failure when another mail is opened", async () => {
+    vi.mocked(getInboxEmailDetail).mockImplementation(async (id: string) => {
+      if (id === "m1") throw new ApiError("邮件暂时读不到", 503);
+      return new Promise(() => {});
+    });
+    await withMailBrief(async () => {
+      const first = await screen.findByTestId("delivery-source-email:m1");
+      const second = screen.getByTestId("delivery-source-email:m10");
+      fireEvent.click(within(first).getByRole("button", { name: "打开邮件 延期邮件" }));
+      expect(await screen.findByTestId("task-mail-load-error")).toHaveTextContent("邮件暂时读不到");
+
+      fireEvent.click(within(second).getByRole("button", { name: "打开邮件 另一封" }));
+      await waitFor(() =>
+        expect(screen.queryByTestId("task-mail-load-error")).not.toBeInTheDocument(),
+      );
+      expect(screen.queryByText("邮件暂时读不到")).not.toBeInTheDocument();
+      expect(screen.getByText("有进度风险")).toBeInTheDocument();
+      expect(within(first).getByRole("button", { name: "打开邮件 延期邮件" })).toBeEnabled();
+    });
+  });
+
+  it("drops the cited-mail failure when a non-email source is opened", async () => {
+    vi.mocked(getInboxEmailDetail).mockRejectedValue(new ApiError("邮件暂时读不到", 503));
+    await withMailBrief(async () => {
+      const emailRow = await screen.findByTestId("delivery-source-email:m1");
+      fireEvent.click(within(emailRow).getByRole("button", { name: "打开邮件 延期邮件" }));
+      expect(await screen.findByTestId("task-mail-load-error")).toHaveTextContent("邮件暂时读不到");
+
+      const findings = screen.getByTestId("delivery-findings");
+      fireEvent.click(within(findings).getByRole("button", { name: "来源 file:abc" }));
+      await waitFor(() =>
+        expect(screen.queryByTestId("task-mail-load-error")).not.toBeInTheDocument(),
+      );
+      expect(screen.queryByText("邮件暂时读不到")).not.toBeInTheDocument();
+      expect(getInboxEmailDetail).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("有进度风险")).toBeInTheDocument();
+    });
+  });
+
+  it("clears the cited-mail failure when another delivery version is opened", async () => {
+    vi.mocked(getInboxEmailDetail).mockRejectedValue(new ApiError("邮件暂时读不到", 503));
+    await withMailBrief(async () => {
+      const emailRow = await screen.findByTestId("delivery-source-email:m1");
+      fireEvent.click(within(emailRow).getByRole("button", { name: "打开邮件 延期邮件" }));
+      expect(await screen.findByTestId("task-mail-load-error")).toHaveTextContent("邮件暂时读不到");
+
+      fireEvent.click(screen.getByRole("button", { name: /v1 · 已要求返工/ }));
+      expect(await screen.findByText("历史版本完整正文甲")).toBeInTheDocument();
+      expect(screen.queryByTestId("task-mail-load-error")).not.toBeInTheDocument();
+      expect(screen.queryByText("邮件暂时读不到")).not.toBeInTheDocument();
+    });
+  });
+
+  it("uses the page fallback when opening a cited mail fails without a message", async () => {
+    vi.mocked(getInboxEmailDetail).mockRejectedValue(new Error("   "));
+    await withMailBrief(async () => {
+      const emailRow = await screen.findByTestId("delivery-source-email:m1");
+      fireEvent.click(within(emailRow).getByRole("button", { name: "打开邮件 延期邮件" }));
+      expect(await screen.findByTestId("task-mail-load-error")).toHaveTextContent(
+        "加载邮件详情失败",
+      );
+      expect(addError).toHaveBeenCalledWith("加载邮件详情失败", "任务");
+      expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
+      expect(screen.getByText("有进度风险")).toBeInTheDocument();
+    });
+  });
+
   it("shows a retry when the task list fails to load", async () => {
     vi.mocked(listWorkItems).mockRejectedValue(new ApiError("加载失败", 500));
     renderTasks("/tasks");
