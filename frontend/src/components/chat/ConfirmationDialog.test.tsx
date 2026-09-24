@@ -85,6 +85,29 @@ describe("ConfirmationDialog", () => {
     expect(onDeny).not.toHaveBeenCalled();
   });
 
+  it("keeps the ask_user answer while resolve is in flight", () => {
+    const onConfirm = vi.fn();
+    const onDeny = vi.fn();
+    const tool = {
+      index: 0,
+      id: "tc-ask",
+      function_name: "ask_user",
+      arguments: JSON.stringify({ question: "简报要覆盖最近几天？" }),
+    };
+    const { rerender } = renderWithRouter(
+      <ConfirmationDialog toolCall={tool} busy={false} onConfirm={onConfirm} onDeny={onDeny} />,
+    );
+    const answer = screen.getByLabelText("你的回答");
+    fireEvent.change(answer, { target: { value: "最近三天" } });
+    rerender(<ConfirmationDialog toolCall={tool} busy onConfirm={onConfirm} onDeny={onDeny} />);
+    expect(answer).toHaveValue("最近三天");
+    const send = screen.getByRole("button", { name: "发送回答" });
+    expect(send).toBeDisabled();
+    fireEvent.keyDown(answer, { key: "Enter", ctrlKey: true });
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(onDeny).not.toHaveBeenCalled();
+  });
+
   it("cancels ask_user without sending an answer", () => {
     const onConfirm = vi.fn();
     const onDeny = vi.fn();

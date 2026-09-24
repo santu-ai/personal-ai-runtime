@@ -74,7 +74,10 @@ export default function ChatView({ conversationId }: Props) {
     allToolResults,
   } = useChatMessages(conversationId, addError);
 
-  const { pendingConfirmation, setFromEvent, confirm, deny } = useApprovalFlow(conversationId);
+  const { pendingConfirmation, resolving, setFromEvent, confirm, deny } =
+    useApprovalFlow(conversationId);
+  const confirmationRef = useRef<HTMLDivElement>(null);
+  const focusedApprovalRef = useRef<string | null>(null);
   const { data: pendingApprovals = [] } = useApprovalsQuery();
 
   useEffect(() => {
@@ -299,10 +302,29 @@ export default function ChatView({ conversationId }: Props) {
   }, [messages, streamingContent, isLoading, scrollToBottom]);
 
   useEffect(() => {
-    if (!isLoading && inputRef.current) {
-      inputRef.current.focus();
+    // 待确认卡片在的时候，焦点留给确认或回答，不要落回已经禁用的输入框。
+    if (pendingConfirmation || isLoading) return;
+    inputRef.current?.focus();
+  }, [isLoading, pendingConfirmation]);
+
+  useEffect(() => {
+    const approvalId = pendingConfirmation
+      ? pendingConfirmation.approvalId || pendingConfirmation.toolCall.id
+      : null;
+    if (!approvalId) {
+      focusedApprovalRef.current = null;
+      return;
     }
-  }, [isLoading]);
+    if (focusedApprovalRef.current === approvalId) return;
+    const root = confirmationRef.current;
+    const answer = root?.querySelector<HTMLElement>("textarea");
+    const confirmButton = root?.querySelector<HTMLElement>("button:not([disabled])");
+    const target = answer ?? confirmButton;
+    // 欢迎屏那一帧还没有卡片。等卡片挂上再移焦点，避免记成已经移过。
+    if (!target) return;
+    focusedApprovalRef.current = approvalId;
+    target.focus();
+  }, [pendingConfirmation, initialLoad]);
 
   const handleSend = useCallback(async () => {
     const trimmed = input.trim();
@@ -445,9 +467,14 @@ export default function ChatView({ conversationId }: Props) {
 
       {pendingConfirmation && (
         <div className="px-4 py-2 shrink-0">
-          <div className="max-w-3xl mx-auto">
+          <div
+            ref={confirmationRef}
+            className="max-w-3xl mx-auto"
+            key={pendingConfirmation.approvalId || pendingConfirmation.toolCall.id}
+          >
             <ConfirmationDialog
               toolCall={pendingConfirmation.toolCall}
+              busy={resolving}
               onConfirm={handleConfirm}
               onDeny={handleDeny}
             />

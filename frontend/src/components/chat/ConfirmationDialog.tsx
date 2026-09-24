@@ -12,6 +12,8 @@ interface Props {
   toolCall: ToolCall;
   onConfirm: (answer?: string) => void;
   onDeny: () => void;
+  /** 续写还没回来时按住按钮，回答框留着。 */
+  busy?: boolean;
 }
 
 const ANSWER_MAX = 8000;
@@ -113,7 +115,7 @@ function suggestionFor(
   };
 }
 
-export default function ConfirmationDialog({ toolCall, onConfirm, onDeny }: Props) {
+export default function ConfirmationDialog({ toolCall, onConfirm, onDeny, busy = false }: Props) {
   const { data: policy } = useCapabilityPolicyQuery();
   const isAskUser = toolCall.function_name === "ask_user";
   const riskLevel = isAskUser ? "low" : getRiskLevelFromPolicy(toolCall.function_name, policy);
@@ -150,6 +152,7 @@ export default function ConfirmationDialog({ toolCall, onConfirm, onDeny }: Prop
               placeholder="输入回答，助手会带着它继续"
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
+                if (busy) return;
                 if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && answer) {
                   event.preventDefault();
                   onConfirm(answer);
@@ -157,10 +160,10 @@ export default function ConfirmationDialog({ toolCall, onConfirm, onDeny }: Prop
               }}
             />
             <div className="flex gap-2">
-              <Button size="sm" disabled={!answer} onClick={() => onConfirm(answer)}>
+              <Button size="sm" disabled={busy || !answer} onClick={() => onConfirm(answer)}>
                 发送回答
               </Button>
-              <Button size="sm" variant="secondary" onClick={onDeny}>
+              <Button size="sm" variant="secondary" disabled={busy} onClick={onDeny}>
                 取消
               </Button>
             </div>
@@ -171,10 +174,10 @@ export default function ConfirmationDialog({ toolCall, onConfirm, onDeny }: Prop
               {suggestion?.hint ?? "确认后将执行工具并继续当前对话"}
             </p>
             <div className="flex gap-2">
-              <Button size="sm" onClick={() => onConfirm()}>
+              <Button size="sm" disabled={busy} onClick={() => onConfirm()}>
                 {suggestion?.confirm ?? "确认执行"}
               </Button>
-              <Button size="sm" variant="secondary" onClick={onDeny}>
+              <Button size="sm" variant="secondary" disabled={busy} onClick={onDeny}>
                 取消
               </Button>
             </div>

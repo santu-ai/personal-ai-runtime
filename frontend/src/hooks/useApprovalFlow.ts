@@ -103,12 +103,28 @@ function applyResolveToMessages(
 
 export function useApprovalFlow(conversationId: string) {
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
+  const [resolving, setResolving] = useState(false);
   const inflightApprovalsRef = useRef<Set<string>>(new Set());
+  const resolvingRef = useRef(false);
 
   useEffect(() => {
     inflightApprovalsRef.current = new Set();
+    resolvingRef.current = false;
+    setResolving(false);
     setPendingConfirmation(null);
   }, [conversationId]);
+
+  const beginResolve = () => {
+    if (resolvingRef.current) return false;
+    resolvingRef.current = true;
+    setResolving(true);
+    return true;
+  };
+
+  const endResolve = () => {
+    resolvingRef.current = false;
+    setResolving(false);
+  };
 
   const confirm = useCallback(
     async (
@@ -116,9 +132,8 @@ export function useApprovalFlow(conversationId: string) {
       onError?: (msg: string, source: string) => void,
       answer?: string,
     ) => {
-      if (!pendingConfirmation) return;
+      if (!pendingConfirmation || !beginResolve()) return;
       const pc = pendingConfirmation;
-      setPendingConfirmation(null);
 
       try {
         const toolArgs = JSON.parse(pc.toolCall.arguments || "{}") as Record<string, unknown>;
@@ -141,7 +156,6 @@ export function useApprovalFlow(conversationId: string) {
               pc.toolCall.id,
             );
         if (res.status === "resume_failed" || res.retryable) {
-          setPendingConfirmation(pc);
           onError?.(res.error || "续写失败，可再试一次", "审批");
           return;
         }
@@ -165,9 +179,10 @@ export function useApprovalFlow(conversationId: string) {
             approvalId: nextId,
             assistantMsgId: followupId || pc.assistantMsgId,
           });
+        } else {
+          setPendingConfirmation(null);
         }
       } catch (err) {
-        setPendingConfirmation(pc);
         const msg =
           err instanceof ApiError
             ? err.message
@@ -175,6 +190,8 @@ export function useApprovalFlow(conversationId: string) {
               ? err.message
               : "审批操作失败";
         onError?.(msg, "审批");
+      } finally {
+        endResolve();
       }
     },
     [pendingConfirmation, conversationId],
@@ -182,9 +199,8 @@ export function useApprovalFlow(conversationId: string) {
 
   const deny = useCallback(
     async (setMessages: SetMessages, onError?: (msg: string, source: string) => void) => {
-      if (!pendingConfirmation) return;
+      if (!pendingConfirmation || !beginResolve()) return;
       const pc = pendingConfirmation;
-      setPendingConfirmation(null);
 
       try {
         const res = await resolveApproval(
@@ -203,8 +219,8 @@ export function useApprovalFlow(conversationId: string) {
           res,
           { denied: true },
         );
+        setPendingConfirmation(null);
       } catch (err) {
-        setPendingConfirmation(pc);
         const msg =
           err instanceof ApiError
             ? err.message
@@ -212,6 +228,8 @@ export function useApprovalFlow(conversationId: string) {
               ? err.message
               : "审批操作失败";
         onError?.(msg, "审批");
+      } finally {
+        endResolve();
       }
     },
     [pendingConfirmation, conversationId],
@@ -252,5 +270,5 @@ export function useApprovalFlow(conversationId: string) {
     [],
   );
 
-  return { pendingConfirmation, setPendingConfirmation, setFromEvent, confirm, deny };
+  return { pendingConfirmation, resolving, setPendingConfirmation, setFromEvent, confirm, deny };
 }
