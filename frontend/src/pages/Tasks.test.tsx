@@ -2244,4 +2244,166 @@ describe("TasksPage", () => {
     expect(screen.queryByText("暂无任务")).not.toBeInTheDocument();
     expect(within(alert).getByRole("button", { name: "重试" })).not.toHaveFocus();
   });
+
+  it("does not show a metrics error after a successful empty window", async () => {
+    vi.mocked(listWorkItems).mockResolvedValue([]);
+    vi.mocked(getDeliveryMetrics).mockResolvedValue({
+      window_days: 30,
+      reviewed_tasks: 0,
+      accepted_tasks: 0,
+      first_reviewed_tasks: 0,
+      first_version_accepted_tasks: 0,
+      first_version_acceptance_rate: null,
+      rework_count: 0,
+      adopted_action_count: 0,
+      average_review_latency_hours: null,
+      attribution: {
+        approval_interventions: 0,
+        recovery_interventions: 0,
+        llm_cost: 0,
+        unattributed_project_brief_calls: 0,
+        unattributed_project_brief_cost: 0,
+      },
+      capped: false,
+      cap_limit: 5000,
+      items: [],
+    });
+    renderTasks("/tasks");
+    expect(await screen.findByText("暂无任务")).toBeInTheDocument();
+    expect(screen.queryByTestId("delivery-metrics-load-error")).not.toBeInTheDocument();
+    expect(screen.queryByText("近 30 日简报")).not.toBeInTheDocument();
+  });
+
+  it("shows a retry when delivery metrics fail and there is no summary yet", async () => {
+    vi.mocked(listWorkItems).mockResolvedValue([]);
+    vi.mocked(getDeliveryMetrics).mockRejectedValue(new ApiError("指标暂时读不到", 503));
+    renderTasks("/tasks");
+    const alert = await screen.findByTestId("delivery-metrics-load-error");
+    expect(alert).toHaveTextContent("指标暂时读不到");
+    expect(screen.queryByText("近 30 日简报")).not.toBeInTheDocument();
+    expect(screen.getByText("暂无任务")).toBeInTheDocument();
+    expect(addError).toHaveBeenCalledWith("指标暂时读不到", "任务");
+    const retry = within(alert).getByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+  });
+
+  it("uses the metrics fallback when the summary error has no message", async () => {
+    vi.mocked(listWorkItems).mockResolvedValue([]);
+    vi.mocked(getDeliveryMetrics).mockRejectedValue(new ApiError("   ", 500));
+    renderTasks("/tasks");
+    const alert = await screen.findByTestId("delivery-metrics-load-error");
+    expect(alert).toHaveTextContent("加载简报指标失败");
+    expect(addError).toHaveBeenCalledWith("加载简报指标失败", "任务");
+    expect(screen.queryByText("近 30 日简报")).not.toBeInTheDocument();
+  });
+
+  it("keeps the metrics retry mounted until the reread finishes", async () => {
+    vi.mocked(listWorkItems).mockResolvedValue([]);
+    let release: ((value: Awaited<ReturnType<typeof getDeliveryMetrics>>) => void) | undefined;
+    vi.mocked(getDeliveryMetrics)
+      .mockRejectedValueOnce(new ApiError("指标暂时读不到", 503))
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          }),
+      );
+    renderTasks("/tasks");
+    const retry = await screen.findByRole("button", { name: "重试" });
+    expect(screen.getByTestId("delivery-metrics-load-error")).toHaveTextContent("指标暂时读不到");
+    await waitFor(() => expect(retry).toHaveFocus());
+
+    fireEvent.click(retry);
+    expect(retry).toBeInTheDocument();
+    expect(retry).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByTestId("delivery-metrics-load-error")).toHaveTextContent("指标暂时读不到");
+    expect(screen.queryByText("暂无任务")).toBeInTheDocument();
+    expect(screen.queryByText("近 30 日简报")).not.toBeInTheDocument();
+
+    release?.({
+      window_days: 30,
+      reviewed_tasks: 0,
+      accepted_tasks: 0,
+      first_reviewed_tasks: 0,
+      first_version_accepted_tasks: 0,
+      first_version_acceptance_rate: null,
+      rework_count: 0,
+      adopted_action_count: 0,
+      average_review_latency_hours: null,
+      attribution: {
+        approval_interventions: 0,
+        recovery_interventions: 0,
+        llm_cost: 0,
+        unattributed_project_brief_calls: 0,
+        unattributed_project_brief_cost: 0,
+      },
+      capped: false,
+      cap_limit: 5000,
+      items: [],
+    });
+    expect(await screen.findByText("暂无任务")).toBeInTheDocument();
+    expect(screen.queryByTestId("delivery-metrics-load-error")).not.toBeInTheDocument();
+    expect(screen.queryByText("近 30 日简报")).not.toBeInTheDocument();
+  });
+
+  it("keeps the window summary when a later read fails", async () => {
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [briefTask];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(briefTask);
+    vi.mocked(getDeliveryMetrics)
+      .mockResolvedValueOnce({
+        window_days: 30,
+        reviewed_tasks: 2,
+        accepted_tasks: 2,
+        first_reviewed_tasks: 2,
+        first_version_accepted_tasks: 1,
+        first_version_acceptance_rate: 0.5,
+        rework_count: 1,
+        adopted_action_count: 1,
+        average_review_latency_hours: 1.5,
+        attribution: {
+          approval_interventions: 2,
+          recovery_interventions: 1,
+          llm_cost: 0,
+          unattributed_project_brief_calls: 0,
+          unattributed_project_brief_cost: 0,
+        },
+        capped: false,
+        cap_limit: 5000,
+        items: [],
+      })
+      .mockRejectedValueOnce(new ApiError("指标暂时读不到", 503));
+    renderTasks("/tasks/brief_1");
+
+    expect(await screen.findByText("近 30 日简报")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "转为任务" }));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("指标暂时读不到", "任务"));
+    expect(screen.getByText("近 30 日简报")).toBeInTheDocument();
+    expect(screen.getByText("首版采纳 50%（1/2）")).toBeInTheDocument();
+    expect(screen.queryByTestId("delivery-metrics-load-error")).not.toBeInTheDocument();
+  });
+
+  it("does not move focus when the window summary fails beside an open task", async () => {
+    vi.mocked(getDeliveryMetrics).mockRejectedValue(new ApiError("指标暂时读不到", 503));
+    renderTasks("/tasks/task_1");
+    expect(await screen.findByRole("button", { name: "执行" })).toBeInTheDocument();
+    const alert = screen.getByTestId("delivery-metrics-load-error");
+    expect(alert).toHaveTextContent("指标暂时读不到");
+    expect(within(alert).getByRole("button", { name: "重试" })).not.toHaveFocus();
+  });
+
+  it("leaves focus on the task list retry when the summary also fails", async () => {
+    vi.mocked(listWorkItems).mockRejectedValue(new ApiError("列表失败", 500));
+    vi.mocked(getDeliveryMetrics).mockRejectedValue(new ApiError("指标暂时读不到", 503));
+    renderTasks("/tasks");
+    const metrics = await screen.findByTestId("delivery-metrics-load-error");
+    const list = await screen.findByTestId("tasks-load-error");
+    expect(metrics).toHaveTextContent("指标暂时读不到");
+    expect(list).toHaveTextContent("列表失败");
+    expect(screen.queryByText("暂无任务")).not.toBeInTheDocument();
+    await waitFor(() => expect(within(list).getByRole("button", { name: "重试" })).toHaveFocus());
+    expect(within(metrics).getByRole("button", { name: "重试" })).not.toHaveFocus();
+  });
 });
