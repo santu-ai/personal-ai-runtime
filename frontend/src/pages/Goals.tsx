@@ -8,6 +8,10 @@ import Button from "../components/ui/Button";
 import Dialog from "../components/ui/Dialog";
 import EmptyState from "../components/ui/EmptyState";
 import { Input } from "../components/ui/Input";
+import LoadErrorNotice, {
+  queryErrorMessage,
+  useHeldQueryError,
+} from "../components/ui/LoadErrorNotice";
 import PageHeader from "../components/ui/PageHeader";
 import { goalProgressPercent } from "../utils/goalProgress";
 import { timeAgo, isStagnant } from "../utils/timeUtils";
@@ -26,11 +30,19 @@ function goalPageHref(goalId: string): string {
 export default function GoalsPage() {
   const { goalId: urlGoalId } = useParams();
   const navigate = useNavigate();
-  const { data: goals = [], error: listError } = useGoalsQuery();
+  const {
+    data: goals = [],
+    error: listError,
+    isLoading: listLoading,
+    isFetching: listFetching,
+    refetch: refetchGoals,
+  } = useGoalsQuery();
   const {
     data: selectedGoal = null,
     error: detailError,
     isError: detailIsError,
+    isFetching: detailFetching,
+    refetch: refetchGoal,
   } = useGoalQuery(urlGoalId);
   const invalidateGoals = useInvalidateGoals();
   const [showCreate, setShowCreate] = useState(false);
@@ -46,18 +58,30 @@ export default function GoalsPage() {
     detailIsError &&
     detailError instanceof ApiError &&
     detailError.status === 404;
+  const shownListError = useHeldQueryError(
+    goals.length > 0,
+    listError,
+    listFetching,
+    "加载目标失败",
+    "list",
+  );
+  const shownDetailError = useHeldQueryError(
+    Boolean(selectedGoal) || goalNotFound || !urlGoalId,
+    goalNotFound ? null : detailError,
+    detailFetching,
+    "加载目标详情失败",
+    urlGoalId ?? "",
+  );
 
   useEffect(() => {
     if (listError) {
-      const msg = listError instanceof ApiError ? listError.message : "加载目标失败";
-      addError(msg, "目标");
+      addError(queryErrorMessage(listError, "加载目标失败"), "目标");
     }
   }, [listError, addError]);
 
   useEffect(() => {
     if (detailError && !(detailError instanceof ApiError && detailError.status === 404)) {
-      const msg = detailError instanceof ApiError ? detailError.message : "加载目标详情失败";
-      addError(msg, "目标");
+      addError(queryErrorMessage(detailError, "加载目标详情失败"), "目标");
     }
   }, [detailError, addError]);
 
@@ -156,13 +180,32 @@ export default function GoalsPage() {
           </div>
         )}
 
-        {showSplit ? (
+        {!detailOpen && shownListError ? (
+          <LoadErrorNotice
+            message={shownListError}
+            busy={listFetching}
+            onRetry={() => void refetchGoals()}
+            testId="goals-load-error"
+          />
+        ) : !detailOpen && listLoading && goals.length === 0 ? (
+          <p className="text-sm text-fg-tertiary">加载中…</p>
+        ) : showSplit ? (
           <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
             <section
               aria-label="目标列表"
               className={detailOpen ? "hidden min-w-0 lg:block" : "min-w-0"}
             >
-              {goals.length === 0 ? (
+              {shownListError ? (
+                <LoadErrorNotice
+                  message={shownListError}
+                  busy={listFetching}
+                  onRetry={() => void refetchGoals()}
+                  testId="goals-load-error"
+                  autoFocus={false}
+                />
+              ) : listLoading && goals.length === 0 ? (
+                <p className="text-sm text-fg-tertiary">加载中…</p>
+              ) : goals.length === 0 ? (
                 <p className="text-sm text-fg-tertiary">暂无其他目标</p>
               ) : (
                 <GoalGroupedList goals={goals} selectedId={selectedGoal?.id} />
@@ -180,7 +223,14 @@ export default function GoalsPage() {
                   </Link>
                 </div>
               )}
-              {goalNotFound ? (
+              {shownDetailError ? (
+                <LoadErrorNotice
+                  message={shownDetailError}
+                  busy={detailFetching}
+                  onRetry={() => void refetchGoal()}
+                  testId="goal-detail-load-error"
+                />
+              ) : goalNotFound ? (
                 <EmptyState
                   title="目标不存在"
                   description="该目标可能已被删除，或链接无效。"
