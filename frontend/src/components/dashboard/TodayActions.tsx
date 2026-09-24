@@ -1,9 +1,29 @@
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { CheckCircle2, Mail, ShieldCheck, Sparkles, Target } from "lucide-react";
+import LoadErrorNotice from "../ui/LoadErrorNotice";
 import type { TodayBuckets, TodayDecideItem, TodayDoItem, TodayHandledItem } from "./todayBuckets";
+
+/** 一栏的读取结果。成功的空栏仍用原来的句子；失败且没有条目时不写成空。 */
+export interface TodayColumnState {
+  error: string | null;
+  busy: boolean;
+  pending: boolean;
+  onRetry: () => void;
+}
+
+const idleColumn: TodayColumnState = {
+  error: null,
+  busy: false,
+  pending: false,
+  onRetry: () => {},
+};
 
 interface TodayActionsProps {
   buckets: TodayBuckets;
+  decideStatus?: TodayColumnState;
+  doStatus?: TodayColumnState;
+  handledStatus?: TodayColumnState;
 }
 
 const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
@@ -55,11 +75,52 @@ function HandledRow({ item }: { item: TodayHandledItem }) {
   );
 }
 
-export default function TodayActions({ buckets }: TodayActionsProps) {
+function ColumnFallback({
+  status,
+  empty,
+  testId,
+  autoFocus,
+}: {
+  status: TodayColumnState;
+  empty: ReactNode;
+  testId: string;
+  autoFocus: boolean;
+}) {
+  if (status.error) {
+    return (
+      <LoadErrorNotice
+        message={status.error}
+        busy={status.busy}
+        onRetry={status.onRetry}
+        testId={testId}
+        autoFocus={autoFocus}
+      />
+    );
+  }
+  if (status.pending) {
+    return <p className="text-xs text-fg-tertiary">加载中...</p>;
+  }
+  return empty;
+}
+
+export default function TodayActions({
+  buckets,
+  decideStatus = idleColumn,
+  doStatus = idleColumn,
+  handledStatus = idleColumn,
+}: TodayActionsProps) {
   const { decide, do: doItems, handled, leftoverGoalCount } = buckets;
   const empty = decide.length === 0 && doItems.length === 0 && handled.length === 0;
+  const decideBlocked = decide.length === 0 && Boolean(decideStatus.error || decideStatus.pending);
+  const doBlocked = doItems.length === 0 && Boolean(doStatus.error || doStatus.pending);
+  const handledBlocked =
+    handled.length === 0 && Boolean(handledStatus.error || handledStatus.pending);
+  const decideFocus = Boolean(decideStatus.error) && decide.length === 0;
+  const doFocus = !decideFocus && Boolean(doStatus.error) && doItems.length === 0;
+  const handledFocus =
+    !decideFocus && !doFocus && Boolean(handledStatus.error) && handled.length === 0;
 
-  if (empty) {
+  if (empty && !decideBlocked && !doBlocked && !handledBlocked) {
     return (
       <div className="mb-5 rounded-lg border border-border-subtle bg-surface-raised p-10 text-center shadow-sm">
         <p className="mb-1 font-medium text-fg-secondary">今天暂无紧急事项</p>
@@ -89,7 +150,12 @@ export default function TodayActions({ buckets }: TodayActionsProps) {
           <span className="ml-auto text-xs text-fg-tertiary">{decide.length}</span>
         </div>
         {decide.length === 0 ? (
-          <p className="text-xs text-fg-disabled">没有待决事项</p>
+          <ColumnFallback
+            status={decideStatus}
+            testId="today-decide-load-error"
+            autoFocus={decideFocus}
+            empty={<p className="text-xs text-fg-disabled">没有待决事项</p>}
+          />
         ) : (
           <div className="space-y-1.5">
             {decide.slice(0, 5).map((item) => (
@@ -106,9 +172,18 @@ export default function TodayActions({ buckets }: TodayActionsProps) {
           <span className="ml-auto text-xs text-fg-tertiary">{doItems.length}</span>
         </div>
         {doItems.length === 0 ? (
-          <p className="text-xs text-fg-disabled">
-            {leftoverGoalCount > 0 ? `其余 ${leftoverGoalCount} 个目标可稍后看` : "没有时限内目标"}
-          </p>
+          <ColumnFallback
+            status={doStatus}
+            testId="today-do-load-error"
+            autoFocus={doFocus}
+            empty={
+              <p className="text-xs text-fg-disabled">
+                {leftoverGoalCount > 0
+                  ? `其余 ${leftoverGoalCount} 个目标可稍后看`
+                  : "没有时限内目标"}
+              </p>
+            }
+          />
         ) : (
           <div className="space-y-1.5">
             {doItems.slice(0, 5).map((item) => (
@@ -133,7 +208,12 @@ export default function TodayActions({ buckets }: TodayActionsProps) {
           <span className="ml-auto text-xs text-fg-tertiary">{handled.length}</span>
         </div>
         {handled.length === 0 ? (
-          <p className="text-xs text-fg-disabled">今天还没有处理记录</p>
+          <ColumnFallback
+            status={handledStatus}
+            testId="today-handled-load-error"
+            autoFocus={handledFocus}
+            empty={<p className="text-xs text-fg-disabled">今天还没有处理记录</p>}
+          />
         ) : (
           <div className="space-y-1.5">
             {handled.slice(0, 5).map((item) => (

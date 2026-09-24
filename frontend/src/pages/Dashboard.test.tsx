@@ -1,6 +1,7 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
+import { useErrorStore } from "../stores/errorStore";
 import DashboardPage from "./Dashboard";
 
 const mockNavigate = vi.fn();
@@ -112,6 +113,11 @@ function mockDashboardData(overrides: Partial<ReturnType<typeof useDashboard>> =
         created_at: "2026-06-10T08:00:00Z",
       },
     ],
+    notificationsLoaded: true,
+    notificationsError: null,
+    notificationsFetching: false,
+    notificationsPending: false,
+    retryNotifications: vi.fn(),
     dashboard: null,
     loading: false,
     error: "",
@@ -123,6 +129,7 @@ function mockDashboardData(overrides: Partial<ReturnType<typeof useDashboard>> =
 describe("DashboardPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(useErrorStore.getState(), "addError").mockImplementation(() => {});
     mockUseApprovalsQuery.mockReturnValue({ data: [] } as unknown as ReturnType<
       typeof useApprovalsQuery
     >);
@@ -185,6 +192,10 @@ describe("DashboardPage", () => {
         adoption_rate: 4 / 6,
       },
     });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("renders today title and adoption rate", async () => {
@@ -254,6 +265,7 @@ describe("DashboardPage", () => {
   it("shows empty state when no actions", () => {
     renderDashboard();
     expect(screen.getAllByText("今天暂无紧急事项")[0]).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("shows pending approval card and navigates to approvals", () => {
@@ -917,5 +929,141 @@ describe("DashboardPage", () => {
     expect(brief).toHaveAttribute("href", "/tasks/brief_9");
     expect(brief).toHaveClass("focus-visible:ring-focus-ring");
     expect(screen.getByText(/相对上一版/)).toBeInTheDocument();
+  });
+
+  it("shows a retry when today sources fail and does not claim an empty day", async () => {
+    mockUseApprovalsQuery.mockReturnValue({
+      data: undefined,
+      error: new Error("审批服务不可用"),
+      isFetching: false,
+      isPending: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useApprovalsQuery>);
+    renderDashboard();
+
+    const alert = screen.getByTestId("today-decide-load-error");
+    expect(alert).toHaveTextContent("审批服务不可用");
+    expect(useErrorStore.getState().addError).toHaveBeenCalledWith("审批服务不可用", "今天");
+    expect(screen.queryByText("今天暂无紧急事项")).not.toBeInTheDocument();
+    expect(screen.queryByText("没有待决事项")).not.toBeInTheDocument();
+    const retry = within(alert).getByRole("button", { name: "重试" });
+    expect(retry).toHaveClass("focus-visible:ring-focus-ring");
+    await waitFor(() => expect(retry).toHaveFocus());
+  });
+
+  it("uses the page fallback when the approval error has no message", async () => {
+    mockUseApprovalsQuery.mockReturnValue({
+      data: undefined,
+      error: new Error("   "),
+      isFetching: false,
+      isPending: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useApprovalsQuery>);
+    renderDashboard();
+    expect(screen.getByTestId("today-decide-load-error")).toHaveTextContent("加载待审批失败");
+    expect(screen.queryByText("今天暂无紧急事项")).not.toBeInTheDocument();
+    expect(screen.queryByText("没有待决事项")).not.toBeInTheDocument();
+  });
+
+  it("keeps the today retry mounted until the reread finishes", async () => {
+    const refetch = vi.fn();
+    let approvals = {
+      data: undefined as unknown[] | undefined,
+      error: new Error("审批服务不可用") as Error | null,
+      isFetching: false,
+      isPending: false,
+      refetch,
+    };
+    mockUseApprovalsQuery.mockImplementation(
+      () => approvals as unknown as ReturnType<typeof useApprovalsQuery>,
+    );
+    const view = renderDashboard();
+    const retry = screen.getByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+
+    approvals = { data: undefined, error: null, isFetching: true, isPending: false, refetch };
+    view.rerender(<DashboardPage />);
+    expect(screen.getByRole("button", { name: "重试" })).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByTestId("today-decide-load-error")).toHaveTextContent("审批服务不可用");
+    expect(screen.queryByText("今天暂无紧急事项")).not.toBeInTheDocument();
+    expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
+
+    approvals = { data: [], error: null, isFetching: false, isPending: false, refetch };
+    view.rerender(<DashboardPage />);
+    expect(screen.getByText("今天暂无紧急事项")).toBeInTheDocument();
+    expect(screen.queryByTestId("today-decide-load-error")).not.toBeInTheDocument();
+  });
+
+  it("keeps loaded decisions when another today column fails", async () => {
+    mockUseApprovalsQuery.mockReturnValue({
+      data: [
+        {
+          id: "ap-1",
+          action: "write_file",
+          status: "pending",
+          params: "{}",
+          created_at: "2026-06-28T10:00:00Z",
+        },
+      ],
+    } as unknown as ReturnType<typeof useApprovalsQuery>);
+    mockUseGoalsQuery.mockReturnValue({
+      data: undefined,
+      error: new Error("目标服务不可用"),
+      isFetching: false,
+      isPending: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useGoalsQuery>);
+    renderDashboard();
+
+    expect(screen.getByRole("link", { name: "write_file" })).toBeInTheDocument();
+    const alert = screen.getByTestId("today-do-load-error");
+    expect(alert).toHaveTextContent("目标服务不可用");
+    expect(screen.queryByText("没有时限内目标")).not.toBeInTheDocument();
+    expect(screen.queryByText("今天暂无紧急事项")).not.toBeInTheDocument();
+    await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+  });
+
+  it("does not claim an empty day while a today column is still loading", () => {
+    mockUseGoalsQuery.mockReturnValue({
+      data: undefined,
+      error: null,
+      isFetching: true,
+      isPending: true,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useGoalsQuery>);
+    renderDashboard();
+    const column = screen.getByRole("heading", { name: "今天要做" }).closest("section");
+    expect(column).not.toBeNull();
+    expect(within(column as HTMLElement).getByText("加载中...")).toBeInTheDocument();
+    expect(screen.queryByText("今天暂无紧急事项")).not.toBeInTheDocument();
+    expect(screen.queryByText("没有时限内目标")).not.toBeInTheDocument();
+  });
+
+  it("shows a retry when reminders fail and does not claim there are none", async () => {
+    const retryNotifications = vi.fn();
+    mockDashboardData({
+      notifications: [],
+      notificationsLoaded: false,
+      notificationsError: new Error("通知服务不可用"),
+      notificationsFetching: false,
+      notificationsPending: false,
+      retryNotifications,
+    });
+    renderDashboard();
+
+    const handled = screen.getByTestId("today-handled-load-error");
+    const reminders = screen.getByTestId("today-reminders-load-error");
+    expect(handled).toHaveTextContent("通知服务不可用");
+    expect(reminders).toHaveTextContent("通知服务不可用");
+    expect(screen.queryByText("暂无提醒")).not.toBeInTheDocument();
+    expect(screen.queryByText("今天还没有处理记录")).not.toBeInTheDocument();
+    expect(screen.queryByText("今天暂无紧急事项")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(handled).getByRole("button", { name: "重试" })).toHaveFocus(),
+    );
+    expect(within(reminders).getByRole("button", { name: "重试" })).not.toHaveFocus();
+
+    fireEvent.click(within(reminders).getByRole("button", { name: "重试" }));
+    expect(retryNotifications).toHaveBeenCalledOnce();
   });
 });

@@ -1,15 +1,26 @@
 import { Zap } from "lucide-react";
 import { type Notification } from "../../api/client";
 import { notificationPreview } from "../../utils/notificationUtils";
+import LoadErrorNotice from "../ui/LoadErrorNotice";
 
 interface RemindersPanelProps {
   notifications: Array<Notification & { source?: "server" | "live" }>;
   onNotificationClick: (n: Notification & { source?: "server" | "live" }) => void;
+  loadError?: string | null;
+  loadBusy?: boolean;
+  loadPending?: boolean;
+  onRetry?: () => void;
+  autoFocusRetry?: boolean;
 }
 
 export default function RemindersPanel({
   notifications,
   onNotificationClick,
+  loadError = null,
+  loadBusy = false,
+  loadPending = false,
+  onRetry,
+  autoFocusRetry = false,
 }: RemindersPanelProps) {
   return (
     <div className="bg-surface-raised border border-border-subtle rounded-xl p-5 mb-6">
@@ -37,6 +48,16 @@ export default function RemindersPanel({
             </button>
           ))}
         </div>
+      ) : loadError ? (
+        <LoadErrorNotice
+          message={loadError}
+          busy={loadBusy}
+          onRetry={() => onRetry?.()}
+          testId="today-reminders-load-error"
+          autoFocus={autoFocusRetry}
+        />
+      ) : loadPending ? (
+        <p className="text-fg-tertiary text-sm text-center py-4">加载中...</p>
       ) : (
         <p className="text-fg-disabled text-sm text-center py-4">暂无提醒</p>
       )}
