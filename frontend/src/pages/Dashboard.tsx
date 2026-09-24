@@ -28,6 +28,7 @@ import LoadErrorNotice, {
   queryErrorMessage,
   useHeldQueryError,
 } from "../components/ui/LoadErrorNotice";
+import { useInvalidateNotifications } from "../hooks/useNotificationsQuery";
 import { useErrorStore } from "../stores/errorStore";
 import type { TodayColumnState } from "../components/dashboard/TodayActions";
 
@@ -128,6 +129,8 @@ export default function DashboardPage() {
   const goalsQuery = useGoalsQuery();
   const proposedQuery = useProposedMemoryCountQuery();
   const addError = useErrorStore((s) => s.addError);
+  const invalidateNotifications = useInvalidateNotifications();
+  const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const pendingApprovals = approvalsQuery.data ?? [];
   const inboxData = inboxQuery.data;
   const goals = goalsQuery.data ?? [];
@@ -231,14 +234,20 @@ export default function DashboardPage() {
     (todayBuckets.handled.length === 0 && Boolean(handledStatus.error));
 
   const handleNotificationClick = async (n: Notification) => {
-    setSelectedNotification(n);
+    const alreadyRead = Boolean(n.read) || readIds.has(n.id);
+    setSelectedNotification(alreadyRead ? { ...n, read: 1 } : n);
     // Live optimistic ids are not persisted — skip mark-read to avoid 404.
-    if (!n.read && n.source !== "live" && !n.id.startsWith("live-")) {
-      try {
-        await markNotificationRead(n.id);
-      } catch {
-        // still show detail
-      }
+    if (alreadyRead || n.source === "live" || n.id.startsWith("live-")) return;
+    setReadIds((prev) => new Set(prev).add(n.id));
+    try {
+      await markNotificationRead(n.id);
+      invalidateNotifications();
+    } catch {
+      setReadIds((prev) => {
+        const next = new Set(prev);
+        next.delete(n.id);
+        return next;
+      });
     }
   };
 
@@ -347,7 +356,9 @@ export default function DashboardPage() {
         />
 
         <RemindersPanel
-          notifications={todayBuckets.reminders}
+          notifications={todayBuckets.reminders.map((n) =>
+            readIds.has(n.id) ? { ...n, read: 1 } : n,
+          )}
           onNotificationClick={handleNotificationClick}
           loadError={notificationsHeld}
           loadBusy={notificationsSource.isFetching && !notificationsSource.hasData}

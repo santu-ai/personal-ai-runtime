@@ -35,7 +35,7 @@ export default function RemindersPanel({
               key={n.id}
               type="button"
               onClick={() => void onNotificationClick(n)}
-              className={`w-full text-left p-3 bg-surface-overlay/50 rounded-lg hover:bg-surface-overlay transition-colors ${
+              className={`w-full text-left p-3 bg-surface-overlay/50 rounded-lg hover:bg-surface-overlay transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
                 n.read ? "opacity-60" : ""
               }`}
             >
