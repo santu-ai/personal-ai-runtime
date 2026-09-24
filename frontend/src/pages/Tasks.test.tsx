@@ -1520,10 +1520,11 @@ describe("TasksPage", () => {
     }
   });
 
-  it("navigates current-version source ids in the relative diff", async () => {
+  it("navigates current, previous, removed, and body source ids", async () => {
     const cited = {
       ...currentDelivery,
-      content: "正文预览保留 `email:m1` 与 `file:abc`",
+      content:
+        "正文保留 `email:m1` 与 `file:abc`，还有 `email:m10`。路径 `C:\\notes\\a.md`，未知 `email:missing`",
       findings: [],
       suggested_actions: [],
       sources: [
@@ -1537,25 +1538,34 @@ describe("TasksPage", () => {
         summary_changed: false,
         content_changed: true,
         findings_added: [{ text: "排期推迟", kind: "risk", source_ids: ["email:m1"] }],
-        findings_removed: [{ text: "进度正常", kind: "change", source_ids: ["email:old"] }],
+        findings_removed: [
+          {
+            text: "进度正常",
+            kind: "change",
+            source_ids: ["email:old", "email:m1", "file:old"],
+          },
+        ],
         findings_changed: [
           {
             text: "范围变化",
             kind: "risk",
             source_ids: ["file:abc"],
             previous_kind: "change",
-            previous_source_ids: ["email:m1"],
+            previous_source_ids: ["email:m1", "file:gone"],
           },
         ],
         sources_added: [
           { id: "file:abc", type: "file", title: "纪要", locator: "C:\\notes\\a.md" },
         ],
-        sources_removed: [],
+        sources_removed: [
+          { id: "file:old", type: "file", title: "旧纪要", locator: "C:\\notes\\old.md" },
+          { id: "email:dropped", type: "email", title: "已删邮件" },
+        ],
         sources_changed: [],
         limitations_added: [],
         limitations_removed: [],
         actions_added: [{ title: "核对邮件", source_ids: ["email:m1", "file:abc"] }],
-        actions_removed: [{ title: "旧待办", source_ids: ["email:old"] }],
+        actions_removed: [{ title: "旧待办", source_ids: ["email:old", "file:old"] }],
         actions_changed: [
           {
             title: "核对排期",
@@ -1570,7 +1580,17 @@ describe("TasksPage", () => {
       delivery_bundle: {
         ...briefTask.delivery_bundle!,
         current: cited,
-        deliveries: [historySummary, { ...currentSummary, ...cited }],
+        deliveries: [
+          {
+            ...historySummary,
+            sources: [
+              { id: "email:old", type: "email", title: "旧邮件" },
+              { id: "file:old", type: "file", title: "旧纪要", locator: "C:\\notes\\old.md" },
+              { id: "file:gone", type: "file", title: "不见了", locator: "D:\\x.txt" },
+            ],
+          },
+          { ...currentSummary, ...cited },
+        ],
       },
     };
     vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
@@ -1613,16 +1633,30 @@ describe("TasksPage", () => {
         .getByText(/改写的结论/)
         .closest("li");
       expect(changed).toHaveTextContent(
-        "改写的结论：范围变化，变化 → 风险，来源 email:m1 → file:abc",
+        "改写的结论：范围变化，变化 → 风险，来源 email:m1、file:gone → file:abc",
       );
       expect(
-        within(changed as HTMLElement).queryByRole("button", { name: "来源 email:m1" }),
+        within(changed as HTMLElement).getByRole("button", { name: "来源 email:m1" }),
+      ).toBeInTheDocument();
+      expect(
+        within(changed as HTMLElement).queryByRole("button", { name: "来源 file:gone" }),
       ).not.toBeInTheDocument();
       const removed = within(panel)
         .getByText(/去掉的结论/)
         .closest("li");
-      expect(removed).toHaveTextContent("去掉的结论：[变化] 进度正常（email:old）");
-      expect(within(removed as HTMLElement).queryByRole("button")).not.toBeInTheDocument();
+      expect(removed).toHaveTextContent(
+        "去掉的结论：[变化] 进度正常（email:old、email:m1、file:old）",
+      );
+      expect(
+        within(removed as HTMLElement).queryByRole("button", { name: "来源 file:old" }),
+      ).not.toBeInTheDocument();
+      const removedFile = within(panel).getByText("去掉的来源：file:old 旧纪要").closest("li");
+      expect(within(removedFile as HTMLElement).queryByRole("button")).not.toBeInTheDocument();
+      expect(removedFile).not.toHaveTextContent("C:\\notes\\old.md");
+      const removedEmail = within(panel)
+        .getByRole("button", { name: "来源 email:dropped" })
+        .closest("li");
+      expect(removedEmail).toHaveTextContent("去掉的来源：email:dropped 已删邮件");
       const addedSource = within(panel).getByText("新增来源：file:abc 纪要").closest("li");
       expect(within(addedSource as HTMLElement).queryByRole("button")).not.toBeInTheDocument();
       const addedAction = within(panel)
@@ -1632,8 +1666,10 @@ describe("TasksPage", () => {
       const removedAction = within(panel)
         .getByText(/去掉的待办：旧待办/)
         .closest("li");
-      expect(removedAction).not.toHaveTextContent("email:old");
-      expect(within(removedAction as HTMLElement).queryByRole("button")).not.toBeInTheDocument();
+      expect(removedAction).toHaveTextContent("去掉的待办：旧待办（email:old、file:old）");
+      expect(
+        within(removedAction as HTMLElement).queryByRole("button", { name: "来源 file:old" }),
+      ).not.toBeInTheDocument();
       const changedAction = within(panel)
         .getByText(/待办有更新/)
         .closest("li");
@@ -1642,28 +1678,58 @@ describe("TasksPage", () => {
         within(changedAction as HTMLElement).queryByRole("button", { name: "来源 email:gone" }),
       ).not.toBeInTheDocument();
 
-      const body = screen.getByText("正文预览保留 `email:m1` 与 `file:abc`");
+      const body = screen.getByTestId("delivery-body");
       expect(body.tagName).toBe("PRE");
-      expect(within(body).queryByRole("button")).not.toBeInTheDocument();
+      expect(body).toHaveTextContent("`C:\\notes\\a.md`");
+      expect(body).toHaveTextContent("`email:missing`");
+      expect(
+        within(body).queryByRole("button", { name: "来源 email:missing" }),
+      ).not.toBeInTheDocument();
+      expect(within(body).queryByRole("button", { name: /notes/ })).not.toBeInTheDocument();
+
+      fireEvent.click(
+        within(changed as HTMLElement).getByRole("button", { name: "来源 email:m1" }),
+      );
+      expect(scrolled).toEqual([emailRow]);
+      expect(scrolled).not.toContain(screen.getByTestId("delivery-source-email:m10"));
+      await waitFor(() => expect(getInboxEmailDetail).toHaveBeenCalledWith("m1"));
+
+      scrolled.length = 0;
+      fireEvent.click(
+        within(removed as HTMLElement).getByRole("button", { name: "来源 email:old" }),
+      );
+      expect(scrolled).toEqual([]);
+      await waitFor(() => expect(getInboxEmailDetail).toHaveBeenCalledWith("old"));
+
+      fireEvent.click(
+        within(removedEmail as HTMLElement).getByRole("button", { name: "来源 email:dropped" }),
+      );
+      expect(scrolled).toEqual([]);
+      await waitFor(() => expect(getInboxEmailDetail).toHaveBeenCalledWith("dropped"));
 
       fireEvent.click(
         within(changed as HTMLElement).getByRole("button", { name: "来源 file:abc" }),
       );
       expect(scrolled).toEqual([fileRow]);
-      expect(scrolled).not.toContain(screen.getByTestId("delivery-source-email:m10"));
-      expect(getInboxEmailDetail).not.toHaveBeenCalled();
+      expect(getInboxEmailDetail).not.toHaveBeenCalledWith("abc");
 
       scrolled.length = 0;
-      fireEvent.click(within(added as HTMLElement).getByRole("button", { name: "来源 email:m1" }));
-      expect(scrolled).toEqual([emailRow]);
-      await waitFor(() => expect(getInboxEmailDetail).toHaveBeenCalledWith("m1"));
-      expect(await screen.findByRole("heading", { name: "延期邮件全文" })).toBeInTheDocument();
+      fireEvent.click(within(body).getByRole("button", { name: "来源 file:abc" }));
+      expect(scrolled).toEqual([fileRow]);
+      expect(getInboxEmailDetail).not.toHaveBeenCalledWith("abc");
 
+      scrolled.length = 0;
+      fireEvent.click(within(body).getByRole("button", { name: "来源 email:m10" }));
+      expect(scrolled).toEqual([screen.getByTestId("delivery-source-email:m10")]);
+      expect(scrolled).not.toContain(emailRow);
+      await waitFor(() => expect(getInboxEmailDetail).toHaveBeenCalledWith("m10"));
+
+      fireEvent.click(within(added as HTMLElement).getByRole("button", { name: "来源 email:m1" }));
+      expect(scrolled).toContain(emailRow);
       fireEvent.click(
-        within(changedAction as HTMLElement).getByRole("button", { name: "来源 email:m1" }),
+        within(removedAction as HTMLElement).getByRole("button", { name: "来源 email:old" }),
       );
-      await waitFor(() => expect(getInboxEmailDetail).toHaveBeenCalledTimes(2));
-      expect(getInboxEmailDetail).toHaveBeenNthCalledWith(2, "m1");
+      await waitFor(() => expect(getInboxEmailDetail).toHaveBeenCalledWith("old"));
     } finally {
       HTMLElement.prototype.scrollIntoView = previousScroll;
     }

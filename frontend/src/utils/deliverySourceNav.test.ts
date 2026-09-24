@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  citationLookupSources,
   deliverySourceRowId,
   emailMessageId,
   findDeliverySource,
   scrollToDeliverySource,
+  splitBacktickSourceIds,
 } from "./deliverySourceNav";
 
 const sources = [
@@ -36,6 +38,50 @@ describe("delivery source id matching", () => {
   it("builds a stable row id without treating the source id as a selector", () => {
     expect(deliverySourceRowId("email:m1", 0)).toBe("delivery-source-0-email%3Am1");
     expect(deliverySourceRowId("file:abc", 2)).toBe("delivery-source-2-file%3Aabc");
+  });
+});
+
+describe("citation lookup for compared deliveries", () => {
+  it("keeps current rows and adds compared emails that are not on screen", () => {
+    const current = [sources[2]!];
+    const compared = [
+      sources[0]!,
+      sources[2]!,
+      sources[3]!,
+      { id: " email:old ", type: "email", title: "旧邮件" },
+      { id: "file:old", type: "file", title: "旧纪要", locator: "C:\\notes\\old.md" },
+      { id: "email:not-mail", type: "file", title: "编号像邮件但是文件" },
+    ];
+    expect(citationLookupSources(current, compared).map((source) => source.id)).toEqual([
+      "file:abc",
+      "email:m1",
+      "email:old",
+    ]);
+    expect(citationLookupSources(current, compared).map((source) => source.type)).toEqual([
+      "file",
+      "email",
+      "email",
+    ]);
+  });
+});
+
+describe("backtick source ids in delivery body", () => {
+  it("links exact source ids and leaves file paths and unknown tokens as text", () => {
+    const content =
+      "见 `email:m1` 与 ` file:abc `，不要拆 `email:m10`。路径 `C:\\notes\\a.md`，未知 `email:missing`。";
+    expect(splitBacktickSourceIds(content, sources)).toEqual([
+      { kind: "text", text: "见 " },
+      { kind: "source", text: "email:m1" },
+      { kind: "text", text: " 与 " },
+      { kind: "source", text: "file:abc" },
+      { kind: "text", text: "，不要拆 " },
+      { kind: "source", text: "email:m10" },
+      { kind: "text", text: "。路径 `C:\\notes\\a.md`，未知 `email:missing`。" },
+    ]);
+    expect(splitBacktickSourceIds("没有编号", sources)).toEqual([
+      { kind: "text", text: "没有编号" },
+    ]);
+    expect(splitBacktickSourceIds("", sources)).toEqual([{ kind: "text", text: "" }]);
   });
 });
 
