@@ -1141,6 +1141,126 @@ describe("TasksPage", () => {
     expect(screen.getByRole("heading", { name: /交付 v1/ })).toHaveFocus();
   });
 
+  it("says there is only one version without listing a history row", async () => {
+    const only: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        work_id: "brief_1",
+        current_review_status: "unreviewed",
+        current: { ...currentDelivery, content: "   " },
+        deliveries: [{ ...currentSummary, content: "   " }],
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [only];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(only);
+    renderTasks("/tasks/brief_1");
+
+    expect(await screen.findByTestId("delivery-single-version")).toHaveTextContent(
+      "目前只有这一版。",
+    );
+    expect(screen.queryByRole("heading", { name: "版本历史" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /v2 · 待验收/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId("delivery-body")).toHaveTextContent("这一版没有正文");
+    expect(screen.queryByText("正在加载完整正文")).not.toBeInTheDocument();
+  });
+
+  it("says a brief has no version history when the list is empty", async () => {
+    const empty: WorkItem = {
+      ...briefTask,
+      status: "pending",
+      delivery_bundle: {
+        work_id: "brief_1",
+        current_review_status: null,
+        current: null,
+        deliveries: [],
+      },
+    };
+    const plain: WorkItem = {
+      ...sampleTask,
+      delivery_bundle: {
+        work_id: "task_1",
+        current_review_status: null,
+        current: null,
+        deliveries: [],
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [empty, plain];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockImplementation(async (id: string) => {
+      if (id === "task_1") return plain;
+      return empty;
+    });
+    renderTasks("/tasks/brief_1");
+
+    expect(await screen.findByTestId("delivery-version-empty")).toHaveTextContent(
+      "还没有版本历史。",
+    );
+    expect(screen.getByText("还没有交付结果。确认资料范围后执行任务。")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "版本历史" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("delivery-single-version")).not.toBeInTheDocument();
+  });
+
+  it("does not announce empty version history on a task that is not a brief", async () => {
+    const plain: WorkItem = {
+      ...sampleTask,
+      delivery_bundle: {
+        work_id: "task_1",
+        current_review_status: null,
+        current: null,
+        deliveries: [],
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [plain];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(plain);
+    renderTasks("/tasks/task_1");
+
+    expect(await screen.findByRole("heading", { name: "整理报告" })).toBeInTheDocument();
+    expect(screen.queryByTestId("delivery-version-empty")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("delivery-single-version")).not.toBeInTheDocument();
+  });
+
+  it("moves keyboard focus across version rows without loading them", async () => {
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [briefTask];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(briefTask);
+    renderTasks("/tasks/brief_1");
+
+    const current = await screen.findByRole("button", { name: /v2 · 待验收/ });
+    const previous = screen.getByRole("button", { name: /v1 · 已要求返工/ });
+    expect(current).toHaveAttribute("tabindex", "0");
+    expect(previous).toHaveAttribute("tabindex", "-1");
+
+    current.focus();
+    fireEvent.keyDown(current, { key: "ArrowUp" });
+    expect(previous).toHaveFocus();
+    expect(previous).toHaveAttribute("tabindex", "0");
+    expect(current).toHaveAttribute("tabindex", "-1");
+
+    fireEvent.keyDown(previous, { key: "ArrowDown" });
+    expect(current).toHaveFocus();
+    fireEvent.keyDown(current, { key: "Home" });
+    expect(previous).toHaveFocus();
+    fireEvent.keyDown(previous, { key: "End" });
+    expect(current).toHaveFocus();
+    fireEvent.keyDown(current, { key: "ArrowDown" });
+    expect(current).toHaveFocus();
+    expect(getWorkDelivery).not.toHaveBeenCalled();
+
+    fireEvent.click(previous);
+    expect(previous).toHaveAttribute("tabindex", "0");
+    await waitFor(() => expect(getWorkDelivery).toHaveBeenCalledWith("brief_1", "d1"));
+  });
+
   it("shows the stored rework reason on the current delivery", async () => {
     const reason = "需要补上风险，并给每条结论带来源";
     const reworked: WorkItem = {
