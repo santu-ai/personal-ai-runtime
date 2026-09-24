@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type WorkItem } from "../../api/client";
 import { useErrorStore } from "../../stores/errorStore";
 import { useInvalidateGoals } from "../../hooks/useGoalsQuery";
@@ -34,16 +34,22 @@ export default function GoalDetailPanel({
   const [decomposing, setDecomposing] = useState(false);
   const addError = useErrorStore((s) => s.addError);
   const invalidateGoals = useInvalidateGoals();
+  const goalIdRef = useRef(goal.id);
+  const pendingStepsRef = useRef(new Set<string>());
+  const addingAllRef = useRef(false);
+  goalIdRef.current = goal.id;
 
-  const handleCreateAction = async (goalId: string, title: string) => {
-    if (!title.trim()) return;
+  const handleCreateAction = async (goalId: string, title: string): Promise<boolean> => {
+    if (!title.trim()) return false;
     try {
       await createGoalAction(goalId, title);
       invalidateGoals();
       onCreatedAction();
+      return true;
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "创建行动步骤失败";
       addError(msg, "目标");
+      return false;
     }
   };
 
@@ -58,30 +64,57 @@ export default function GoalDetailPanel({
     }
   };
 
+  useEffect(() => {
+    pendingStepsRef.current.clear();
+    addingAllRef.current = false;
+    setSuggestedSteps([]);
+    setDecomposing(false);
+  }, [goal.id]);
+
   const handleDecomposeGoal = async () => {
+    const goalId = goal.id;
     setDecomposing(true);
     setSuggestedSteps([]);
     try {
-      const result = await decomposeGoal(goal.id);
+      const result = await decomposeGoal(goalId);
+      if (goalIdRef.current !== goalId) return;
       setSuggestedSteps(result.steps || []);
     } catch (err) {
+      if (goalIdRef.current !== goalId) return;
       const msg = err instanceof ApiError ? err.message : "AI 拆解失败";
       addError(msg, "目标");
     } finally {
-      setDecomposing(false);
+      if (goalIdRef.current === goalId) setDecomposing(false);
     }
   };
 
   const handleAddSuggestedStep = async (title: string) => {
-    await handleCreateAction(goal.id, title);
-    setSuggestedSteps((prev) => prev.filter((s) => s !== title));
+    if (pendingStepsRef.current.has(title)) return;
+    pendingStepsRef.current.add(title);
+    const goalId = goal.id;
+    try {
+      const ok = await handleCreateAction(goalId, title);
+      if (!ok || goalIdRef.current !== goalId) return;
+      setSuggestedSteps((prev) => prev.filter((s) => s !== title));
+    } finally {
+      if (goalIdRef.current === goalId) pendingStepsRef.current.delete(title);
+    }
   };
 
   const handleAddAllSuggestedSteps = async () => {
-    for (const step of suggestedSteps) {
-      await handleCreateAction(goal.id, step);
+    if (addingAllRef.current) return;
+    addingAllRef.current = true;
+    const goalId = goal.id;
+    try {
+      for (const step of [...suggestedSteps]) {
+        if (goalIdRef.current !== goalId) return;
+        const ok = await handleCreateAction(goalId, step);
+        if (goalIdRef.current !== goalId) return;
+        if (ok) setSuggestedSteps((prev) => prev.filter((s) => s !== step));
+      }
+    } finally {
+      if (goalIdRef.current === goalId) addingAllRef.current = false;
     }
-    setSuggestedSteps([]);
   };
 
   const progressPct = Math.round(goalProgressPercent(goal.progress));
@@ -212,7 +245,7 @@ export default function GoalDetailPanel({
               </span>
             </div>
           ))}
-          <NewActionInput onAdd={(title) => handleCreateAction(goal.id, title)} />
+          <NewActionInput goalId={goal.id} onAdd={(title) => handleCreateAction(goal.id, title)} />
         </div>
       </div>
 
@@ -236,13 +269,40 @@ export default function GoalDetailPanel({
   );
 }
 
-function NewActionInput({ onAdd }: { onAdd: (title: string) => void }) {
+function NewActionInput({
+  goalId,
+  onAdd,
+}: {
+  goalId: string;
+  onAdd: (title: string) => Promise<boolean>;
+}) {
   const [value, setValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const goalIdRef = useRef(goalId);
 
-  const handleSubmit = () => {
-    if (value.trim()) {
-      onAdd(value.trim());
-      setValue("");
+  useEffect(() => {
+    goalIdRef.current = goalId;
+    savingRef.current = false;
+    setSaving(false);
+    setValue("");
+  }, [goalId]);
+
+  const handleSubmit = async () => {
+    const title = value.trim();
+    if (!title || savingRef.current) return;
+    const submittedFor = goalId;
+    savingRef.current = true;
+    setSaving(true);
+    let ok = false;
+    try {
+      ok = await onAdd(title);
+    } finally {
+      if (goalIdRef.current === submittedFor) {
+        savingRef.current = false;
+        setSaving(false);
+        if (ok) setValue("");
+      }
     }
   };
 
@@ -250,17 +310,23 @@ function NewActionInput({ onAdd }: { onAdd: (title: string) => void }) {
     <div className="flex gap-2">
       <input
         value={value}
+        disabled={saving}
         onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+          e.preventDefault();
+          void handleSubmit();
+        }}
         placeholder="添加行动步骤..."
-        className="flex-1 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary placeholder:text-fg-tertiary outline-none focus:border-focus-ring"
+        className="flex-1 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary placeholder:text-fg-tertiary outline-none focus:border-focus-ring disabled:opacity-50"
       />
       <button
-        onClick={handleSubmit}
-        disabled={!value.trim()}
+        type="button"
+        onClick={() => void handleSubmit()}
+        disabled={saving || !value.trim()}
         className="px-3 py-2 bg-surface-overlay hover:bg-border-strong rounded-lg text-sm text-fg-primary disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
       >
-        添加
+        {saving ? "添加中..." : "添加"}
       </button>
     </div>
   );

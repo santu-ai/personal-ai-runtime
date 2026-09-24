@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { createGoal, updateGoal, deleteGoal, ApiError, type WorkItem } from "../api/client";
 import { useErrorStore } from "../stores/errorStore";
@@ -48,6 +48,7 @@ export default function GoalsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [loading, setLoading] = useState(false);
+  const creatingRef = useRef(false);
   const [deleteTarget, setDeleteTarget] = useState<WorkItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const addError = useErrorStore((s) => s.addError);
@@ -93,18 +94,22 @@ export default function GoalsPage() {
   };
 
   const handleCreateGoal = async () => {
-    if (!newTitle.trim()) return;
+    const title = newTitle.trim();
+    if (!title || creatingRef.current) return;
+    creatingRef.current = true;
     setLoading(true);
     try {
-      await createGoal({ title: newTitle });
+      await createGoal({ title });
       setNewTitle("");
       setShowCreate(false);
       invalidateGoals();
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "创建目标失败";
       addError(msg, "目标");
+    } finally {
+      creatingRef.current = false;
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleUpdateStatus = async (goalId: string, status: string) => {
@@ -157,8 +162,13 @@ export default function GoalsPage() {
             <Input
               autoFocus
               value={newTitle}
+              disabled={loading}
               onChange={(e) => setNewTitle(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleCreateGoal()}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+                e.preventDefault();
+                void handleCreateGoal();
+              }}
               placeholder="目标名称..."
               className="w-full"
             />
@@ -242,6 +252,7 @@ export default function GoalsPage() {
                 />
               ) : selectedGoal ? (
                 <GoalDetailPanel
+                  key={selectedGoal.id}
                   goal={selectedGoal}
                   onStartChat={handleStartChatAboutGoal}
                   onUpdateStatus={handleUpdateStatus}
