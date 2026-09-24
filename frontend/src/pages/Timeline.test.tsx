@@ -275,4 +275,305 @@ describe("TimelinePage", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByText("已经是最早的记录")).toBeInTheDocument();
   });
+
+  it("does not fetch the next page twice and keeps focus while another page remains", async () => {
+    let release: ((row: Awaited<ReturnType<typeof listTimelineEvents>>) => void) | undefined;
+    mockList.mockResolvedValueOnce({
+      items: [
+        {
+          ...makeEvent("e1", "事件一", "2026-06-28T08:00:00Z"),
+          work_id: "task-1",
+        },
+      ],
+      total: 3,
+      page: 1,
+      page_size: 30,
+      has_more: true,
+      icons: {},
+    });
+    renderWithRouter(<TimelinePage />);
+    const more = await screen.findByRole("button", { name: "加载更多" });
+    mockList.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    more.focus();
+    fireEvent.click(more);
+    fireEvent.click(more);
+    await waitFor(() => expect(more).toHaveAttribute("aria-busy", "true"));
+    expect(more).not.toBeDisabled();
+    expect(more).toHaveFocus();
+    expect(mockList).toHaveBeenCalledTimes(2);
+
+    release?.({
+      items: [
+        {
+          ...makeEvent("e2", "事件二", "2026-06-27T08:00:00Z"),
+          work_id: "task-2",
+        },
+      ],
+      total: 3,
+      page: 2,
+      page_size: 30,
+      has_more: true,
+      icons: {},
+    });
+    expect(await screen.findByRole("link", { name: "事件二" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "加载更多" })).toHaveFocus();
+    expect(screen.getByRole("link", { name: "事件二" })).not.toHaveFocus();
+  });
+
+  it("moves focus to the first new task link when the last page finishes", async () => {
+    let release: ((row: Awaited<ReturnType<typeof listTimelineEvents>>) => void) | undefined;
+    mockList.mockResolvedValueOnce({
+      items: [makeEvent("e1", "事件一", "2026-06-28T08:00:00Z")],
+      total: 2,
+      page: 1,
+      page_size: 30,
+      has_more: true,
+      icons: {},
+    });
+    renderWithRouter(<TimelinePage />);
+    const more = await screen.findByRole("button", { name: "加载更多" });
+    mockList.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    more.focus();
+    fireEvent.click(more);
+    release?.({
+      items: [
+        makeEvent("e2", "先到的纯文本", "2026-06-27T09:00:00Z"),
+        {
+          ...makeEvent("e3", "后到的任务", "2026-06-27T08:00:00Z"),
+          work_id: "brief/9",
+        },
+      ],
+      total: 3,
+      page: 2,
+      page_size: 30,
+      has_more: false,
+      icons: {},
+    });
+    const link = await screen.findByRole("link", { name: "后到的任务" });
+    await waitFor(() => expect(link).toHaveFocus());
+    expect(screen.queryByRole("button", { name: "加载更多" })).not.toBeInTheDocument();
+  });
+
+  it("moves focus to the end note when the last page has no task link", async () => {
+    let release: ((row: Awaited<ReturnType<typeof listTimelineEvents>>) => void) | undefined;
+    mockList.mockResolvedValueOnce({
+      items: [makeEvent("e1", "事件一", "2026-06-28T08:00:00Z")],
+      total: 2,
+      page: 1,
+      page_size: 30,
+      has_more: true,
+      icons: {},
+    });
+    renderWithRouter(<TimelinePage />);
+    const more = await screen.findByRole("button", { name: "加载更多" });
+    mockList.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    more.focus();
+    fireEvent.click(more);
+    release?.({
+      items: [makeEvent("e2", "事件二", "2026-06-27T08:00:00Z")],
+      total: 2,
+      page: 2,
+      page_size: 30,
+      has_more: false,
+      icons: {},
+    });
+    const end = await screen.findByText("已经是最早的记录");
+    await waitFor(() => expect(end).toHaveFocus());
+  });
+
+  it("does not pull focus back when it already moved off 加载更多", async () => {
+    let release: ((row: Awaited<ReturnType<typeof listTimelineEvents>>) => void) | undefined;
+    mockList.mockResolvedValueOnce({
+      items: [
+        {
+          ...makeEvent("e1", "事件一", "2026-06-28T08:00:00Z"),
+          work_id: "task-1",
+        },
+      ],
+      total: 2,
+      page: 1,
+      page_size: 30,
+      has_more: true,
+      icons: {},
+    });
+    renderWithRouter(<TimelinePage />);
+    const more = await screen.findByRole("button", { name: "加载更多" });
+    const first = screen.getByRole("link", { name: "事件一" });
+    mockList.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    more.focus();
+    fireEvent.click(more);
+    first.focus();
+    release?.({
+      items: [
+        {
+          ...makeEvent("e2", "事件二", "2026-06-27T08:00:00Z"),
+          work_id: "task-2",
+        },
+      ],
+      total: 2,
+      page: 2,
+      page_size: 30,
+      has_more: false,
+      icons: {},
+    });
+    expect(await screen.findByRole("link", { name: "事件二" })).toBeInTheDocument();
+    expect(first).toHaveFocus();
+  });
+
+  it("focuses 重试 when loading more fails", async () => {
+    mockList
+      .mockResolvedValueOnce({
+        items: [makeEvent("e1", "事件一", "2026-06-28T08:00:00Z")],
+        total: 2,
+        page: 1,
+        page_size: 30,
+        has_more: true,
+        icons: {},
+      })
+      .mockRejectedValueOnce(new Error("下一页读不到"));
+    renderWithRouter(<TimelinePage />);
+    const more = await screen.findByRole("button", { name: "加载更多" });
+    more.focus();
+    fireEvent.click(more);
+    const retry = await screen.findByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+  });
+
+  it("moves focus to the first task link after the first-load retry succeeds", async () => {
+    let release: ((row: Awaited<ReturnType<typeof listTimelineEvents>>) => void) | undefined;
+    mockList.mockRejectedValueOnce(new Error("加载失败"));
+    renderWithRouter(<TimelinePage />);
+    const retry = await screen.findByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+    mockList.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    fireEvent.click(retry);
+    fireEvent.click(retry);
+    await waitFor(() => expect(retry).toHaveAttribute("aria-busy", "true"));
+    expect(mockList).toHaveBeenCalledTimes(2);
+    release?.({
+      items: [
+        makeEvent("e1", "纯文本", "2026-06-28T09:00:00Z"),
+        {
+          ...makeEvent("e2", "可打开的任务", "2026-06-28T08:00:00Z"),
+          work_id: "task 1",
+        },
+      ],
+      total: 2,
+      page: 1,
+      page_size: 30,
+      has_more: false,
+      icons: {},
+    });
+    const link = await screen.findByRole("link", { name: "可打开的任务" });
+    await waitFor(() => expect(link).toHaveFocus());
+  });
+
+  it("moves focus to the event list when a retry finds no task link", async () => {
+    let release: ((row: Awaited<ReturnType<typeof listTimelineEvents>>) => void) | undefined;
+    mockList.mockRejectedValueOnce(new Error("加载失败"));
+    renderWithRouter(<TimelinePage />);
+    const retry = await screen.findByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+    mockList.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    fireEvent.click(retry);
+    release?.({
+      items: [makeEvent("e1", "纯文本", "2026-06-28T08:00:00Z")],
+      total: 1,
+      page: 1,
+      page_size: 30,
+      has_more: false,
+      icons: {},
+    });
+    await waitFor(() => expect(screen.getByTestId("timeline-events")).toHaveFocus());
+  });
+
+  it("moves focus to the empty timeline after a retry that finds nothing", async () => {
+    let release: ((row: Awaited<ReturnType<typeof listTimelineEvents>>) => void) | undefined;
+    mockList.mockRejectedValueOnce(new Error("加载失败"));
+    renderWithRouter(<TimelinePage />);
+    const retry = await screen.findByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+    mockList.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    fireEvent.click(retry);
+    release?.({
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 30,
+      has_more: false,
+      icons: {},
+    });
+    await waitFor(() => expect(screen.getByTestId("timeline-empty")).toHaveFocus());
+  });
+
+  it("does not pull focus back after a first-load retry when focus already moved", async () => {
+    let release: ((row: Awaited<ReturnType<typeof listTimelineEvents>>) => void) | undefined;
+    mockList.mockRejectedValueOnce(new Error("加载失败"));
+    renderWithRouter(<TimelinePage />);
+    const retry = await screen.findByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+    const outside = document.createElement("button");
+    outside.type = "button";
+    outside.textContent = "外面";
+    document.body.appendChild(outside);
+    mockList.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    fireEvent.click(retry);
+    outside.focus();
+    release?.({
+      items: [
+        {
+          ...makeEvent("e1", "可打开的任务", "2026-06-28T08:00:00Z"),
+          work_id: "task-1",
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 30,
+      has_more: false,
+      icons: {},
+    });
+    expect(await screen.findByRole("link", { name: "可打开的任务" })).toBeInTheDocument();
+    expect(outside).toHaveFocus();
+    outside.remove();
+  });
 });
