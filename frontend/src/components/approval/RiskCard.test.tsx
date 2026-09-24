@@ -141,6 +141,46 @@ describe("RiskCard", () => {
     expect(screen.getByText("否")).toBeInTheDocument();
   });
 
+  it("links the flow label when taskHref is set", () => {
+    renderWithRouter(
+      <RiskCard
+        action="write_file"
+        args="{}"
+        riskLevel="medium"
+        variant="panel"
+        source={{ flowLabel: "周报", taskHref: "/tasks/brief%2F1" }}
+      />,
+    );
+    expect(screen.getByRole("link", { name: "周报" })).toHaveAttribute("href", "/tasks/brief%2F1");
+  });
+
+  it("keeps the flow label as plain text without a task href", () => {
+    renderWithRouter(
+      <RiskCard
+        action="write_file"
+        args="{}"
+        riskLevel="medium"
+        variant="panel"
+        source={{ flowLabel: "只有空白", taskHref: "   " }}
+      />,
+    );
+    expect(screen.getByText("只有空白")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("shows an open-task link when taskHref has no flow label", () => {
+    renderWithRouter(
+      <RiskCard
+        action="write_file"
+        args="{}"
+        riskLevel="medium"
+        variant="panel"
+        source={{ taskHref: "/tasks/task_9" }}
+      />,
+    );
+    expect(screen.getByRole("link", { name: "打开任务" })).toHaveAttribute("href", "/tasks/task_9");
+  });
+
   it("expands detailed args", () => {
     renderWithRouter(
       <RiskCard

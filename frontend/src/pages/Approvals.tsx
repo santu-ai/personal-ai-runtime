@@ -20,6 +20,13 @@ import RiskCard from "../components/approval/RiskCard";
 import { canContinueApproval } from "./approvals/canContinue";
 import type { CapabilityPolicy } from "../api/settings";
 
+/** 非空 task_id 打开任务页。空白不编造链接，也不使用 correlation_id。 */
+function taskPageHref(taskId: string | null | undefined): string | undefined {
+  const id = taskId?.trim();
+  if (!id) return undefined;
+  return `/tasks/${encodeURIComponent(id)}`;
+}
+
 function parseParams(params?: string): Record<string, unknown> | null {
   try {
     if (!params) return null;
@@ -224,6 +231,7 @@ function ApprovalCard({
         flowLabel: item.flow_label || item.flow_type,
         proposedBy: item.proposed_by ?? undefined,
         conversationId: item.conversation_id ?? undefined,
+        taskHref: taskPageHref(item.task_id),
       }}
       timing={{
         createdAt: item.created_at ?? undefined,

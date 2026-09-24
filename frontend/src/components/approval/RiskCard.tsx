@@ -13,6 +13,7 @@
  */
 
 import { type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { Timer } from "lucide-react";
 import { toolLabel, describeToolAction } from "../../utils/toolLabels";
 import {
@@ -39,6 +40,33 @@ function parseArgs(args: string): Record<string, unknown> {
 function truncate(text: string, max = PREVIEW_LIMIT): string {
   if (text.length <= max) return text;
   return `${text.slice(0, max)}…`;
+}
+
+/** 流程标签。`href` 去掉空白后仍非空时才可点；否则保持纯文本。 */
+function FlowLabel({ label, href }: { label?: string; href?: string }) {
+  const taskHref = href?.trim() ?? "";
+  const text = label?.trim() ?? "";
+  if (!text && !taskHref) return null;
+  if (!taskHref) return <Badge tone="insight">{text}</Badge>;
+  if (!text) {
+    return (
+      <Link
+        to={taskHref}
+        className="rounded text-xs text-insight hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+      >
+        打开任务
+      </Link>
+    );
+  }
+  return (
+    <Link
+      to={taskHref}
+      title="打开任务"
+      className="inline-flex rounded-full hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+    >
+      <Badge tone="insight">{text}</Badge>
+    </Link>
+  );
 }
 
 function ExpandableText({ text, className }: { text: string; className: string }) {
@@ -103,6 +131,8 @@ export interface RiskCardProps {
     conversationId?: string;
     flowLabel?: string;
     proposedBy?: string;
+    /** 非空时流程标签打开该路径；空白则标签保持纯文本。 */
+    taskHref?: string;
   };
   /** 时间信息 */
   timing?: {
@@ -173,7 +203,7 @@ export default function RiskCard({
                 即将过期
               </Badge>
             )}
-            {source?.flowLabel && <Badge tone="insight">{source.flowLabel}</Badge>}
+            <FlowLabel label={source?.flowLabel} href={source?.taskHref} />
           </div>
 
           {variant === "panel" && riskExplanation && (

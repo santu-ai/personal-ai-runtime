@@ -202,6 +202,93 @@ describe("ApprovalsPage", () => {
     });
   });
 
+  it("links a non-empty task_id to the encoded task page", async () => {
+    mockList.mockResolvedValue([
+      {
+        ...sampleApproval,
+        id: "ap-task",
+        task_id: "brief/1",
+        flow_type: "任务",
+        flow_label: "周报",
+        correlation_id: "corr-not-a-task",
+      },
+    ]);
+    renderWithRouter(<ApprovalsPage />);
+    const link = await screen.findByRole("link", { name: "周报" });
+    expect(link).toHaveAttribute("href", "/tasks/brief%2F1");
+    expect(screen.queryByRole("link", { name: "corr-not-a-task" })).not.toBeInTheDocument();
+  });
+
+  it("encodes a trimmed task_id and ignores surrounding whitespace", async () => {
+    mockList.mockResolvedValue([
+      {
+        ...sampleApproval,
+        id: "ap-trim",
+        task_id: "  task 2  ",
+        flow_label: "带空格",
+        correlation_id: "corr-trim",
+      },
+    ]);
+    renderWithRouter(<ApprovalsPage />);
+    expect(await screen.findByRole("link", { name: "带空格" })).toHaveAttribute(
+      "href",
+      "/tasks/task%202",
+    );
+  });
+
+  it("keeps a blank task_id as plain text and does not link correlation_id", async () => {
+    mockList.mockResolvedValue([
+      {
+        ...sampleApproval,
+        id: "ap-blank",
+        task_id: "   ",
+        flow_label: "只有空白",
+        correlation_id: "corr-blank",
+      },
+      {
+        ...sampleApproval,
+        id: "ap-null",
+        task_id: null,
+        flow_label: "没有任务",
+        correlation_id: "corr-null",
+      },
+    ]);
+    renderWithRouter(<ApprovalsPage />);
+    expect(await screen.findByText("只有空白")).toBeInTheDocument();
+    expect(screen.getByText("没有任务")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("still continues the chat when the approval also has a task_id", async () => {
+    const item: EnrichedApproval = {
+      ...chatContinuable,
+      id: "ap-both",
+      task_id: "task_9",
+      flow_type: "任务",
+      flow_label: "可续写任务",
+      correlation_id: "chat_corr",
+    };
+    mockList.mockResolvedValueOnce([item]).mockResolvedValue([]);
+    mockResolve.mockResolvedValue({ status: "ok", assistant_message: "done" });
+    renderWithRouter(<ApprovalsPage />);
+    expect(await screen.findByRole("link", { name: "可续写任务" })).toHaveAttribute(
+      "href",
+      "/tasks/task_9",
+    );
+    fireEvent.click(screen.getByText("批准并续写"));
+    await waitFor(() => {
+      expect(mockResolve).toHaveBeenCalledWith(
+        "ap-both",
+        "approve",
+        "write_file",
+        { path: "/tmp/test.txt" },
+        "conv-9",
+        "tc-9",
+      );
+      expect(mockNavigate).toHaveBeenCalledWith("/chat/conv-9");
+    });
+  });
+
   it("does not navigate when chat resolve resume fails", async () => {
     mockList.mockResolvedValueOnce([chatContinuable]).mockResolvedValue([]);
     mockResolve.mockResolvedValue({
