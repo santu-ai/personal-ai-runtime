@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
 import InboxPage from "./Inbox";
 import {
@@ -8,12 +8,16 @@ import {
   listInboxEmails,
   triggerInboxPoll,
   getInboxSyncStatus,
+  updateInboxEmailStatus,
   type InboxEmail,
 } from "../api/client";
 import { getInboxEmailSummary } from "../api/inbox";
 import { RECENT_INBOX_LIMIT } from "../hooks/useInboxQuery";
 
-const { addError } = vi.hoisted(() => ({ addError: vi.fn() }));
+const { addError, quickChat } = vi.hoisted(() => ({
+  addError: vi.fn(),
+  quickChat: vi.fn().mockResolvedValue(true),
+}));
 
 vi.mock("../api/client", () => ({
   listInboxEmails: vi.fn().mockResolvedValue([]),
@@ -70,6 +74,10 @@ vi.mock("../api/inbox", async (importOriginal) => {
   };
 });
 
+vi.mock("../hooks/useQuickChat", () => ({
+  useQuickChat: () => quickChat,
+}));
+
 vi.mock("../stores/errorStore", () => ({
   useErrorStore: (selector: (s: { addError: ReturnType<typeof vi.fn> }) => unknown) =>
     selector({ addError }),
@@ -88,6 +96,8 @@ describe("InboxPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(listInboxEmails).mockResolvedValue([]);
+    vi.mocked(updateInboxEmailStatus).mockResolvedValue({ id: "x", status: "read" });
+    quickChat.mockResolvedValue(true);
   });
 
   it("keeps recent emails visible and opens the digest in a dialog", async () => {
@@ -496,6 +506,307 @@ describe("InboxPage", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() => expect(row).toHaveFocus());
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  function triageCard(subject: string): HTMLElement {
+    const card = screen.getByText(subject).closest("div.rounded-lg");
+    if (!card) throw new Error(`missing triage card for ${subject}`);
+    return card as HTMLElement;
+  }
+
+  it("does not mark the same mail twice and moves focus to the next card", async () => {
+    let pending = [pendingMail("e1", "请尽快回复"), pendingMail("e2", "另一封账单")];
+    vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") =>
+      status === "pending" ? pending : [],
+    );
+    let release: () => void = () => {};
+    vi.mocked(updateInboxEmailStatus).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            pending = pending.filter((row) => row.id !== "e1");
+            resolve({ id: "e1", status: "read" });
+          };
+        }),
+    );
+    renderWithRouter(<InboxPage />);
+    const card = triageCard(
+      await screen.findByText("请尽快回复").then((node) => node.textContent!),
+    );
+    const mark = within(card).getByRole("button", { name: "标记已读" });
+    const ai = within(card).getByRole("button", { name: "让 AI 处理" });
+    const view = within(card).getByRole("button", { name: "查看" });
+    mark.focus();
+    fireEvent.click(mark);
+    fireEvent.click(mark);
+    fireEvent.click(ai);
+    await waitFor(() => expect(mark).toHaveAttribute("aria-busy", "true"));
+    expect(mark).not.toBeDisabled();
+    expect(mark).toHaveFocus();
+    expect(ai).not.toHaveAttribute("aria-busy");
+    expect(view).not.toHaveAttribute("aria-busy");
+    expect(updateInboxEmailStatus).toHaveBeenCalledTimes(1);
+    expect(updateInboxEmailStatus).toHaveBeenCalledWith("e1", "read");
+    expect(quickChat).not.toHaveBeenCalled();
+
+    await act(async () => {
+      release();
+    });
+    const nextCard = triageCard("另一封账单");
+    const next = within(nextCard).getByRole("button", { name: "标记已读" });
+    await waitFor(() => expect(next).toHaveFocus());
+    expect(screen.queryByText("请尽快回复")).not.toBeInTheDocument();
+    expect(quickChat).not.toHaveBeenCalled();
+  });
+
+  it("moves focus to the recent row after the last unread card is marked read", async () => {
+    const mail = pendingMail("e1", "请尽快回复");
+    let pending: InboxEmail[] = [mail];
+    let recent: InboxEmail[] = [];
+    vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") =>
+      status === "pending" ? pending : recent,
+    );
+    let release: () => void = () => {};
+    vi.mocked(updateInboxEmailStatus).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            pending = [];
+            recent = [{ ...mail, status: "read" }];
+            resolve({ id: "e1", status: "read" });
+          };
+        }),
+    );
+    renderWithRouter(<InboxPage />);
+    const mark = within(
+      triageCard(await screen.findByText("请尽快回复").then((n) => n.textContent!)),
+    ).getByRole("button", { name: "标记已读" });
+    mark.focus();
+    fireEvent.click(mark);
+    await act(async () => {
+      release();
+    });
+    const row = await screen.findByRole("button", { name: "已读 请尽快回复 boss@corp.com" });
+    await waitFor(() => expect(row).toHaveFocus());
+    expect(screen.queryByRole("button", { name: "标记已读" })).not.toBeInTheDocument();
+  });
+
+  it("moves focus to 立即轮询 when a marked mail leaves and has no recent row", async () => {
+    let pending = [pendingMail("e1", "请尽快回复")];
+    vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") =>
+      status === "pending" ? pending : [],
+    );
+    let release: () => void = () => {};
+    vi.mocked(updateInboxEmailStatus).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            pending = [];
+            resolve({ id: "e1", status: "read" });
+          };
+        }),
+    );
+    renderWithRouter(<InboxPage />);
+    const mark = within(
+      triageCard(await screen.findByText("请尽快回复").then((n) => n.textContent!)),
+    ).getByRole("button", { name: "标记已读" });
+    mark.focus();
+    fireEvent.click(mark);
+    await act(async () => {
+      release();
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "立即轮询" })).toHaveFocus());
+    expect(screen.queryByRole("button", { name: "标记已读" })).not.toBeInTheDocument();
+  });
+
+  it("keeps focus on 标记已读 when the write fails", async () => {
+    const mail = pendingMail("e1", "请尽快回复");
+    vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") =>
+      status === "pending" ? [mail] : [],
+    );
+    let fail: (err: unknown) => void = () => {};
+    vi.mocked(updateInboxEmailStatus).mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    renderWithRouter(<InboxPage />);
+    const mark = within(
+      triageCard(await screen.findByText("请尽快回复").then((n) => n.textContent!)),
+    ).getByRole("button", { name: "标记已读" });
+    mark.focus();
+    fireEvent.click(mark);
+    fireEvent.click(mark);
+    await waitFor(() => expect(mark).toHaveAttribute("aria-busy", "true"));
+    expect(mark).not.toBeDisabled();
+    expect(mark).toHaveFocus();
+    expect(updateInboxEmailStatus).toHaveBeenCalledTimes(1);
+
+    fail(new ApiError("标记已读失败", 500));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("标记已读失败", "收件箱"));
+    expect(mark).toHaveFocus();
+    expect(mark).not.toHaveAttribute("aria-busy");
+    expect(screen.getByText("请尽快回复")).toBeInTheDocument();
+    expect(quickChat).not.toHaveBeenCalled();
+  });
+
+  it("does not pull focus back after 标记已读 when it already moved", async () => {
+    let pending = [pendingMail("e1", "请尽快回复"), pendingMail("e2", "另一封账单")];
+    vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") =>
+      status === "pending" ? pending : [],
+    );
+    let release: () => void = () => {};
+    vi.mocked(updateInboxEmailStatus).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            pending = pending.filter((row) => row.id !== "e1");
+            resolve({ id: "e1", status: "read" });
+          };
+        }),
+    );
+    renderWithRouter(<InboxPage />);
+    const mark = within(
+      triageCard(await screen.findByText("请尽快回复").then((n) => n.textContent!)),
+    ).getByRole("button", { name: "标记已读" });
+    const poll = screen.getByRole("button", { name: "立即轮询" });
+    mark.focus();
+    fireEvent.click(mark);
+    poll.focus();
+    await act(async () => {
+      release();
+    });
+    await waitFor(() => expect(screen.queryByText("请尽快回复")).not.toBeInTheDocument());
+    expect(poll).toHaveFocus();
+    expect(
+      within(triageCard("另一封账单")).getByRole("button", { name: "标记已读" }),
+    ).not.toHaveFocus();
+  });
+
+  it("does not open a second chat while 让 AI 处理 is in flight", async () => {
+    const first = pendingMail("e1", "请尽快回复");
+    const second = pendingMail("e2", "另一封账单");
+    vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") =>
+      status === "pending" ? [first, second] : [],
+    );
+    let releaseStatus: () => void = () => {};
+    vi.mocked(updateInboxEmailStatus).mockImplementation((id: string, status: string) => {
+      if (id !== "e1") return Promise.resolve({ id, status });
+      return new Promise((resolve) => {
+        releaseStatus = () => resolve({ id, status: "handled" });
+      });
+    });
+    let releaseChat: (ok: boolean) => void = () => {};
+    quickChat.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseChat = resolve;
+        }),
+    );
+    renderWithRouter(<InboxPage />);
+    const card = triageCard(await screen.findByText("请尽快回复").then((n) => n.textContent!));
+    const ai = within(card).getByRole("button", { name: "让 AI 处理" });
+    const mark = within(card).getByRole("button", { name: "标记已读" });
+    ai.focus();
+    fireEvent.click(ai);
+    fireEvent.click(ai);
+    fireEvent.click(mark);
+    await waitFor(() => expect(ai).toHaveAttribute("aria-busy", "true"));
+    expect(ai).not.toBeDisabled();
+    expect(ai).toHaveFocus();
+    expect(mark).not.toHaveAttribute("aria-busy");
+    expect(updateInboxEmailStatus).toHaveBeenCalledTimes(1);
+    expect(updateInboxEmailStatus).toHaveBeenCalledWith("e1", "handled");
+    expect(quickChat).not.toHaveBeenCalled();
+
+    const other = within(triageCard("另一封账单")).getByRole("button", { name: "标记已读" });
+    fireEvent.click(other);
+    await waitFor(() => expect(updateInboxEmailStatus).toHaveBeenCalledTimes(2));
+    expect(updateInboxEmailStatus).toHaveBeenLastCalledWith("e2", "read");
+
+    await act(async () => {
+      releaseStatus();
+    });
+    await waitFor(() => expect(quickChat).toHaveBeenCalledTimes(1));
+    expect(quickChat).toHaveBeenCalledWith({
+      title: "邮件：请尽快回复",
+      prompt:
+        "请帮我处理这封邮件：\n发件人：boss@corp.com\n主题：请尽快回复\n预览：预览不出现在列表\n分类：important\n原因：需要回复",
+    });
+    fireEvent.click(ai);
+    expect(quickChat).toHaveBeenCalledTimes(1);
+    expect(ai).toHaveFocus();
+
+    await act(async () => {
+      releaseChat(true);
+    });
+    await waitFor(() => expect(ai).not.toHaveAttribute("aria-busy"));
+    expect(ai).toHaveFocus();
+    expect(quickChat).toHaveBeenCalledTimes(1);
+    expect(updateInboxEmailStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it("still opens one chat when marking handled fails, and keeps focus", async () => {
+    const mail = pendingMail("e1", "请尽快回复");
+    vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") =>
+      status === "pending" ? [mail] : [],
+    );
+    vi.mocked(updateInboxEmailStatus).mockRejectedValue(new ApiError("标记处理失败", 500));
+    let releaseChat: (ok: boolean) => void = () => {};
+    quickChat.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseChat = resolve;
+        }),
+    );
+    renderWithRouter(<InboxPage />);
+    const ai = within(
+      triageCard(await screen.findByText("请尽快回复").then((n) => n.textContent!)),
+    ).getByRole("button", { name: "让 AI 处理" });
+    ai.focus();
+    fireEvent.click(ai);
+    fireEvent.click(ai);
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("标记处理失败", "收件箱"));
+    await waitFor(() => expect(quickChat).toHaveBeenCalledTimes(1));
+    expect(ai).toHaveAttribute("aria-busy", "true");
+    expect(ai).toHaveFocus();
+    fireEvent.click(ai);
+    expect(updateInboxEmailStatus).toHaveBeenCalledTimes(1);
+    expect(quickChat).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      releaseChat(false);
+    });
+    await waitFor(() => expect(ai).not.toHaveAttribute("aria-busy"));
+    expect(ai).toHaveFocus();
+    expect(screen.getByText("请尽快回复")).toBeInTheDocument();
+  });
+
+  it("moves focus like 标记已读 when the chat cannot be opened", async () => {
+    let pending = [pendingMail("e1", "请尽快回复"), pendingMail("e2", "另一封账单")];
+    vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") =>
+      status === "pending" ? pending : [],
+    );
+    vi.mocked(updateInboxEmailStatus).mockImplementation(async () => {
+      pending = pending.filter((row) => row.id !== "e1");
+      return { id: "e1", status: "handled" };
+    });
+    quickChat.mockResolvedValue(false);
+    renderWithRouter(<InboxPage />);
+    const ai = within(
+      triageCard(await screen.findByText("请尽快回复").then((n) => n.textContent!)),
+    ).getByRole("button", { name: "让 AI 处理" });
+    ai.focus();
+    fireEvent.click(ai);
+    const next = within(
+      await screen
+        .findByText("另一封账单")
+        .then((node) => node.closest("div.rounded-lg") as HTMLElement),
+    ).getByRole("button", { name: "标记已读" });
+    await waitFor(() => expect(next).toHaveFocus());
+    expect(quickChat).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("请尽快回复")).not.toBeInTheDocument();
   });
 
   it("uses the page fallback when opening a message fails without a message", async () => {
