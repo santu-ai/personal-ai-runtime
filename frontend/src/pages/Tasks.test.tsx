@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 
 const { addError } = vi.hoisted(() => ({
   addError: vi.fn(),
@@ -11,6 +11,7 @@ import {
   acceptWorkDelivery,
   adoptSuggestedAction,
   ApiError,
+  cancelWorkItem,
   createProjectBrief,
   executeWorkItem,
   getDeliveryMetrics,
@@ -21,6 +22,7 @@ import {
   rerunProjectBrief,
   scheduleBriefRepeat,
   reworkWorkDelivery,
+  updateWorkItemStatus,
   type WorkDelivery,
   type WorkItem,
 } from "../api/client";
@@ -206,6 +208,37 @@ function mockBriefList() {
     return [];
   });
   vi.mocked(getWorkItem).mockResolvedValue(briefTask);
+}
+
+function currentTaskLink(): HTMLElement {
+  const node = document.querySelector<HTMLElement>("[data-task-current]");
+  if (!node) throw new Error("missing current task link");
+  return node;
+}
+
+function hideTaskList() {
+  const original = window.getComputedStyle.bind(window);
+  return vi.spyOn(window, "getComputedStyle").mockImplementation((elt: Element) => {
+    const style = original(elt);
+    if (!(elt instanceof HTMLElement) || elt.dataset.taskList === undefined) return style;
+    return new Proxy(style, {
+      get(target, prop, receiver) {
+        if (prop === "display") return "none";
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+  });
+}
+
+function trackTask(seed: WorkItem, bucket: "task" | "background") {
+  const box = { item: seed };
+  vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+    if (workType === bucket) return [box.item];
+    return [];
+  });
+  vi.mocked(getWorkItem).mockImplementation(async () => box.item);
+  return box;
 }
 
 function renderTasks(path: string) {
@@ -2976,5 +3009,454 @@ describe("TasksPage", () => {
       expect(screen.queryByRole("dialog", { name: "再次运行同一份简报" })).not.toBeInTheDocument(),
     );
     expect(rerunProjectBrief).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not complete twice, keeps focus, then moves it to the open task", async () => {
+    const box = trackTask(
+      {
+        ...sampleTask,
+        id: "sug_1",
+        title: "核对排期",
+        status: "pending",
+        executable_plan: JSON.stringify({ kind: "adopted_suggestion" }),
+      },
+      "task",
+    );
+    let release: () => void = () => {};
+    vi.mocked(updateWorkItemStatus).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            box.item = { ...box.item, status: "completed" };
+            resolve(box.item);
+          };
+        }),
+    );
+    renderTasks("/tasks/sug_1");
+    const done = await screen.findByRole("button", { name: "完成" });
+    done.focus();
+    fireEvent.click(done);
+    fireEvent.click(done);
+    await waitFor(() => expect(done).toHaveAttribute("aria-busy", "true"));
+    expect(done).not.toBeDisabled();
+    expect(done).toHaveFocus();
+    expect(done).toHaveClass("opacity-50");
+    expect(updateWorkItemStatus).toHaveBeenCalledTimes(1);
+    expect(updateWorkItemStatus).toHaveBeenCalledWith("sug_1", "completed");
+
+    await act(async () => {
+      release();
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "完成" })).not.toBeInTheDocument(),
+    );
+    await waitFor(() => expect(currentTaskLink()).toHaveFocus());
+    expect(currentTaskLink()).toHaveAttribute("data-task-current", "");
+  });
+
+  it("focuses 返回列表 when the open task link is hidden after 完成", async () => {
+    const box = trackTask(
+      {
+        ...sampleTask,
+        id: "sug_1",
+        title: "核对排期",
+        status: "pending",
+        executable_plan: JSON.stringify({ kind: "adopted_suggestion" }),
+      },
+      "task",
+    );
+    let release: () => void = () => {};
+    vi.mocked(updateWorkItemStatus).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            box.item = { ...box.item, status: "completed" };
+            resolve(box.item);
+          };
+        }),
+    );
+    const hidden = hideTaskList();
+    try {
+      renderTasks("/tasks/sug_1");
+      const done = await screen.findByRole("button", { name: "完成" });
+      done.focus();
+      fireEvent.click(done);
+      await act(async () => {
+        release();
+      });
+      await waitFor(() => expect(screen.getByRole("link", { name: "返回列表" })).toHaveFocus());
+      expect(currentTaskLink()).not.toHaveFocus();
+    } finally {
+      hidden.mockRestore();
+    }
+  });
+
+  it("does not steal focus after 完成 when it already moved", async () => {
+    const box = trackTask(
+      {
+        ...sampleTask,
+        id: "sug_1",
+        title: "核对排期",
+        status: "pending",
+        executable_plan: JSON.stringify({ kind: "adopted_suggestion" }),
+      },
+      "task",
+    );
+    let release: () => void = () => {};
+    vi.mocked(updateWorkItemStatus).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            box.item = { ...box.item, status: "completed" };
+            resolve(box.item);
+          };
+        }),
+    );
+    renderTasks("/tasks/sug_1");
+    const done = await screen.findByRole("button", { name: "完成" });
+    const back = screen.getByRole("link", { name: "返回列表" });
+    done.focus();
+    fireEvent.click(done);
+    back.focus();
+    await act(async () => {
+      release();
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "完成" })).not.toBeInTheDocument(),
+    );
+    expect(back).toHaveFocus();
+  });
+
+  it("keeps 完成 focused when the status write fails", async () => {
+    trackTask(
+      {
+        ...sampleTask,
+        id: "sug_1",
+        title: "核对排期",
+        status: "pending",
+        executable_plan: JSON.stringify({ kind: "adopted_suggestion" }),
+      },
+      "task",
+    );
+    let fail: (err: unknown) => void = () => {};
+    vi.mocked(updateWorkItemStatus).mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    renderTasks("/tasks/sug_1");
+    const done = await screen.findByRole("button", { name: "完成" });
+    done.focus();
+    fireEvent.click(done);
+    fireEvent.click(done);
+    await waitFor(() => expect(done).toHaveAttribute("aria-busy", "true"));
+    expect(updateWorkItemStatus).toHaveBeenCalledTimes(1);
+
+    fail(new ApiError("完成任务失败", 500));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("完成任务失败", "任务"));
+    expect(done).toHaveFocus();
+    expect(done).not.toBeDisabled();
+    expect(done).not.toHaveAttribute("aria-busy");
+  });
+
+  it("does not cancel twice or open 执行, then focuses the open task", async () => {
+    const box = trackTask(
+      {
+        ...sampleTask,
+        id: "job_1",
+        title: "夜间同步",
+        work_type: "background",
+        status: "pending",
+        executable_plan: JSON.stringify({ steps: [{ tool: "write_file" }] }),
+      },
+      "background",
+    );
+    let release: () => void = () => {};
+    vi.mocked(cancelWorkItem).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            box.item = { ...box.item, status: "cancelled" };
+            resolve(box.item);
+          };
+        }),
+    );
+    renderTasks("/tasks/job_1");
+    const cancel = await screen.findByRole("button", { name: "取消" });
+    const execute = screen.getByRole("button", { name: "执行" });
+    cancel.focus();
+    fireEvent.click(cancel);
+    fireEvent.click(cancel);
+    fireEvent.click(execute);
+    await waitFor(() => expect(cancel).toHaveAttribute("aria-busy", "true"));
+    expect(cancel).not.toBeDisabled();
+    expect(cancel).toHaveFocus();
+    expect(execute).not.toHaveAttribute("aria-busy");
+    expect(screen.queryByRole("dialog", { name: "确认执行计划" })).not.toBeInTheDocument();
+    expect(cancelWorkItem).toHaveBeenCalledTimes(1);
+    expect(cancelWorkItem).toHaveBeenCalledWith("job_1");
+
+    await act(async () => {
+      release();
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "取消" })).not.toBeInTheDocument(),
+    );
+    await waitFor(() => expect(currentTaskLink()).toHaveFocus());
+  });
+
+  it("keeps 取消 focused when cancelling fails", async () => {
+    trackTask(
+      {
+        ...sampleTask,
+        id: "job_1",
+        title: "夜间同步",
+        work_type: "background",
+        status: "pending",
+      },
+      "background",
+    );
+    let fail: (err: unknown) => void = () => {};
+    vi.mocked(cancelWorkItem).mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    renderTasks("/tasks/job_1");
+    const cancel = await screen.findByRole("button", { name: "取消" });
+    cancel.focus();
+    fireEvent.click(cancel);
+    await waitFor(() => expect(cancel).toHaveAttribute("aria-busy", "true"));
+
+    fail(new ApiError("取消任务失败", 500));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("取消任务失败", "任务"));
+    expect(cancel).toHaveFocus();
+    expect(cancel).not.toHaveAttribute("aria-busy");
+  });
+
+  it("does not adopt twice or open 验收, then focuses that 已转为任务 link", async () => {
+    const box = trackTask(
+      {
+        ...briefTask,
+        delivery_bundle: {
+          ...briefTask.delivery_bundle!,
+          current: {
+            ...currentDelivery,
+            suggested_actions: [{ title: "核对排期" }, { title: "再问一句" }],
+          },
+        },
+      },
+      "task",
+    );
+    let release: () => void = () => {};
+    vi.mocked(adoptSuggestedAction).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            const bundle = box.item.delivery_bundle!;
+            box.item = {
+              ...box.item,
+              delivery_bundle: {
+                ...bundle,
+                current: {
+                  ...bundle.current!,
+                  suggested_actions: [
+                    { title: "核对排期", adopted_work_id: "todo_1" },
+                    { title: "再问一句" },
+                  ],
+                },
+              },
+            };
+            resolve({
+              work_id: box.item.id,
+              replayed: false,
+              action_index: 0,
+              created_work_id: "todo_1",
+              work: box.item,
+              bundle: box.item.delivery_bundle!,
+            });
+          };
+        }),
+    );
+    renderTasks("/tasks/brief_1");
+    const adoptButtons = await screen.findAllByRole("button", { name: "转为任务" });
+    expect(adoptButtons).toHaveLength(2);
+    const first = adoptButtons[0];
+    const second = adoptButtons[1];
+    const accept = screen.getByRole("button", { name: "验收" });
+    first.focus();
+    fireEvent.click(first);
+    fireEvent.click(first);
+    fireEvent.click(second);
+    fireEvent.click(accept);
+    await waitFor(() => expect(first).toHaveAttribute("aria-busy", "true"));
+    expect(first).not.toBeDisabled();
+    expect(first).toHaveFocus();
+    expect(second).not.toHaveAttribute("aria-busy");
+    expect(second).not.toBeDisabled();
+    expect(screen.queryByRole("dialog", { name: "验收交付" })).not.toBeInTheDocument();
+    expect(adoptSuggestedAction).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      release();
+    });
+    const link = await screen.findByRole("link", { name: "已转为任务" });
+    await waitFor(() => expect(link).toHaveFocus());
+    expect(link).toHaveAttribute("href", "/tasks/todo_1");
+    expect(screen.getByRole("button", { name: "转为任务" })).toBeInTheDocument();
+    expect(adoptSuggestedAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not accept a delivery while 转为任务 is still in flight", async () => {
+    trackTask(briefTask, "task");
+    let release: () => void = () => {};
+    vi.mocked(adoptSuggestedAction).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () =>
+            resolve({
+              work_id: "brief_1",
+              replayed: false,
+              action_index: 0,
+              created_work_id: "todo_1",
+              work: briefTask,
+              bundle: briefTask.delivery_bundle!,
+            });
+        }),
+    );
+    renderTasks("/tasks/brief_1");
+    fireEvent.click(await screen.findByRole("button", { name: "验收" }));
+    const dialog = await screen.findByRole("dialog", { name: "验收交付" });
+    fireEvent.click(screen.getByRole("button", { name: "转为任务" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "转为任务" })).toHaveAttribute("aria-busy", "true"),
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认验收" }));
+    expect(acceptWorkDelivery).not.toHaveBeenCalled();
+    expect(adoptSuggestedAction).toHaveBeenCalledTimes(1);
+    expect(dialog).toBeInTheDocument();
+
+    await act(async () => {
+      release();
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "转为任务" })).not.toHaveAttribute("aria-busy"),
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认验收" }));
+    await waitFor(() => expect(acceptWorkDelivery).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not steal focus after 转为任务 when it already moved", async () => {
+    const box = trackTask(briefTask, "task");
+    let release: () => void = () => {};
+    vi.mocked(adoptSuggestedAction).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            const bundle = box.item.delivery_bundle!;
+            box.item = {
+              ...box.item,
+              delivery_bundle: {
+                ...bundle,
+                current: {
+                  ...bundle.current!,
+                  suggested_actions: [{ title: "核对排期", adopted_work_id: "   " }],
+                },
+              },
+            };
+            resolve({
+              work_id: box.item.id,
+              replayed: false,
+              action_index: 0,
+              created_work_id: "todo_1",
+              work: box.item,
+              bundle: box.item.delivery_bundle!,
+            });
+          };
+        }),
+    );
+    renderTasks("/tasks/brief_1");
+    const adopt = await screen.findByRole("button", { name: "转为任务" });
+    const accept = screen.getByRole("button", { name: "验收" });
+    adopt.focus();
+    fireEvent.click(adopt);
+    accept.focus();
+    await act(async () => {
+      release();
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "转为任务" })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText("已转为任务").closest("a")).toBeNull();
+    expect(accept).toHaveFocus();
+    expect(currentTaskLink()).not.toHaveFocus();
+  });
+
+  it("focuses the open task when 转为任务 succeeds without a link", async () => {
+    const box = trackTask(briefTask, "task");
+    let release: () => void = () => {};
+    vi.mocked(adoptSuggestedAction).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            const bundle = box.item.delivery_bundle!;
+            box.item = {
+              ...box.item,
+              delivery_bundle: {
+                ...bundle,
+                current: {
+                  ...bundle.current!,
+                  suggested_actions: [{ title: "核对排期", adopted_work_id: "   " }],
+                },
+              },
+            };
+            resolve({
+              work_id: box.item.id,
+              replayed: false,
+              action_index: 0,
+              created_work_id: "todo_1",
+              work: box.item,
+              bundle: box.item.delivery_bundle!,
+            });
+          };
+        }),
+    );
+    renderTasks("/tasks/brief_1");
+    const adopt = await screen.findByRole("button", { name: "转为任务" });
+    adopt.focus();
+    fireEvent.click(adopt);
+    await act(async () => {
+      release();
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "转为任务" })).not.toBeInTheDocument(),
+    );
+    await waitFor(() => expect(currentTaskLink()).toHaveFocus());
+  });
+
+  it("keeps 转为任务 focused when adopting fails", async () => {
+    trackTask(briefTask, "task");
+    let fail: (err: unknown) => void = () => {};
+    vi.mocked(adoptSuggestedAction).mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    renderTasks("/tasks/brief_1");
+    const adopt = await screen.findByRole("button", { name: "转为任务" });
+    adopt.focus();
+    fireEvent.click(adopt);
+    fireEvent.click(adopt);
+    await waitFor(() => expect(adopt).toHaveAttribute("aria-busy", "true"));
+    expect(adoptSuggestedAction).toHaveBeenCalledTimes(1);
+
+    fail(new ApiError("转为任务失败", 500));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("转为任务失败", "任务"));
+    expect(adopt).toHaveFocus();
+    expect(adopt).not.toBeDisabled();
+    expect(adopt).not.toHaveAttribute("aria-busy");
   });
 });

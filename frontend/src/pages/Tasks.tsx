@@ -71,6 +71,47 @@ function adoptedTaskHref(workId: string | null | undefined): string | undefined 
   return taskPageHref(id);
 }
 
+type TaskDirectHandoff = {
+  taskId: string;
+  kind: "complete" | "cancel" | "adopt";
+  index?: number;
+};
+
+/** 焦点在页面空白处，或还停在已经卸掉的按钮上，才安放。已经在别的控件上就不再抢。 */
+function focusIsIdle(): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  return false;
+}
+
+function isShown(node: HTMLElement): boolean {
+  let current: HTMLElement | null = node;
+  while (current) {
+    const style = window.getComputedStyle(current);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    current = current.parentElement;
+  }
+  return node.isConnected;
+}
+
+function focusShown(selector: string): boolean {
+  for (const node of document.querySelectorAll<HTMLElement>(selector)) {
+    if (!isShown(node)) continue;
+    node.focus();
+    if (document.activeElement === node) return true;
+  }
+  return false;
+}
+
+function placeDirectActionFocus(handoff: TaskDirectHandoff): void {
+  if (handoff.kind === "adopt" && handoff.index !== undefined) {
+    if (focusShown(`[data-task-adopted="${handoff.index}"]`)) return;
+  }
+  if (focusShown("[data-task-current]")) return;
+  focusShown("[data-task-back]");
+}
+
 function statusLabel(status: string): string {
   const map: Record<string, string> = {
     pending: "待执行",
@@ -930,6 +971,11 @@ export default function TasksPage() {
   const addError = useErrorStore((s) => s.addError);
   const [busy, setBusy] = useState(false);
   const dialogLock = useRef(false);
+  const actionLock = useRef(false);
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const focusAfter = useRef<TaskDirectHandoff | null>(null);
+  const taskIdRef = useRef(urlTaskId);
+  taskIdRef.current = urlTaskId;
   const [dialogBusy, setDialogBusy] = useState(false);
   const [confirmExecute, setConfirmExecute] = useState(false);
   const [confirmRerun, setConfirmRerun] = useState(false);
@@ -1019,6 +1065,9 @@ export default function TasksPage() {
     setHistoryRetry(0);
     acceptKey.current = null;
     adoptKeys.current = {};
+    actionLock.current = false;
+    focusAfter.current = null;
+    setActionBusy(null);
   }, [urlTaskId]);
 
   useEffect(() => {
@@ -1125,11 +1174,31 @@ export default function TasksPage() {
   }, [items]);
 
   const beginDialog = () => {
-    if (dialogLock.current) return false;
+    if (dialogLock.current || actionLock.current) return false;
     dialogLock.current = true;
     setDialogBusy(true);
     setBusy(true);
     return true;
+  };
+
+  const beginDirect = (taskId: string, token: string): boolean => {
+    if (!taskId || actionLock.current || dialogLock.current) return false;
+    focusAfter.current = null;
+    actionLock.current = true;
+    setActionBusy(token);
+    return true;
+  };
+
+  const endDirect = (taskId: string, handoff: TaskDirectHandoff | null) => {
+    if (taskIdRef.current !== taskId) return;
+    if (handoff) focusAfter.current = handoff;
+    actionLock.current = false;
+    setActionBusy(null);
+  };
+
+  const openActionDialog = (open: () => void) => {
+    if (actionLock.current) return;
+    open();
   };
 
   const endDialog = () => {
@@ -1235,14 +1304,17 @@ export default function TasksPage() {
 
   const handleCancel = async () => {
     if (!selected) return;
-    setBusy(true);
+    const taskId = selected.id;
+    if (!beginDirect(taskId, "cancel")) return;
+    let handoff: TaskDirectHandoff | null = null;
     try {
-      await cancelWorkItem(selected.id);
+      await cancelWorkItem(taskId);
+      handoff = { taskId, kind: "cancel" };
       invalidate();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "取消任务失败", "任务");
     } finally {
-      setBusy(false);
+      endDirect(taskId, handoff);
     }
   };
 
@@ -1268,33 +1340,39 @@ export default function TasksPage() {
 
   const handleAdopt = async (delivery: WorkDelivery, actionIndex: number) => {
     if (!selected) return;
-    setBusy(true);
+    const taskId = selected.id;
+    if (!beginDirect(taskId, `adopt:${actionIndex}`)) return;
     if (!adoptKeys.current[actionIndex]) {
       adoptKeys.current[actionIndex] = newIdempotencyKey("adopt");
     }
+    let handoff: TaskDirectHandoff | null = null;
     try {
-      await adoptSuggestedAction(selected.id, delivery.delivery_id, actionIndex, {
+      await adoptSuggestedAction(taskId, delivery.delivery_id, actionIndex, {
         idempotency_key: adoptKeys.current[actionIndex],
       });
+      handoff = { taskId, kind: "adopt", index: actionIndex };
       invalidate();
       setMetricsRefresh((value) => value + 1);
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "转为任务失败", "任务");
     } finally {
-      setBusy(false);
+      endDirect(taskId, handoff);
     }
   };
 
   const handleComplete = async () => {
     if (!selected) return;
-    setBusy(true);
+    const taskId = selected.id;
+    if (!beginDirect(taskId, "complete")) return;
+    let handoff: TaskDirectHandoff | null = null;
     try {
-      await updateWorkItemStatus(selected.id, "completed");
+      await updateWorkItemStatus(taskId, "completed");
+      handoff = { taskId, kind: "complete" };
       invalidate();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "完成任务失败", "任务");
     } finally {
-      setBusy(false);
+      endDirect(taskId, handoff);
     }
   };
 
@@ -1367,6 +1445,7 @@ export default function TasksPage() {
               <Link
                 to={taskPageHref(item.id)}
                 aria-current={active ? "page" : undefined}
+                data-task-current={active ? "" : undefined}
                 className={`block w-full rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
                   active
                     ? "border-insight/40 bg-insight/10"
@@ -1442,6 +1521,26 @@ export default function TasksPage() {
     : [];
   const canCiteDeliverySource = (sourceId: string) =>
     findDeliverySource(citeSources, sourceId) !== undefined;
+
+  useEffect(() => {
+    const pending = focusAfter.current;
+    if (!pending || actionBusy) return;
+    if (!selected || pending.taskId !== selected.id) {
+      focusAfter.current = null;
+      return;
+    }
+    if (pending.kind === "complete") {
+      if (canComplete) return;
+    } else if (pending.kind === "cancel") {
+      if (canCancel) return;
+    } else {
+      const adopted = currentDelivery?.suggested_actions[pending.index ?? -1]?.adopted_work_id;
+      if (!adopted) return;
+    }
+    focusAfter.current = null;
+    if (!focusIsIdle()) return;
+    placeDirectActionFocus(pending);
+  }, [selected, actionBusy, canComplete, canCancel, currentDelivery]);
 
   useEffect(() => {
     if (!viewingHistory || !historyFull) return;
@@ -1551,6 +1650,7 @@ export default function TasksPage() {
           <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
             <section
               aria-label="任务列表"
+              data-task-list=""
               className={detailOpen ? "hidden min-w-0 lg:block" : "min-w-0"}
             >
               {shownListError ? (
@@ -1585,7 +1685,7 @@ export default function TasksPage() {
             >
               {detailOpen && !notFound && (
                 <div className="mb-4 lg:hidden">
-                  <Link to="/tasks" className={backLinkSecondary}>
+                  <Link to="/tasks" data-task-back="" className={backLinkSecondary}>
                     返回列表
                   </Link>
                 </div>
@@ -1645,17 +1745,31 @@ export default function TasksPage() {
                       </div>
                       <div className="flex gap-2 shrink-0">
                         {canComplete && (
-                          <Button size="sm" onClick={handleComplete} disabled={busy}>
+                          <Button
+                            size="sm"
+                            data-task-action="complete"
+                            aria-busy={actionBusy === "complete" || undefined}
+                            className={actionBusy === "complete" ? "opacity-50" : ""}
+                            onClick={() => void handleComplete()}
+                          >
                             完成
                           </Button>
                         )}
                         {canExecute && (
-                          <Button size="sm" onClick={() => setConfirmExecute(true)} disabled={busy}>
+                          <Button
+                            size="sm"
+                            onClick={() => openActionDialog(() => setConfirmExecute(true))}
+                            disabled={busy}
+                          >
                             {rerun ? "重新执行" : "执行"}
                           </Button>
                         )}
                         {canRerunSameBrief && (
-                          <Button size="sm" onClick={() => setConfirmRerun(true)} disabled={busy}>
+                          <Button
+                            size="sm"
+                            onClick={() => openActionDialog(() => setConfirmRerun(true))}
+                            disabled={busy}
+                          >
                             再次运行
                           </Button>
                         )}
@@ -1663,14 +1777,21 @@ export default function TasksPage() {
                           <Button
                             size="sm"
                             variant="secondary"
-                            onClick={() => setConfirmSchedule(true)}
+                            onClick={() => openActionDialog(() => setConfirmSchedule(true))}
                             disabled={busy}
                           >
                             定时再次运行
                           </Button>
                         )}
                         {canCancel && (
-                          <Button size="sm" variant="subtle" onClick={handleCancel} disabled={busy}>
+                          <Button
+                            size="sm"
+                            variant="subtle"
+                            data-task-action="cancel"
+                            aria-busy={actionBusy === "cancel" || undefined}
+                            className={actionBusy === "cancel" ? "opacity-50" : ""}
+                            onClick={() => void handleCancel()}
+                          >
                             取消
                           </Button>
                         )}
@@ -1777,7 +1898,9 @@ export default function TasksPage() {
                             <div className="flex gap-2">
                               <Button
                                 size="sm"
-                                onClick={() => setAcceptTarget(shownDelivery)}
+                                onClick={() =>
+                                  openActionDialog(() => setAcceptTarget(shownDelivery))
+                                }
                                 disabled={busy}
                               >
                                 验收
@@ -1785,7 +1908,7 @@ export default function TasksPage() {
                               <Button
                                 size="sm"
                                 variant="subtle"
-                                onClick={() => setReworkOpen(true)}
+                                onClick={() => openActionDialog(() => setReworkOpen(true))}
                                 disabled={busy}
                               >
                                 返工
@@ -1875,7 +1998,11 @@ export default function TasksPage() {
                                     </span>
                                     {!viewingHistory && action.adopted_work_id ? (
                                       adoptedHref ? (
-                                        <Link to={adoptedHref} className={adoptedLinkClass}>
+                                        <Link
+                                          to={adoptedHref}
+                                          data-task-adopted={index}
+                                          className={adoptedLinkClass}
+                                        >
                                           已转为任务
                                         </Link>
                                       ) : (
@@ -1887,8 +2014,12 @@ export default function TasksPage() {
                                       <Button
                                         size="sm"
                                         variant="secondary"
-                                        onClick={() => handleAdopt(shownDelivery, index)}
-                                        disabled={busy}
+                                        data-task-adopt={index}
+                                        aria-busy={actionBusy === `adopt:${index}` || undefined}
+                                        className={
+                                          actionBusy === `adopt:${index}` ? "opacity-50" : ""
+                                        }
+                                        onClick={() => void handleAdopt(shownDelivery, index)}
                                       >
                                         转为任务
                                       </Button>
