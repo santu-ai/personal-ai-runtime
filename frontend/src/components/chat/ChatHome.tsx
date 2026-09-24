@@ -1,15 +1,22 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Brain, Mail, ShieldCheck, Sparkles, Target } from "lucide-react";
 import { useChatStore } from "../../stores/chatStore";
-import { listMemoriesGrouped, listInboxEmails, type WorkItem } from "../../api/client";
+import {
+  listMemoriesGrouped,
+  listInboxEmails,
+  type InboxEmail,
+  type WorkItem,
+} from "../../api/client";
 import { listWorkItems } from "../../api/workItems";
 import { useQuickChat } from "../../hooks/useQuickChat";
 import { useApprovalsQuery } from "../../hooks/useApprovalsQuery";
 import { useProposedMemoryCountQuery } from "../../hooks/useMemoriesQuery";
+import { useErrorStore } from "../../stores/errorStore";
 import { timeAgo, isStagnant } from "../../utils/timeUtils";
 import ProposedMemoryBanner from "./ProposedMemoryBanner";
 import ChatComposer from "./ChatComposer";
+import LoadErrorNotice, { queryErrorMessage, useHeldQueryError } from "../ui/LoadErrorNotice";
 import { STATUS_TONE } from "../ui/statusTone";
 
 interface ProactiveNudge {
@@ -23,21 +30,33 @@ interface ProactiveNudge {
   href?: string;
 }
 
+type InsightMemory = { content: string; category?: string };
+
 const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
 
 export default function ChatHome() {
   const conversations = useChatStore((s) => s.conversations);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const quickChat = useQuickChat();
-  const { data: pendingApprovals = [] } = useApprovalsQuery();
-  const { data: proposedCount = 0, isPending: proposedPending } = useProposedMemoryCountQuery();
+  const addError = useErrorStore((s) => s.addError);
+  const approvalsQuery = useApprovalsQuery();
+  const pendingApprovals = approvalsQuery.data;
+  const proposedQuery = useProposedMemoryCountQuery();
+  const proposedCount = proposedQuery.data;
 
-  const [memories, setMemories] = useState<{ content: string; category?: string }[]>([]);
-  const [goals, setGoals] = useState<WorkItem[]>([]);
-  const [inbox, setInbox] = useState<{ id: string; subject?: string; sender?: string }[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [memories, setMemories] = useState<InsightMemory[] | null>(null);
+  const [goals, setGoals] = useState<WorkItem[] | null>(null);
+  const [inbox, setInbox] = useState<InboxEmail[] | null>(null);
+  const [fetching, setFetching] = useState(true);
+  const [insightError, setInsightError] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const known = useRef<{
+    memories: InsightMemory[] | null;
+    goals: WorkItem[] | null;
+    inbox: InboxEmail[] | null;
+  }>({ memories: null, goals: null, inbox: null });
+  const loadGen = useRef(0);
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -46,38 +65,107 @@ export default function ChatHome() {
     return "晚上好";
   })();
 
-  useEffect(() => {
-    loadInsights();
-  }, []);
+  const loadInsights = useCallback(async () => {
+    const gen = ++loadGen.current;
+    setFetching(true);
+    const [memRes, goalRes, inboxRes] = await Promise.allSettled([
+      listMemoriesGrouped({ claimStatus: "ratified" }),
+      listWorkItems("goal"),
+      listInboxEmails(),
+    ]);
+    if (gen !== loadGen.current) return;
 
-  const loadInsights = async () => {
-    try {
-      const [memData, goalData, inboxData] = await Promise.all([
-        listMemoriesGrouped({ claimStatus: "ratified" }).catch(() => ({ memories: [] })),
-        listWorkItems("goal").catch(() => []),
-        listInboxEmails().catch(() => []),
-      ]);
-      setMemories(memData.memories ?? []);
-      setGoals(goalData);
-      setInbox(inboxData);
-    } catch {
-      // optional
-    } finally {
-      setLoading(false);
+    const failures: string[] = [];
+    if (memRes.status === "fulfilled") {
+      known.current.memories = memRes.value.memories ?? [];
+    } else {
+      failures.push(queryErrorMessage(memRes.reason, "加载记忆失败"));
     }
-  };
+    if (goalRes.status === "fulfilled") {
+      known.current.goals = goalRes.value;
+    } else {
+      failures.push(queryErrorMessage(goalRes.reason, "加载目标失败"));
+    }
+    if (inboxRes.status === "fulfilled") {
+      known.current.inbox = inboxRes.value;
+    } else {
+      failures.push(queryErrorMessage(inboxRes.reason, "加载收件箱失败"));
+    }
 
-  const stagnantGoals = goals.filter(
-    (g) => g.status === "active" && isStagnant(g.last_activity_at, g.created_at),
+    setMemories(known.current.memories);
+    setGoals(known.current.goals);
+    setInbox(known.current.inbox);
+    const incomplete =
+      known.current.memories === null ||
+      known.current.goals === null ||
+      known.current.inbox === null;
+    if (failures.length > 0) {
+      addError(failures[0], "对话");
+      setInsightError(incomplete ? failures[0] : null);
+    } else {
+      setInsightError(null);
+    }
+    setFetching(false);
+  }, [addError]);
+
+  useEffect(() => {
+    void loadInsights();
+  }, [loadInsights]);
+
+  useEffect(() => {
+    if (approvalsQuery.error && pendingApprovals === undefined) {
+      addError(queryErrorMessage(approvalsQuery.error, "加载待审批失败"), "对话");
+    }
+  }, [approvalsQuery.error, pendingApprovals, addError]);
+
+  useEffect(() => {
+    if (proposedQuery.error && proposedCount === undefined) {
+      addError(queryErrorMessage(proposedQuery.error, "加载待确认记忆失败"), "对话");
+    }
+  }, [proposedQuery.error, proposedCount, addError]);
+
+  const memoryRows = memories ?? [];
+  const goalRows = goals ?? [];
+  const inboxRows = inbox ?? [];
+  const stagnantGoals =
+    goals === null
+      ? []
+      : goalRows.filter(
+          (g) => g.status === "active" && isStagnant(g.last_activity_at, g.created_at),
+        );
+  const activeGoals = goals === null ? [] : goalRows.filter((g) => g.status === "active");
+  const unreadInbox = inboxRows.length;
+  const approvalsKnown = pendingApprovals !== undefined;
+  const proposedKnown = proposedCount !== undefined;
+  const approvalCount = pendingApprovals?.length ?? 0;
+  const pictureComplete =
+    memories !== null && goals !== null && inbox !== null && approvalsKnown && proposedKnown;
+  const insightGap = memories === null || goals === null || inbox === null ? insightError : null;
+  const approvalGap =
+    !approvalsKnown && approvalsQuery.error
+      ? queryErrorMessage(approvalsQuery.error, "加载待审批失败")
+      : null;
+  const proposedGap =
+    !proposedKnown && proposedQuery.error
+      ? queryErrorMessage(proposedQuery.error, "加载待确认记忆失败")
+      : null;
+  const rawGap = insightGap || approvalGap || proposedGap;
+  // 查询错误对象要稳定，否则 useHeldQueryError 会在每次渲染时重跑并卡住页面。
+  const gapError = useMemo(() => (rawGap ? new Error(rawGap) : null), [rawGap]);
+  const insightBusy =
+    fetching || Boolean(approvalsQuery.isFetching) || Boolean(proposedQuery.isFetching);
+  const shownError = useHeldQueryError(
+    pictureComplete,
+    gapError,
+    insightBusy,
+    "加载近况失败",
+    "home",
   );
-  const activeGoals = goals.filter((g) => g.status === "active");
-  const unreadInbox = inbox.length;
-  const approvalCount = pendingApprovals.length;
 
-  // 待决断优先：审批 > 停滞目标 > 邮件 > 引导
+  // 待决断优先：审批 > 停滞目标 > 邮件 > 引导。没读到的来源不当成零。
   const nudges: ProactiveNudge[] = [];
 
-  if (approvalCount > 0) {
+  if (approvalsKnown && approvalCount > 0) {
     nudges.push({
       icon: ShieldCheck,
       message:
@@ -91,7 +179,7 @@ export default function ChatHome() {
     });
   }
 
-  if (stagnantGoals.length > 0) {
+  if (goals !== null && stagnantGoals.length > 0) {
     const names = stagnantGoals
       .slice(0, 2)
       .map((g) => g.title)
@@ -109,7 +197,7 @@ export default function ChatHome() {
     });
   }
 
-  if (unreadInbox > 0) {
+  if (inbox !== null && unreadInbox > 0) {
     nudges.push({
       icon: Mail,
       message: `收件箱有 ${unreadInbox} 封邮件，可能有需要你处理的`,
@@ -121,11 +209,12 @@ export default function ChatHome() {
   }
 
   if (
+    pictureComplete &&
     approvalCount === 0 &&
-    memories.length === 0 &&
+    memoryRows.length === 0 &&
     activeGoals.length === 0 &&
     unreadInbox === 0 &&
-    proposedCount === 0
+    (proposedCount ?? 0) === 0
   ) {
     nudges.push({
       icon: Sparkles,
@@ -135,10 +224,17 @@ export default function ChatHome() {
       title: "建立记忆",
       tone: "success",
     });
-  } else if (memories.length > 0 && activeGoals.length === 0 && approvalCount === 0) {
+  } else if (
+    memories !== null &&
+    goals !== null &&
+    approvalsKnown &&
+    memoryRows.length > 0 &&
+    activeGoals.length === 0 &&
+    approvalCount === 0
+  ) {
     nudges.push({
       icon: Target,
-      message: `我已经记住了 ${memories.length} 件关于你的事。要不要设定一个目标？`,
+      message: `我已经记住了 ${memoryRows.length} 件关于你的事。要不要设定一个目标？`,
       action: "规划目标",
       prompt: "根据你对我的了解，建议一个我这周可以完成的目标",
       title: "目标规划",
@@ -158,18 +254,30 @@ export default function ChatHome() {
     void quickChat({ prompt: text, title });
   };
 
+  const retryInsights = () => {
+    void loadInsights();
+    if (approvalsQuery.isError) void approvalsQuery.refetch();
+    if (proposedQuery.isError) void proposedQuery.refetch();
+  };
+
   const lastConversation = conversations
     .filter((c) => c.updated_at)
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
 
   const decisionCount =
-    approvalCount + stagnantGoals.length + (unreadInbox > 0 ? 1 : 0) + (proposedCount > 0 ? 1 : 0);
-  const insightsReady = !loading && !proposedPending;
-  const subtitle = !insightsReady
-    ? "正在了解你的近况…"
-    : decisionCount > 0
-      ? "这些事需要你决断或推进"
-      : "今天没有待决断事项，开始新对话吧";
+    (approvalsKnown ? approvalCount : 0) +
+    stagnantGoals.length +
+    (inbox !== null && unreadInbox > 0 ? 1 : 0) +
+    (proposedKnown && (proposedCount ?? 0) > 0 ? 1 : 0);
+  const insightsSettled = !fetching && !approvalsQuery.isPending && !proposedQuery.isPending;
+  const subtitle =
+    !insightsSettled && !shownError
+      ? "正在了解你的近况…"
+      : decisionCount > 0
+        ? "这些事需要你决断或推进"
+        : pictureComplete
+          ? "今天没有待决断事项，开始新对话吧"
+          : null;
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -178,13 +286,22 @@ export default function ChatHome() {
           <div className="space-y-5 pt-8 pb-2 text-center">
             <Brain size={32} strokeWidth={1.5} className="mx-auto mb-3 text-insight" />
             <h2 className="text-2xl font-semibold tracking-tight text-fg-primary">{greeting}</h2>
-            <p className="mt-2 text-sm text-fg-tertiary">{subtitle}</p>
+            {subtitle ? <p className="mt-2 text-sm text-fg-tertiary">{subtitle}</p> : null}
           </div>
 
           <ProposedMemoryBanner className="rounded-xl border border-insight/30" />
 
-          {insightsReady && (
+          {shownError || nudges.length > 0 ? (
             <div className="space-y-2">
+              {shownError ? (
+                <LoadErrorNotice
+                  message={shownError}
+                  busy={insightBusy}
+                  onRetry={retryInsights}
+                  testId="chat-home-load-error"
+                  autoFocus={nudges.length === 0}
+                />
+              ) : null}
               {nudges.map((nudge, i) => {
                 const tone = STATUS_TONE[nudge.tone];
                 const actionTone =
@@ -221,7 +338,7 @@ export default function ChatHome() {
                 );
               })}
             </div>
-          )}
+          ) : null}
 
           {lastConversation && (
             <Link

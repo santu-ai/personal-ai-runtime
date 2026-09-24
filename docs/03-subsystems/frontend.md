@@ -17,7 +17,7 @@
 
 | Route | 页面文件 | 用途 |
 |---|---|---|
-| `/`（index） | `pages/ChatPage.tsx` | 聊天首页（无会话）→ `ChatHome` |
+| `/`（index） | `pages/ChatPage.tsx` | 聊天首页（无会话）→ `ChatHome`。记忆、目标、收件箱、待审批和待确认记忆都读成功且为空时，仍写「我还不太了解你」和「今天没有待决断事项，开始新对话吧」。其中任一还没读到时，不写这两句。读失败时写出原因（有原文用原文；记忆空白则用「加载记忆失败」，目标用「加载目标失败」，收件箱用「加载收件箱失败」，待审批用「加载待审批失败」，待确认记忆用「加载待确认记忆失败」）并给出「重试」。多处一起失败时，先写记忆、目标、收件箱里先失败的那条。「重试」在没有已读到的提示时拿键盘焦点；这次读取结束前按钮留在页面上，原因也不换成空态。已经读到的提示留着，这次失败不抢走它的焦点。「继续上次」和输入框仍在 |
 | `/chat/:conversationId` | `pages/ChatPage.tsx` | 活跃会话 → `ChatView`。读取消息失败且当前没有消息时，写出原因（有原文用原文，空白则用「加载消息失败」）并给出「重试」，不显示「开始对话」。读取成功且没有消息时仍是「开始对话」。「重试」出现时拿键盘焦点；这次读取结束前按钮留在页面上。从首页带过来、还没发出的那句，要等这次读取成功才发送 |
 | `/goals` | `pages/Goals.tsx` | 目标列表 + 详情。与其他主页面共用 `page-shell`；窄屏选中后只显示详情。列表行是链到 `/goals/:id` 的链接（路径按 id 编码），带与时间线相同的焦点环，正在看的那一行标 `aria-current="page"`。窄屏「返回列表」链到 `/goals`。新建、改状态、删除和开始讨论仍是按钮。进度经 `goalProgressPercent`：0–1 乘 100；大于 1 视为已经是百分比，显示不超过 100。列表还在加载时写「加载中…」。读取失败且当前没有目标时，页面上写出原因（有原文用原文，空白则用「加载目标失败」）并给出「重试」，不显示「暂无目标」。读取成功且为空时仍是「暂无目标」。「重试」出现时拿键盘焦点；这次读取结束前按钮留在页面上。已有目标时，失败只走原有提示，列表仍在 |
 | `/goals/:goalId` | `pages/Goals.tsx` | 同上，直接打开该目标详情。目标不存在时的「返回列表」也链到 `/goals`。详情读取失败且不是不存在时，写出原因（空白则用「加载目标详情失败」）并给出「重试」，不一直显示「加载中…」。「重试」出现时拿键盘焦点，这次读取结束前按钮留在页面上。不存在仍是「目标不存在」。此时若列表也读取失败且没有目标，列表栏写出原因，不写「暂无其他目标」，且不抢走详情里的焦点 |
@@ -128,7 +128,7 @@ types.ts       ← 共享 TS 接口
 
 - **`ui/`** — 原语：`Button`、`Badge`、`Card`、`Dialog`、`EmptyState`、`ErrorBoundary`、`Input`（含 `PasswordInput`）、`Spinner`。每个有 co-located `.test.tsx`。
 - **`layout/`** — `Sidebar.tsx`（聊天列表 + 导航，[`Sidebar.tsx`](../../frontend/src/components/layout/Sidebar.tsx)）、`NotificationBell.tsx`。
-- **`chat/`** — `ChatView.tsx`（活跃会话；读取消息失败且还没有消息时写出原因并给出「重试」，不显示「开始对话」；`ProposedMemoryBanner` 只展示当前会话 `source=conv:{id}` 的待确认记忆，toast 文案为「待确认」）、`ChatHome.tsx`（落地，横幅仍用全局 proposed 计数；「继续上次」链到该会话，带地址的提示如「去审批」是链接，开始对话这类仍是按钮）、`MessageItem.tsx`（正文链接带与时间线相同的焦点环；与当前站点同源的地址走路由，外链仍新开标签）、`ToolCallDisplay.tsx`、`ContextPanel.tsx`（活跃目标链到 `/goals/:id`）、`ConfirmationDialog.tsx`（审批模态；`needs_user` 写工具用「建议」话术；`ask_user` 展示问题与文本回答）、`VoiceInput.tsx`、`CodeBlock.tsx`（懒加载 `react-syntax-highlighter`）。
+- **`chat/`** — `ChatView.tsx`（活跃会话；读取消息失败且还没有消息时写出原因并给出「重试」，不显示「开始对话」；`ProposedMemoryBanner` 只展示当前会话 `source=conv:{id}` 的待确认记忆，toast 文案为「待确认」）、`ChatHome.tsx`（落地；近况没读全时写出原因并给出「重试」，不显示「我还不太了解你」；横幅仍用全局 proposed 计数；「继续上次」链到该会话，带地址的提示如「去审批」是链接，开始对话这类仍是按钮）、`MessageItem.tsx`（正文链接带与时间线相同的焦点环；与当前站点同源的地址走路由，外链仍新开标签）、`ToolCallDisplay.tsx`、`ContextPanel.tsx`（活跃目标链到 `/goals/:id`）、`ConfirmationDialog.tsx`（审批模态；`needs_user` 写工具用「建议」话术；`ask_user` 展示问题与文本回答）、`VoiceInput.tsx`、`CodeBlock.tsx`（懒加载 `react-syntax-highlighter`）。
 - **`dashboard/`** — `todayBuckets.ts` 纯前端分桶：需要你决定（待审批 / 待确认记忆 / important·actionable 邮件）、今天要做（3 日内截止或停滞目标）、AI 已处理（当日晨报 / 收件箱摘要 / 目标进展 / 可忽略邮件计数）。`AdoptionSummary` 在今日页展示近 7 日采纳率（工具建议确认 + 记忆确认，数据来自 `GET /api/telemetry/governance`），点击进入信任页。`PeriodComparison` 展示近 7 日与前 7 日的完成目标、完成任务、新邮件和采纳率（`GET /api/dashboard/periods`）；`work_completed_untyped` 只在非零时出现。收回用的 `rerun_restore` / `rework_restore` 不进完成数。`RemindersPanel` 只保留 `reminder` / `url_monitor` / `morning_brief_failed`，先按 `related_id` 去重再截断。`morning_brief` 通知路由到 `/dashboard`。今日三栏在待审批、待确认记忆、收件箱、目标或通知还在读取、或读取失败且该栏还没有条目时，不把这一栏写成空；成功的空栏和「暂无提醒」保持原句。
 - **`notifications/`** — `NotificationDetailModal.tsx`。
 - **`onboarding/`** — `OnboardingWizard.tsx`（首次运行，`localStorage.onboarding_done` 门控）。
