@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
 import TimelinePage from "./Timeline";
 
@@ -29,6 +29,8 @@ describe("TimelinePage", () => {
   it("shows loading initially", () => {
     mockList.mockReturnValue(new Promise(() => {}));
     renderWithRouter(<TimelinePage />);
+    expect(screen.getByRole("heading", { name: "人生时间线" })).toBeInTheDocument();
+    expect(screen.getByText("加载中…")).toBeInTheDocument();
     expect(document.querySelector(".animate-spin")).toBeTruthy();
   });
 
@@ -164,9 +166,13 @@ describe("TimelinePage", () => {
   it("shows error with retry", async () => {
     mockList.mockRejectedValue(new Error("加载失败"));
     renderWithRouter(<TimelinePage />);
-    await waitFor(() => {
-      expect(screen.getByText("加载失败")).toBeInTheDocument();
-    });
+    expect(await screen.findByRole("heading", { name: "人生时间线" })).toBeInTheDocument();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("加载失败");
+    expect(screen.queryByText("还没有任何事件")).not.toBeInTheDocument();
+    const retry = within(alert).getByRole("button", { name: "重试" });
+    expect(retry).toHaveClass("focus-visible:ring-focus-ring");
+    await waitFor(() => expect(retry).toHaveFocus());
     mockList.mockResolvedValue({
       items: [makeEvent("e1", "恢复成功", "2026-06-28T08:00:00Z")],
       total: 1,
@@ -175,9 +181,98 @@ describe("TimelinePage", () => {
       has_more: false,
       icons: {},
     });
-    fireEvent.click(screen.getByText("重试"));
+    fireEvent.click(retry);
     await waitFor(() => {
       expect(screen.getByText("恢复成功")).toBeInTheDocument();
     });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("keeps the first-load retry mounted until the reread finishes", async () => {
+    let release: ((row: Awaited<ReturnType<typeof listTimelineEvents>>) => void) | undefined;
+    mockList.mockRejectedValueOnce(new Error("加载失败"));
+    renderWithRouter(<TimelinePage />);
+    const retry = await screen.findByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+    mockList.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    fireEvent.click(retry);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "重试" })).toHaveAttribute("aria-busy", "true"),
+    );
+    expect(screen.getByTestId("timeline-load-error")).toHaveTextContent("加载失败");
+    expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
+    expect(screen.queryByText("还没有任何事件")).not.toBeInTheDocument();
+    release?.({
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 30,
+      has_more: false,
+      icons: {},
+    });
+    expect(await screen.findByText("还没有任何事件")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("uses the page fallback when the timeline error has no message", async () => {
+    mockList.mockRejectedValue(new Error("  "));
+    renderWithRouter(<TimelinePage />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("加载时间线失败");
+    expect(screen.getByRole("heading", { name: "人生时间线" })).toBeInTheDocument();
+    expect(screen.queryByText("还没有任何事件")).not.toBeInTheDocument();
+  });
+
+  it("keeps listed events when the next page fails and retries that page", async () => {
+    let release: ((row: Awaited<ReturnType<typeof listTimelineEvents>>) => void) | undefined;
+    mockList
+      .mockResolvedValueOnce({
+        items: [makeEvent("e1", "事件一", "2026-06-28T08:00:00Z")],
+        total: 2,
+        page: 1,
+        page_size: 30,
+        has_more: true,
+        icons: {},
+      })
+      .mockRejectedValueOnce(new Error("下一页读不到"));
+    renderWithRouter(<TimelinePage />);
+    expect(await screen.findByText("事件一")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "加载更多" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("下一页读不到");
+    expect(screen.getByText("事件一")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "人生时间线" })).toBeInTheDocument();
+    expect(screen.queryByText("还没有任何事件")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "加载更多" })).not.toBeInTheDocument();
+
+    mockList.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const retry = within(alert).getByRole("button", { name: "重试" });
+    fireEvent.click(retry);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "重试" })).toHaveAttribute("aria-busy", "true"),
+    );
+    expect(screen.getByText("事件一")).toBeInTheDocument();
+    expect(screen.getByTestId("timeline-load-error")).toHaveTextContent("下一页读不到");
+
+    release?.({
+      items: [makeEvent("e2", "事件二", "2026-06-27T08:00:00Z")],
+      total: 2,
+      page: 2,
+      page_size: 30,
+      has_more: false,
+      icons: {},
+    });
+    expect(await screen.findByText("事件二")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("已经是最早的记录")).toBeInTheDocument();
   });
 });

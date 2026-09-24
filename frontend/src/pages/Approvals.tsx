@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Check, X, RefreshCw, MessageSquare } from "lucide-react";
 import {
@@ -15,6 +15,7 @@ import Button from "../components/ui/Button";
 import Badge from "../components/ui/Badge";
 import Card from "../components/ui/Card";
 import PageHeader from "../components/ui/PageHeader";
+import Spinner from "../components/ui/Spinner";
 import { TextArea } from "../components/ui/Input";
 import RiskCard from "../components/approval/RiskCard";
 import { canContinueApproval } from "./approvals/canContinue";
@@ -25,6 +26,12 @@ function taskPageHref(taskId: string | null | undefined): string | undefined {
   const id = taskId?.trim();
   if (!id) return undefined;
   return `/tasks/${encodeURIComponent(id)}`;
+}
+
+/** 接口错误用原文。其它失败用页面自己的说法，避免把空队列写成已经处理完。 */
+function approvalLoadError(error: unknown): string {
+  if (error instanceof ApiError && error.message.trim()) return error.message.trim();
+  return "加载审批列表失败";
 }
 
 function parseParams(params?: string): Record<string, unknown> | null {
@@ -49,13 +56,33 @@ export default function ApprovalsPage() {
   const invalidateApprovals = useInvalidateApprovals();
   const [resolving, setResolving] = useState<Set<string>>(new Set());
   const addError = useErrorStore((s) => s.addError);
+  const loadErrorRef = useRef<HTMLDivElement>(null);
+  // 首次失败时缓存里没有列表。重试一开始会把查询错误清掉，这里留住原因，按钮才不会被「加载中」换掉。
+  const [heldError, setHeldError] = useState<string | null>(null);
+  const shownError =
+    approvals.length > 0 ? null : error ? approvalLoadError(error) : isFetching ? heldError : null;
+
+  useEffect(() => {
+    if (approvals.length > 0 || (!error && !isFetching)) {
+      setHeldError(null);
+      return;
+    }
+    if (error) setHeldError(approvalLoadError(error));
+  }, [approvals.length, error, isFetching]);
 
   useEffect(() => {
     if (error) {
-      const msg = error instanceof ApiError ? error.message : "加载审批列表失败";
-      addError(msg, "审批");
+      addError(approvalLoadError(error), "审批");
     }
   }, [error, addError]);
+
+  useEffect(() => {
+    if (!shownError) return;
+    const root = loadErrorRef.current;
+    const button = root?.querySelector("button");
+    if (!root || !button || root.contains(document.activeElement)) return;
+    button.focus();
+  }, [shownError]);
 
   const handleApprove = async (item: EnrichedApproval, answer?: string) => {
     setResolving((prev) => new Set(prev).add(item.id));
@@ -161,10 +188,35 @@ export default function ApprovalsPage() {
           对话来源的审批可「批准并续写」：执行工具并生成一次回复后打开对话。
         </p>
 
-        {loading && approvals.length === 0 ? (
+        {loading && approvals.length === 0 && !shownError ? (
           <div className="flex items-center justify-center py-20 text-fg-tertiary">
             <RefreshCw size={20} className="animate-spin mr-2" />
-            加载中...
+            加载中…
+          </div>
+        ) : shownError ? (
+          <div
+            ref={loadErrorRef}
+            className="space-y-2 rounded-xl border border-danger/30 p-4"
+            data-testid="approvals-load-error"
+            role="alert"
+          >
+            <p className="text-sm text-danger">{shownError}</p>
+            <Button
+              size="sm"
+              variant="secondary"
+              aria-busy={isFetching || undefined}
+              onClick={() => {
+                if (isFetching) return;
+                void refetch();
+              }}
+            >
+              {isFetching ? (
+                <span aria-hidden="true" className="inline-flex">
+                  <Spinner size="sm" />
+                </span>
+              ) : null}
+              重试
+            </Button>
           </div>
         ) : approvals.length === 0 ? (
           <Card className="py-16 text-center">

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { renderWithRouter, MockApiError } from "../test-utils";
 import ApprovalsPage from "./Approvals";
 import type { EnrichedApproval } from "../api/client";
@@ -75,7 +75,7 @@ describe("ApprovalsPage", () => {
   it("shows loading state initially", () => {
     mockList.mockReturnValue(new Promise(() => {}));
     renderWithRouter(<ApprovalsPage />);
-    expect(screen.getByText("加载中...")).toBeInTheDocument();
+    expect(screen.getByText("加载中…")).toBeInTheDocument();
   });
 
   it("shows empty state when no approvals", async () => {
@@ -121,9 +121,50 @@ describe("ApprovalsPage", () => {
   it("calls addError when load fails", async () => {
     mockList.mockRejectedValue(new MockApiError("加载失败", 500));
     renderWithRouter(<ApprovalsPage />);
-    await waitFor(() => {
-      expect(addError).toHaveBeenCalledWith("加载失败", "审批");
-    });
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("加载失败");
+    expect(addError).toHaveBeenCalledWith("加载失败", "审批");
+    expect(screen.getByRole("heading", { name: "审批管理" })).toBeInTheDocument();
+    expect(screen.queryByText("暂无待审批项")).not.toBeInTheDocument();
+    expect(screen.queryByText("所有高风险操作已处理完毕")).not.toBeInTheDocument();
+    const retry = within(alert).getByRole("button", { name: "重试" });
+    expect(retry).toHaveClass("focus-visible:ring-focus-ring");
+    await waitFor(() => expect(retry).toHaveFocus());
+  });
+
+  it("uses the page fallback when the load error has no message", async () => {
+    mockList.mockRejectedValue(new MockApiError("   ", 500));
+    renderWithRouter(<ApprovalsPage />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("加载审批列表失败");
+    expect(addError).toHaveBeenCalledWith("加载审批列表失败", "审批");
+    expect(screen.queryByText("暂无待审批项")).not.toBeInTheDocument();
+  });
+
+  it("keeps retry mounted until the reread finishes, then shows the empty queue", async () => {
+    let release: ((rows: EnrichedApproval[]) => void) | undefined;
+    mockList.mockRejectedValueOnce(new MockApiError("加载失败", 500));
+    renderWithRouter(<ApprovalsPage />);
+    const retry = await screen.findByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+
+    mockList.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    fireEvent.click(retry);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "重试" })).toHaveAttribute("aria-busy", "true"),
+    );
+    expect(screen.getByTestId("approvals-load-error")).toHaveTextContent("加载失败");
+    expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无待审批项")).not.toBeInTheDocument();
+
+    release?.([]);
+    expect(await screen.findByText("暂无待审批项")).toBeInTheDocument();
+    expect(screen.getByText("所有高风险操作已处理完毕")).toBeInTheDocument();
+    expect(screen.queryByTestId("approvals-load-error")).not.toBeInTheDocument();
   });
 
   it("uses resolveApproval and navigates for chat-continuable approvals", async () => {

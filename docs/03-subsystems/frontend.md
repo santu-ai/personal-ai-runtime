@@ -27,8 +27,8 @@
 | `/memories` | `pages/Memories.tsx` | 记忆列表 + 图谱（含 `?tab=portrait` 画像、`?tab=review` 待确认 triage：筛选/批量确认拒绝） |
 | `/dashboard` | `pages/Dashboard.tsx` | 「今天」工作台：三栏「需要你决定 / 今天要做 / AI 已处理」+ 近 7 日建议采纳 + 近 7 日与前 7 日对比 + 无法进栏的导流提醒（`?tab=trust` 信任报告、`?tab=monitors` 收件箱/网页监控）。「执行」面板除最近失败外，还列出 `failed` 里其余失败（最新在前），跳过与最近失败相同的 `id`，以及已在死信列表中的 `id`。最近失败、其余失败、重试中与死信仅在读模型已有 `work_id` 时链到 `/tasks/:id`；没有该字段的行保持纯文本，`correlation_id` 不当作任务 id。同一条执行（相同 `id`）不会在最近失败、其余失败和死信里重复出现。重试中的错误写在行内。返回的定时条目或可再次运行的简报非空时，显示「定时」（各最多 5 条；多出来的定时只写「另有 N 个定时任务」）：定时行只在 payload 里已有 `work_id`（没有该键时用 `action_id`）且任务仍在时链到 `/tasks/:id`，否则纯文本；定时器 id 与 `correlation_id` 不当作任务 id。同一份简报链到该任务，再次运行后的新版本对照当前交付。带 `related_type=work_item` 的提醒在详情里打开 `/tasks/:id`。信任报告「需要审批」里，非空 `id` 的待审批行打开 `/approvals`；没有 `id` 的行保持纯文本，`correlation_id` 不当作链接。今日三栏里打开审批、收件箱、记忆、目标或仪表盘的行，以及「查看全部目标」「还有 N 个目标」，是链接。执行、定时和这些审批行的链接带上与时间线相同的焦点环；需要截断的文字放在链接里面，焦点环留在链接上。没有 `work_id` 或审批 `id` 的行仍是纯文本 |
 | `/settings` | `pages/Settings.tsx` | LLM/邮件/MCP/数据设置 |
-| `/approvals` | `pages/Approvals.tsx` | 审批队列。`ask_user` 必须先填写文本再「发送回答」，经 chat resolve 续写同一工具环；取消不带回答。非空 `task_id`（去掉空白后仍非空）打开 `/tasks/:id`（路径按 id 编码）；空白、null 或只有空白的 `task_id` 保持纯文本，`correlation_id` 不当作任务 id |
-| `/timeline` | `pages/Timeline.tsx` | 人生事件时间线。非空 `work_id`（去掉空白后仍非空）的事件描述打开 `/tasks/:id`（路径按 id 编码）；空白、null 或只有空白保持纯文本。不读 `payload_snippet`，也不把 `correlation_id` 当成任务 id |
+| `/approvals` | `pages/Approvals.tsx` | 审批队列。`ask_user` 必须先填写文本再「发送回答」，经 chat resolve 续写同一工具环；取消不带回答。非空 `task_id`（去掉空白后仍非空）打开 `/tasks/:id`（路径按 id 编码）；空白、null 或只有空白的 `task_id` 保持纯文本，`correlation_id` 不当作任务 id。列表还在加载时写「加载中…」。读取失败且当前没有待审批项时，页面上写出原因（接口错误原文，空白则用「加载审批列表失败」）并给出「重试」，不显示「暂无待审批项」或「所有高风险操作已处理完毕」。读取成功且为空时仍是这两句。「重试」出现时拿键盘焦点；这次读取结束前按钮留在页面上。已有待审批项时，失败只走原有提示，列表仍在 |
+| `/timeline` | `pages/Timeline.tsx` | 人生事件时间线。非空 `work_id`（去掉空白后仍非空）的事件描述打开 `/tasks/:id`（路径按 id 编码）；空白、null 或只有空白保持纯文本。不读 `payload_snippet`，也不把 `correlation_id` 当成任务 id。标题在加载、为空和失败时都留着。加载时写「加载中…」。还没有事件时写「还没有任何事件」，并说明开始对话或创建目标后会出现记录。首次读取失败时写出原因（有原文用原文，空白则用「加载时间线失败」）并给出「重试」，不写成还没有事件。已经列出的事件若继续加载失败，仍留在页面上，同一处重试下一页。「重试」出现时拿键盘焦点，这次读取结束前按钮留在页面上 |
 
 ## 认证
 
