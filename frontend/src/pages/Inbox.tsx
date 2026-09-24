@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Mail, RefreshCw } from "lucide-react";
 import {
@@ -125,7 +125,11 @@ function SyncStatusBar({
       description={failed && sync.error ? sync.error : undefined}
       action={
         failed ? (
-          <Button onClick={onRetry} disabled={polling} className="shrink-0">
+          <Button
+            onClick={onRetry}
+            aria-busy={polling || undefined}
+            className={`shrink-0${polling ? " opacity-50" : ""}`}
+          >
             <RefreshCw size={14} className="mr-1 inline" />
             {polling ? "重试中..." : "重试同步"}
           </Button>
@@ -165,6 +169,7 @@ export default function InboxPage() {
   const shownLoadError = useHeldQueryError(hasMail, error, isFetching, "加载收件箱失败", "inbox");
   const [polling, setPolling] = useState(false);
   const [initialPollDone, setInitialPollDone] = useState(false);
+  const pollLock = useRef(false);
   const [selectedEmail, setSelectedEmail] = useState<InboxEmail | null>(null);
   const [digestOpen, setDigestOpen] = useState(false);
   const detailRequest = useRef(0);
@@ -246,23 +251,32 @@ export default function InboxPage() {
     }
   }, [error, addError]);
 
-  // One-shot sync poll on first mount, then rely on query cache.
+  // 打开页面时的同步和两个按钮共用一把锁。回来之前再点不会再发一次。
+  const runPoll = useCallback(async () => {
+    if (pollLock.current) return;
+    pollLock.current = true;
+    setPolling(true);
+    try {
+      const res = await triggerInboxPoll();
+      if (res && res.status === "error") {
+        addError(String(res.error || "轮询邮件失败"), "收件箱");
+        return;
+      }
+      await refetch();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "轮询邮件失败";
+      addError(msg, "收件箱");
+    } finally {
+      pollLock.current = false;
+      setPolling(false);
+    }
+  }, [addError, refetch]);
+
   useEffect(() => {
     if (initialPollDone) return;
     setInitialPollDone(true);
-    void triggerInboxPoll()
-      .then(async (res) => {
-        if (res && res.status === "error") {
-          addError(String(res.error || "轮询邮件失败"), "收件箱");
-          return;
-        }
-        await invalidateInbox();
-      })
-      .catch((err) => {
-        const msg = err instanceof ApiError ? err.message : "轮询邮件失败";
-        addError(msg, "收件箱");
-      });
-  }, [initialPollDone, invalidateInbox, addError]);
+    void runPoll();
+  }, [initialPollDone, runPoll]);
 
   const handleAiProcess = async (em: InboxEmail) => {
     if (!startTriage(em.id, "handled")) return;
@@ -340,23 +354,6 @@ export default function InboxPage() {
     }
   };
 
-  const handlePoll = async () => {
-    setPolling(true);
-    try {
-      const res = await triggerInboxPoll();
-      if (res && res.status === "error") {
-        addError(String(res.error || "轮询邮件失败"), "收件箱");
-        return;
-      }
-      await refetch();
-    } catch (err) {
-      const msg = err instanceof ApiError ? err.message : "轮询邮件失败";
-      addError(msg, "收件箱");
-    } finally {
-      setPolling(false);
-    }
-  };
-
   const byCategory = (cat: string) => emails.filter((e) => e.category === cat);
 
   return (
@@ -372,14 +369,19 @@ export default function InboxPage() {
                   查看摘要
                 </Button>
               ) : null}
-              <Button data-inbox-poll="" onClick={handlePoll} disabled={polling}>
+              <Button
+                data-inbox-poll=""
+                onClick={() => void runPoll()}
+                aria-busy={polling || undefined}
+                className={polling ? "opacity-50" : ""}
+              >
                 {polling ? "轮询中..." : "立即轮询"}
               </Button>
             </>
           }
         />
 
-        <SyncStatusBar sync={sync} polling={polling} onRetry={() => void handlePoll()} />
+        <SyncStatusBar sync={sync} polling={polling} onRetry={() => void runPoll()} />
 
         {shownLoadError ? (
           <LoadErrorNotice
