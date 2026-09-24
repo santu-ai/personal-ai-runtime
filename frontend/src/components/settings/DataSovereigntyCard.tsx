@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   downloadExport,
   exportEncryptedData,
@@ -11,6 +11,7 @@ import { useErrorStore } from "../../stores/errorStore";
 import { useInvalidateSettings } from "../../hooks/useSettingsQuery";
 import Card from "../ui/Card";
 import Button from "../ui/Button";
+import Dialog from "../ui/Dialog";
 import { Input } from "../ui/Input";
 
 interface Props {
@@ -30,7 +31,9 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
   const [encryptPassword, setEncryptPassword] = useState("");
   const [encryptExporting, setEncryptExporting] = useState(false);
   const [encryptImporting, setEncryptImporting] = useState(false);
+  const [confirmDestroy, setConfirmDestroy] = useState(false);
   const [destroying, setDestroying] = useState(false);
+  const destroyingRef = useRef(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const reload = () => {
@@ -120,14 +123,17 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
   };
 
   const handleDestroy = async () => {
-    if (!window.confirm("确定销毁全部个人数据？此操作不可撤销！")) return;
+    if (destroyingRef.current) return;
+    destroyingRef.current = true;
     setDestroying(true);
     try {
       await destroyAllData();
+      setConfirmDestroy(false);
       setStatusMessage("数据已销毁，请重新启动应用");
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "销毁失败", "设置");
     } finally {
+      destroyingRef.current = false;
       setDestroying(false);
     }
   };
@@ -212,13 +218,26 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
       <hr className="mt-4 border-border-subtle" />
       <div className="mt-4">
         <h4 className="text-xs font-medium text-danger mb-2">危险操作</h4>
-        <Button variant="danger" onClick={handleDestroy} disabled={destroying}>
-          {destroying ? "销毁中…" : "销毁全部数据"}
+        <Button variant="danger" onClick={() => setConfirmDestroy(true)} disabled={destroying}>
+          销毁全部数据
         </Button>
         <p className="text-xs text-fg-disabled mt-1">
           永久删除所有对话、记忆、目标和事件。不可恢复。
         </p>
       </div>
+      <Dialog
+        open={confirmDestroy}
+        title="销毁全部数据"
+        description="确定销毁全部个人数据？此操作不可撤销！"
+        confirmLabel={destroying ? "销毁中…" : "销毁"}
+        variant="danger"
+        confirmBusy={destroying}
+        onConfirm={() => void handleDestroy()}
+        onCancel={() => {
+          if (destroyingRef.current) return;
+          setConfirmDestroy(false);
+        }}
+      />
     </>
   );
 
