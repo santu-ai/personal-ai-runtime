@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Bell } from "lucide-react";
 import {
   markAllNotificationsRead,
@@ -9,10 +10,32 @@ import {
   useNotificationsQuery,
   useInvalidateNotifications,
 } from "../../hooks/useNotificationsQuery";
+import { queryKeys } from "../../hooks/useWsInvalidationBridge";
 import { useErrorStore } from "../../stores/errorStore";
 import NotificationDetailModal from "../notifications/NotificationDetailModal";
 import LoadErrorNotice, { queryErrorMessage, useHeldQueryError } from "../ui/LoadErrorNotice";
 import { notificationPreview } from "../../utils/notificationUtils";
+
+const NOTIFICATION_LIST_LIMIT = 15;
+
+type MarkAllHandoff = "rows" | "panel";
+
+/** 焦点在页面空白处，或还停在「全部已读」上，才可以把焦点挪走。 */
+function focusIsIdle(): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  return (
+    active instanceof HTMLButtonElement &&
+    active.getAttribute("data-notification-action") === "mark-all"
+  );
+}
+
+function focusFirstNotification(panel: HTMLElement | null): boolean {
+  const row = panel?.querySelector<HTMLButtonElement>("button[data-notification-row]");
+  if (!row) return false;
+  row.focus();
+  return document.activeElement === row;
+}
 
 interface Props {
   /** Icon-only mode when the sidebar is collapsed. */
@@ -22,7 +45,11 @@ interface Props {
 export default function NotificationBell({ compact = false }: Props) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Notification | null>(null);
-  const notificationsQuery = useNotificationsQuery(15);
+  const [markingAll, setMarkingAll] = useState(false);
+  const queryClient = useQueryClient();
+  const markAllLock = useRef(false);
+  const focusAfter = useRef<MarkAllHandoff | null>(null);
+  const notificationsQuery = useNotificationsQuery(NOTIFICATION_LIST_LIMIT);
   const notifications = notificationsQuery.data ?? [];
   const refetch = notificationsQuery.refetch;
   const addError = useErrorStore((s) => s.addError);
@@ -79,6 +106,15 @@ export default function NotificationBell({ compact = false }: Props) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open]);
 
+  useEffect(() => {
+    const pending = focusAfter.current;
+    if (!pending || markingAll) return;
+    focusAfter.current = null;
+    if (!open || !focusIsIdle()) return;
+    if (pending === "rows" && focusFirstNotification(panelRef.current)) return;
+    panelRef.current?.focus();
+  }, [markingAll, notifications, open]);
+
   const unread = notifications.filter((n) => !n.read).length;
 
   const handleOpenDetail = async (n: Notification) => {
@@ -98,11 +134,31 @@ export default function NotificationBell({ compact = false }: Props) {
   };
 
   const handleMarkAllRead = async () => {
+    if (markAllLock.current) return;
+    markAllLock.current = true;
+    focusAfter.current = null;
+    setMarkingAll(true);
+    let handoff: MarkAllHandoff | null = null;
     try {
       await markAllNotificationsRead();
-      invalidateNotifications();
-    } catch {
-      // ignore
+      try {
+        await invalidateNotifications();
+      } catch {
+        // 列表没刷新仍走读取失败的提示，不把已经标上的已读说成失败。
+      }
+      const rows = queryClient.getQueryData<Notification[]>([
+        ...queryKeys.notifications,
+        NOTIFICATION_LIST_LIMIT,
+      ]);
+      if (rows && rows.every((row) => Boolean(row.read))) {
+        handoff = rows.length > 0 ? "rows" : "panel";
+      }
+    } catch (error: unknown) {
+      addError(queryErrorMessage(error, "标记已读失败"), "通知");
+    } finally {
+      focusAfter.current = handoff;
+      markAllLock.current = false;
+      setMarkingAll(false);
     }
   };
 
@@ -154,11 +210,15 @@ export default function NotificationBell({ compact = false }: Props) {
           >
             <div className="flex items-center justify-between px-3 py-2 border-b border-border-subtle sticky top-0 bg-surface-raised">
               <span className="text-xs font-medium text-fg-tertiary">最近通知</span>
-              {unread > 0 && (
+              {(unread > 0 || markingAll) && (
                 <button
                   type="button"
-                  onClick={handleMarkAllRead}
-                  className="text-xs text-fg-secondary hover:text-fg-primary rounded-md px-1 py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                  data-notification-action="mark-all"
+                  aria-busy={markingAll || undefined}
+                  onClick={() => void handleMarkAllRead()}
+                  className={`text-xs text-fg-secondary hover:text-fg-primary rounded-md px-1 py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring${
+                    markingAll ? " opacity-50" : ""
+                  }`}
                 >
                   全部已读
                 </button>
@@ -182,6 +242,7 @@ export default function NotificationBell({ compact = false }: Props) {
                 <button
                   key={n.id}
                   type="button"
+                  data-notification-row={n.id}
                   onClick={() => handleOpenDetail(n)}
                   className={`w-full text-left px-3 py-2.5 hover:bg-surface-hover border-b border-border-subtle last:border-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring ${
                     n.read ? "opacity-60" : ""
