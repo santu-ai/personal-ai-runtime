@@ -823,6 +823,7 @@ export default function TasksPage() {
   const [historyFull, setHistoryFull] = useState<WorkDelivery | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyRetry, setHistoryRetry] = useState(0);
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
   const [inboxEmail, setInboxEmail] = useState<InboxEmail | null>(null);
   const citeRequest = useRef(0);
@@ -848,6 +849,7 @@ export default function TasksPage() {
     setHistoryFull(null);
     setHistoryError(null);
     setHistoryLoading(false);
+    setHistoryRetry(0);
     acceptKey.current = null;
     adoptKeys.current = {};
   }, [urlTaskId]);
@@ -883,7 +885,7 @@ export default function TasksPage() {
     return () => {
       cancelled = true;
     };
-  }, [urlTaskId, historyId]);
+  }, [urlTaskId, historyId, historyRetry]);
 
   useEffect(() => {
     setScheduledRepeatNote(null);
@@ -1213,6 +1215,7 @@ export default function TasksPage() {
     historyId && currentDelivery && historyId !== currentDelivery.delivery_id,
   );
   const shownDelivery = viewingHistory ? historyFull : currentDelivery;
+  const openDeliveryId = viewingHistory ? historyId : currentDelivery?.delivery_id;
   const citeSources = shownDelivery
     ? citationLookupSources(
         shownDelivery.sources,
@@ -1404,7 +1407,16 @@ export default function TasksPage() {
                     <p className="text-sm text-fg-tertiary">加载历史版本全文…</p>
                   )}
                   {viewingHistory && historyError && (
-                    <p className="text-sm text-danger">{historyError}</p>
+                    <div className="space-y-2" data-testid="history-load-error">
+                      <p className="text-sm text-danger">{historyError}</p>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setHistoryRetry((attempt) => attempt + 1)}
+                      >
+                        重试
+                      </Button>
+                    </div>
                   )}
                   {shownDelivery && failureReason ? (
                     <RerunFailureReason reason={failureReason} />
@@ -1575,23 +1587,33 @@ export default function TasksPage() {
                     <section className="space-y-2">
                       <h3 className="text-sm font-medium text-fg-primary">版本历史</h3>
                       <ul className="space-y-1">
-                        {bundle.deliveries.map((row) => (
-                          <li key={row.delivery_id}>
-                            <button
-                              type="button"
-                              className="text-sm text-insight hover:underline"
-                              onClick={() =>
-                                setHistoryId(
-                                  row.delivery_id === currentDelivery?.delivery_id
-                                    ? null
-                                    : row.delivery_id,
-                                )
-                              }
-                            >
-                              {deliveryVersionLabel(row)}
-                            </button>
-                          </li>
-                        ))}
+                        {bundle.deliveries.map((row) => {
+                          const open = row.delivery_id === openDeliveryId;
+                          return (
+                            <li key={row.delivery_id}>
+                              <button
+                                type="button"
+                                aria-current={open ? "true" : undefined}
+                                className={`rounded-sm text-left text-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                  open ? "bg-insight/10 px-1 text-fg-primary" : "text-insight"
+                                }`}
+                                onClick={() => {
+                                  if (row.delivery_id === currentDelivery?.delivery_id) {
+                                    setHistoryId(null);
+                                    return;
+                                  }
+                                  if (historyId === row.delivery_id) {
+                                    if (historyError) setHistoryRetry((attempt) => attempt + 1);
+                                    return;
+                                  }
+                                  setHistoryId(row.delivery_id);
+                                }}
+                              >
+                                {deliveryVersionLabel(row)}
+                              </button>
+                            </li>
+                          );
+                        })}
                       </ul>
                     </section>
                   )}
