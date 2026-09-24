@@ -7,7 +7,7 @@
  * postMessage was sent but nothing in the renderer consumed it (dead code).
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createMemory, ApiError } from "../../api/client";
 import { useErrorStore } from "../../stores/errorStore";
 import { useOverlayDismiss } from "../ui/useOverlayDismiss";
@@ -18,65 +18,75 @@ export default function QuickCaptureDialog() {
   const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const savingRef = useRef(false);
+  const saveGen = useRef(0);
   const panelRef = useRef<HTMLDivElement>(null);
   const addError = useErrorStore((s) => s.addError);
-  const dismiss = () => {
-    setOpen(false);
+  const resetCapture = useCallback((nextOpen: boolean) => {
+    saveGen.current += 1;
+    savingRef.current = false;
+    setSaving(false);
+    setSaved(false);
+    setOpen(nextOpen);
     setText("");
-  };
+  }, []);
+  const dismiss = () => resetCapture(false);
   useOverlayDismiss(open, panelRef, dismiss, { initialFocus: "field" });
 
   useEffect(() => {
     const handler = (e: MessageEvent) => {
       if (e.origin !== window.location.origin) return;
       if (e.data && e.data.type === "quick-capture") {
-        setOpen(true);
-        setText("");
-        setSaved(false);
+        resetCapture(true);
       }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, []);
+  }, [resetCapture]);
 
   // Also bind a web keyboard shortcut (Ctrl/Cmd+Shift+M) for non-Electron use
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "m") {
         e.preventDefault();
-        setOpen(true);
-        setText("");
-        setSaved(false);
+        resetCapture(true);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [resetCapture]);
 
   const handleSave = async () => {
     const content = text.trim();
-    if (!content) return;
+    if (!content || savingRef.current) return;
+    const gen = saveGen.current;
+    savingRef.current = true;
     setSaving(true);
     try {
       await createMemory({ content, category: "quick_note" });
+      if (saveGen.current !== gen) return;
       setSaved(true);
-      setTimeout(() => {
+      window.setTimeout(() => {
+        if (saveGen.current !== gen) return;
         setOpen(false);
         setSaved(false);
         setText("");
+        savingRef.current = false;
       }, 900);
     } catch (e) {
+      if (saveGen.current !== gen) return;
+      savingRef.current = false;
       addError(e instanceof ApiError ? e.message : "快速捕获失败", "记忆");
     } finally {
-      setSaving(false);
+      if (saveGen.current === gen) setSaving(false);
     }
   };
 
   const handleKey = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      handleSave();
-    }
+    if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey)) return;
+    e.preventDefault();
+    if (e.nativeEvent.isComposing) return;
+    void handleSave();
   };
 
   if (!open) return null;

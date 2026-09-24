@@ -82,7 +82,7 @@ stdio = ["ignore", "pipe", "pipe"]
 `registerGlobalShortcuts()`（[`main.js`](../../desktop/main.js)）：
 
 - `Alt+Space` → 打开 mini window。
-- `Alt+Shift+I` → `quickCapture()`：显示主窗口并 `postMessage({ type: 'quick-capture' })` 到 renderer。对话框打开时焦点在输入框，Esc 关闭并回到刚才的控件。
+- `Alt+Shift+I` → `quickCapture()`：显示主窗口并 `postMessage({ type: 'quick-capture' })` 到 renderer。对话框打开时焦点在输入框，Esc 关闭并回到刚才的控件。输入法还在组字时按 Ctrl 或 Cmd + Enter 不会保存；保存失败时这句话留着。正在保存时再按不会再开一份。关掉之后，上一次还没回来的保存不会清掉新写的那句。
 
 ## 原生通知
 

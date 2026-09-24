@@ -152,5 +152,76 @@ describe("QuickCaptureDialog", () => {
     await waitFor(() => {
       expect(addError).toHaveBeenCalledWith("保存失败", "记忆");
     });
+    expect(screen.getByPlaceholderText("想到什么，立刻记下来...")).toHaveValue("会失败");
+    expect(screen.getByText("保存")).toBeEnabled();
+  });
+
+  it("does not save while an IME composition is confirming", async () => {
+    renderWithRouter(<QuickCaptureDialog />);
+    openDialog();
+    const textarea = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    fireEvent.change(textarea, { target: { value: "还在组字" } });
+    fireEvent.keyDown(textarea, { key: "Enter", metaKey: true, isComposing: true });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true, isComposing: true });
+    expect(mockCreateMemory).not.toHaveBeenCalled();
+    expect(textarea).toHaveValue("还在组字");
+  });
+
+  it("ignores a second shortcut while the first save is in flight", async () => {
+    let release: (row: { id: string; status: string }) => void = () => {};
+    mockCreateMemory.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<QuickCaptureDialog />);
+    openDialog();
+    const textarea = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    fireEvent.change(textarea, { target: { value: "只记一次" } });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+    fireEvent.keyDown(textarea, { key: "Enter", metaKey: true });
+    await waitFor(() => expect(screen.getByRole("button", { name: "保存中..." })).toBeDisabled());
+    expect(mockCreateMemory).toHaveBeenCalledTimes(1);
+
+    release({ id: "mem-1", status: "ok" });
+    expect(await screen.findByText("已保存")).toBeInTheDocument();
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+    expect(mockCreateMemory).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a new note when an earlier save finishes after cancel", async () => {
+    let release: (row: { id: string; status: string }) => void = () => {};
+    mockCreateMemory.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<QuickCaptureDialog />);
+    openDialog();
+    const textarea = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    fireEvent.change(textarea, { target: { value: "先取消" } });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+    await waitFor(() => expect(screen.getByRole("button", { name: "保存中..." })).toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    await waitFor(() => expect(screen.queryByText("快速捕获")).not.toBeInTheDocument());
+
+    mockCreateMemory.mockResolvedValueOnce({ id: "mem-2", status: "ok" });
+    openDialog();
+    const next = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    fireEvent.change(next, { target: { value: "再记一条" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(mockCreateMemory).toHaveBeenCalledWith({
+        content: "再记一条",
+        category: "quick_note",
+      }),
+    );
+
+    release({ id: "mem-1", status: "ok" });
+    expect(next).toHaveValue("再记一条");
+    expect(await screen.findByText("已保存")).toBeInTheDocument();
+    expect(mockCreateMemory).toHaveBeenCalledTimes(2);
   });
 });

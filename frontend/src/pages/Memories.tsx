@@ -129,6 +129,8 @@ export default function MemoriesPage() {
   const quickChat = useQuickChat();
 
   const [newContent, setNewContent] = useState("");
+  const [creating, setCreating] = useState(false);
+  const creatingRef = useRef(false);
   const [deleteTarget, setDeleteTarget] = useState<MemoryRow | null>(null);
   const [rejectTarget, setRejectTarget] = useState<MemoryRow | null>(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -188,13 +190,19 @@ export default function MemoriesPage() {
   }, [viewMode, rejectedError, addError]);
 
   const handleCreate = async () => {
-    if (!newContent.trim()) return;
+    const content = newContent.trim();
+    if (!content || creatingRef.current) return;
+    creatingRef.current = true;
+    setCreating(true);
     try {
-      await createMemory({ content: newContent.trim(), category: "fact" });
+      await createMemory({ content, category: "fact" });
       setNewContent("");
       invalidateMemories();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "创建记忆失败", "记忆");
+    } finally {
+      creatingRef.current = false;
+      setCreating(false);
     }
   };
 
@@ -543,17 +551,22 @@ export default function MemoriesPage() {
             <div className="flex gap-2">
               <input
                 value={newContent}
+                disabled={creating}
                 onChange={(e) => setNewContent(e.target.value)}
                 placeholder="告诉我一件关于你的事，我会记住..."
-                className="flex-1 bg-surface-raised border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary placeholder:text-fg-tertiary outline-none focus:border-focus-ring"
-                onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+                className="flex-1 bg-surface-raised border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary placeholder:text-fg-tertiary outline-none focus:border-focus-ring disabled:opacity-50"
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+                  e.preventDefault();
+                  void handleCreate();
+                }}
               />
               <button
-                onClick={handleCreate}
-                disabled={!newContent.trim()}
+                onClick={() => void handleCreate()}
+                disabled={creating || !newContent.trim()}
                 className="px-4 py-2 bg-surface-overlay hover:bg-border-strong disabled:bg-surface-overlay disabled:text-fg-disabled rounded-lg text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               >
-                记住
+                {creating ? "记住中..." : "记住"}
               </button>
             </div>
 
