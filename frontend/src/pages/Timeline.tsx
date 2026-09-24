@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -20,6 +20,60 @@ import {
 } from "lucide-react";
 import { useTimelineInfiniteQuery } from "../hooks/useTimelineQuery";
 import type { TimelineEvent } from "../api/timeline";
+import Button from "../components/ui/Button";
+import Spinner from "../components/ui/Spinner";
+
+/** 有原文用原文。空白或不是 Error 时用页面自己的说法，避免空白失败条。 */
+function timelineErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) return error.message.trim();
+  return "加载时间线失败";
+}
+
+function LoadErrorNotice({
+  message,
+  busy,
+  onRetry,
+}: {
+  message: string;
+  busy: boolean;
+  onRetry: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const root = ref.current;
+    const button = root?.querySelector("button");
+    if (!root || !button || root.contains(document.activeElement)) return;
+    button.focus();
+  }, [message]);
+
+  return (
+    <div
+      ref={ref}
+      className="space-y-2 rounded-xl border border-danger/30 p-4"
+      data-testid="timeline-load-error"
+      role="alert"
+    >
+      <p className="text-sm text-danger">{message}</p>
+      <Button
+        size="sm"
+        variant="secondary"
+        aria-busy={busy || undefined}
+        onClick={() => {
+          if (busy) return;
+          onRetry();
+        }}
+      >
+        {busy ? (
+          <span aria-hidden="true" className="inline-flex">
+            <Spinner size="sm" />
+          </span>
+        ) : null}
+        重试
+      </Button>
+    </div>
+  );
+}
 
 const ICON_MAP: Record<string, { Icon: LucideIcon; color: string }> = {
   target: { Icon: Target, color: "text-warning" },
@@ -85,6 +139,8 @@ export default function TimelinePage() {
     isFetchingNextPage: loadingMore,
     hasNextPage: hasMore,
     fetchNextPage,
+    isFetchNextPageError,
+    isFetching,
     error,
     refetch,
   } = useTimelineInfiniteQuery();
@@ -94,34 +150,20 @@ export default function TimelinePage() {
 
   const groupedEvents = groupByDay(events);
   const dayKeys = Object.keys(groupedEvents);
+  const errorMessage = timelineErrorMessage(error);
+  const loadedError = Boolean(error) && events.length > 0 && !loading;
+  // 首次失败时还没有事件。重试一开始会把查询错误清掉，这里留住原因，按钮才不会被「加载中」换掉。
+  const [heldInitialError, setHeldInitialError] = useState<string | null>(null);
+  const shownInitialError =
+    events.length > 0 ? null : error ? errorMessage : isFetching ? heldInitialError : null;
 
-  if (loading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <Loader2 size={24} className="text-fg-secondary animate-spin" />
-      </div>
-    );
-  }
-
-  if (error) {
-    const msg = error instanceof Error ? error.message : "加载失败";
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-fg-tertiary mb-2">
-            <Clock size={32} className="mx-auto mb-2" />
-          </div>
-          <div className="text-fg-secondary mb-4">{msg}</div>
-          <button
-            onClick={() => void refetch()}
-            className="rounded-md bg-insight-strong px-4 py-2 text-sm text-fg-on-accent transition-colors hover:bg-insight"
-          >
-            重试
-          </button>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (events.length > 0 || (!error && !isFetching)) {
+      setHeldInitialError(null);
+      return;
+    }
+    if (error) setHeldInitialError(errorMessage);
+  }, [events.length, error, errorMessage, isFetching]);
 
   return (
     <div className="page-shell">
@@ -133,7 +175,18 @@ export default function TimelinePage() {
           </div>
         </div>
 
-        {dayKeys.length === 0 ? (
+        {shownInitialError ? (
+          <LoadErrorNotice
+            message={shownInitialError}
+            busy={isFetching}
+            onRetry={() => void refetch()}
+          />
+        ) : loading ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-sm text-fg-tertiary">
+            <Loader2 size={24} className="animate-spin" />
+            加载中…
+          </div>
+        ) : dayKeys.length === 0 ? (
           <div className="text-center py-16">
             <Clock size={48} className="mx-auto mb-4 text-fg-disabled" />
             <p className="text-fg-tertiary">还没有任何事件</p>
@@ -200,12 +253,23 @@ export default function TimelinePage() {
           </div>
         )}
 
-        {hasMore && (
+        {loadedError ? (
+          <div className="mt-4">
+            <LoadErrorNotice
+              message={errorMessage}
+              busy={isFetching || loadingMore}
+              onRetry={() => void (isFetchNextPageError ? fetchNextPage() : refetch())}
+            />
+          </div>
+        ) : null}
+
+        {hasMore && !loadedError && (
           <div className="flex justify-center py-6">
             <button
+              type="button"
               onClick={() => void fetchNextPage()}
               disabled={loadingMore}
-              className="px-6 py-2 bg-surface-overlay hover:bg-border-strong text-fg-secondary rounded-lg text-sm transition-colors disabled:opacity-50"
+              className="px-6 py-2 bg-surface-overlay hover:bg-border-strong text-fg-secondary rounded-lg text-sm transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             >
               {loadingMore ? <Loader2 size={14} className="animate-spin inline mr-1" /> : null}
               加载更多
@@ -213,7 +277,7 @@ export default function TimelinePage() {
           </div>
         )}
 
-        {!hasMore && events.length > 0 && (
+        {!hasMore && events.length > 0 && !loadedError && (
           <p className="text-center text-fg-disabled text-xs py-6">已经是最早的记录</p>
         )}
       </div>
