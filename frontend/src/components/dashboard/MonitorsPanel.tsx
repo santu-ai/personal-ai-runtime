@@ -21,6 +21,65 @@ import LoadErrorNotice, { queryErrorMessage } from "../ui/LoadErrorNotice";
 import { Radar } from "lucide-react";
 import { timeAgo } from "../../utils/timeUtils";
 
+type MonitorHandoff =
+  | { kind: "create-inbox"; id: string; token: string }
+  | { kind: "create-url"; id: string; token: string }
+  | { kind: "delete-inbox"; nextId: string | null; token: string }
+  | { kind: "delete-url"; nextId: string | null; token: string };
+
+/** 焦点在页面空白处，或还停在这次操作的按钮上，才可以把焦点挪走。 */
+function focusIsIdle(token: string): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (active instanceof HTMLButtonElement) {
+    if (active.disabled) return true;
+    if (active.getAttribute("data-monitor-token") === token) return true;
+  }
+  return false;
+}
+
+function focusByAction(action: string, id: string): boolean {
+  const node = document.querySelector<HTMLButtonElement>(
+    `button[data-monitor-action="${action}"][data-monitor-id="${CSS.escape(id)}"]`,
+  );
+  if (!node || node.disabled) return false;
+  node.focus();
+  return document.activeElement === node;
+}
+
+function focusAnchor(anchor: "inbox-name" | "url-name"): boolean {
+  const node = document.querySelector<HTMLElement>(`[data-monitor-anchor="${anchor}"]`);
+  if (!node || node.hasAttribute("disabled")) return false;
+  node.focus();
+  return document.activeElement === node;
+}
+
+function placeMonitorFocus(handoff: MonitorHandoff): void {
+  if (handoff.kind === "create-inbox") {
+    if (focusByAction("toggle-inbox", handoff.id)) return;
+    focusAnchor("inbox-name");
+    return;
+  }
+  if (handoff.kind === "create-url") {
+    if (focusByAction("toggle-url", handoff.id)) return;
+    focusAnchor("url-name");
+    return;
+  }
+  if (handoff.kind === "delete-inbox") {
+    if (handoff.nextId && focusByAction("delete-inbox", handoff.nextId)) return;
+    focusAnchor("inbox-name");
+    return;
+  }
+  if (handoff.nextId && focusByAction("delete-url", handoff.nextId)) return;
+  focusAnchor("url-name");
+}
+
+function neighborId(rows: readonly { id: string }[], id: string): string | null {
+  const index = rows.findIndex((row) => row.id === id);
+  if (index < 0) return null;
+  return rows[index + 1]?.id ?? rows[index - 1]?.id ?? null;
+}
+
 export default function MonitorsPanel() {
   const addError = useErrorStore((s) => s.addError);
   const [filters, setFilters] = useState<InboxFilter[]>([]);
@@ -29,7 +88,9 @@ export default function MonitorsPanel() {
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const loadedRef = useRef(false);
-  const [busy, setBusy] = useState(false);
+  const actionLock = useRef(false);
+  const focusAfter = useRef<MonitorHandoff | null>(null);
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [sender, setSender] = useState("");
@@ -49,10 +110,12 @@ export default function MonitorsPanel() {
       loadedRef.current = true;
       setLoaded(true);
       setLoadError(null);
+      return true;
     } catch (err) {
       const msg = queryErrorMessage(err, "加载监控规则失败");
       if (!loadedRef.current) setLoadError(msg);
       addError(msg, "监控");
+      return false;
     } finally {
       setLoading(false);
     }
@@ -62,97 +125,144 @@ export default function MonitorsPanel() {
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    const pending = focusAfter.current;
+    if (!pending || actionBusy) return;
+    if (
+      (pending.kind === "create-inbox" && !filters.some((row) => row.id === pending.id)) ||
+      (pending.kind === "create-url" && !urlMonitors.some((row) => row.id === pending.id))
+    ) {
+      if (loading) return;
+    }
+    focusAfter.current = null;
+    if (!focusIsIdle(pending.token)) return;
+    placeMonitorFocus(pending);
+  }, [actionBusy, filters, urlMonitors, loading]);
+
+  const start = (token: string) => {
+    if (actionLock.current) return false;
+    actionLock.current = true;
+    focusAfter.current = null;
+    setActionBusy(token);
+    return true;
+  };
+
+  const finish = (next: MonitorHandoff | null) => {
+    focusAfter.current = next;
+    actionLock.current = false;
+    setActionBusy(null);
+  };
+
   const handleCreateInbox = async () => {
-    if (!name.trim() || (!sender.trim() && !subject.trim())) return;
-    setBusy(true);
+    const payload = {
+      name: name.trim(),
+      sender_contains: sender.trim(),
+      subject_contains: subject.trim(),
+    };
+    if (!payload.name || (!payload.sender_contains && !payload.subject_contains)) return;
+    if (!start("create-inbox")) return;
+    let handoff: MonitorHandoff | null = null;
     try {
-      await createInboxFilter({
-        name: name.trim(),
-        sender_contains: sender.trim(),
-        subject_contains: subject.trim(),
-      });
-      setName("");
-      setSender("");
-      setSubject("");
+      const created = await createInboxFilter(payload);
       await refresh();
+      setName((current) => (current.trim() === payload.name ? "" : current));
+      setSender((current) => (current.trim() === payload.sender_contains ? "" : current));
+      setSubject((current) => (current.trim() === payload.subject_contains ? "" : current));
+      handoff = { kind: "create-inbox", id: created.id, token: "create-inbox" };
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "创建失败", "监控");
     } finally {
-      setBusy(false);
+      finish(handoff);
     }
   };
 
-  const handleToggleInbox = async (f: InboxFilter) => {
-    setBusy(true);
+  const handleToggleInbox = async (row: InboxFilter) => {
+    const token = `toggle-inbox:${row.id}`;
+    if (!start(token)) return;
     try {
-      await updateInboxFilter(f.id, { enabled: !f.enabled });
+      await updateInboxFilter(row.id, { enabled: !row.enabled });
       await refresh();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "更新失败", "监控");
     } finally {
-      setBusy(false);
+      finish(null);
     }
   };
 
   const handleDeleteInbox = async (id: string) => {
-    setBusy(true);
+    const token = `delete-inbox:${id}`;
+    if (!start(token)) return;
+    const nextId = neighborId(filters, id);
+    let handoff: MonitorHandoff | null = null;
     try {
       await deleteInboxFilter(id);
-      await refresh();
+      const listed = await refresh();
+      if (listed) handoff = { kind: "delete-inbox", nextId, token };
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "删除失败", "监控");
     } finally {
-      setBusy(false);
+      finish(handoff);
     }
   };
 
   const handleCreateUrl = async () => {
-    if (!urlName.trim() || !urlValue.trim()) return;
-    const interval = Number(urlInterval) || 60;
-    setBusy(true);
+    const urlNameValue = urlName.trim();
+    const urlText = urlValue.trim();
+    if (!urlNameValue || !urlText) return;
+    const intervalText = urlInterval;
+    const interval = Number(intervalText) || 60;
+    if (!start("create-url")) return;
+    let handoff: MonitorHandoff | null = null;
     try {
-      await createUrlMonitor({
-        name: urlName.trim(),
-        url: urlValue.trim(),
+      const created = await createUrlMonitor({
+        name: urlNameValue,
+        url: urlText,
         check_interval_minutes: interval,
       });
-      setUrlName("");
-      setUrlValue("");
-      setUrlInterval("60");
       await refresh();
+      setUrlName((current) => (current.trim() === urlNameValue ? "" : current));
+      setUrlValue((current) => (current.trim() === urlText ? "" : current));
+      setUrlInterval((current) => (current === intervalText ? "60" : current));
+      handoff = { kind: "create-url", id: created.id, token: "create-url" };
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "创建失败", "监控");
     } finally {
-      setBusy(false);
+      finish(handoff);
     }
   };
 
-  const handleToggleUrl = async (m: UrlMonitor) => {
-    setBusy(true);
+  const handleToggleUrl = async (row: UrlMonitor) => {
+    const token = `toggle-url:${row.id}`;
+    if (!start(token)) return;
     try {
-      await updateUrlMonitor(m.id, { enabled: !m.enabled });
+      await updateUrlMonitor(row.id, { enabled: !row.enabled });
       await refresh();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "更新失败", "监控");
     } finally {
-      setBusy(false);
+      finish(null);
     }
   };
 
   const handleDeleteUrl = async (id: string) => {
-    setBusy(true);
+    const token = `delete-url:${id}`;
+    if (!start(token)) return;
+    const nextId = neighborId(urlMonitors, id);
+    let handoff: MonitorHandoff | null = null;
     try {
       await deleteUrlMonitor(id);
-      await refresh();
+      const listed = await refresh();
+      if (listed) handoff = { kind: "delete-url", nextId, token };
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "删除失败", "监控");
     } finally {
-      setBusy(false);
+      finish(handoff);
     }
   };
 
   const handleCheckNow = async () => {
-    setBusy(true);
+    if (urlMonitors.length === 0) return;
+    if (!start("check")) return;
     setCheckHint(null);
     try {
       const result = await checkUrlMonitors(true);
@@ -163,9 +273,11 @@ export default function MonitorsPanel() {
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "检查失败", "监控");
     } finally {
-      setBusy(false);
+      finish(null);
     }
   };
+
+  const busyClass = (token: string) => (actionBusy === token ? "opacity-50" : "");
 
   if (!loaded && loadError) {
     return (
@@ -188,13 +300,13 @@ export default function MonitorsPanel() {
         收件箱过滤器在每次邮件拉取后求值；网页监控按间隔抓取正文，内容变化时才通知一次。
       </p>
 
-      {/* ── Inbox filters ── */}
       <section className="space-y-3">
         <h3 className="text-sm font-medium text-fg-primary">收件箱过滤器</h3>
         <div className="space-y-3 rounded-lg border border-border-subtle bg-surface-raised p-4">
           <Input
             placeholder="名称（如：老板）"
             value={name}
+            data-monitor-anchor="inbox-name"
             onChange={(e) => setName(e.target.value)}
           />
           <Input
@@ -209,8 +321,11 @@ export default function MonitorsPanel() {
           />
           <Button
             size="sm"
-            disabled={busy || !name.trim() || (!sender.trim() && !subject.trim())}
-            onClick={handleCreateInbox}
+            disabled={!name.trim() || (!sender.trim() && !subject.trim())}
+            aria-busy={actionBusy === "create-inbox" || undefined}
+            className={busyClass("create-inbox")}
+            data-monitor-token="create-inbox"
+            onClick={() => void handleCreateInbox()}
           >
             添加过滤器
           </Button>
@@ -224,34 +339,42 @@ export default function MonitorsPanel() {
           />
         ) : (
           <ul className="space-y-2">
-            {filters.map((f) => (
+            {filters.map((row) => (
               <li
-                key={f.id}
+                key={row.id}
                 className="flex items-start justify-between gap-3 rounded-lg border border-border-subtle px-3 py-2"
               >
                 <div className="min-w-0">
-                  <div className="text-sm text-fg-primary font-medium truncate">{f.name}</div>
+                  <div className="text-sm text-fg-primary font-medium truncate">{row.name}</div>
                   <div className="text-xs text-fg-tertiary mt-0.5">
-                    {f.sender_contains ? `发件人含「${f.sender_contains}」` : null}
-                    {f.sender_contains && f.subject_contains ? " · " : null}
-                    {f.subject_contains ? `主题含「${f.subject_contains}」` : null}
-                    {!f.enabled ? " · 已停用" : null}
+                    {row.sender_contains ? `发件人含「${row.sender_contains}」` : null}
+                    {row.sender_contains && row.subject_contains ? " · " : null}
+                    {row.subject_contains ? `主题含「${row.subject_contains}」` : null}
+                    {!row.enabled ? " · 已停用" : null}
                   </div>
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <Button
                     size="sm"
                     variant="subtle"
-                    disabled={busy}
-                    onClick={() => handleToggleInbox(f)}
+                    aria-busy={actionBusy === `toggle-inbox:${row.id}` || undefined}
+                    className={busyClass(`toggle-inbox:${row.id}`)}
+                    data-monitor-token={`toggle-inbox:${row.id}`}
+                    data-monitor-action="toggle-inbox"
+                    data-monitor-id={row.id}
+                    onClick={() => void handleToggleInbox(row)}
                   >
-                    {f.enabled ? "停用" : "启用"}
+                    {row.enabled ? "停用" : "启用"}
                   </Button>
                   <Button
                     size="sm"
                     variant="subtle"
-                    disabled={busy}
-                    onClick={() => handleDeleteInbox(f.id)}
+                    aria-busy={actionBusy === `delete-inbox:${row.id}` || undefined}
+                    className={busyClass(`delete-inbox:${row.id}`)}
+                    data-monitor-token={`delete-inbox:${row.id}`}
+                    data-monitor-action="delete-inbox"
+                    data-monitor-id={row.id}
+                    onClick={() => void handleDeleteInbox(row.id)}
                   >
                     删除
                   </Button>
@@ -262,15 +385,17 @@ export default function MonitorsPanel() {
         )}
       </section>
 
-      {/* ── URL monitors ── */}
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-sm font-medium text-fg-primary">网页变化监控</h3>
           <Button
             size="sm"
             variant="subtle"
-            disabled={busy || urlMonitors.length === 0}
-            onClick={handleCheckNow}
+            disabled={urlMonitors.length === 0}
+            aria-busy={actionBusy === "check" || undefined}
+            className={busyClass("check")}
+            data-monitor-token="check"
+            onClick={() => void handleCheckNow()}
           >
             立即检查
           </Button>
@@ -279,6 +404,7 @@ export default function MonitorsPanel() {
           <Input
             placeholder="名称（如：发布说明）"
             value={urlName}
+            data-monitor-anchor="url-name"
             onChange={(e) => setUrlName(e.target.value)}
           />
           <Input
@@ -293,8 +419,11 @@ export default function MonitorsPanel() {
           />
           <Button
             size="sm"
-            disabled={busy || !urlName.trim() || !urlValue.trim()}
-            onClick={handleCreateUrl}
+            disabled={!urlName.trim() || !urlValue.trim()}
+            aria-busy={actionBusy === "create-url" || undefined}
+            className={busyClass("create-url")}
+            data-monitor-token="create-url"
+            onClick={() => void handleCreateUrl()}
           >
             添加网页监控
           </Button>
@@ -309,36 +438,46 @@ export default function MonitorsPanel() {
           />
         ) : (
           <ul className="space-y-2">
-            {urlMonitors.map((m) => (
+            {urlMonitors.map((row) => (
               <li
-                key={m.id}
+                key={row.id}
                 className="flex items-start justify-between gap-3 rounded-lg border border-border-subtle px-3 py-2"
               >
                 <div className="min-w-0">
-                  <div className="text-sm text-fg-primary font-medium truncate">{m.name}</div>
-                  <div className="text-xs text-fg-tertiary mt-0.5 truncate">{m.url}</div>
+                  <div className="text-sm text-fg-primary font-medium truncate">{row.name}</div>
+                  <div className="text-xs text-fg-tertiary mt-0.5 truncate">{row.url}</div>
                   <div className="text-xs text-fg-tertiary mt-0.5">
-                    每 {m.check_interval_minutes} 分钟
-                    {m.last_checked_at ? ` · 上次 ${timeAgo(m.last_checked_at)}` : " · 尚未检查"}
-                    {m.last_hash ? " · 已建基线" : null}
-                    {!m.enabled ? " · 已停用" : null}
-                    {m.last_error ? ` · 错误：${m.last_error}` : null}
+                    每 {row.check_interval_minutes} 分钟
+                    {row.last_checked_at
+                      ? ` · 上次 ${timeAgo(row.last_checked_at)}`
+                      : " · 尚未检查"}
+                    {row.last_hash ? " · 已建基线" : null}
+                    {!row.enabled ? " · 已停用" : null}
+                    {row.last_error ? ` · 错误：${row.last_error}` : null}
                   </div>
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <Button
                     size="sm"
                     variant="subtle"
-                    disabled={busy}
-                    onClick={() => handleToggleUrl(m)}
+                    aria-busy={actionBusy === `toggle-url:${row.id}` || undefined}
+                    className={busyClass(`toggle-url:${row.id}`)}
+                    data-monitor-token={`toggle-url:${row.id}`}
+                    data-monitor-action="toggle-url"
+                    data-monitor-id={row.id}
+                    onClick={() => void handleToggleUrl(row)}
                   >
-                    {m.enabled ? "停用" : "启用"}
+                    {row.enabled ? "停用" : "启用"}
                   </Button>
                   <Button
                     size="sm"
                     variant="subtle"
-                    disabled={busy}
-                    onClick={() => handleDeleteUrl(m.id)}
+                    aria-busy={actionBusy === `delete-url:${row.id}` || undefined}
+                    className={busyClass(`delete-url:${row.id}`)}
+                    data-monitor-token={`delete-url:${row.id}`}
+                    data-monitor-action="delete-url"
+                    data-monitor-id={row.id}
+                    onClick={() => void handleDeleteUrl(row.id)}
                   >
                     删除
                   </Button>
