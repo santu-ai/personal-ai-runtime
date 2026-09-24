@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-09-24：Batch 45：信任报告「需要审批」里，非空 `id` 的待审批行打开 `/approvals`。没有 `id` 的行仍是纯文本。不把 `correlation_id` 当成链接。不新增事件类型，未改 Kernel，未改 `read_ports/work.py`。
 - 2026-09-24：Batch 44：任务详情有多版时，版本历史同一行写出该版列表里的 `model_cost`（恢复次数和「模型成本」，措辞与交付区相同；`unavailable` 为「未分开计」，不写成 $0）。字段缺失时不补这段。不新增事件类型，未改 Kernel，未改 `read_ports/work.py`。
 - 2026-09-24：Batch 43：文档对齐 #125–#129。审批恢复先写 `ExecuteRequested`、handler 再补 running（`caused_by` 指向该请求）时仍是当前尝试，启动恢复、死信收口、`latest_execute_handler_failed` 和死信重放共用这一判定，写在 `docs/01-overview/architecture.md`、`docs/02-concepts/execution-model.md` 与 `docs/03-subsystems/backend-core.md`。任务页来源跳转（`deliverySourceNav`：相对 vN 的当前与上一版编号、去掉的条目、正文反引号精确匹配；只在上一版的邮件打开收件箱且不滚动）和近 N 日「窗口模型成本」及非空 `work_id` 打开 `/tasks/:id`，写在 `docs/03-subsystems/frontend.md`。`delivery-metrics` 的 `items` 写在 `docs/03-subsystems/backend-api.md`。不新增事件类型，未改 Kernel。
 - 2026-09-24：Batch 42：任务页近 N 日简报的金额写成「窗口模型成本」，和单个交付版本上的「模型成本」分开。同一段列出该窗口的简报；非空 `work_id` 打开 `/tasks/:id`，空白 id 保持纯文本。不新增事件类型，未改 Kernel，未改 `read_ports/work.py`。

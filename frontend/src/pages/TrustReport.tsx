@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Shield,
   Database,
@@ -25,6 +26,11 @@ const FLOW_COLORS: Record<string, string> = {
   测试: "text-fg-tertiary",
   系统: "text-success",
 };
+
+/** 待审批行只在已有 id 时打开审批页。空白 id 与 correlation_id 都不编造链接。 */
+function approvalsHref(id: string | null | undefined): "/approvals" | null {
+  return id?.trim() ? "/approvals" : null;
+}
 
 /** Trust report content — embedded as a Dashboard tab; also used by tests. */
 export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
@@ -299,17 +305,29 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
             </div>
           ) : (
             <div className="space-y-2">
-              {data!.approvals.map((a) => {
+              {data!.approvals.map((a, index) => {
                 const flowColor = FLOW_COLORS[a.flow_type] ?? "text-fg-secondary";
                 const flowLabel = a.flow_type;
+                const href = approvalsHref(a.id);
+                const actionLabel = a.action ?? "未知操作";
                 return (
                   <div
-                    key={a.id}
+                    key={a.id?.trim() || `blank-${index}`}
                     className="flex items-center gap-3 bg-surface-overlay/50 border border-border-strong/50 rounded-xl p-4 hover:border-border-strong transition-colors"
                   >
                     <div className="w-2 h-2 rounded-full bg-warning shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-fg-primary truncate">{a.action ?? "未知操作"}</p>
+                      {href ? (
+                        <Link
+                          to={href}
+                          title="打开审批"
+                          className="block truncate text-sm text-fg-primary hover:underline"
+                        >
+                          {actionLabel}
+                        </Link>
+                      ) : (
+                        <p className="text-sm text-fg-primary truncate">{actionLabel}</p>
+                      )}
                       <div className="flex items-center gap-2 mt-1">
                         <span className={`text-xs ${flowColor}`}>{flowLabel}</span>
                         {a.flow_label && (
