@@ -113,13 +113,15 @@ export default function GoalsPage() {
     }
   };
 
-  const handleUpdateStatus = async (goalId: string, status: string) => {
+  const handleUpdateStatus = async (goalId: string, status: string): Promise<boolean> => {
     try {
       await updateGoal(goalId, { status });
       invalidateGoals();
+      return true;
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "更新目标状态失败";
       addError(msg, "目标");
+      return false;
     }
   };
 
