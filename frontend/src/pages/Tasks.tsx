@@ -183,6 +183,7 @@ function deliveryVersionLabel(row: WorkDelivery): string {
   return [
     `v${row.version}`,
     reviewLabel(row.review_status),
+    deliveryModelCostLabel(row.model_cost),
     note.replace(/\s+/g, " "),
     deliveryCheckSummary(row),
     row.summary || "无摘要",
@@ -709,6 +710,13 @@ function formatAttributedCount(value: number | "unavailable", label: string): st
   return value === "unavailable" ? `${label}未分开计` : `${label} ${value}`;
 }
 
+function deliveryModelCostLabel(cost: WorkDelivery["model_cost"]): string {
+  if (!cost) return "";
+  const money =
+    cost.llm_cost === "unavailable" ? "模型成本未分开计" : `模型成本 $${cost.llm_cost.toFixed(4)}`;
+  return `${formatAttributedCount(cost.recovery_interventions, "恢复")} · ${money}`;
+}
+
 function formatAttributedCost(
   value: number | "unavailable",
   unattributedCalls: number | "unavailable" | undefined,
@@ -726,15 +734,11 @@ function formatAttributedCost(
 }
 
 function DeliveryModelCost({ delivery }: { delivery: WorkDelivery }) {
-  const cost = delivery.model_cost;
-  if (!cost) return null;
-  const money =
-    cost.llm_cost === "unavailable" ? "模型成本未分开计" : `模型成本 $${cost.llm_cost.toFixed(4)}`;
+  const label = deliveryModelCostLabel(delivery.model_cost);
+  if (!label) return null;
   return (
     <p className="mt-1 text-xs text-fg-tertiary" data-testid="delivery-model-cost">
-      {formatAttributedCount(cost.recovery_interventions, "恢复")}
-      {" · "}
-      {money}
+      {label}
     </p>
   );
 }

@@ -952,6 +952,69 @@ describe("TasksPage", () => {
     expect(line).not.toHaveTextContent("$0");
   });
 
+  it("shows each listed version's model cost on the history row", async () => {
+    const task: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        ...briefTask.delivery_bundle!,
+        current: {
+          ...currentDelivery,
+          model_cost: { llm_cost: 1.25, recovery_interventions: 2 },
+        },
+        deliveries: [
+          {
+            ...historySummary,
+            latest_decision: { decision: "changes_requested", reason: "第一版缺少风险" },
+            model_cost: { llm_cost: "unavailable", recovery_interventions: "unavailable" },
+          },
+          {
+            ...currentSummary,
+            summary: "第二版摘要",
+            checks: [{ criterion: "结论有来源", result: "pass" }],
+            model_cost: { llm_cost: 0, recovery_interventions: 0 },
+          },
+          {
+            delivery_id: "d3",
+            version: 3,
+            contract_version: 1,
+            summary: "第三版摘要",
+            limitations: [],
+            suggested_actions: [],
+            sources: [],
+            checks: [],
+            findings: [],
+            schema_version: 1,
+            qualified: true,
+            review_status: "unreviewed",
+          },
+        ],
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [task];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(task);
+    renderTasks("/tasks/brief_1");
+
+    expect(
+      await screen.findByRole("button", {
+        name: "v1 · 已要求返工 · 恢复未分开计 · 模型成本未分开计 · 第一版缺少风险 · 第一版摘要",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "v2 · 待验收 · 恢复 0 · 模型成本 $0.0000 · 通过 1 · 第二版摘要",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "v3 · 待验收 · 第三版摘要" })).toBeInTheDocument();
+    const capped = screen.getByRole("button", { name: /v1 · 已要求返工/ });
+    expect(capped).not.toHaveTextContent("$0");
+    expect(screen.getByTestId("delivery-model-cost")).toHaveTextContent(
+      "恢复 2 · 模型成本 $1.2500",
+    );
+  });
+
   it("loads full history version content by delivery id", async () => {
     vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
       if (workType === "task") return [briefTask];
