@@ -224,7 +224,7 @@ describe("MemoriesPage", () => {
     const item = screen
       .getAllByText(content)
       .map((node) => node.closest("li"))
-      .find((node): node is HTMLElement => node instanceof HTMLElement);
+      .find((node): node is HTMLLIElement => node instanceof HTMLLIElement);
     if (!item) throw new Error(`missing memory row: ${content}`);
     return item;
   }
