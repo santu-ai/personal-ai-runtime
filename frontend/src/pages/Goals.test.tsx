@@ -1,9 +1,18 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { screen, fireEvent, waitFor, within, act } from "@testing-library/react";
 import { Route, Routes } from "react-router-dom";
 import { renderWithRouter } from "../test-utils";
 import GoalsPage from "./Goals";
-import { ApiError, getGoal, listGoals, type WorkItem } from "../api/client";
+import GoalDetailPanel from "../components/goals/GoalDetailPanel";
+import {
+  ApiError,
+  createGoal,
+  createGoalAction,
+  decomposeGoal,
+  getGoal,
+  listGoals,
+  type WorkItem,
+} from "../api/client";
 
 const { addError } = vi.hoisted(() => ({
   addError: vi.fn(),
@@ -234,5 +243,164 @@ describe("GoalsPage", () => {
     expect(within(list).queryByText("暂无其他目标")).not.toBeInTheDocument();
     expect(screen.queryByText("暂无目标")).not.toBeInTheDocument();
     expect(within(alert).getByRole("button", { name: "重试" })).not.toHaveFocus();
+  });
+
+  it("does not create a goal while an IME composition is confirming", () => {
+    renderGoals();
+    fireEvent.click(screen.getAllByText("+ 新建")[0]);
+    const input = screen.getByPlaceholderText("目标名称...");
+    fireEvent.change(input, { target: { value: "学习" } });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    expect(createGoal).not.toHaveBeenCalled();
+    expect(input).toHaveValue("学习");
+  });
+
+  it("keeps the new goal title when create fails, and ignores a second Enter while creating", async () => {
+    vi.mocked(createGoal).mockRejectedValueOnce(new ApiError("创建目标失败", 500));
+    renderGoals();
+    fireEvent.click(screen.getAllByText("+ 新建")[0]);
+    const input = screen.getByPlaceholderText("目标名称...");
+    fireEvent.change(input, { target: { value: "  学习 Rust  " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("创建目标失败", "目标"));
+    expect(createGoal).toHaveBeenCalledWith({ title: "学习 Rust" });
+    expect(input).toHaveValue("  学习 Rust  ");
+    expect(screen.getByPlaceholderText("目标名称...")).toBeEnabled();
+
+    let release: (goal: WorkItem) => void = () => {};
+    vi.mocked(createGoal).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "创建中..." })).toBeDisabled());
+    expect(createGoal).toHaveBeenCalledTimes(2);
+
+    release({ ...sampleGoal, title: "学习 Rust" });
+    await waitFor(() =>
+      expect(screen.queryByPlaceholderText("目标名称...")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("keeps an action step when create fails and ignores IME Enter", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    vi.mocked(createGoalAction).mockRejectedValueOnce(new ApiError("创建行动步骤失败", 500));
+    renderGoals("/goals/g1");
+    const input = await screen.findByPlaceholderText("添加行动步骤...");
+    fireEvent.change(input, { target: { value: "写测试" } });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    expect(createGoalAction).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("创建行动步骤失败", "目标"));
+    expect(createGoalAction).toHaveBeenCalledWith("g1", "写测试");
+    expect(input).toHaveValue("写测试");
+    expect(input).toBeEnabled();
+  });
+
+  it("keeps a suggested step when adding it fails", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    vi.mocked(decomposeGoal).mockResolvedValue({ steps: ["先写测试"] });
+    vi.mocked(createGoalAction).mockRejectedValueOnce(new ApiError("创建行动步骤失败", 500));
+    renderGoals("/goals/g1");
+    fireEvent.click(await screen.findByRole("button", { name: "AI 拆解" }));
+    expect(await screen.findByText("先写测试")).toBeInTheDocument();
+    const row = screen.getByText("先写测试").parentElement;
+    expect(row).toBeTruthy();
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "添加" }));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("创建行动步骤失败", "目标"));
+    expect(screen.getByText("先写测试")).toBeInTheDocument();
+  });
+});
+
+describe("GoalDetailPanel drafts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function renderPanel(goal: WorkItem) {
+    return renderWithRouter(
+      <GoalDetailPanel
+        goal={goal}
+        onStartChat={vi.fn()}
+        onUpdateStatus={vi.fn()}
+        onRequestDelete={vi.fn()}
+        onCreatedAction={vi.fn()}
+      />,
+    );
+  }
+
+  it("drops an unsent step and pending suggestions when the goal changes", async () => {
+    const other = { ...sampleGoal, id: "g2", title: "学钢琴" };
+    vi.mocked(decomposeGoal).mockResolvedValue({ steps: ["只属于这个目标"] });
+    const view = renderPanel(sampleGoal);
+    const input = screen.getByPlaceholderText("添加行动步骤...");
+    fireEvent.change(input, { target: { value: "还没发出" } });
+    fireEvent.click(screen.getByRole("button", { name: "AI 拆解" }));
+    expect(await screen.findByText("只属于这个目标")).toBeInTheDocument();
+
+    view.rerender(
+      <GoalDetailPanel
+        goal={other}
+        onStartChat={vi.fn()}
+        onUpdateStatus={vi.fn()}
+        onRequestDelete={vi.fn()}
+        onCreatedAction={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "学钢琴" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("添加行动步骤...")).toHaveValue("");
+    expect(screen.queryByText("只属于这个目标")).not.toBeInTheDocument();
+    expect(screen.queryByText("还没发出")).not.toBeInTheDocument();
+  });
+
+  it("does not apply a decompose result or clear the next draft after switching goals", async () => {
+    const other = { ...sampleGoal, id: "g2", title: "学钢琴" };
+    let releaseDecompose: (value: { steps: string[] }) => void = () => {};
+    let releaseCreate: (goal: WorkItem) => void = () => {};
+    vi.mocked(decomposeGoal).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseDecompose = resolve;
+        }),
+    );
+    vi.mocked(createGoalAction).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseCreate = resolve;
+        }),
+    );
+    const view = renderPanel(sampleGoal);
+    const input = screen.getByPlaceholderText("添加行动步骤...");
+    fireEvent.change(input, { target: { value: "草稿A" } });
+    fireEvent.click(screen.getByRole("button", { name: "添加" }));
+    fireEvent.click(screen.getByRole("button", { name: "AI 拆解" }));
+
+    view.rerender(
+      <GoalDetailPanel
+        goal={other}
+        onStartChat={vi.fn()}
+        onUpdateStatus={vi.fn()}
+        onRequestDelete={vi.fn()}
+        onCreatedAction={vi.fn()}
+      />,
+    );
+    const next = screen.getByPlaceholderText("添加行动步骤...");
+    expect(next).toHaveValue("");
+    fireEvent.change(next, { target: { value: "草稿B" } });
+
+    await act(async () => {
+      releaseDecompose({ steps: ["不该出现"] });
+      releaseCreate(sampleGoal);
+    });
+
+    expect(screen.queryByText("不该出现")).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("添加行动步骤...")).toHaveValue("草稿B");
+    expect(createGoalAction).toHaveBeenCalledTimes(1);
+    expect(createGoalAction).toHaveBeenCalledWith("g1", "草稿A");
   });
 });
