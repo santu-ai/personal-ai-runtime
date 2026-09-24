@@ -191,6 +191,33 @@ describe("TrustReportPanel", () => {
       expect(screen.getByText("write_file")).toBeInTheDocument();
       expect(screen.getByText("send_email")).toBeInTheDocument();
     });
+    expect(screen.getByRole("link", { name: "write_file" })).toHaveAttribute("href", "/approvals");
+    expect(screen.getByRole("link", { name: "send_email" })).toHaveAttribute("href", "/approvals");
+    expect(screen.getByText("讨论").closest("a")).toBeNull();
+    expect(screen.getByText("邮件").closest("a")).toBeNull();
+  });
+
+  it("keeps a pending approval row as text when it has no id", async () => {
+    mockGetReport.mockResolvedValue({
+      ...BASE,
+      approvals: [
+        {
+          id: "   ",
+          action: "shell_exec",
+          status: "pending",
+          flow_type: "系统",
+          flow_label: "corr_only",
+          correlation_id: "corr_only",
+        },
+      ],
+    });
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("shell_exec")).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("link", { name: "shell_exec" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "corr_only" })).not.toBeInTheDocument();
+    expect(screen.getByText("corr_only")).toBeInTheDocument();
   });
 
   it("shows memory index repair alert and retry", async () => {
