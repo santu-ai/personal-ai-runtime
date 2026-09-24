@@ -35,6 +35,8 @@ export default function NotificationBell({ compact = false }: Props) {
   );
   const invalidateNotifications = useInvalidateNotifications();
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const bellRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!notificationsQuery.error) return;
@@ -58,9 +60,30 @@ export default function NotificationBell({ compact = false }: Props) {
     }
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const panel = panelRef.current;
+    const active = document.activeElement;
+    // 失败「重试」已经在面板里时不抢走。
+    if (panel && !(active instanceof Node && panel.contains(active))) {
+      panel.focus();
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setOpen(false);
+      bellRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
   const unread = notifications.filter((n) => !n.read).length;
 
   const handleOpenDetail = async (n: Notification) => {
+    // 列表行会随下拉一起卸下。先把焦点放回铃，详情关闭时才能回到这里。
+    bellRef.current?.focus();
     setOpen(false);
     setSelected(n);
     if (!n.read) {
@@ -87,6 +110,7 @@ export default function NotificationBell({ compact = false }: Props) {
     <>
       <div className="relative px-2 pb-2" ref={dropdownRef}>
         <button
+          ref={bellRef}
           type="button"
           aria-expanded={open}
           aria-haspopup="dialog"
@@ -120,7 +144,9 @@ export default function NotificationBell({ compact = false }: Props) {
 
         {open && (
           <div
-            className={`absolute bottom-full mb-1 bg-surface-raised border border-border-subtle rounded-lg shadow-overlay max-h-72 overflow-y-auto z-50 ${
+            ref={panelRef}
+            tabIndex={-1}
+            className={`absolute bottom-full mb-1 bg-surface-raised border border-border-subtle rounded-lg shadow-overlay max-h-72 overflow-y-auto z-50 outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
               compact ? "left-0 w-72" : "left-2 right-2"
             }`}
             role="dialog"
@@ -157,7 +183,7 @@ export default function NotificationBell({ compact = false }: Props) {
                   key={n.id}
                   type="button"
                   onClick={() => handleOpenDetail(n)}
-                  className={`w-full text-left px-3 py-2.5 hover:bg-surface-hover border-b border-border-subtle last:border-0 transition-colors ${
+                  className={`w-full text-left px-3 py-2.5 hover:bg-surface-hover border-b border-border-subtle last:border-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring ${
                     n.read ? "opacity-60" : ""
                   }`}
                 >
