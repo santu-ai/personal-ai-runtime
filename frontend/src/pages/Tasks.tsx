@@ -958,6 +958,8 @@ export default function TasksPage() {
   const [inboxEmail, setInboxEmail] = useState<InboxEmail | null>(null);
   const citeRequest = useRef(0);
   const [metrics, setMetrics] = useState<DeliveryMetrics | null>(null);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
   const [metricsRefresh, setMetricsRefresh] = useState(0);
   const executeInFlight = useRef(false);
   const acceptKey = useRef<string | null>(null);
@@ -1066,17 +1068,26 @@ export default function TasksPage() {
 
   useEffect(() => {
     let cancelled = false;
+    setMetricsLoading(true);
     void getDeliveryMetrics(30)
       .then((value) => {
-        if (!cancelled) setMetrics(value);
+        if (cancelled) return;
+        setMetrics(value);
+        setMetricsError(null);
       })
-      .catch(() => {
-        if (!cancelled) setMetrics(null);
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const text = queryErrorMessage(err, "加载简报指标失败");
+        setMetricsError(text);
+        addError(text, "任务");
+      })
+      .finally(() => {
+        if (!cancelled) setMetricsLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [metricsRefresh]);
+  }, [metricsRefresh, addError]);
 
   const grouped = useMemo(() => {
     const active: WorkItem[] = [];
@@ -1402,6 +1413,19 @@ export default function TasksPage() {
             </Button>
           }
         />
+
+        {metricsError && !hasDeliveryMetrics(metrics) ? (
+          <LoadErrorNotice
+            message={metricsError}
+            busy={metricsLoading}
+            onRetry={() => {
+              if (metricsLoading) return;
+              setMetricsRefresh((value) => value + 1);
+            }}
+            testId="delivery-metrics-load-error"
+            autoFocus={!detailOpen && !shownListError}
+          />
+        ) : null}
 
         {hasDeliveryMetrics(metrics) && (
           <section className="mb-5 space-y-1 rounded-lg border border-border-subtle px-3 py-2">
