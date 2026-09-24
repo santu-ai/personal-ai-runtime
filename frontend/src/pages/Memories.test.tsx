@@ -428,12 +428,14 @@ describe("MemoriesPage", () => {
     vi.mocked(createMemory).mockRejectedValueOnce(new ApiError("创建记忆失败", 500));
     renderWithRouter(<MemoriesPage />);
     const input = await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住...");
+    input.focus();
     fireEvent.change(input, { target: { value: "  喜欢喝茶  " } });
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(addError).toHaveBeenCalledWith("创建记忆失败", "记忆"));
     expect(createMemory).toHaveBeenCalledWith({ content: "喜欢喝茶", category: "fact" });
     expect(input).toHaveValue("  喜欢喝茶  ");
     expect(input).toBeEnabled();
+    expect(input).toHaveFocus();
 
     let release: (row: { id: string; status: string }) => void = () => {};
     vi.mocked(createMemory).mockImplementationOnce(
@@ -444,12 +446,71 @@ describe("MemoriesPage", () => {
     );
     fireEvent.keyDown(input, { key: "Enter" });
     fireEvent.keyDown(input, { key: "Enter" });
-    await waitFor(() => expect(screen.getByRole("button", { name: "记住中..." })).toBeDisabled());
+    const pending = await screen.findByRole("button", { name: "记住中..." });
+    expect(pending).toHaveAttribute("aria-busy", "true");
+    expect(pending).toBeEnabled();
+    expect(input).toBeEnabled();
+    expect(input).toHaveFocus();
+    fireEvent.click(pending);
     expect(createMemory).toHaveBeenCalledTimes(2);
 
     release({ id: "m-new", status: "ok" });
     await waitFor(() => expect(input).toHaveValue(""));
     expect(input).toBeEnabled();
+    expect(input).toHaveFocus();
+  });
+
+  it("moves focus to the capture field after remember succeeds from the button", async () => {
+    let release: (row: { id: string; status: string }) => void = () => {};
+    vi.mocked(createMemory).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<MemoriesPage />);
+    const input = await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住...");
+    fireEvent.change(input, { target: { value: "喜欢喝茶" } });
+    const remember = screen.getByRole("button", { name: "记住" });
+    remember.focus();
+    fireEvent.click(remember);
+    const pending = await screen.findByRole("button", { name: "记住中..." });
+    expect(pending).toHaveFocus();
+    expect(pending).toBeEnabled();
+    expect(pending).toHaveAttribute("aria-busy", "true");
+
+    release({ id: "m-new", status: "ok" });
+    await waitFor(() => expect(input).toHaveFocus());
+    expect(input).toHaveValue("");
+    expect(createMemory).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps text typed during remember and does not pull focus back", async () => {
+    let release: (row: { id: string; status: string }) => void = () => {};
+    vi.mocked(createMemory).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<MemoriesPage />);
+    const input = await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住...");
+    input.focus();
+    fireEvent.change(input, { target: { value: "喜欢喝茶" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await screen.findByRole("button", { name: "记住中..." });
+    fireEvent.change(input, { target: { value: "喜欢喝茶，也喜欢咖啡" } });
+    const edit = screen.getByRole("button", { name: "编辑" });
+    edit.focus();
+
+    release({ id: "m-new", status: "ok" });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "记住中..." })).not.toBeInTheDocument(),
+    );
+    expect(input).toHaveValue("喜欢喝茶，也喜欢咖啡");
+    expect(edit).toHaveFocus();
+    expect(createMemory).toHaveBeenCalledTimes(1);
+    expect(createMemory).toHaveBeenCalledWith({ content: "喜欢喝茶", category: "fact" });
   });
 
   it("keeps the reject reason when reject fails and does not send or close again while it is in flight", async () => {
