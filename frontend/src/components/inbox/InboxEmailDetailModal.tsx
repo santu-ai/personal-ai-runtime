@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId, useRef } from "react";
 import type { InboxEmail } from "../../api/client";
 import { getInboxEmailSummary } from "../../api/inbox";
 import Button from "../ui/Button";
 import LoadErrorNotice, { useHeldQueryError } from "../ui/LoadErrorNotice";
+import { useOverlayDismiss } from "../ui/useOverlayDismiss";
 import { formatTime } from "../../utils/time";
 
 const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
@@ -22,6 +23,9 @@ export default function InboxEmailDetailModal({ email, onClose }: Props) {
   const [summaryError, setSummaryError] = useState<unknown>(null);
   const [attempt, setAttempt] = useState(0);
   const emailId = email?.id ?? "";
+  const titleId = useId();
+  const panelRef = useRef<HTMLDivElement>(null);
+  useOverlayDismiss(email != null, panelRef, onClose, { focusKey: email?.id ?? null });
   const [trackedId, setTrackedId] = useState(emailId);
   // 换一封邮件时先丢掉上一封的失败，避免那条原因被记到新邮件上。
   if (emailId !== trackedId) {
@@ -77,6 +81,11 @@ export default function InboxEmailDetailModal({ email, onClose }: Props) {
       onClick={onClose}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         className="bg-surface-raised border border-border-strong rounded-xl max-w-lg w-full shadow-xl flex flex-col max-h-[80vh] outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         onClick={(e) => e.stopPropagation()}
       >
@@ -95,7 +104,9 @@ export default function InboxEmailDetailModal({ email, onClose }: Props) {
                   </span>
                 )}
               </div>
-              <h3 className="text-lg font-semibold text-fg-primary break-words">{email.subject}</h3>
+              <h3 id={titleId} className="text-lg font-semibold text-fg-primary break-words">
+                {email.subject}
+              </h3>
               <p className="text-sm text-fg-secondary mt-1">{email.sender}</p>
               {email.received_at && (
                 <p className="text-xs text-fg-tertiary mt-1">{formatTime(email.received_at)}</p>

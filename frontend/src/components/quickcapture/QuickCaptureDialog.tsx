@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createMemory, ApiError } from "../../api/client";
 import { useErrorStore } from "../../stores/errorStore";
+import { useOverlayDismiss } from "../ui/useOverlayDismiss";
 import { Zap } from "lucide-react";
 
 export default function QuickCaptureDialog() {
@@ -17,8 +18,13 @@ export default function QuickCaptureDialog() {
   const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const addError = useErrorStore((s) => s.addError);
+  const dismiss = () => {
+    setOpen(false);
+    setText("");
+  };
+  useOverlayDismiss(open, panelRef, dismiss, { initialFocus: "field" });
 
   useEffect(() => {
     const handler = (e: MessageEvent) => {
@@ -27,8 +33,6 @@ export default function QuickCaptureDialog() {
         setOpen(true);
         setText("");
         setSaved(false);
-        // Focus after the textarea renders
-        setTimeout(() => inputRef.current?.focus(), 50);
       }
     };
     window.addEventListener("message", handler);
@@ -43,7 +47,6 @@ export default function QuickCaptureDialog() {
         setOpen(true);
         setText("");
         setSaved(false);
-        setTimeout(() => inputRef.current?.focus(), 50);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -74,10 +77,6 @@ export default function QuickCaptureDialog() {
       e.preventDefault();
       handleSave();
     }
-    if (e.key === "Escape") {
-      setOpen(false);
-      setText("");
-    }
   };
 
   if (!open) return null;
@@ -85,24 +84,27 @@ export default function QuickCaptureDialog() {
   return (
     <div
       className="fixed inset-0 bg-black/40 flex items-start justify-center z-[60] pt-[20vh]"
-      onClick={() => {
-        setOpen(false);
-        setText("");
-      }}
+      onClick={dismiss}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="quick-capture-title"
+        tabIndex={-1}
         className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[28rem] max-w-[90vw] overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border-subtle">
           <Zap size={14} className="text-warning" />
-          <span className="text-sm font-medium text-fg-primary">快速捕获</span>
+          <span id="quick-capture-title" className="text-sm font-medium text-fg-primary">
+            快速捕获
+          </span>
           <span className="text-xs text-fg-disabled ml-auto">
             {saved ? "已保存 ✓" : "⌘/Ctrl + Enter 保存"}
           </span>
         </div>
         <textarea
-          ref={inputRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKey}
@@ -114,10 +116,7 @@ export default function QuickCaptureDialog() {
           <span className="text-xs text-fg-disabled">保存为 quick_note 记忆</span>
           <div className="flex gap-2">
             <button
-              onClick={() => {
-                setOpen(false);
-                setText("");
-              }}
+              onClick={dismiss}
               className="px-3 py-1 text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
             >
               取消

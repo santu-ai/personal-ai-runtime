@@ -82,7 +82,7 @@ stdio = ["ignore", "pipe", "pipe"]
 `registerGlobalShortcuts()`（[`main.js`](../../desktop/main.js)）：
 
 - `Alt+Space` → 打开 mini window。
-- `Alt+Shift+I` → `quickCapture()`：显示主窗口并 `postMessage({ type: 'quick-capture' })` 到 renderer。
+- `Alt+Shift+I` → `quickCapture()`：显示主窗口并 `postMessage({ type: 'quick-capture' })` 到 renderer。对话框打开时焦点在输入框，Esc 关闭并回到刚才的控件。
 
 ## 原生通知
 

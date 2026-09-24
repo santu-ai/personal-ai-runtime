@@ -111,4 +111,31 @@ describe("InboxEmailDetailModal", () => {
     release(summaryRow(nextMail, "这封的摘要"));
     expect(await screen.findByText("这封的摘要")).toBeInTheDocument();
   });
+
+  it("moves focus into the mail and returns it after Escape", async () => {
+    vi.mocked(getInboxEmailSummary).mockResolvedValue({
+      email_id: "e1",
+      subject: "请尽快回复",
+      sender: "boss@corp.com",
+      summary: "需要今天回复",
+    });
+    const opener = document.createElement("button");
+    opener.type = "button";
+    opener.textContent = "查看";
+    document.body.appendChild(opener);
+    opener.focus();
+    const onClose = vi.fn();
+    const view = render(
+      <InboxEmailDetailModal email={mail("e1", "请尽快回复")} onClose={onClose} />,
+    );
+    const dialog = screen.getByRole("dialog", { name: "请尽快回复" });
+    await waitFor(() => expect(dialog).toHaveFocus());
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
+
+    view.rerender(<InboxEmailDetailModal email={null} onClose={onClose} />);
+    expect(opener).toHaveFocus();
+    opener.remove();
+  });
 });

@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getMemoryProvenance, type MemoryRow, type MemoryProvenance } from "../../api/client";
 import { useErrorStore } from "../../stores/errorStore";
 import { timeAgoShort } from "../../utils/timeUtils";
 import { eventTypeLabel, eventDescription } from "./provenanceFormatting";
 import { History } from "lucide-react";
 import LoadErrorNotice, { queryErrorMessage, useHeldQueryError } from "../ui/LoadErrorNotice";
+import { useOverlayDismiss } from "../ui/useOverlayDismiss";
 
 interface Props {
   target: MemoryRow;
@@ -18,6 +19,8 @@ export default function MemoryProvenanceDialog({ target, onClose }: Props) {
   const [loadError, setLoadError] = useState<unknown>(null);
   const [attempt, setAttempt] = useState(0);
   const memoryId = target.id;
+  const panelRef = useRef<HTMLDivElement>(null);
+  useOverlayDismiss(true, panelRef, onClose, { focusKey: memoryId });
   const [trackedId, setTrackedId] = useState(memoryId);
   // 换一条记忆时先丢掉上一条的失败，避免那条原因被记到新记忆上。
   if (memoryId !== trackedId) {
@@ -65,9 +68,11 @@ export default function MemoryProvenanceDialog({ target, onClose }: Props) {
       onClick={onClose}
     >
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="memory-provenance-title"
+        tabIndex={-1}
         className="bg-surface-raised border border-border-strong rounded-xl p-6 w-[32rem] max-w-[90vw] max-h-[80vh] overflow-y-auto space-y-4 outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         onClick={(e) => e.stopPropagation()}
       >

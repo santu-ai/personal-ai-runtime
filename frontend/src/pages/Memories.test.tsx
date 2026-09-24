@@ -143,6 +143,39 @@ describe("MemoriesPage", () => {
     await waitFor(() => expect(rejectMemory).toHaveBeenCalledWith("p1", "过时了"));
   });
 
+  it("closes the reject dialog on Escape and returns focus", async () => {
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "proposed") {
+        return {
+          memories: [
+            {
+              id: "p1",
+              content: "待确认的习惯",
+              origin: "claim",
+              claim_status: "proposed",
+              confidence: 0.7,
+            },
+          ],
+          total: 1,
+        };
+      }
+      return { memories: [], total: 0 };
+    });
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
+    const opener = await screen.findByRole("button", { name: "拒绝" });
+    opener.focus();
+    fireEvent.click(opener);
+    const field = await screen.findByPlaceholderText("例如：记错了、过时了");
+    await waitFor(() => expect(field).toHaveFocus());
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "拒绝这条记忆？" })).not.toBeInTheDocument(),
+    );
+    expect(opener).toHaveFocus();
+    expect(rejectMemory).not.toHaveBeenCalled();
+  });
+
   it("shows the empty memory list after a successful read", async () => {
     vi.mocked(listMemoriesGrouped).mockResolvedValue({ memories: [], total: 0 });
     renderWithRouter(<MemoriesPage />);
@@ -347,5 +380,34 @@ describe("MemoriesPage", () => {
     expect(await screen.findByText("无事件记录")).toBeInTheDocument();
     expect(screen.queryByTestId("memory-provenance-load-error")).not.toBeInTheDocument();
     expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
+  });
+
+  it("returns focus to the source button when the provenance dialog closes", async () => {
+    renderWithRouter(<MemoriesPage />);
+    await screen.findByText("喜欢早起跑步");
+    const opener = within(memoryItem("喜欢早起跑步")).getByRole("button", { name: "来源" });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: "记忆来源链" });
+    await waitFor(() => expect(dialog).toHaveFocus());
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "记忆来源链" })).not.toBeInTheDocument(),
+    );
+    expect(opener).toHaveFocus();
+  });
+
+  it("closes the edit dialog on Escape and returns focus", async () => {
+    renderWithRouter(<MemoriesPage />);
+    const opener = await screen.findByRole("button", { name: "编辑" });
+    opener.focus();
+    fireEvent.click(opener);
+    const field = await screen.findByPlaceholderText("记忆内容");
+    await waitFor(() => expect(field).toHaveFocus());
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "编辑记忆" })).not.toBeInTheDocument(),
+    );
+    expect(opener).toHaveFocus();
   });
 });

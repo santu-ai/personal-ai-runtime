@@ -1,7 +1,8 @@
-import { useEffect, useId, useRef } from "react";
+import { useId, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Notification } from "../../api/client";
 import Button from "../ui/Button";
+import { useOverlayDismiss } from "../ui/useOverlayDismiss";
 import { notificationTargetPath, notificationTypeLabel } from "../../utils/notificationRoutes";
 import { notificationPreview } from "../../utils/notificationUtils";
 import { formatTime } from "../../utils/time";
@@ -15,27 +16,9 @@ export default function NotificationDetailModal({ notification, onClose }: Props
   const navigate = useNavigate();
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
-  const previouslyFocused = useRef<HTMLElement | null>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  const notificationId = notification?.id ?? null;
-
-  useEffect(() => {
-    if (!notificationId) return;
-    previouslyFocused.current = document.activeElement as HTMLElement | null;
-    panelRef.current?.focus();
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      onCloseRef.current();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      previouslyFocused.current?.focus?.();
-    };
-  }, [notificationId]);
+  useOverlayDismiss(notification != null, panelRef, onClose, {
+    focusKey: notification?.id ?? null,
+  });
 
   if (!notification) return null;
 
