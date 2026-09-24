@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Sidebar from "./Sidebar";
@@ -150,5 +150,52 @@ describe("Sidebar", () => {
     renderSidebar();
     const memoryLink = screen.getByRole("link", { name: /记忆/ });
     expect(memoryLink).toHaveAttribute("href", "/memories?tab=review");
+  });
+
+  it("shows the empty conversation copy only after a successful read", () => {
+    renderSidebar("/", { conversations: [] });
+    expect(screen.getByText("暂无对话")).toBeInTheDocument();
+    expect(screen.queryByTestId("conversations-load-error")).not.toBeInTheDocument();
+  });
+
+  it("shows a loading line instead of an empty conversation list", () => {
+    renderSidebar("/", { conversations: [], conversationsLoadPending: true });
+    expect(screen.getByText("加载中…")).toBeInTheDocument();
+    expect(screen.queryByText("暂无对话")).not.toBeInTheDocument();
+  });
+
+  it("shows the conversation read failure instead of an empty list", async () => {
+    const onRetryConversations = vi.fn();
+    renderSidebar("/", {
+      conversations: [],
+      conversationsLoadError: "会话暂时读不到",
+      onRetryConversations,
+    });
+    const alert = screen.getByTestId("conversations-load-error");
+    expect(alert).toHaveTextContent("会话暂时读不到");
+    expect(screen.queryByText("暂无对话")).not.toBeInTheDocument();
+    const retry = within(alert).getByRole("button", { name: "重试" });
+    expect(retry).toHaveClass("focus-visible:ring-focus-ring");
+    await waitFor(() => expect(retry).toHaveFocus());
+    fireEvent.click(retry);
+    expect(onRetryConversations).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the conversation retry visible while the reread is busy", () => {
+    renderSidebar("/", {
+      conversations: [],
+      conversationsLoadError: "会话暂时读不到",
+      conversationsLoadBusy: true,
+    });
+    expect(screen.getByRole("button", { name: "重试" })).toHaveAttribute("aria-busy", "true");
+    expect(screen.queryByText("暂无对话")).not.toBeInTheDocument();
+    expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
+  });
+
+  it("keeps listed conversations when a later read fails", () => {
+    renderSidebar("/", { conversationsLoadError: "会话暂时读不到" });
+    expect(screen.getByText("Rust学习讨论")).toBeInTheDocument();
+    expect(screen.queryByTestId("conversations-load-error")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无对话")).not.toBeInTheDocument();
   });
 });

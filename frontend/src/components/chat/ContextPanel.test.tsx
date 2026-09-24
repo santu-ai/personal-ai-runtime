@@ -1,8 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import ContextPanel from "./ContextPanel";
 import { searchMemories, listPendingApprovals } from "../../api/client";
+
+const { addError } = vi.hoisted(() => ({ addError: vi.fn() }));
 
 vi.mock("../../api/client", () => ({
   searchMemories: vi.fn(),
@@ -14,8 +16,8 @@ vi.mock("../../api/workItems", () => ({
 }));
 
 vi.mock("../../stores/errorStore", () => ({
-  useErrorStore: (selector: (s: { addError: () => void }) => unknown) =>
-    selector({ addError: vi.fn() }),
+  useErrorStore: (selector: (s: { addError: typeof addError }) => unknown) =>
+    selector({ addError }),
 }));
 
 const mockGoals = [
@@ -144,5 +146,94 @@ describe("ContextPanel", () => {
 
     fireEvent.click(screen.getByText("收起"));
     expect(onToggle).toHaveBeenCalledOnce();
+  });
+
+  it("shows the empty goal copy only after a successful read", async () => {
+    vi.mocked(listWorkItems).mockResolvedValue([]);
+    render(
+      <MemoryRouter>
+        <ContextPanel open={true} onToggle={vi.fn()} />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText("暂无活跃目标")).toBeInTheDocument();
+    expect(screen.queryByTestId("context-goals-load-error")).not.toBeInTheDocument();
+  });
+
+  it("shows the goal read failure instead of an empty list", async () => {
+    vi.mocked(listWorkItems).mockRejectedValue(new Error("目标暂时读不到"));
+    render(
+      <MemoryRouter>
+        <ContextPanel open={true} onToggle={vi.fn()} />
+      </MemoryRouter>,
+    );
+    const alert = await screen.findByTestId("context-goals-load-error");
+    expect(alert).toHaveTextContent("目标暂时读不到");
+    expect(addError).toHaveBeenCalledWith("目标暂时读不到", "上下文");
+    expect(screen.queryByText("暂无活跃目标")).not.toBeInTheDocument();
+    const retry = within(alert).getByRole("button", { name: "重试" });
+    expect(retry).toHaveClass("focus-visible:ring-focus-ring");
+    await waitFor(() => expect(retry).toHaveFocus());
+  });
+
+  it("uses the panel fallback when the goal error has no message", async () => {
+    vi.mocked(listWorkItems).mockRejectedValue(new Error("   "));
+    render(
+      <MemoryRouter>
+        <ContextPanel open={true} onToggle={vi.fn()} />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByTestId("context-goals-load-error")).toHaveTextContent("加载目标失败");
+    expect(addError).toHaveBeenCalledWith("加载目标失败", "上下文");
+    expect(screen.queryByText("暂无活跃目标")).not.toBeInTheDocument();
+  });
+
+  it("keeps the goal retry mounted until the reread finishes", async () => {
+    let release: (() => void) | undefined;
+    vi.mocked(listWorkItems).mockRejectedValueOnce(new Error("目标暂时读不到"));
+    render(
+      <MemoryRouter>
+        <ContextPanel open={true} onToggle={vi.fn()} />
+      </MemoryRouter>,
+    );
+    const retry = await screen.findByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+
+    vi.mocked(listWorkItems).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve([]);
+        }),
+    );
+    fireEvent.click(retry);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "重试" })).toHaveAttribute("aria-busy", "true"),
+    );
+    expect(screen.getByTestId("context-goals-load-error")).toHaveTextContent("目标暂时读不到");
+    expect(screen.queryByText("暂无活跃目标")).not.toBeInTheDocument();
+    expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
+
+    release?.();
+    expect(await screen.findByText("暂无活跃目标")).toBeInTheDocument();
+    expect(screen.queryByTestId("context-goals-load-error")).not.toBeInTheDocument();
+  });
+
+  it("keeps listed goals when a later read fails", async () => {
+    const view = render(
+      <MemoryRouter>
+        <ContextPanel open={true} onToggle={vi.fn()} lastUserMessage="短" />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole("link", { name: "学习 Rust" })).toBeInTheDocument();
+
+    vi.mocked(listWorkItems).mockRejectedValue(new Error("目标暂时读不到"));
+    view.rerender(
+      <MemoryRouter>
+        <ContextPanel open={true} onToggle={vi.fn()} lastUserMessage="帮我再看一下目标" />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("link", { name: "学习 Rust" })).toBeInTheDocument();
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("目标暂时读不到", "上下文"));
+    expect(screen.queryByTestId("context-goals-load-error")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无活跃目标")).not.toBeInTheDocument();
   });
 });

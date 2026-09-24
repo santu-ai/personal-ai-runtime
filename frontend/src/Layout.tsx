@@ -17,6 +17,7 @@ import ToastCard from "./components/ui/ToastCard";
 import QuickCaptureDialog from "./components/quickcapture/QuickCaptureDialog";
 import { LiveNotificationContext, useNotifications } from "./hooks/useNotifications";
 import { useWsInvalidationBridge } from "./hooks/useWsInvalidationBridge";
+import { useHeldQueryError } from "./components/ui/LoadErrorNotice";
 
 export default function Layout() {
   const { conversations, activeConversationId, setActiveConversation } = useChatStore();
@@ -24,7 +25,15 @@ export default function Layout() {
   const { remove: removeConversationCached } = useConversationCacheActions();
 
   // Server-state: conversations + health (auth banner). WS bridge drives other keys.
-  useConversationsQuery();
+  const conversationsQuery = useConversationsQuery();
+  const conversationRows = conversationsQuery.data ?? conversations;
+  const shownConversationError = useHeldQueryError(
+    conversationsQuery.data !== undefined || conversationRows.length > 0,
+    conversationsQuery.error,
+    conversationsQuery.isFetching,
+    "加载对话失败",
+    "sidebar-conversations",
+  );
   const { data: health } = useSettingsHealthQuery();
   const authRequired = Boolean(health?.auth_required);
 
@@ -55,7 +64,7 @@ export default function Layout() {
   const handleNewChat = () => quickChat();
 
   const handleDeleteChat = (id: string) => {
-    const conv = conversations.find((c) => c.id === id);
+    const conv = conversationRows.find((c) => c.id === id);
     setDeleteTarget({ id, title: conv?.title || "新对话" });
   };
 
@@ -83,11 +92,20 @@ export default function Layout() {
     <LiveNotificationContext.Provider value={liveNotifications}>
       <div className="flex h-screen bg-surface-app text-fg-primary font-sans">
         <Sidebar
-          conversations={conversations}
+          conversations={conversationRows}
           activeConversationId={activeConversationId}
           onSelectConversation={handleSelectConversation}
           onNewChat={handleNewChat}
           onDeleteChat={handleDeleteChat}
+          conversationsLoadError={conversationRows.length > 0 ? null : shownConversationError}
+          conversationsLoadBusy={conversationsQuery.isFetching}
+          conversationsLoadPending={
+            conversationRows.length === 0 &&
+            conversationsQuery.data === undefined &&
+            conversationsQuery.isPending &&
+            !shownConversationError
+          }
+          onRetryConversations={() => void conversationsQuery.refetch()}
           footer={<NotificationBell />}
         />
 

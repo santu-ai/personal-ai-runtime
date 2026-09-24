@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   searchMemories,
@@ -9,6 +9,7 @@ import {
 } from "../../api/client";
 import { listWorkItems } from "../../api/workItems";
 import { useErrorStore } from "../../stores/errorStore";
+import LoadErrorNotice, { queryErrorMessage } from "../ui/LoadErrorNotice";
 import type { ToolResult } from "./types";
 
 interface Props {
@@ -21,17 +22,19 @@ interface Props {
 export default function ContextPanel({ lastUserMessage, toolResults = [], open, onToggle }: Props) {
   const addError = useErrorStore((s) => s.addError);
   const [goals, setGoals] = useState<WorkItem[]>([]);
+  const [goalsError, setGoalsError] = useState<string | null>(null);
+  const [goalsLoading, setGoalsLoading] = useState(false);
+  const [goalsLoaded, setGoalsLoaded] = useState(false);
   const [memories, setMemories] = useState<MemoryRow[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
+  const loadSeq = useRef(0);
 
-  useEffect(() => {
-    if (!open) return;
-    loadContext();
-  }, [open, lastUserMessage]);
-
-  const loadContext = async () => {
+  const loadContext = useCallback(async () => {
+    const seq = ++loadSeq.current;
+    setGoalsLoading(true);
     try {
       const allGoals = await listWorkItems("goal");
+      if (seq !== loadSeq.current) return;
       const active = allGoals
         .filter((g) => g.status === "active")
         .sort((a, b) => {
@@ -41,14 +44,26 @@ export default function ContextPanel({ lastUserMessage, toolResults = [], open, 
         })
         .slice(0, 3);
       setGoals(active);
-    } catch {
-      addError("加载目标失败", "上下文");
+      setGoalsError(null);
+    } catch (err) {
+      if (seq !== loadSeq.current) return;
+      const message = queryErrorMessage(err, "加载目标失败");
+      setGoalsError(message);
+      addError(message, "上下文");
+    } finally {
+      if (seq === loadSeq.current) {
+        setGoalsLoading(false);
+        setGoalsLoaded(true);
+      }
     }
+
+    if (seq !== loadSeq.current) return;
 
     if (lastUserMessage && lastUserMessage.length > 5) {
       try {
         const q = lastUserMessage.slice(0, 50);
         const results = await searchMemories(q, 3);
+        if (seq !== loadSeq.current) return;
         setMemories(results);
       } catch {
         // optional
@@ -57,11 +72,20 @@ export default function ContextPanel({ lastUserMessage, toolResults = [], open, 
 
     try {
       const pending = await listPendingApprovals();
+      if (seq !== loadSeq.current) return;
       setApprovals(pending);
     } catch {
       // optional
     }
-  };
+  }, [addError, lastUserMessage]);
+
+  useEffect(() => {
+    if (!open) return;
+    void loadContext();
+    return () => {
+      loadSeq.current += 1;
+    };
+  }, [open, loadContext]);
 
   const recentTools = toolResults.slice(-3).reverse();
 
@@ -97,7 +121,16 @@ export default function ContextPanel({ lastUserMessage, toolResults = [], open, 
 
         <section>
           <h4 className="text-xs text-fg-tertiary mb-2">活跃目标</h4>
-          {goals.length === 0 ? (
+          {goals.length === 0 && goalsError ? (
+            <LoadErrorNotice
+              message={goalsError}
+              busy={goalsLoading}
+              onRetry={() => void loadContext()}
+              testId="context-goals-load-error"
+            />
+          ) : goals.length === 0 && (!goalsLoaded || goalsLoading) ? (
+            <p className="text-xs text-fg-disabled">加载中…</p>
+          ) : goals.length === 0 ? (
             <p className="text-xs text-fg-disabled">暂无活跃目标</p>
           ) : (
             goals.map((g) => (
