@@ -38,7 +38,9 @@ export function AdoptionSummaryView({
     </>
   );
   const className = `mb-5 w-full rounded-lg border px-4 py-3.5 text-left transition-colors ${tone.surface} ${
-    onOpen ? "hover:border-border-strong cursor-pointer" : ""
+    onOpen
+      ? "cursor-pointer hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+      : ""
   }`;
   if (!onOpen) {
     return (
@@ -48,7 +50,13 @@ export function AdoptionSummaryView({
     );
   }
   return (
-    <button type="button" data-testid="adoption-summary" onClick={onOpen} className={className}>
+    <button
+      type="button"
+      data-testid="adoption-summary"
+      data-dashboard-opener="adoption"
+      onClick={onOpen}
+      className={className}
+    >
       {body}
     </button>
   );
@@ -60,6 +68,8 @@ export function AdoptionSummaryCard({ onOpen }: { onOpen?: () => void }) {
     queryKey: [...queryKeys.governance, 7],
     queryFn: () => getGovernanceSummary(7),
     staleTime: 30_000,
+    // 离开今天时这张卡会卸掉。按库的默认留住数据，回来的第一帧还在，焦点才能落回这张卡。
+    gcTime: 5 * 60_000,
     retry: 1,
   });
   if (!data?.adoption) return null;

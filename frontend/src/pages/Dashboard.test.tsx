@@ -72,6 +72,23 @@ vi.mock("../api/system", async () => {
   };
 });
 
+vi.mock("../hooks/useTrustReportQuery", () => ({
+  useTrustReportQuery: vi.fn(),
+  useInvalidateTrustReport: () => vi.fn(),
+}));
+
+vi.mock("../api/monitors", () => ({
+  listInboxFilters: vi.fn(async () => []),
+  listUrlMonitors: vi.fn(async () => []),
+  createInboxFilter: vi.fn(),
+  createUrlMonitor: vi.fn(),
+  deleteInboxFilter: vi.fn(),
+  deleteUrlMonitor: vi.fn(),
+  updateInboxFilter: vi.fn(),
+  updateUrlMonitor: vi.fn(),
+  checkUrlMonitors: vi.fn(async () => ({ checked: 0, changed: 0 })),
+}));
+
 import { getGovernanceSummary } from "../api/telemetry";
 import { getPeriodComparison } from "../api/system";
 import { useDashboard } from "../hooks/useDashboard";
@@ -79,6 +96,7 @@ import { useApprovalsQuery } from "../hooks/useApprovalsQuery";
 import { useInboxQuery } from "../hooks/useInboxQuery";
 import { useGoalsQuery } from "../hooks/useGoalsQuery";
 import { useProposedMemoryCountQuery } from "../hooks/useMemoriesQuery";
+import { useTrustReportQuery } from "../hooks/useTrustReportQuery";
 
 const mockGovernance = vi.mocked(getGovernanceSummary);
 const mockPeriodComparison = vi.mocked(getPeriodComparison);
@@ -88,6 +106,44 @@ const mockUseApprovalsQuery = vi.mocked(useApprovalsQuery);
 const mockUseInboxQuery = vi.mocked(useInboxQuery);
 const mockUseGoalsQuery = vi.mocked(useGoalsQuery);
 const mockUseProposedMemoryCountQuery = vi.mocked(useProposedMemoryCountQuery);
+const mockUseTrustReportQuery = vi.mocked(useTrustReportQuery);
+
+const emptyTrustReport = {
+  system: {
+    conversations: 0,
+    messages: 0,
+    memories: 0,
+    goals: 0,
+    event_log: 0,
+  },
+  approvals: [] as Array<{ id: string; action: string; flow_type: string; status: string }>,
+  cost: {
+    total_calls: 0,
+    total_prompt_tokens: 0,
+    total_completion_tokens: 0,
+    total_cost: 0,
+    avg_latency_ms: 0,
+    failed_calls: 0,
+  },
+  costByModel: [],
+  tools: [],
+  memory: { total_memories: 0, categories: {}, recent_7d: 0 },
+  health: { active_work_items: 0, llm_failure_rate_24h: 0, tool_failure_rate_24h: 0 },
+  governance: null,
+  dashboard: null,
+  memoryIndexRepairs: { pending: 0, failed_permanent: 0, items: [] },
+};
+
+function mockTrustReport(overrides: Partial<ReturnType<typeof useTrustReportQuery>> = {}) {
+  mockUseTrustReportQuery.mockReturnValue({
+    data: emptyTrustReport,
+    isLoading: false,
+    isFetching: false,
+    error: null,
+    refetch: vi.fn(),
+    ...overrides,
+  } as unknown as ReturnType<typeof useTrustReportQuery>);
+}
 
 function mockDashboardData(overrides: Partial<ReturnType<typeof useDashboard>> = {}) {
   mockUseDashboard.mockReturnValue({
@@ -166,6 +222,7 @@ describe("DashboardPage", () => {
       typeof useProposedMemoryCountQuery
     >);
     mockDashboardData();
+    mockTrustReport();
     mockPeriodComparison.mockResolvedValue({
       days: 7,
       current: { start: "2026-09-15T00:00:00+00:00", end: "2026-09-22T00:00:00+00:00" },
@@ -1158,5 +1215,114 @@ describe("DashboardPage", () => {
 
     fireEvent.click(within(reminders).getByRole("button", { name: "重试" }));
     expect(retryNotifications).toHaveBeenCalledOnce();
+  });
+
+  it("moves focus to back and returns it to 信任 on Escape", async () => {
+    renderDashboard();
+    fireEvent.click(screen.getByRole("button", { name: "信任" }));
+    const back = await screen.findByRole("button", { name: "← 返回今日" });
+    await waitFor(() => expect(back).toHaveFocus());
+    expect(screen.getByRole("heading", { name: "信任" })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "信任" })).toHaveFocus());
+    expect(screen.getByRole("heading", { name: "今天" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "← 返回今日" })).not.toBeInTheDocument();
+  });
+
+  it("returns focus to 监控 after leaving, and keeps a draft on Escape inside a field", async () => {
+    renderDashboard();
+    fireEvent.click(screen.getByRole("button", { name: "监控" }));
+    const back = await screen.findByRole("button", { name: "← 返回今日" });
+    await waitFor(() => expect(back).toHaveFocus());
+    const name = await screen.findByPlaceholderText("名称（如：老板）");
+    name.focus();
+    fireEvent.change(name, { target: { value: "老板" } });
+    fireEvent.keyDown(name, { key: "Escape", isComposing: true });
+    fireEvent.keyDown(name, { key: "Escape" });
+    expect(screen.getByRole("heading", { name: "监控" })).toBeInTheDocument();
+    expect(name).toHaveValue("老板");
+    expect(name).toHaveFocus();
+
+    back.focus();
+    fireEvent.click(back);
+    await waitFor(() => expect(screen.getByRole("button", { name: "监控" })).toHaveFocus());
+    expect(screen.getByRole("heading", { name: "今天" })).toBeInTheDocument();
+  });
+
+  it("returns focus to the adoption card when leaving trust", async () => {
+    renderDashboard();
+    const card = await screen.findByTestId("adoption-summary");
+    fireEvent.click(card);
+    const back = await screen.findByRole("button", { name: "← 返回今日" });
+    await waitFor(() => expect(back).toHaveFocus());
+    fireEvent.click(back);
+    await waitFor(() => expect(screen.getByTestId("adoption-summary")).toHaveFocus());
+    expect(screen.getByRole("heading", { name: "今天" })).toBeInTheDocument();
+  });
+
+  it("does not steal focus when opening trust from a deep link", async () => {
+    renderDashboard(["/dashboard?tab=trust"]);
+    const back = await screen.findByRole("button", { name: "← 返回今日" });
+    expect(back).not.toHaveFocus();
+    expect(screen.getByRole("heading", { name: "信任" })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "信任" })).toHaveFocus());
+  });
+
+  it("leaves focus on the trust retry instead of 返回今日", async () => {
+    mockTrustReport({
+      data: undefined,
+      error: new Error("信任报告读不到"),
+    });
+    renderDashboard();
+    fireEvent.click(screen.getByRole("button", { name: "信任" }));
+    const retry = await screen.findByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+    expect(screen.getByRole("button", { name: "← 返回今日" })).not.toHaveFocus();
+    expect(screen.getByTestId("trust-report-load-error")).toHaveTextContent("信任报告读不到");
+  });
+
+  it("does not pull focus back to 信任 when today retry already has it", async () => {
+    mockUseApprovalsQuery.mockReturnValue({
+      data: undefined,
+      error: new Error("审批服务不可用"),
+      isFetching: false,
+      isPending: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useApprovalsQuery>);
+    renderDashboard();
+    const retry = await screen.findByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+
+    fireEvent.click(screen.getByRole("button", { name: "信任" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "← 返回今日" })).toHaveFocus());
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    const decide = await screen.findByTestId("today-decide-load-error");
+    await waitFor(() => expect(within(decide).getByRole("button", { name: "重试" })).toHaveFocus());
+    expect(screen.getByRole("button", { name: "信任" })).not.toHaveFocus();
+  });
+
+  it("returns from a trust link on Escape and does not pull focus back to 返回今日", async () => {
+    mockTrustReport({
+      data: {
+        ...emptyTrustReport,
+        approvals: [{ id: "ap-9", action: "write_file", flow_type: "任务", status: "pending" }],
+      },
+    } as unknown as Partial<ReturnType<typeof useTrustReportQuery>>);
+    const view = renderDashboard();
+    fireEvent.click(screen.getByRole("button", { name: "信任" }));
+    const back = await screen.findByRole("button", { name: "← 返回今日" });
+    await waitFor(() => expect(back).toHaveFocus());
+    const link = screen.getByRole("link", { name: "write_file" });
+    link.focus();
+    view.rerender(<DashboardPage />);
+    expect(link).toHaveFocus();
+    expect(back).not.toHaveFocus();
+
+    fireEvent.keyDown(link, { key: "Escape" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "信任" })).toHaveFocus());
   });
 });

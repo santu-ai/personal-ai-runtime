@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { markNotificationRead, type Notification } from "../api/client";
 import { useDashboard } from "../hooks/useDashboard";
@@ -91,6 +91,14 @@ function getDateString(): string {
 }
 
 type DashboardTab = "today" | "trust" | "monitors";
+type DashboardOpener = "trust" | "monitors" | "adoption";
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
 
 export default function DashboardPage() {
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
@@ -98,13 +106,35 @@ export default function DashboardPage() {
   const tabParam = searchParams.get("tab");
   const tab: DashboardTab =
     tabParam === "trust" ? "trust" : tabParam === "monitors" ? "monitors" : "today";
-  const setTab = (next: DashboardTab) => {
-    if (next === "today") {
-      setSearchParams({}, { replace: true });
-    } else {
-      setSearchParams({ tab: next }, { replace: true });
-    }
-  };
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+  const openerRef = useRef<DashboardOpener | null>(null);
+  const shouldFocusBack = useRef(false);
+  const pendingRestore = useRef<DashboardOpener | null>(null);
+  const setTab = useCallback(
+    (next: DashboardTab) => {
+      if (next === "today") {
+        setSearchParams({}, { replace: true });
+      } else {
+        setSearchParams({ tab: next }, { replace: true });
+      }
+    },
+    [setSearchParams],
+  );
+  const openTab = useCallback(
+    (next: "trust" | "monitors", opener: DashboardOpener) => {
+      openerRef.current = opener;
+      shouldFocusBack.current = true;
+      setTab(next);
+    },
+    [setTab],
+  );
+  const leaveSubView = useCallback(() => {
+    const current = tabRef.current;
+    if (current === "today") return;
+    pendingRestore.current = openerRef.current ?? (current === "monitors" ? "monitors" : "trust");
+    setTab("today");
+  }, [setTab]);
 
   const {
     cost,
@@ -210,6 +240,40 @@ export default function DashboardPage() {
     addError(queryErrorMessage(proposedQuery.error, "加载待确认记忆失败"), "今天");
   }, [tab, proposedQuery.error, addError]);
 
+  // 从今天打开信任或监控时，原来的按钮会卸掉，浏览器会把焦点丢到别的按钮上。
+  // 绘制前把焦点放到「返回今日」，离开时放回刚才那个控件。
+  // 建议采纳这张卡还不在时，先回到「信任」。随后若「重试」自己拿焦点，就留在那里。
+  useLayoutEffect(() => {
+    if (tab !== "today") {
+      if (!shouldFocusBack.current) return;
+      shouldFocusBack.current = false;
+      document.querySelector<HTMLButtonElement>("[data-dashboard-back]")?.focus();
+      return;
+    }
+    const which = pendingRestore.current;
+    if (!which) return;
+    pendingRestore.current = null;
+    const target = document.querySelector<HTMLElement>(`[data-dashboard-opener="${which}"]`);
+    const fallback =
+      which === "adoption"
+        ? document.querySelector<HTMLElement>('[data-dashboard-opener="trust"]')
+        : null;
+    (target ?? fallback)?.focus();
+  }, [tab]);
+
+  useEffect(() => {
+    if (tab === "today") return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.isComposing) return;
+      if (isTypingTarget(event.target)) return;
+      if (event.target instanceof Element && event.target.closest("[role='dialog']")) return;
+      event.preventDefault();
+      leaveSubView();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [tab, leaveSubView]);
+
   const activeGoals = useMemo(() => goals.filter((g) => g.status === "active"), [goals]);
 
   const mergedNotifications = useMemo(
@@ -259,7 +323,7 @@ export default function DashboardPage() {
           <PageHeader
             title="信任"
             actions={
-              <Button variant="secondary" size="sm" onClick={() => setTab("today")}>
+              <Button variant="secondary" size="sm" data-dashboard-back="" onClick={leaveSubView}>
                 ← 返回今日
               </Button>
             }
@@ -278,7 +342,7 @@ export default function DashboardPage() {
           <PageHeader
             title="监控"
             actions={
-              <Button variant="secondary" size="sm" onClick={() => setTab("today")}>
+              <Button variant="secondary" size="sm" data-dashboard-back="" onClick={leaveSubView}>
                 ← 返回今日
               </Button>
             }
@@ -324,11 +388,21 @@ export default function DashboardPage() {
               <Button variant="secondary" size="sm" onClick={refresh}>
                 刷新
               </Button>
-              <Button variant="secondary" size="sm" onClick={() => setTab("monitors")}>
+              <Button
+                variant="secondary"
+                size="sm"
+                data-dashboard-opener="monitors"
+                onClick={() => openTab("monitors", "monitors")}
+              >
                 <Radar size={13} />
                 监控
               </Button>
-              <Button variant="secondary" size="sm" onClick={() => setTab("trust")}>
+              <Button
+                variant="secondary"
+                size="sm"
+                data-dashboard-opener="trust"
+                onClick={() => openTab("trust", "trust")}
+              >
                 <Shield size={13} />
                 信任
               </Button>
@@ -336,7 +410,7 @@ export default function DashboardPage() {
           }
         />
 
-        <AdoptionSummaryCard onOpen={() => setTab("trust")} />
+        <AdoptionSummaryCard onOpen={() => openTab("trust", "adoption")} />
 
         <PeriodComparisonCard />
 
