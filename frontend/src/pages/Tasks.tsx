@@ -31,6 +31,7 @@ import Disclosure from "../components/ui/Disclosure";
 import EmptyState from "../components/ui/EmptyState";
 import { Input } from "../components/ui/Input";
 import PageHeader from "../components/ui/PageHeader";
+import Spinner from "../components/ui/Spinner";
 import InboxEmailDetailModal from "../components/inbox/InboxEmailDetailModal";
 import {
   citationLookupSources,
@@ -614,14 +615,19 @@ function DeliveryVersionDiff({
   if (!delta) return null;
   const lines = deliveryChangeLines(delta, onCite, canCite);
   return (
-    <div className="space-y-1" data-testid="delivery-version-diff">
+    <div
+      className="space-y-1 break-words rounded-lg bg-surface-sunken px-3 py-2"
+      data-testid="delivery-version-diff"
+    >
       <h4 className="text-xs font-medium text-fg-tertiary">相对 v{delta.previous_version}</h4>
       {lines.length === 0 ? (
         <p className="text-sm text-fg-secondary">与上一版相同</p>
       ) : (
-        <ul className="text-sm text-fg-secondary space-y-1">
+        <ul className="space-y-1 text-sm text-fg-secondary">
           {lines.map((line, index) => (
-            <li key={index}>{line}</li>
+            <li key={index} className="break-words">
+              {line}
+            </li>
           ))}
         </ul>
       )}
@@ -824,6 +830,9 @@ export default function TasksPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyRetry, setHistoryRetry] = useState(0);
+  const historyRequestKey = useRef<string | null>(null);
+  const historyErrorRef = useRef<HTMLDivElement>(null);
+  const deliveryTitleRef = useRef<HTMLHeadingElement>(null);
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
   const [inboxEmail, setInboxEmail] = useState<InboxEmail | null>(null);
   const citeRequest = useRef(0);
@@ -856,19 +865,24 @@ export default function TasksPage() {
 
   useEffect(() => {
     if (!urlTaskId || !historyId) {
+      historyRequestKey.current = null;
       setHistoryFull(null);
       setHistoryError(null);
       setHistoryLoading(false);
       return;
     }
+    const requestKey = `${urlTaskId}:${historyId}`;
+    const sameTarget = historyRequestKey.current === requestKey;
+    historyRequestKey.current = requestKey;
     let cancelled = false;
     setHistoryLoading(true);
-    setHistoryError(null);
     setHistoryFull(null);
+    if (!sameTarget) setHistoryError(null);
     void getWorkDelivery(urlTaskId, historyId)
       .then((row) => {
         if (!cancelled) {
           setHistoryFull(row);
+          setHistoryError(null);
         }
       })
       .catch((err) => {
@@ -886,6 +900,14 @@ export default function TasksPage() {
       cancelled = true;
     };
   }, [urlTaskId, historyId, historyRetry]);
+
+  useEffect(() => {
+    if (!historyError || historyLoading) return;
+    const root = historyErrorRef.current;
+    const button = root?.querySelector("button");
+    if (!root || !button || root.contains(document.activeElement)) return;
+    button.focus();
+  }, [historyError, historyLoading]);
 
   useEffect(() => {
     setScheduledRepeatNote(null);
@@ -1224,6 +1246,13 @@ export default function TasksPage() {
     : [];
   const canCiteDeliverySource = (sourceId: string) =>
     findDeliverySource(citeSources, sourceId) !== undefined;
+
+  useEffect(() => {
+    if (!viewingHistory || !historyFull) return;
+    if (document.activeElement && document.activeElement !== document.body) return;
+    deliveryTitleRef.current?.focus();
+  }, [viewingHistory, historyFull]);
+
   const detailOpen = Boolean(urlTaskId);
   const showSplit = items.length > 0 || detailOpen;
 
@@ -1403,21 +1432,46 @@ export default function TasksPage() {
                     ) : null}
                   </header>
 
-                  {viewingHistory && historyLoading && (
-                    <p className="text-sm text-fg-tertiary">加载历史版本全文…</p>
-                  )}
-                  {viewingHistory && historyError && (
-                    <div className="space-y-2" data-testid="history-load-error">
+                  {viewingHistory && historyLoading && !historyError ? (
+                    <div
+                      className="flex min-h-32 items-center gap-2 rounded-xl border border-border-subtle p-4 text-sm text-fg-tertiary"
+                      data-testid="history-load-status"
+                      role="status"
+                      aria-live="polite"
+                      aria-busy="true"
+                    >
+                      <span aria-hidden="true" className="inline-flex">
+                        <Spinner size="sm" />
+                      </span>
+                      加载历史版本全文…
+                    </div>
+                  ) : null}
+                  {viewingHistory && historyError ? (
+                    <div
+                      ref={historyErrorRef}
+                      className="space-y-2 rounded-xl border border-danger/30 p-4"
+                      data-testid="history-load-error"
+                      role="alert"
+                    >
                       <p className="text-sm text-danger">{historyError}</p>
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() => setHistoryRetry((attempt) => attempt + 1)}
+                        aria-busy={historyLoading || undefined}
+                        onClick={() => {
+                          if (historyLoading) return;
+                          setHistoryRetry((attempt) => attempt + 1);
+                        }}
                       >
+                        {historyLoading ? (
+                          <span aria-hidden="true" className="inline-flex">
+                            <Spinner size="sm" />
+                          </span>
+                        ) : null}
                         重试
                       </Button>
                     </div>
-                  )}
+                  ) : null}
                   {shownDelivery && failureReason ? (
                     <RerunFailureReason reason={failureReason} />
                   ) : null}
@@ -1425,7 +1479,11 @@ export default function TasksPage() {
                     <section className="space-y-3 rounded-xl border border-border-subtle p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <h3 className="text-sm font-medium text-fg-primary">
+                          <h3
+                            ref={deliveryTitleRef}
+                            tabIndex={-1}
+                            className="rounded-sm text-sm font-medium text-fg-primary outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                          >
                             交付 v{shownDelivery.version}
                             {viewingHistory ? "（历史版本）" : ""}
                           </h3>
@@ -1594,7 +1652,8 @@ export default function TasksPage() {
                               <button
                                 type="button"
                                 aria-current={open ? "true" : undefined}
-                                className={`rounded-sm text-left text-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                                aria-busy={open && historyLoading ? true : undefined}
+                                className={`break-words rounded-sm text-left text-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
                                   open ? "bg-insight/10 px-1 text-fg-primary" : "text-insight"
                                 }`}
                                 onClick={() => {
@@ -1603,7 +1662,9 @@ export default function TasksPage() {
                                     return;
                                   }
                                   if (historyId === row.delivery_id) {
-                                    if (historyError) setHistoryRetry((attempt) => attempt + 1);
+                                    if (historyError && !historyLoading) {
+                                      setHistoryRetry((attempt) => attempt + 1);
+                                    }
                                     return;
                                   }
                                   setHistoryId(row.delivery_id);

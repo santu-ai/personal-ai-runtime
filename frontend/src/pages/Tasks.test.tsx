@@ -1062,7 +1062,9 @@ describe("TasksPage", () => {
     vi.mocked(getWorkDelivery).mockRejectedValueOnce(new Error("still down"));
     fireEvent.click(within(error).getByRole("button", { name: "重试" }));
     await waitFor(() => expect(getWorkDelivery).toHaveBeenCalledTimes(2));
-    expect(await screen.findByTestId("history-load-error")).toHaveTextContent("加载历史版本失败");
+    await waitFor(() => {
+      expect(screen.getByTestId("history-load-error")).toHaveTextContent("加载历史版本失败");
+    });
 
     vi.mocked(getWorkDelivery).mockResolvedValueOnce(historyFull);
     fireEvent.click(screen.getByRole("button", { name: /v1 · 已要求返工/ }));
@@ -1071,6 +1073,72 @@ describe("TasksPage", () => {
     expect(getWorkDelivery).toHaveBeenCalledTimes(3);
     fireEvent.click(screen.getByRole("button", { name: /v1 · 已要求返工/ }));
     expect(getWorkDelivery).toHaveBeenCalledTimes(3);
+  });
+
+  it("shows the history spinner in the delivery slot while the version list stays", async () => {
+    let release: ((row: WorkDelivery) => void) | undefined;
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [briefTask];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(briefTask);
+    vi.mocked(getWorkDelivery).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderTasks("/tasks/brief_1");
+
+    const row = await screen.findByRole("button", { name: /v1 · 已要求返工/ });
+    fireEvent.click(row);
+    const status = await screen.findByTestId("history-load-status");
+    expect(status).toHaveAttribute("aria-busy", "true");
+    expect(status).toHaveTextContent("加载历史版本全文…");
+    expect(screen.queryByText("完整正文超过预览长度".repeat(20))).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "版本历史" })).toBeInTheDocument();
+    expect(row).toHaveAttribute("aria-busy", "true");
+    expect(screen.queryByTestId("history-load-error")).not.toBeInTheDocument();
+
+    row.focus();
+    release?.(historyFull);
+    expect(await screen.findByText("历史版本完整正文甲")).toBeInTheDocument();
+    expect(screen.queryByTestId("history-load-status")).not.toBeInTheDocument();
+    expect(row).toHaveFocus();
+  });
+
+  it("keeps keyboard focus on history retry until the reread finishes", async () => {
+    let release: ((row: WorkDelivery) => void) | undefined;
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [briefTask];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(briefTask);
+    vi.mocked(getWorkDelivery)
+      .mockRejectedValueOnce(new ApiError("历史版本暂时读不到", 503))
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          }),
+      );
+    renderTasks("/tasks/brief_1");
+
+    fireEvent.click(await screen.findByRole("button", { name: /v1 · 已要求返工/ }));
+    const retry = await screen.findByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+    expect(screen.queryByTestId("history-load-status")).not.toBeInTheDocument();
+
+    fireEvent.click(retry);
+    expect(retry).toBeInTheDocument();
+    expect(retry).toHaveAttribute("aria-busy", "true");
+    expect(retry).toHaveFocus();
+    expect(screen.getByTestId("history-load-error")).toHaveTextContent("历史版本暂时读不到");
+
+    release?.(historyFull);
+    expect(await screen.findByText("历史版本完整正文甲")).toBeInTheDocument();
+    expect(screen.queryByTestId("history-load-error")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /交付 v1/ })).toHaveFocus();
   });
 
   it("shows the stored rework reason on the current delivery", async () => {
@@ -1334,6 +1402,7 @@ describe("TasksPage", () => {
     renderTasks("/tasks/brief_1");
 
     const panel = await screen.findByTestId("delivery-version-diff");
+    expect(panel).toHaveClass("bg-surface-sunken", "break-words");
     expect(panel).toHaveTextContent("相对 v1");
     expect(panel).toHaveTextContent("新增结论：[风险] 排期推迟（email:m1）");
     expect(panel).toHaveTextContent("去掉的结论：[变化] 进度正常");

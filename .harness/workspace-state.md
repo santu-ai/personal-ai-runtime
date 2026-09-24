@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-09-24：Batch 50：任务页读取历史全文时，转圈留在交付区，正在看的那一行标为忙碌。失败后的「重试」拿键盘焦点，请求结束前不卸下；读完后若焦点已丢，落到该版标题。换一版会清掉上一条失败。「相对 vN」用与正文相同的下沉底，长编号在面板内换行。只有一版时仍不单列版本历史。不新增事件类型，未改 Kernel，未改 `read_ports/work.py`。
 - 2026-09-24：Batch 49：任务页版本历史标出正在看的一行。全文加载失败时可以重试；再点同一行也会再读一次。成功打开后再点同一行不重复请求。不新增事件类型，未改 Kernel，未改 `read_ports/work.py`。
 - 2026-09-24：Batch 48：文档对齐 `f08835e`。收回后的返工若被后续验收替换，旧幂等键只回放（`replayed` 且 `superseded`）不再派发；死信 `limit` 只计实际重放的行，扫描越过终态或旧尝试；单次交付 `model_cost` 从该执行最早的 `ExecutionRequested` 起，没有这条事件时从发布时间起。写在 `docs/01-overview/architecture.md`、`docs/02-concepts/execution-model.md`、`docs/03-subsystems/frontend.md`、`docs/03-subsystems/backend-api.md`、`docs/03-subsystems/backend-core.md` 与 `docs/04-data/data-model.md`。#131–#134 的版本历史成本、信任报告审批链接、审批卡片 `task_id` 和时间线 `work_id` 已在各自 PR 写入文档，本批不改跳转。不新增事件类型，未改 Kernel。
 - 2026-09-24：Batch 47：时间线事件在已有非空 `work_id`（去掉空白后仍非空）时，描述打开 `/tasks/:id`（路径按 id 编码）。空白、null 或只有空白保持纯文本。接口只从事件里已有的 `work_id` / `task_id` 取值：顶层 `work_id` 优先，没有该键才用顶层 `task_id`；键在但空白或不是字符串时不改用别的键。审批的 `task_id` 在 `ctx`。`WorkItem*` 用 `aggregate_id`。`TimerFired` 只读嵌套定时 payload 里的这两个键。不读 `payload_snippet`，不用 `correlation_id`、`parent_work_id`、`action_id`、定时器 id 或审批 id。不新增事件类型，未改 Kernel，未改 `read_ports/work.py`。
