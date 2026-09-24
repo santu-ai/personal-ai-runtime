@@ -1,27 +1,52 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   getTelegramGatewayStatus,
   pollTelegramGateway,
   updateTelegramGateway,
   type TelegramGatewayStatus,
 } from "../../api/settings";
+import { useErrorStore } from "../../stores/errorStore";
 import Button from "../ui/Button";
 import Badge from "../ui/Badge";
+import LoadErrorNotice, { queryErrorMessage } from "../ui/LoadErrorNotice";
 
 export default function TelegramGatewayCard() {
+  const addError = useErrorStore((s) => s.addError);
+  const reportError = useRef(addError);
+  reportError.current = addError;
   const [status, setStatus] = useState<TelegramGatewayStatus | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [attempt, setAttempt] = useState(0);
   const [enabled, setEnabled] = useState(false);
   const [autoReply, setAutoReply] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    void getTelegramGatewayStatus().then((next) => {
-      setStatus(next);
-      setEnabled(next.enabled);
-      setAutoReply(next.auto_reply);
-    });
-  }, []);
+    let cancelled = false;
+    setLoading(true);
+    void getTelegramGatewayStatus()
+      .then((next) => {
+        if (cancelled) return;
+        setStatus(next);
+        setEnabled(next.enabled);
+        setAutoReply(next.auto_reply);
+        setLoadError(null);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        const text = queryErrorMessage(error, "加载 Telegram 状态失败");
+        setLoadError(text);
+        reportError.current(text, "设置");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt]);
 
   const save = async () => {
     setBusy(true);
@@ -53,6 +78,20 @@ export default function TelegramGatewayCard() {
       setBusy(false);
     }
   };
+
+  if (!status && loadError) {
+    return (
+      <LoadErrorNotice
+        message={loadError}
+        busy={loading}
+        onRetry={() => {
+          if (loading) return;
+          setAttempt((value) => value + 1);
+        }}
+        testId="telegram-load-error"
+      />
+    );
+  }
 
   if (!status) return <p className="text-sm text-fg-tertiary">加载 Telegram 状态…</p>;
 

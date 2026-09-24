@@ -4,6 +4,7 @@ import { renderWithRouter } from "../test-utils";
 import SettingsPage from "./Settings";
 import { ApiError, getMcpStatus, getPromptConfig } from "../api/client";
 import { listMcpRegistry } from "../api/connectors";
+import { getTelegramGatewayStatus, type TelegramGatewayStatus } from "../api/settings";
 
 vi.mock("../api/client", () => ({
   getSystemHealth: vi.fn().mockResolvedValue({
@@ -136,6 +137,19 @@ vi.mock("../stores/errorStore", () => ({
     selector({ addError: vi.fn() }),
 }));
 
+const telegramStatus: TelegramGatewayStatus = {
+  enabled: false,
+  auto_reply: false,
+  token_configured: true,
+  chat_configured: true,
+  capability_enabled: true,
+  connected: false,
+  last_update_id: 0,
+  last_error: "",
+  last_polled_at: "",
+  last_sent_at: "",
+};
+
 async function expandSection(title: string) {
   const trigger = await screen.findByRole("button", { name: new RegExp(title) });
   if (trigger.getAttribute("aria-expanded") !== "true") {
@@ -165,6 +179,7 @@ describe("SettingsPage", () => {
       ],
       total_tools: 3,
     });
+    vi.mocked(getTelegramGatewayStatus).mockResolvedValue(telegramStatus);
   });
 
   it("renders header, status badge and export button", async () => {
@@ -250,6 +265,52 @@ describe("SettingsPage", () => {
     expect(screen.queryByText("暂无 MCP 服务器")).not.toBeInTheDocument();
     expect(screen.queryByText("MCP 未启用或连接信息不可用")).not.toBeInTheDocument();
     await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+  });
+
+  it("shows a retry when Telegram status fails to load", async () => {
+    vi.mocked(getTelegramGatewayStatus).mockRejectedValue(new ApiError("网关暂时读不到", 503));
+    renderWithRouter(<SettingsPage />);
+    await expandSection("Telegram 网关");
+    const alert = await screen.findByTestId("telegram-load-error");
+    expect(alert).toHaveTextContent("网关暂时读不到");
+    expect(screen.queryByText("加载 Telegram 状态…")).not.toBeInTheDocument();
+    expect(screen.queryByText("启用每分钟本地轮询")).not.toBeInTheDocument();
+    const retry = within(alert).getByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+  });
+
+  it("uses the Telegram fallback when the status error has no message", async () => {
+    vi.mocked(getTelegramGatewayStatus).mockRejectedValue(new ApiError("   ", 500));
+    renderWithRouter(<SettingsPage />);
+    await expandSection("Telegram 网关");
+    expect(await screen.findByTestId("telegram-load-error")).toHaveTextContent(
+      "加载 Telegram 状态失败",
+    );
+    expect(screen.queryByText("加载 Telegram 状态…")).not.toBeInTheDocument();
+  });
+
+  it("keeps the Telegram retry until the reread finishes", async () => {
+    let release: ((row: TelegramGatewayStatus) => void) | undefined;
+    vi.mocked(getTelegramGatewayStatus)
+      .mockRejectedValueOnce(new ApiError("网关暂时读不到", 503))
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          }),
+      );
+    renderWithRouter(<SettingsPage />);
+    await expandSection("Telegram 网关");
+    const retry = await screen.findByRole("button", { name: "重试" });
+    fireEvent.click(retry);
+    expect(retry).toBeInTheDocument();
+    expect(retry).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByTestId("telegram-load-error")).toHaveTextContent("网关暂时读不到");
+    expect(screen.queryByText("加载 Telegram 状态…")).not.toBeInTheDocument();
+
+    release?.(telegramStatus);
+    expect(await screen.findByText("启用每分钟本地轮询")).toBeInTheDocument();
+    expect(screen.queryByTestId("telegram-load-error")).not.toBeInTheDocument();
   });
 
   it("shows a retry when the prompt config fails to load", async () => {
