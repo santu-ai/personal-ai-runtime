@@ -48,7 +48,5 @@ export function useInboxQuery(enabled = true) {
 
 export function useInvalidateInbox() {
   const qc = useQueryClient();
-  return () => {
-    void qc.invalidateQueries({ queryKey: queryKeys.inbox });
-  };
+  return () => qc.invalidateQueries({ queryKey: queryKeys.inbox });
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Mail, RefreshCw } from "lucide-react";
 import {
   triggerInboxPoll,
@@ -10,7 +11,13 @@ import {
 } from "../api/client";
 import { useErrorStore } from "../stores/errorStore";
 import { useQuickChat } from "../hooks/useQuickChat";
-import { useInboxQuery, useInvalidateInbox, RECENT_INBOX_LIMIT } from "../hooks/useInboxQuery";
+import {
+  useInboxQuery,
+  useInvalidateInbox,
+  RECENT_INBOX_LIMIT,
+  type InboxData,
+} from "../hooks/useInboxQuery";
+import { queryKeys } from "../hooks/useWsInvalidationBridge";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import LoadErrorNotice, {
@@ -36,6 +43,47 @@ const ERROR_KIND_LABEL: Record<string, string> = {
   credentials: "邮箱未配置",
   other: "同步失败",
 };
+
+type TriageAction = "read" | "handled";
+
+type TriageHandoff = {
+  id: string;
+  nextId: string | null;
+  move: boolean;
+};
+
+/** 焦点在页面空白处，或还停在已经卸掉的按钮上，才安放。已经在别的控件上就不再抢。 */
+function focusIsIdle(): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  return false;
+}
+
+function focusMatching(attr: "inboxMark" | "inboxRecent", id: string): boolean {
+  const selector = attr === "inboxMark" ? "[data-inbox-mark]" : "[data-inbox-recent]";
+  const nodes = document.querySelectorAll<HTMLElement>(selector);
+  for (const node of nodes) {
+    if (node.dataset[attr] === id) {
+      node.focus();
+      return true;
+    }
+  }
+  return false;
+}
+
+function placeTriageFocus(handoff: TriageHandoff): void {
+  if (handoff.nextId && focusMatching("inboxMark", handoff.nextId)) return;
+  if (focusMatching("inboxRecent", handoff.id)) return;
+  document.querySelector<HTMLElement>("[data-inbox-poll]")?.focus();
+}
+
+function nextPendingInColumn(rows: readonly InboxEmail[], current: InboxEmail): string | null {
+  const column = rows.filter((row) => row.category === current.category);
+  const index = column.findIndex((row) => row.id === current.id);
+  if (index < 0) return null;
+  return column[index + 1]?.id ?? column[index - 1]?.id ?? null;
+}
 
 function formatSyncTime(iso: string | null): string {
   if (!iso) return "尚未同步";
@@ -108,6 +156,7 @@ function SyncStatusBar({
 export default function InboxPage() {
   const { data, isLoading: loading, isFetching, error, refetch } = useInboxQuery();
   const invalidateInbox = useInvalidateInbox();
+  const queryClient = useQueryClient();
   const emails = data?.emails ?? [];
   const allEmails = data?.allEmails ?? [];
   const digest = data?.digest ?? null;
@@ -136,6 +185,60 @@ export default function InboxPage() {
   );
   const addError = useErrorStore((s) => s.addError);
   const quickChat = useQuickChat();
+  const triageLocks = useRef(new Set<string>());
+  const triageKinds = useRef(new Map<string, TriageAction>());
+  const triageHandoffs = useRef(new Map<string, TriageHandoff>());
+  const [triageBusy, setTriageBusy] = useState<ReadonlyMap<string, TriageAction>>(() => new Map());
+  const alive = useRef(true);
+
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
+  const publishTriage = () => {
+    if (!alive.current) return;
+    setTriageBusy(new Map(triageKinds.current));
+  };
+
+  const startTriage = (id: string, action: TriageAction): boolean => {
+    if (triageLocks.current.has(id)) return false;
+    triageLocks.current.add(id);
+    triageKinds.current.set(id, action);
+    publishTriage();
+    return true;
+  };
+
+  const finishTriage = (id: string) => {
+    triageLocks.current.delete(id);
+    triageKinds.current.delete(id);
+    publishTriage();
+  };
+
+  const noteRemoval = (id: string, nextId: string | null) => {
+    const snapshot = queryClient.getQueryData<InboxData>(queryKeys.inbox);
+    const stillPending = snapshot?.emails.some((row) => row.id === id) ?? true;
+    if (stillPending) {
+      triageHandoffs.current.delete(id);
+      return;
+    }
+    triageHandoffs.current.set(id, { id, nextId, move: true });
+  };
+
+  useEffect(() => {
+    if (triageHandoffs.current.size === 0) return;
+    const idle = focusIsIdle();
+    let target: TriageHandoff | null = null;
+    for (const [id, handoff] of [...triageHandoffs.current]) {
+      if (!handoff.move || triageLocks.current.has(id)) continue;
+      if (emails.some((row) => row.id === id)) continue;
+      triageHandoffs.current.delete(id);
+      if (idle) target = handoff;
+    }
+    if (target) placeTriageFocus(target);
+  }, [emails, triageBusy]);
 
   useEffect(() => {
     if (error) {
@@ -162,25 +265,53 @@ export default function InboxPage() {
   }, [initialPollDone, invalidateInbox, addError]);
 
   const handleAiProcess = async (em: InboxEmail) => {
+    if (!startTriage(em.id, "handled")) return;
+    const nextId = nextPendingInColumn(emails, em);
+    let statusOk = false;
+    let opened = false;
     try {
-      await updateInboxEmailStatus(em.id, "handled");
-      invalidateInbox();
-    } catch (err) {
-      const msg = err instanceof ApiError ? err.message : "标记处理失败";
-      addError(msg, "收件箱");
+      try {
+        await updateInboxEmailStatus(em.id, "handled");
+        statusOk = true;
+      } catch (err) {
+        const msg = err instanceof ApiError ? err.message : "标记处理失败";
+        addError(msg, "收件箱");
+      }
+      const prompt = `请帮我处理这封邮件：\n发件人：${em.sender}\n主题：${em.subject}\n预览：${em.preview}\n分类：${em.category}\n原因：${em.reason}`;
+      opened = (await quickChat({ title: `邮件：${em.subject.slice(0, 20)}`, prompt })) === true;
+      if (statusOk) {
+        try {
+          await invalidateInbox();
+        } catch {
+          // 列表刷新失败仍走查询错误提示，不把已经写下的处理记成失败。
+        }
+      }
+    } finally {
+      if (!opened && statusOk) noteRemoval(em.id, nextId);
+      finishTriage(em.id);
     }
-    const prompt = `请帮我处理这封邮件：\n发件人：${em.sender}\n主题：${em.subject}\n预览：${em.preview}\n分类：${em.category}\n原因：${em.reason}`;
-    quickChat({ title: `邮件：${em.subject.slice(0, 20)}`, prompt });
   };
 
   const handleMarkRead = async (em: InboxEmail) => {
+    if (!startTriage(em.id, "read")) return;
+    const nextId = nextPendingInColumn(emails, em);
+    let ok = false;
     try {
       await updateInboxEmailStatus(em.id, "read");
-      invalidateInbox();
+      ok = true;
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "标记已读失败";
       addError(msg, "收件箱");
     }
+    if (ok) {
+      try {
+        await invalidateInbox();
+      } catch {
+        // 列表刷新失败仍走查询错误提示。
+      }
+      noteRemoval(em.id, nextId);
+    }
+    finishTriage(em.id);
   };
 
   const handleViewDetail = async (em: InboxEmail) => {
@@ -241,7 +372,7 @@ export default function InboxPage() {
                   查看摘要
                 </Button>
               ) : null}
-              <Button onClick={handlePoll} disabled={polling}>
+              <Button data-inbox-poll="" onClick={handlePoll} disabled={polling}>
                 {polling ? "轮询中..." : "立即轮询"}
               </Button>
             </>
@@ -286,9 +417,10 @@ export default function InboxPage() {
                           key={em.id}
                           email={em}
                           loadingDetail={detailLoadingId === em.id}
+                          busyAction={triageBusy.get(em.id) ?? null}
                           onView={() => handleViewDetail(em)}
-                          onMarkRead={() => handleMarkRead(em)}
-                          onAiProcess={() => handleAiProcess(em)}
+                          onMarkRead={() => void handleMarkRead(em)}
+                          onAiProcess={() => void handleAiProcess(em)}
                         />
                       ))}
                       {byCategory(col.key).length === 0 && (
@@ -319,6 +451,7 @@ export default function InboxPage() {
                       <button
                         key={em.id}
                         type="button"
+                        data-inbox-recent={em.id}
                         onClick={() => void handleViewDetail(em)}
                         aria-busy={detailLoadingId === em.id || undefined}
                         aria-label={`${unread ? "未读" : "已读"} ${em.subject || "（无主题）"} ${em.sender}`}
@@ -367,16 +500,22 @@ export default function InboxPage() {
 function TriageCard({
   email,
   loadingDetail,
+  busyAction,
   onView,
   onMarkRead,
   onAiProcess,
 }: {
   email: InboxEmail;
   loadingDetail: boolean;
+  busyAction: TriageAction | null;
   onView: () => void;
   onMarkRead: () => void;
   onAiProcess: () => void;
 }) {
+  const writing = busyAction !== null;
+  const writeClass = `text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded ${
+    writing ? "opacity-50" : ""
+  }`;
   return (
     <div className="p-3 bg-surface-sunken rounded-lg border border-border-subtle">
       <div className="flex items-baseline gap-2 min-w-0">
@@ -402,15 +541,19 @@ function TriageCard({
         </button>
         <button
           type="button"
+          data-inbox-mark={email.id}
+          aria-busy={busyAction === "read" || undefined}
           onClick={onMarkRead}
-          className="text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+          className={writeClass}
         >
           标记已读
         </button>
         <button
           type="button"
+          data-inbox-ai={email.id}
+          aria-busy={busyAction === "handled" || undefined}
           onClick={onAiProcess}
-          className="text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+          className={writeClass}
         >
           让 AI 处理
         </button>
