@@ -15,6 +15,7 @@ import ContextPanel from "./ContextPanel";
 import ChatComposer from "./ChatComposer";
 import WelcomeScreen from "./WelcomeScreen";
 import ProposedMemoryBanner from "./ProposedMemoryBanner";
+import LoadErrorNotice from "../ui/LoadErrorNotice";
 
 interface Props {
   conversationId: string;
@@ -64,8 +65,10 @@ export default function ChatView({ conversationId }: Props) {
     setMessages,
     isLoading,
     messagesHydrated,
+    messagesLoadError,
     streamingContent,
     handleSend: sendMessageBase,
+    loadMessages,
     cancelMessage,
     lastUserMessage,
     allToolResults,
@@ -124,7 +127,14 @@ export default function ChatView({ conversationId }: Props) {
   );
 
   useEffect(() => {
-    if (!pendingPrompt || !messagesHydrated || isLoading || pendingConfirmation) return;
+    if (
+      !pendingPrompt ||
+      !messagesHydrated ||
+      messagesLoadError ||
+      isLoading ||
+      pendingConfirmation
+    )
+      return;
     const key = `${conversationId}:${pendingPrompt}`;
     if (pendingSentKeyRef.current === key) return;
     pendingSentKeyRef.current = key;
@@ -137,6 +147,7 @@ export default function ChatView({ conversationId }: Props) {
   }, [
     pendingPrompt,
     messagesHydrated,
+    messagesLoadError,
     isLoading,
     pendingConfirmation,
     conversationId,
@@ -322,6 +333,25 @@ export default function ChatView({ conversationId }: Props) {
       setInitialLoad(false);
     }
   }, [messages.length, pendingConfirmation]);
+
+  // 读失败且还没有消息时，不把这段对话写成新的空会话。
+  if (messagesLoadError && messages.length === 0 && !isLoading) {
+    return (
+      <div className="flex-1 flex flex-col min-h-0">
+        <ProposedMemoryBanner conversationId={conversationId} />
+        <div className="flex flex-1 items-center justify-center px-4">
+          <div className="w-full max-w-lg">
+            <LoadErrorNotice
+              message={messagesLoadError}
+              busy={!messagesHydrated}
+              onRetry={() => void loadMessages()}
+              testId="chat-messages-load-error"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Welcome screen when no messages and still in initial load
   if (initialLoad && messages.length === 0 && !isLoading && !pendingPrompt) {

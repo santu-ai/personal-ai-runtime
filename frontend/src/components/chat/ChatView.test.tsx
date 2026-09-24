@@ -4,11 +4,13 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import ChatView from "./ChatView";
 import {
+  ApiError,
   cancelChat,
   getMessages,
   resolveApproval,
   sendMessage,
   ratifyMemory,
+  type Message,
 } from "../../api/client";
 
 vi.mock("../../api/client", () => ({
@@ -448,6 +450,70 @@ describe("ChatView", () => {
     await waitFor(() => {
       expect(chatStoreState.pendingPrompt).toBeNull();
     });
+  });
+
+  it("does not show the empty conversation when history fails to load", async () => {
+    vi.mocked(getMessages).mockRejectedValueOnce(new Error("   "));
+    renderChatView();
+
+    const error = await screen.findByTestId("chat-messages-load-error");
+    expect(error).toHaveTextContent("加载消息失败");
+    expect(screen.queryByRole("heading", { name: "开始对话" })).not.toBeInTheDocument();
+
+    vi.mocked(getMessages).mockResolvedValueOnce([]);
+    fireEvent.click(within(error).getByRole("button", { name: "重试" }));
+
+    expect(await screen.findByRole("heading", { name: "开始对话" })).toBeInTheDocument();
+    expect(screen.queryByTestId("chat-messages-load-error")).not.toBeInTheDocument();
+    expect(getMessages).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the retry and holds a home prompt until history loads", async () => {
+    chatStoreState.pendingPrompt = "帮我规划今天";
+    let release: ((rows: Message[]) => void) | undefined;
+    vi.mocked(getMessages)
+      .mockRejectedValueOnce(new ApiError("对话暂时读不到", 503))
+      .mockImplementationOnce(
+        () =>
+          new Promise<Message[]>((resolve) => {
+            release = resolve;
+          }),
+      );
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({ type: "text_delta", content: "好的，开始规划。" });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+
+    renderChatView();
+    const retry = await screen.findByRole("button", { name: "重试" });
+    expect(screen.getByTestId("chat-messages-load-error")).toHaveTextContent("对话暂时读不到");
+    expect(screen.queryByRole("heading", { name: "开始对话" })).not.toBeInTheDocument();
+    expect(sendMessage).not.toHaveBeenCalled();
+    await waitFor(() => expect(retry).toHaveFocus());
+
+    fireEvent.click(retry);
+    expect(retry).toBeInTheDocument();
+    expect(retry).toHaveAttribute("aria-busy", "true");
+    expect(retry).toHaveFocus();
+    expect(screen.getByTestId("chat-messages-load-error")).toHaveTextContent("对话暂时读不到");
+    expect(screen.queryByRole("heading", { name: "开始对话" })).not.toBeInTheDocument();
+    expect(sendMessage).not.toHaveBeenCalled();
+
+    release?.([]);
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith(
+        "test-conv-1",
+        "帮我规划今天",
+        expect.any(Function),
+        expect.any(Function),
+        expect.any(Function),
+        expect.any(AbortSignal),
+      );
+    });
+    expect(screen.queryByTestId("chat-messages-load-error")).not.toBeInTheDocument();
   });
 
   it("restores a pending confirmation from persisted tool_calls", async () => {
