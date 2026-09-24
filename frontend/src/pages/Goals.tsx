@@ -51,6 +51,7 @@ export default function GoalsPage() {
   const creatingRef = useRef(false);
   const [deleteTarget, setDeleteTarget] = useState<WorkItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const deletingRef = useRef(false);
   const addError = useErrorStore((s) => s.addError);
   const quickChat = useQuickChat();
 
@@ -123,8 +124,9 @@ export default function GoalsPage() {
   };
 
   const handleDeleteGoal = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || deletingRef.current) return;
     const goalId = deleteTarget.id;
+    deletingRef.current = true;
     setDeleting(true);
     try {
       await deleteGoal(goalId);
@@ -137,6 +139,7 @@ export default function GoalsPage() {
       const msg = err instanceof ApiError ? err.message : "删除目标失败";
       addError(msg, "目标");
     } finally {
+      deletingRef.current = false;
       setDeleting(false);
     }
   };
@@ -291,10 +294,14 @@ export default function GoalsPage() {
               ? `确定删除目标「${deleteTarget.title}」？关联的行动步骤将一并删除，此操作不可撤销。`
               : undefined
           }
-          confirmLabel={deleting ? "删除中…" : "删除"}
+          confirmLabel={deleting ? "删除中..." : "删除"}
           variant="danger"
-          onConfirm={handleDeleteGoal}
-          onCancel={() => !deleting && setDeleteTarget(null)}
+          confirmBusy={deleting}
+          onConfirm={() => void handleDeleteGoal()}
+          onCancel={() => {
+            if (deletingRef.current) return;
+            setDeleteTarget(null);
+          }}
         />
       </div>
     </div>
