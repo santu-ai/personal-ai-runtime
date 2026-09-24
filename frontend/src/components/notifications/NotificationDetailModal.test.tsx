@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, fireEvent } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { renderWithRouter } from "../../test-utils";
 import NotificationDetailModal from "./NotificationDetailModal";
 import type { Notification } from "../../api/client";
@@ -78,6 +78,38 @@ describe("NotificationDetailModal", () => {
     fireEvent.click(screen.getByText("查看相关页面"));
     expect(onClose).toHaveBeenCalledOnce();
     expect(mockNavigate).toHaveBeenCalledWith("/goals");
+  });
+
+  it("labels a reminder in Chinese", () => {
+    renderWithRouter(
+      <NotificationDetailModal
+        notification={{ ...sampleNotification, type: "reminder", title: "喝水" }}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("提醒")).toBeInTheDocument();
+    expect(screen.queryByText("reminder")).not.toBeInTheDocument();
+  });
+
+  it("moves focus into the dialog and returns it after close", async () => {
+    const opener = document.createElement("button");
+    opener.type = "button";
+    opener.textContent = "打开提醒";
+    document.body.appendChild(opener);
+    opener.focus();
+    const onClose = vi.fn();
+    const view = renderWithRouter(
+      <NotificationDetailModal notification={sampleNotification} onClose={onClose} />,
+    );
+    const dialog = screen.getByRole("dialog", { name: "目标提醒" });
+    await waitFor(() => expect(dialog).toHaveFocus());
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
+
+    view.rerender(<NotificationDetailModal notification={null} onClose={onClose} />);
+    expect(opener).toHaveFocus();
+    opener.remove();
   });
 
   it("opens the same task when a reminder names that work item", () => {

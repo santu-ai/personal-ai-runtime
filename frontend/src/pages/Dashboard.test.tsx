@@ -4,7 +4,29 @@ import { renderWithRouter } from "../test-utils";
 import { useErrorStore } from "../stores/errorStore";
 import DashboardPage from "./Dashboard";
 
+const { markNotificationRead, liveNotifications } = vi.hoisted(() => ({
+  markNotificationRead: vi.fn(),
+  liveNotifications: [] as Array<{
+    id: string;
+    type: string;
+    title: string;
+    content: string;
+    created_at: string;
+    source?: "server" | "live";
+    read?: number;
+  }>,
+}));
+
 const mockNavigate = vi.fn();
+
+vi.mock("../api/client", async () => {
+  const actual = await vi.importActual<typeof import("../api/client")>("../api/client");
+  return { ...actual, markNotificationRead };
+});
+
+vi.mock("../hooks/useNotifications", () => ({
+  useLiveNotifications: () => liveNotifications,
+}));
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof import("react-router-dom")>("react-router-dom");
@@ -130,6 +152,8 @@ function mockDashboardData(overrides: Partial<ReturnType<typeof useDashboard>> =
 describe("DashboardPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    liveNotifications.length = 0;
+    markNotificationRead.mockResolvedValue(undefined);
     vi.spyOn(useErrorStore.getState(), "addError").mockImplementation(() => {});
     mockUseApprovalsQuery.mockReturnValue({ data: [] } as unknown as ReturnType<
       typeof useApprovalsQuery
@@ -246,6 +270,51 @@ describe("DashboardPage", () => {
     await waitFor(() => expect(retry).toHaveFocus());
     fireEvent.click(retry);
     expect(mockRefresh).not.toHaveBeenCalled();
+  });
+
+  it("marks a reminder read, dims the row, and focuses the detail", async () => {
+    renderDashboard();
+    const row = await screen.findByRole("button", { name: /喝水提醒/ });
+    expect(row).toHaveClass("focus-visible:ring-focus-ring");
+    expect(row).not.toHaveClass("opacity-60");
+
+    fireEvent.click(row);
+
+    await waitFor(() => {
+      expect(markNotificationRead).toHaveBeenCalledWith("n1");
+      expect(row).toHaveClass("opacity-60");
+    });
+    const dialog = screen.getByRole("dialog", { name: "喝水提醒" });
+    await waitFor(() => expect(dialog).toHaveFocus());
+    expect(within(dialog).getByText("提醒")).toBeInTheDocument();
+    expect(within(dialog).queryByText("reminder")).not.toBeInTheDocument();
+  });
+
+  it("keeps the reminder unread when marking it read fails", async () => {
+    markNotificationRead.mockRejectedValue(new Error("标记失败"));
+    renderDashboard();
+    const row = await screen.findByRole("button", { name: /喝水提醒/ });
+    fireEvent.click(row);
+    await waitFor(() => expect(markNotificationRead).toHaveBeenCalledWith("n1"));
+    await waitFor(() => expect(row).not.toHaveClass("opacity-60"));
+    expect(screen.getByRole("dialog", { name: "喝水提醒" })).toBeInTheDocument();
+  });
+
+  it("does not mark a live reminder read", async () => {
+    liveNotifications.push({
+      id: "tmp-live",
+      type: "reminder",
+      title: "临时提醒",
+      content: "刚到",
+      created_at: "2026-06-10T08:00:00Z",
+      source: "live",
+    });
+    renderDashboard();
+    const row = await screen.findByRole("button", { name: /临时提醒/ });
+    fireEvent.click(row);
+    expect(markNotificationRead).not.toHaveBeenCalled();
+    expect(row).not.toHaveClass("opacity-60");
+    expect(screen.getByRole("dialog", { name: "临时提醒" })).toBeInTheDocument();
   });
 
   it("renders proactive reminders section", () => {

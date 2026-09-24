@@ -1,3 +1,4 @@
+import { useEffect, useId, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Notification } from "../../api/client";
 import Button from "../ui/Button";
@@ -12,6 +13,29 @@ interface Props {
 
 export default function NotificationDetailModal({ notification, onClose }: Props) {
   const navigate = useNavigate();
+  const titleId = useId();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const previouslyFocused = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const notificationId = notification?.id ?? null;
+
+  useEffect(() => {
+    if (!notificationId) return;
+    previouslyFocused.current = document.activeElement as HTMLElement | null;
+    panelRef.current?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onCloseRef.current();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      previouslyFocused.current?.focus?.();
+    };
+  }, [notificationId]);
 
   if (!notification) return null;
 
@@ -29,6 +53,11 @@ export default function NotificationDetailModal({ notification, onClose }: Props
       onClick={onClose}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         className="bg-surface-raised border border-border-strong rounded-xl max-w-lg w-full shadow-xl flex flex-col max-h-[80vh] outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         onClick={(e) => e.stopPropagation()}
       >
@@ -38,7 +67,7 @@ export default function NotificationDetailModal({ notification, onClose }: Props
               <span className="inline-block text-xs px-2 py-0.5 rounded bg-surface-overlay text-fg-secondary mb-2">
                 {notificationTypeLabel(notification.type)}
               </span>
-              <h3 className="text-lg font-semibold text-fg-primary break-words">
+              <h3 id={titleId} className="text-lg font-semibold text-fg-primary break-words">
                 {notification.title}
               </h3>
               <p className="text-xs text-fg-tertiary mt-1">{formatTime(notification.created_at)}</p>

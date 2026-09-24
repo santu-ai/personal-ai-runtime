@@ -28,5 +28,6 @@ export function notificationTypeLabel(type: string): string {
   if (type.includes("review")) return "回顾";
   if (type.includes("goal")) return "目标";
   if (type === "suggestion") return "主动建议";
+  if (type === "reminder") return "提醒";
   return type;
 }
