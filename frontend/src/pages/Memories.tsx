@@ -97,14 +97,30 @@ function focusRatify(id: string): boolean {
   return false;
 }
 
+function captureField(): HTMLInputElement | null {
+  const input = document.querySelector<HTMLInputElement>("[data-memory-anchor='capture']");
+  if (!input || input.disabled) return null;
+  return input;
+}
+
+function focusCaptureField(): boolean {
+  const input = captureField();
+  if (!input) return false;
+  if (document.activeElement !== input) input.focus();
+  return document.activeElement === input;
+}
+
+/** 焦点在页面空白处，或还停在这次「记住」的输入框或按钮上。 */
+function captureFocusIdle(): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  const anchor = active.getAttribute("data-memory-anchor");
+  return anchor === "capture" || anchor === "remember";
+}
+
 function focusAnchor(scope: RatifyScope): boolean {
-  if (scope === "list") {
-    const input = document.querySelector<HTMLInputElement>("[data-memory-anchor='capture']");
-    if (input && !input.disabled) {
-      input.focus();
-      return document.activeElement === input;
-    }
-  }
+  if (scope === "list" && focusCaptureField()) return true;
   const tab = document.querySelector<HTMLButtonElement>(
     '[role="tablist"][aria-label="记忆视图"] [role="tab"][aria-selected="true"]',
   );
@@ -210,6 +226,7 @@ export default function MemoriesPage() {
   const [newContent, setNewContent] = useState("");
   const [creating, setCreating] = useState(false);
   const creatingRef = useRef(false);
+  const captureHandoff = useRef<"success" | "failed" | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MemoryRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const deletingRef = useRef(false);
@@ -278,19 +295,43 @@ export default function MemoriesPage() {
   const handleCreate = async () => {
     const content = newContent.trim();
     if (!content || creatingRef.current) return;
+    const submitted = newContent;
     creatingRef.current = true;
+    captureHandoff.current = null;
     setCreating(true);
+    let ok = false;
     try {
       await createMemory({ content, category: "fact" });
-      setNewContent("");
+      ok = true;
+      setNewContent((current) => (current === submitted ? "" : current));
       invalidateMemories();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "创建记忆失败", "记忆");
     } finally {
+      captureHandoff.current = ok ? "success" : "failed";
       creatingRef.current = false;
       setCreating(false);
     }
   };
+
+  useEffect(() => {
+    if (creating) return;
+    const pending = captureHandoff.current;
+    if (!pending) return;
+    captureHandoff.current = null;
+    if (pending === "failed") {
+      const active = document.activeElement;
+      const lost =
+        !active ||
+        active === document.body ||
+        active === document.documentElement ||
+        (active instanceof HTMLElement && !active.isConnected);
+      if (lost) focusCaptureField();
+      return;
+    }
+    if (!captureFocusIdle()) return;
+    focusCaptureField();
+  }, [creating]);
 
   const confirmDelete = async () => {
     if (!deleteTarget || deletingRef.current) return;
@@ -757,11 +798,10 @@ export default function MemoriesPage() {
             <div className="flex gap-2">
               <input
                 value={newContent}
-                disabled={creating}
                 data-memory-anchor="capture"
                 onChange={(e) => setNewContent(e.target.value)}
                 placeholder="告诉我一件关于你的事，我会记住..."
-                className="flex-1 bg-surface-raised border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary placeholder:text-fg-tertiary outline-none focus:border-focus-ring disabled:opacity-50"
+                className="flex-1 bg-surface-raised border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary placeholder:text-fg-tertiary outline-none focus:border-focus-ring"
                 onKeyDown={(e) => {
                   if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
                   e.preventDefault();
@@ -769,9 +809,12 @@ export default function MemoriesPage() {
                 }}
               />
               <button
+                type="button"
+                data-memory-anchor="remember"
                 onClick={() => void handleCreate()}
-                disabled={creating || !newContent.trim()}
-                className="px-4 py-2 bg-surface-overlay hover:bg-border-strong disabled:bg-surface-overlay disabled:text-fg-disabled rounded-lg text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                disabled={!newContent.trim()}
+                aria-busy={creating || undefined}
+                className={`px-4 py-2 bg-surface-overlay hover:bg-border-strong disabled:bg-surface-overlay disabled:text-fg-disabled rounded-lg text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring${creating ? " opacity-50" : ""}`}
               >
                 {creating ? "记住中..." : "记住"}
               </button>
