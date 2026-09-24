@@ -4,6 +4,7 @@ import { renderWithRouter } from "../test-utils";
 import MemoriesPage from "./Memories";
 import {
   ApiError,
+  createMemory,
   getMemoryGraph,
   getMemoryProvenance,
   listMemoriesGrouped,
@@ -409,5 +410,42 @@ describe("MemoriesPage", () => {
       expect(screen.queryByRole("dialog", { name: "编辑记忆" })).not.toBeInTheDocument(),
     );
     expect(opener).toHaveFocus();
+  });
+
+  it("does not remember while an IME composition is confirming", async () => {
+    renderWithRouter(<MemoriesPage />);
+    const input = await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住...");
+    fireEvent.change(input, { target: { value: "喜欢喝茶" } });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    expect(createMemory).not.toHaveBeenCalled();
+    expect(input).toHaveValue("喜欢喝茶");
+  });
+
+  it("keeps the capture text when create fails, and ignores a second Enter while creating", async () => {
+    vi.mocked(createMemory).mockRejectedValueOnce(new ApiError("创建记忆失败", 500));
+    renderWithRouter(<MemoriesPage />);
+    const input = await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住...");
+    fireEvent.change(input, { target: { value: "  喜欢喝茶  " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("创建记忆失败", "记忆"));
+    expect(createMemory).toHaveBeenCalledWith({ content: "喜欢喝茶", category: "fact" });
+    expect(input).toHaveValue("  喜欢喝茶  ");
+    expect(input).toBeEnabled();
+
+    let release: (row: { id: string; status: string }) => void = () => {};
+    vi.mocked(createMemory).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "记住中..." })).toBeDisabled());
+    expect(createMemory).toHaveBeenCalledTimes(2);
+
+    release({ id: "m-new", status: "ok" });
+    await waitFor(() => expect(input).toHaveValue(""));
+    expect(input).toBeEnabled();
   });
 });
