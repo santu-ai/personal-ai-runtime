@@ -9,6 +9,7 @@ import {
   getMemoryGraph,
   getMemoryProvenance,
   listMemoriesGrouped,
+  bulkClaimAction,
   ratifyMemory,
   rejectMemory,
   updateMemory,
@@ -591,5 +592,278 @@ describe("MemoriesPage", () => {
       expect(screen.queryByRole("dialog", { name: "忘掉这条记忆？" })).not.toBeInTheDocument(),
     );
     expect(deleteMemory).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not ratify twice and moves focus to the next proposed row", async () => {
+    let proposed = [
+      {
+        id: "p1",
+        content: "第一条",
+        origin: "claim" as const,
+        claim_status: "proposed" as const,
+        created_at: "2026-09-24T02:00:00Z",
+      },
+      {
+        id: "p2",
+        content: "第二条",
+        origin: "claim" as const,
+        claim_status: "proposed" as const,
+        created_at: "2026-09-24T01:00:00Z",
+      },
+    ];
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "proposed") return { memories: proposed, total: proposed.length };
+      return { memories: [], total: 0 };
+    });
+    let release: (value: { status: string; claim_status: string }) => void = () => {};
+    vi.mocked(ratifyMemory).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
+    const [first] = await screen.findAllByRole("button", { name: "确认" });
+    expect(screen.getAllByRole("button", { name: "确认" })).toHaveLength(2);
+    first.focus();
+    fireEvent.click(first);
+    fireEvent.click(first);
+    await waitFor(() => expect(first).toHaveAttribute("aria-busy", "true"));
+    expect(first).toBeDisabled();
+    const reject = within(screen.getByText("第一条").closest("li")!).getByRole("button", {
+      name: "拒绝",
+    });
+    expect(reject).toBeDisabled();
+    fireEvent.click(reject);
+    expect(screen.queryByRole("dialog", { name: "拒绝这条记忆？" })).not.toBeInTheDocument();
+    expect(ratifyMemory).toHaveBeenCalledTimes(1);
+
+    proposed = [proposed[1]];
+    release({ status: "ok", claim_status: "ratified" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "确认" })).toHaveFocus());
+    expect(screen.getByText("第二条")).toBeInTheDocument();
+    expect(screen.queryByText("第一条")).not.toBeInTheDocument();
+    expect(ratifyMemory).toHaveBeenCalledWith("p1");
+  });
+
+  it("returns focus to confirm when ratify fails", async () => {
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "proposed") {
+        return {
+          memories: [
+            {
+              id: "p1",
+              content: "第一条",
+              origin: "claim",
+              claim_status: "proposed",
+              created_at: "2026-09-24T02:00:00Z",
+            },
+          ],
+          total: 1,
+        };
+      }
+      return { memories: [], total: 0 };
+    });
+    vi.mocked(ratifyMemory).mockRejectedValue(new ApiError("确认失败", 500));
+
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
+    const confirm = await screen.findByRole("button", { name: "确认" });
+    confirm.focus();
+    fireEvent.click(confirm);
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("确认失败", "记忆"));
+    expect(confirm).toHaveFocus();
+    expect(confirm).toBeEnabled();
+    expect(ratifyMemory).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not pull focus back when it already moved to another row", async () => {
+    let proposed = [
+      {
+        id: "p1",
+        content: "第一条",
+        origin: "claim" as const,
+        claim_status: "proposed" as const,
+        created_at: "2026-09-24T02:00:00Z",
+      },
+      {
+        id: "p2",
+        content: "第二条",
+        origin: "claim" as const,
+        claim_status: "proposed" as const,
+        created_at: "2026-09-24T01:00:00Z",
+      },
+    ];
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "proposed") return { memories: proposed, total: proposed.length };
+      return { memories: [], total: 0 };
+    });
+    let release: (value: { status: string; claim_status: string }) => void = () => {};
+    vi.mocked(ratifyMemory).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
+    const [first, second] = await screen.findAllByRole("button", { name: "确认" });
+    first.focus();
+    fireEvent.click(first);
+    await waitFor(() => expect(first).toHaveAttribute("aria-busy", "true"));
+    second.focus();
+    proposed = [proposed[1]];
+    release({ status: "ok", claim_status: "ratified" });
+    await waitFor(() => expect(screen.queryByText("第一条")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "确认" })).toHaveFocus();
+  });
+
+  it("returns to the review tab after the last confirm leaves", async () => {
+    let proposed = [
+      {
+        id: "p1",
+        content: "只剩这一条",
+        origin: "claim" as const,
+        claim_status: "proposed" as const,
+        created_at: "2026-09-24T02:00:00Z",
+      },
+    ];
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "proposed") return { memories: proposed, total: proposed.length };
+      return { memories: [], total: 0 };
+    });
+    vi.mocked(ratifyMemory).mockImplementation(async () => {
+      proposed = [];
+      return { status: "ok", claim_status: "ratified" };
+    });
+
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
+    fireEvent.click(await screen.findByRole("button", { name: "确认" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "待确认" })).toHaveFocus());
+    expect(screen.getByText("没有待确认的记忆。")).toBeInTheDocument();
+  });
+
+  it("moves focus to the next restore button", async () => {
+    let rejected = [
+      {
+        id: "r1",
+        content: "先恢复这条",
+        origin: "claim" as const,
+        claim_status: "rejected" as const,
+        reject_reason: "记错了",
+        created_at: "2026-09-24T02:00:00Z",
+      },
+      {
+        id: "r2",
+        content: "下一条拒绝",
+        origin: "claim" as const,
+        claim_status: "rejected" as const,
+        reject_reason: "过时了",
+        created_at: "2026-09-24T01:00:00Z",
+      },
+    ];
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "rejected") return { memories: rejected, total: rejected.length };
+      return { memories: [], total: 0 };
+    });
+    vi.mocked(ratifyMemory).mockImplementation(async () => {
+      rejected = [rejected[1]];
+      return { status: "ok", claim_status: "ratified" };
+    });
+
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
+    const [first, second] = await screen.findAllByRole("button", { name: "恢复" });
+    first.focus();
+    fireEvent.click(first);
+    await waitFor(() => expect(second).toHaveFocus());
+    expect(screen.queryByText("先恢复这条")).not.toBeInTheDocument();
+    expect(ratifyMemory).toHaveBeenCalledTimes(1);
+    expect(ratifyMemory).toHaveBeenCalledWith("r1");
+  });
+
+  it("returns to the capture field after the last list confirm leaves", async () => {
+    let rows: Array<{
+      id: string;
+      content: string;
+      origin: "claim";
+      claim_status: "proposed" | "ratified";
+      category: string;
+      created_at: string;
+    }> = [
+      {
+        id: "p1",
+        content: "列表里的一条",
+        origin: "claim",
+        claim_status: "proposed",
+        category: "habit",
+        created_at: "2026-09-24T02:00:00Z",
+      },
+    ];
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status) return { memories: [], total: 0 };
+      return { memories: rows, total: rows.length };
+    });
+    vi.mocked(ratifyMemory).mockImplementation(async () => {
+      rows = [{ ...rows[0], claim_status: "ratified" }];
+      return { status: "ok", claim_status: "ratified" };
+    });
+
+    renderWithRouter(<MemoriesPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "确认" }));
+    await waitFor(() =>
+      expect(screen.getByPlaceholderText("告诉我一件关于你的事，我会记住...")).toHaveFocus(),
+    );
+    expect(screen.queryByRole("button", { name: "确认" })).not.toBeInTheDocument();
+  });
+
+  it("does not send bulk confirm twice", async () => {
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "proposed") {
+        return {
+          memories: [
+            {
+              id: "p1",
+              content: "第一条",
+              origin: "claim",
+              claim_status: "proposed",
+              created_at: "2026-09-24T02:00:00Z",
+            },
+          ],
+          total: 1,
+        };
+      }
+      return { memories: [], total: 0 };
+    });
+    let release: (value: {
+      status: string;
+      action: string;
+      ok: number;
+      skipped: Array<{ id: string; reason: string }>;
+    }) => void = () => {};
+    vi.mocked(bulkClaimAction).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
+    fireEvent.click(await screen.findByRole("checkbox", { name: /全选当前页/ }));
+    const bulk = screen.getByRole("button", { name: /批量确认/ });
+    fireEvent.click(bulk);
+    fireEvent.click(bulk);
+    await waitFor(() => expect(bulk).toHaveAttribute("aria-busy", "true"));
+    expect(bulk).toBeDisabled();
+    expect(bulkClaimAction).toHaveBeenCalledTimes(1);
+    expect(bulkClaimAction).toHaveBeenCalledWith("ratify", ["p1"]);
+    release({ status: "ok", action: "ratify", ok: 1, skipped: [] });
+    await waitFor(() => expect(bulk).not.toHaveAttribute("aria-busy"));
   });
 });

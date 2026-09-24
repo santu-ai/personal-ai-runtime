@@ -45,6 +45,8 @@ interface Props {
   /** When set, shows a selection checkbox (review triage). */
   selected?: boolean;
   onToggleSelect?: (m: MemoryRow) => void;
+  /** 这一条正在确认或恢复，按钮按住，避免连发。 */
+  ratifying?: boolean;
 }
 
 export default function MemoryListItem({
@@ -57,6 +59,7 @@ export default function MemoryListItem({
   onShowProvenance,
   selected,
   onToggleSelect,
+  ratifying = false,
 }: Props) {
   const confidence = confidenceLabel(m.confidence);
   const isProposed = m.origin === "claim" && m.claim_status === "proposed";
@@ -123,16 +126,24 @@ export default function MemoryListItem({
             <>
               <button
                 type="button"
+                data-memory-id={m.id}
+                data-memory-action="ratify"
+                disabled={ratifying}
+                aria-busy={ratifying || undefined}
                 onClick={() => onRatify(m)}
-                className="text-xs text-success hover:text-success/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+                className="text-xs text-success hover:text-success/80 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
               >
                 <Check size={14} className="inline mr-0.5" />
                 确认
               </button>
               <button
                 type="button"
-                onClick={() => onReject(m)}
-                className="text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+                disabled={ratifying}
+                onClick={() => {
+                  if (ratifying) return;
+                  onReject(m);
+                }}
+                className="text-xs text-fg-secondary hover:text-fg-primary disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
               >
                 <X size={14} className="inline mr-0.5" />
                 拒绝
@@ -142,8 +153,12 @@ export default function MemoryListItem({
           {isRejected && (
             <button
               type="button"
+              data-memory-id={m.id}
+              data-memory-action="ratify"
+              disabled={ratifying}
+              aria-busy={ratifying || undefined}
               onClick={() => onRatify(m)}
-              className="text-xs text-insight hover:text-insight/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+              className="text-xs text-insight hover:text-insight/80 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
             >
               <RotateCcw size={12} className="inline mr-0.5" />
               恢复

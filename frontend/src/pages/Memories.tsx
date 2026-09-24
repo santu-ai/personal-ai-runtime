@@ -37,6 +37,81 @@ import { Brain, ClipboardCheck, List, Network, User } from "lucide-react";
 
 type ViewMode = "list" | "graph" | "portrait" | "review";
 type ReviewOrder = "created_at_desc" | "created_at_asc";
+type RatifyScope = "proposed" | "rejected" | "list";
+
+type FocusAfter = {
+  actedId: string;
+  scope: RatifyScope;
+  /** 还在列表里就回到这一行；离开了就去下一行。空的时候回到页面上还在的控件。 */
+  targetId: string | null;
+};
+
+function isRatifiable(row: MemoryRow): boolean {
+  return (
+    row.origin === "claim" && (row.claim_status === "proposed" || row.claim_status === "rejected")
+  );
+}
+
+function nextRatifyId(rows: readonly MemoryRow[], id: string): string | null {
+  const index = rows.findIndex((row) => row.id === id);
+  if (index < 0) return null;
+  for (let i = index + 1; i < rows.length; i += 1) {
+    if (isRatifiable(rows[i])) return rows[i].id;
+  }
+  for (let i = index - 1; i >= 0; i -= 1) {
+    if (isRatifiable(rows[i])) return rows[i].id;
+  }
+  return null;
+}
+
+/** 焦点在页面空白处，或还停在这次操作的按钮上，才可以把焦点挪走。 */
+function focusIsIdle(actedId: string): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (active instanceof HTMLButtonElement) {
+    if (active.disabled) return true;
+    if (
+      active.getAttribute("data-memory-action") === "ratify" &&
+      active.getAttribute("data-memory-id") === actedId
+    ) {
+      return true;
+    }
+  }
+  if (
+    (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) &&
+    active.disabled
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function focusRatify(id: string): boolean {
+  for (const node of document.querySelectorAll<HTMLButtonElement>(
+    'button[data-memory-action="ratify"]',
+  )) {
+    if (node.getAttribute("data-memory-id") !== id || node.disabled) continue;
+    node.focus();
+    return document.activeElement === node;
+  }
+  return false;
+}
+
+function focusAnchor(scope: RatifyScope): boolean {
+  if (scope === "list") {
+    const input = document.querySelector<HTMLInputElement>("[data-memory-anchor='capture']");
+    if (input && !input.disabled) {
+      input.focus();
+      return document.activeElement === input;
+    }
+  }
+  const tab = document.querySelector<HTMLButtonElement>(
+    '[role="tablist"][aria-label="记忆视图"] [role="tab"][aria-selected="true"]',
+  );
+  if (!tab || tab.disabled) return false;
+  tab.focus();
+  return document.activeElement === tab;
+}
 
 export default function MemoriesPage() {
   const queryClient = useQueryClient();
@@ -62,6 +137,10 @@ export default function MemoriesPage() {
   const [reviewOrder, setReviewOrder] = useState<ReviewOrder>("created_at_desc");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const bulkBusyRef = useRef(false);
+  const ratifyingRef = useRef(new Set<string>());
+  const [ratifying, setRatifying] = useState<Set<string>>(() => new Set());
+  const focusAfter = useRef<FocusAfter | null>(null);
 
   const {
     data,
@@ -149,11 +228,12 @@ export default function MemoriesPage() {
   const [graphError, setGraphError] = useState<string | null>(null);
   const [graphAttempt, setGraphAttempt] = useState(0);
 
-  const invalidateMemories = () => {
-    void queryClient.invalidateQueries({ queryKey: queryKeys.memories });
-    void queryClient.invalidateQueries({ queryKey: queryKeys.memoriesGrouped });
-    void queryClient.invalidateQueries({ queryKey: ["memory", "claim-stats"] });
-  };
+  const invalidateMemories = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.memories }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.memoriesGrouped }),
+      queryClient.invalidateQueries({ queryKey: ["memory", "claim-stats"] }),
+    ]);
 
   // Drop selections that left the current page after filter/refresh.
   useEffect(() => {
@@ -250,16 +330,99 @@ export default function MemoriesPage() {
     }
   };
 
+  const rowsInScope = (scope: RatifyScope): MemoryRow[] => {
+    if (scope === "rejected") return rejectedMemories;
+    if (scope === "proposed") return proposedMemories;
+    return Object.values(grouped).flat();
+  };
+
+  const scopeFor = (id: string): RatifyScope => {
+    if (viewMode === "review" && rejectedMemories.some((row) => row.id === id)) return "rejected";
+    if (viewMode === "review") return "proposed";
+    return "list";
+  };
+
+  const beginRatify = (id: string) => {
+    if (ratifyingRef.current.has(id)) return false;
+    ratifyingRef.current.add(id);
+    setRatifying(new Set(ratifyingRef.current));
+    return true;
+  };
+
+  const endRatify = (id: string) => {
+    ratifyingRef.current.delete(id);
+    setRatifying(new Set(ratifyingRef.current));
+  };
+
+  const freshRows = (scope: RatifyScope): MemoryRow[] | null => {
+    const entries = queryClient.getQueriesData<{ memories?: MemoryRow[] }>({
+      queryKey: queryKeys.memoriesGrouped,
+    });
+    for (const [key, data] of entries) {
+      if (key.includes("count")) continue;
+      const opts = key[key.length - 1];
+      if (!opts || typeof opts !== "object") continue;
+      const record = opts as Record<string, unknown>;
+      const claimStatus = record.claimStatus;
+      const matches =
+        scope === "proposed"
+          ? claimStatus === "proposed" && record.limit === 100
+          : scope === "rejected"
+            ? claimStatus === "rejected" && record.limit === 50
+            : claimStatus == null && record.limit == null && record.order == null;
+      if (!matches) continue;
+      return Array.isArray(data?.memories) ? data.memories : null;
+    }
+    return null;
+  };
+
   const handleRatify = async (m: MemoryRow) => {
+    if (!beginRatify(m.id)) return;
+    const scope = scopeFor(m.id);
+    const nextId = nextRatifyId(rowsInScope(scope), m.id);
+    focusAfter.current = { actedId: m.id, scope, targetId: m.id };
+    let failed = false;
     try {
       await ratifyMemory(m.id);
-      invalidateMemories();
+      try {
+        await invalidateMemories();
+      } catch {
+        // 写已经成功。列表没刷新时这一行还在，焦点留在按钮上。
+      }
     } catch (err) {
+      failed = true;
       addError(err instanceof ApiError ? err.message : "确认记忆失败", "记忆");
+    } finally {
+      if (!failed) {
+        const rows = freshRows(scope) ?? rowsInScope(scope);
+        const stayed = rows.some((row) => row.id === m.id && isRatifiable(row));
+        const nextOk = nextId != null && rows.some((row) => row.id === nextId && isRatifiable(row));
+        focusAfter.current = {
+          actedId: m.id,
+          scope,
+          targetId: stayed ? m.id : nextOk ? nextId : null,
+        };
+      }
+      endRatify(m.id);
     }
   };
 
+  useEffect(() => {
+    const pending = focusAfter.current;
+    if (!pending || ratifying.has(pending.actedId)) return;
+    if (!focusIsIdle(pending.actedId)) {
+      focusAfter.current = null;
+      return;
+    }
+    if (pending.targetId) {
+      if (focusRatify(pending.targetId)) focusAfter.current = null;
+      return;
+    }
+    if (focusAnchor(pending.scope)) focusAfter.current = null;
+  }, [ratifying, memories, proposedMemories, rejectedMemories, grouped, viewMode]);
+
   const handleReject = (m: MemoryRow) => {
+    if (ratifyingRef.current.has(m.id)) return;
     setRejectTarget(m);
     setRejectReason("");
   };
@@ -302,7 +465,8 @@ export default function MemoriesPage() {
 
   const handleBulk = async (action: "ratify" | "reject") => {
     const ids = [...selectedIds];
-    if (ids.length === 0 || bulkBusy) return;
+    if (ids.length === 0 || bulkBusyRef.current) return;
+    bulkBusyRef.current = true;
     setBulkBusy(true);
     try {
       const result = await bulkClaimAction(action, ids);
@@ -321,6 +485,7 @@ export default function MemoriesPage() {
         "记忆",
       );
     } finally {
+      bulkBusyRef.current = false;
       setBulkBusy(false);
     }
   };
@@ -502,6 +667,7 @@ export default function MemoriesPage() {
                 <button
                   type="button"
                   disabled={selectedIds.size === 0 || bulkBusy}
+                  aria-busy={bulkBusy || undefined}
                   onClick={() => void handleBulk("ratify")}
                   className="px-3 py-1.5 text-sm rounded-lg bg-success/15 text-success hover:bg-success/25 disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 >
@@ -510,6 +676,7 @@ export default function MemoriesPage() {
                 <button
                   type="button"
                   disabled={selectedIds.size === 0 || bulkBusy}
+                  aria-busy={bulkBusy || undefined}
                   onClick={() => void handleBulk("reject")}
                   className="px-3 py-1.5 text-sm rounded-lg bg-surface-overlay text-fg-secondary hover:text-fg-primary disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 >
@@ -539,6 +706,7 @@ export default function MemoriesPage() {
                     memory={m}
                     selected={selectedIds.has(m.id)}
                     onToggleSelect={toggleSelect}
+                    ratifying={ratifying.has(m.id)}
                     onRatify={handleRatify}
                     onReject={handleReject}
                     onEdit={handleEdit}
@@ -571,6 +739,7 @@ export default function MemoriesPage() {
                     <MemoryListItem
                       key={m.id}
                       memory={m}
+                      ratifying={ratifying.has(m.id)}
                       onRatify={handleRatify}
                       onReject={handleReject}
                       onEdit={handleEdit}
@@ -589,6 +758,7 @@ export default function MemoriesPage() {
               <input
                 value={newContent}
                 disabled={creating}
+                data-memory-anchor="capture"
                 onChange={(e) => setNewContent(e.target.value)}
                 placeholder="告诉我一件关于你的事，我会记住..."
                 className="flex-1 bg-surface-raised border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary placeholder:text-fg-tertiary outline-none focus:border-focus-ring disabled:opacity-50"
@@ -637,6 +807,7 @@ export default function MemoriesPage() {
                         <MemoryListItem
                           key={m.id}
                           memory={m}
+                          ratifying={ratifying.has(m.id)}
                           onRatify={handleRatify}
                           onReject={handleReject}
                           onEdit={handleEdit}
