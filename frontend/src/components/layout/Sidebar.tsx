@@ -1,5 +1,5 @@
 import { useEffect, useState, cloneElement, isValidElement } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import {
   MessageSquare,
   Target,
@@ -260,38 +260,57 @@ export default function Sidebar({
               </button>
             </div>
             <div className="px-2 pb-2 space-y-0.5">
-              {conversations.map((conv) => (
-                <div
-                  key={conv.id}
-                  onClick={() => onSelectConversation(conv.id)}
-                  className={`group relative flex items-center justify-between rounded-md px-2.5 py-1.5 cursor-pointer transition-colors ${
-                    activeConversationId === conv.id
-                      ? "bg-surface-hover text-fg-primary"
-                      : "text-fg-secondary hover:bg-surface-hover/70 hover:text-fg-primary"
-                  }`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <span className="truncate text-sm block">{conv.title || "未命名"}</span>
-                    {conv.summary && (
-                      <span className="truncate text-[11px] text-fg-disabled block">
-                        {conv.summary}
-                      </span>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteChat(conv.id);
-                    }}
-                    className="opacity-0 group-hover:opacity-100 text-fg-tertiary hover:text-danger transition-all ml-1 shrink-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded-md p-0.5"
-                    title="删除对话"
-                    aria-label="删除对话"
+              {conversations.map((conv) => {
+                const current = activeConversationId === conv.id;
+                return (
+                  <div
+                    key={conv.id}
+                    className={`group relative flex items-center justify-between rounded-md transition-colors ${
+                      current
+                        ? "bg-surface-hover text-fg-primary"
+                        : "text-fg-secondary hover:bg-surface-hover/70 hover:text-fg-primary"
+                    }`}
                   >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              ))}
+                    <Link
+                      to={`/chat/${conv.id}`}
+                      aria-current={current ? "page" : undefined}
+                      onClick={(event) => {
+                        if (
+                          event.metaKey ||
+                          event.ctrlKey ||
+                          event.shiftKey ||
+                          event.altKey ||
+                          event.button !== 0
+                        ) {
+                          return;
+                        }
+                        event.preventDefault();
+                        onSelectConversation(conv.id);
+                      }}
+                      className="min-w-0 flex-1 rounded-sm px-2.5 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                    >
+                      <span className="truncate text-sm block">{conv.title || "未命名"}</span>
+                      {conv.summary && (
+                        <span className="truncate text-[11px] text-fg-disabled block">
+                          {conv.summary}
+                        </span>
+                      )}
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteChat(conv.id);
+                      }}
+                      className="mr-1.5 opacity-0 group-hover:opacity-100 text-fg-tertiary hover:text-danger transition-all ml-1 shrink-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded-md p-0.5"
+                      title="删除对话"
+                      aria-label="删除对话"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                );
+              })}
               {conversations.length === 0 && (
                 <p className="text-fg-disabled text-xs text-center py-6">暂无对话</p>
               )}

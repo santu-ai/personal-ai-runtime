@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -145,6 +146,25 @@ describe("MessageItem", () => {
     expect(link).toHaveAttribute("href", "https://example.com/docs");
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(link).toHaveClass("focus-visible:ring-focus-ring");
+  });
+
+  it("routes same-origin markdown links inside the app", () => {
+    render(
+      <MemoryRouter>
+        <MessageItem
+          message={{
+            id: "m9b",
+            role: "assistant",
+            content: "[任务](/tasks/brief%2F1)",
+          }}
+        />
+      </MemoryRouter>,
+    );
+    const link = screen.getByRole("link", { name: "任务" });
+    expect(link).toHaveAttribute("href", "/tasks/brief%2F1");
+    expect(link).toHaveClass("focus-visible:ring-focus-ring");
+    expect(link).not.toHaveAttribute("target");
   });
 
   it("does not render javascript: markdown links as anchors", () => {

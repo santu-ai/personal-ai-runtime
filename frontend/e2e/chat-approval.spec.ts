@@ -12,7 +12,13 @@ test.describe("Navigation and pages", () => {
   test("home page shows sidebar and navigation", async ({ page }) => {
     await page.goto("/", { waitUntil: "networkidle" });
     await expect(page.getByText("Personal AI")).toBeVisible({ timeout: 10000 });
-    await expect(page.getByRole("link", { name: "对话" })).toBeVisible();
+    // 会话标题和「继续上次」也会带上「对话」字样。主导航在侧栏第一个 nav 里，名称必须完全等于「对话」。
+    const chatNav = page
+      .locator("aside nav")
+      .first()
+      .getByRole("link", { name: "对话", exact: true });
+    await expect(chatNav).toBeVisible();
+    await expect(chatNav).toHaveCount(1);
   });
 
   test("navigation to goals page lists goals", async ({ page }) => {
