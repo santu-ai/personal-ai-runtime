@@ -119,6 +119,7 @@ export default function InboxPage() {
   const [selectedEmail, setSelectedEmail] = useState<InboxEmail | null>(null);
   const [digestOpen, setDigestOpen] = useState(false);
   const detailRequest = useRef(0);
+  const detailInflight = useRef<string | null>(null);
   const [detailTarget, setDetailTarget] = useState<InboxEmail | null>(null);
   const [detailError, setDetailError] = useState<unknown>(null);
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
@@ -183,7 +184,9 @@ export default function InboxPage() {
   };
 
   const handleViewDetail = async (em: InboxEmail) => {
+    if (detailInflight.current === em.id) return;
     const requestId = ++detailRequest.current;
+    detailInflight.current = em.id;
     setDetailTarget(em);
     setDetailLoadingId(em.id);
     setDetailError(null);
@@ -199,7 +202,10 @@ export default function InboxPage() {
       setDetailError(err);
       addError(msg, "收件箱");
     } finally {
-      if (detailRequest.current === requestId) setDetailLoadingId(null);
+      if (detailRequest.current === requestId) {
+        setDetailLoadingId(null);
+        detailInflight.current = null;
+      }
     }
   };
 
@@ -310,14 +316,15 @@ export default function InboxPage() {
                   {allEmails.map((em) => {
                     const unread = em.status === "pending";
                     return (
-                      <Card
+                      <button
                         key={em.id}
-                        variant="interactive"
-                        padding="sm"
-                        className={`p-3 ${unread ? "" : "opacity-70"}`}
-                        onClick={() => handleViewDetail(em)}
+                        type="button"
+                        onClick={() => void handleViewDetail(em)}
                         aria-busy={detailLoadingId === em.id || undefined}
                         aria-label={`${unread ? "未读" : "已读"} ${em.subject || "（无主题）"} ${em.sender}`}
+                        className={`w-full rounded-lg border border-border-subtle bg-surface-raised p-3 text-left shadow-sm transition-colors hover:border-border-strong hover:bg-surface-hover/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                          unread ? "" : "opacity-70"
+                        }`}
                       >
                         <div className="flex items-baseline gap-2 min-w-0">
                           <span
@@ -337,7 +344,7 @@ export default function InboxPage() {
                             {em.sender}
                           </span>
                         </div>
-                      </Card>
+                      </button>
                     );
                   })}
                 </div>

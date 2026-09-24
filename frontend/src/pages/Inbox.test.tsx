@@ -452,6 +452,52 @@ describe("InboxPage", () => {
     expect(screen.getByText("另一封账单")).toBeInTheDocument();
   });
 
+  it("opens a recent mail from the row and returns focus on Escape", async () => {
+    const read: InboxEmail = {
+      id: "e-read",
+      sender: "billing@example.com",
+      subject: "八月账单",
+      preview: "预览不出现在列表",
+      received_at: "2026-08-17T00:00:00Z",
+      category: "important",
+      importance: 0.9,
+      reason: "账单",
+      notified: 0,
+      digested: 1,
+      status: "read",
+      created_at: "2026-08-17T00:00:00Z",
+    };
+    vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") =>
+      status === "pending" ? [] : [read],
+    );
+    let release: ((row: InboxEmail) => void) | undefined;
+    vi.mocked(getInboxEmailDetail).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<InboxPage />);
+
+    const row = await screen.findByRole("button", { name: "已读 八月账单 billing@example.com" });
+    expect(row).toHaveClass("focus-visible:ring-focus-ring");
+    expect(screen.queryByRole("button", { name: "查看" })).not.toBeInTheDocument();
+    row.focus();
+    fireEvent.click(row);
+    fireEvent.click(row);
+    await waitFor(() => expect(row).toHaveAttribute("aria-busy", "true"));
+    expect(getInboxEmailDetail).toHaveBeenCalledTimes(1);
+    expect(getInboxEmailDetail).toHaveBeenCalledWith("e-read");
+    expect(row).toHaveFocus();
+
+    release?.(read);
+    const dialog = await screen.findByRole("dialog", { name: "八月账单" });
+    await waitFor(() => expect(dialog).toHaveFocus());
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(row).toHaveFocus());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it("uses the page fallback when opening a message fails without a message", async () => {
     const first = pendingMail("e1", "请尽快回复");
     vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") =>
