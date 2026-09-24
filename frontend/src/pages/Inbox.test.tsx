@@ -1,8 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
 import InboxPage from "./Inbox";
-import { listInboxEmails, triggerInboxPoll, getInboxSyncStatus } from "../api/client";
+import { ApiError, listInboxEmails, triggerInboxPoll, getInboxSyncStatus } from "../api/client";
 import { RECENT_INBOX_LIMIT } from "../hooks/useInboxQuery";
 
 const { addError } = vi.hoisted(() => ({ addError: vi.fn() }));
@@ -229,5 +229,93 @@ describe("InboxPage", () => {
     expect(screen.getByText("重试同步")).toBeInTheDocument();
     expect(screen.getByText(/快速重复 1/)).toBeInTheDocument();
     expect(screen.getByText(/重复邮件 3/)).toBeInTheDocument();
+  });
+
+  it("shows the empty mailbox after a successful read", async () => {
+    renderWithRouter(<InboxPage />);
+    expect(await screen.findByText("还没有同步到邮件")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("shows a retry when the mailbox fails to load", async () => {
+    vi.mocked(listInboxEmails).mockRejectedValue(new ApiError("加载失败", 500));
+    renderWithRouter(<InboxPage />);
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("加载失败");
+    expect(addError).toHaveBeenCalledWith("加载失败", "收件箱");
+    expect(screen.queryByText("还没有同步到邮件")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无")).not.toBeInTheDocument();
+    const retry = within(alert).getByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+  });
+
+  it("uses the page fallback when the mailbox error has no message", async () => {
+    vi.mocked(listInboxEmails).mockRejectedValue(new ApiError("   ", 500));
+    renderWithRouter(<InboxPage />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("加载收件箱失败");
+    expect(addError).toHaveBeenCalledWith("加载收件箱失败", "收件箱");
+    expect(screen.queryByText("还没有同步到邮件")).not.toBeInTheDocument();
+  });
+
+  it("keeps the mailbox retry mounted until the reread finishes", async () => {
+    vi.mocked(listInboxEmails).mockRejectedValue(new ApiError("加载失败", 500));
+    renderWithRouter(<InboxPage />);
+    const retry = await screen.findByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+
+    let release: (() => void) | undefined;
+    vi.mocked(listInboxEmails).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          const prev = release;
+          release = () => {
+            prev?.();
+            resolve([]);
+          };
+        }),
+    );
+    fireEvent.click(retry);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "重试" })).toHaveAttribute("aria-busy", "true"),
+    );
+    expect(screen.getByTestId("inbox-load-error")).toHaveTextContent("加载失败");
+    expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
+    expect(screen.queryByText("还没有同步到邮件")).not.toBeInTheDocument();
+
+    release?.();
+    expect(await screen.findByText("还没有同步到邮件")).toBeInTheDocument();
+    expect(screen.queryByTestId("inbox-load-error")).not.toBeInTheDocument();
+  });
+
+  it("keeps loaded mail when a later read fails", async () => {
+    vi.mocked(triggerInboxPoll).mockResolvedValue({});
+    vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") => {
+      if (status === "pending") return [];
+      return [
+        {
+          id: "e1",
+          sender: "billing@example.com",
+          subject: "八月账单",
+          preview: "",
+          received_at: "2026-08-17T00:00:00Z",
+          category: "important",
+          importance: 0.9,
+          reason: "",
+          notified: 0,
+          digested: 1,
+          status: "read",
+          created_at: "2026-08-17T00:00:00Z",
+        },
+      ];
+    });
+    renderWithRouter(<InboxPage />);
+    expect(await screen.findByText("八月账单")).toBeInTheDocument();
+    addError.mockClear();
+    vi.mocked(listInboxEmails).mockRejectedValue(new ApiError("加载失败", 500));
+    fireEvent.click(screen.getByRole("button", { name: "立即轮询" }));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("加载失败", "收件箱"));
+    expect(screen.getByText("八月账单")).toBeInTheDocument();
+    expect(screen.queryByText("还没有同步到邮件")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("inbox-load-error")).not.toBeInTheDocument();
   });
 });

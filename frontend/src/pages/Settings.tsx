@@ -10,6 +10,10 @@ import Button from "../components/ui/Button";
 import Badge from "../components/ui/Badge";
 import Spinner from "../components/ui/Spinner";
 import Disclosure from "../components/ui/Disclosure";
+import LoadErrorNotice, {
+  queryErrorMessage,
+  useHeldQueryError,
+} from "../components/ui/LoadErrorNotice";
 import PageHeader from "../components/ui/PageHeader";
 import LlmConfigCard from "../components/settings/LlmConfigCard";
 import EmailConfigCard from "../components/settings/EmailConfigCard";
@@ -29,7 +33,20 @@ export default function SettingsPage() {
     refetch: refetchCore,
   } = useSettingsCoreQuery();
   const { data: health, error: healthError } = useSettingsHealthQuery();
-  const { data: mcpStatus } = useMcpStatusQuery();
+  const {
+    data: mcpStatus,
+    error: mcpError,
+    isLoading: mcpLoading,
+    isFetching: mcpFetching,
+    refetch: refetchMcp,
+  } = useMcpStatusQuery();
+  const shownMcpError = useHeldQueryError(
+    Boolean(mcpStatus),
+    mcpError,
+    mcpFetching,
+    "加载 MCP 服务器失败",
+    "mcp-status",
+  );
 
   // Locally-cached copies of the loaded config so child cards can be re-rendered
   // with fresh data after a save without re-fetching the whole core bundle.
@@ -49,6 +66,12 @@ export default function SettingsPage() {
       addError(msg, "设置");
     }
   }, [healthError, addError]);
+
+  useEffect(() => {
+    if (mcpError) {
+      addError(queryErrorMessage(mcpError, "加载 MCP 服务器失败"), "设置");
+    }
+  }, [mcpError, addError]);
 
   if (coreLoading && !core) {
     return (
@@ -71,7 +94,6 @@ export default function SettingsPage() {
   }
 
   const mcpSummary = health?.startup?.checks?.mcp;
-  const mcpServers = mcpStatus?.enabled ? (mcpStatus.servers ?? []) : [];
 
   return (
     <div className="page-shell">
@@ -111,7 +133,16 @@ export default function SettingsPage() {
         )}
 
         <Disclosure title="MCP 服务器" defaultOpen description="连接状态与工具数">
-          {!mcpSummary && !mcpStatus?.enabled ? (
+          {shownMcpError ? (
+            <LoadErrorNotice
+              message={shownMcpError}
+              busy={mcpFetching}
+              onRetry={() => void refetchMcp()}
+              testId="mcp-status-load-error"
+            />
+          ) : mcpLoading ? (
+            <p className="text-sm text-fg-tertiary">加载中…</p>
+          ) : !mcpStatus?.enabled ? (
             <p className="text-sm text-fg-tertiary">MCP 未启用或连接信息不可用</p>
           ) : (
             <>
@@ -129,10 +160,10 @@ export default function SettingsPage() {
                 ) : (
                   <p className="text-sm text-fg-secondary">
                     全部 {mcpSummary.total} 个 MCP 服务已连接
-                    {mcpStatus?.total_tools != null ? `（共 ${mcpStatus.total_tools} 个工具）` : ""}
+                    {mcpStatus.total_tools != null ? `（共 ${mcpStatus.total_tools} 个工具）` : ""}
                   </p>
                 ))}
-              <McpServerList servers={mcpServers} />
+              <McpServerList servers={mcpStatus.servers ?? []} />
             </>
           )}
         </Disclosure>

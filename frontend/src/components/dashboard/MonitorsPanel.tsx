@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "../../api/core";
 import {
   checkUrlMonitors,
@@ -17,6 +17,7 @@ import { useErrorStore } from "../../stores/errorStore";
 import Button from "../ui/Button";
 import { Input } from "../ui/Input";
 import EmptyState from "../ui/EmptyState";
+import LoadErrorNotice, { queryErrorMessage } from "../ui/LoadErrorNotice";
 import { Radar } from "lucide-react";
 import { timeAgo } from "../../utils/timeUtils";
 
@@ -25,6 +26,9 @@ export default function MonitorsPanel() {
   const [filters, setFilters] = useState<InboxFilter[]>([]);
   const [urlMonitors, setUrlMonitors] = useState<UrlMonitor[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const loadedRef = useRef(false);
   const [busy, setBusy] = useState(false);
 
   const [name, setName] = useState("");
@@ -42,8 +46,13 @@ export default function MonitorsPanel() {
       const [inbox, urls] = await Promise.all([listInboxFilters(), listUrlMonitors()]);
       setFilters(inbox);
       setUrlMonitors(urls);
+      loadedRef.current = true;
+      setLoaded(true);
+      setLoadError(null);
     } catch (err) {
-      addError(err instanceof ApiError ? err.message : "加载监控规则失败", "监控");
+      const msg = queryErrorMessage(err, "加载监控规则失败");
+      if (!loadedRef.current) setLoadError(msg);
+      addError(msg, "监控");
     } finally {
       setLoading(false);
     }
@@ -158,7 +167,18 @@ export default function MonitorsPanel() {
     }
   };
 
-  if (loading) {
+  if (!loaded && loadError) {
+    return (
+      <LoadErrorNotice
+        message={loadError}
+        busy={loading}
+        onRetry={() => void refresh()}
+        testId="monitors-load-error"
+      />
+    );
+  }
+
+  if (loading && !loaded) {
     return <p className="text-sm text-fg-tertiary py-8 text-center">加载中…</p>;
   }
 
