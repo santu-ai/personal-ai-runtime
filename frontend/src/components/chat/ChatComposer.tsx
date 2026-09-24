@@ -57,6 +57,7 @@ export default function ChatComposer({
       <VoiceInput onTranscript={handleVoiceTranscript} disabled={disabled} />
       <textarea
         ref={inputRef}
+        data-chat-composer=""
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onInput={adjustTextareaHeight}
