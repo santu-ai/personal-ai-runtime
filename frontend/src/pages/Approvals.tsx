@@ -43,6 +43,62 @@ function parseParams(params?: string): Record<string, unknown> | null {
   }
 }
 
+type ResolveFocus = "approve" | "reject";
+
+type FocusAfter = { type: "action"; id: string; which: ResolveFocus } | { type: "refresh" };
+
+function cardRoot(id: string): HTMLElement | null {
+  for (const node of document.querySelectorAll<HTMLElement>("[data-approval-card]")) {
+    if (node.getAttribute("data-approval-card") === id) return node;
+  }
+  return null;
+}
+
+/** 焦点在页面空白处，或还停在这次操作里已经禁用的控件上，才可以把焦点挪走。 */
+function focusIsIdle(): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (active instanceof HTMLButtonElement && active.disabled) return true;
+  if (
+    (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) &&
+    active.disabled
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function focusInCard(id: string, selector: string): boolean {
+  const node = cardRoot(id)?.querySelector(selector);
+  if (!(node instanceof HTMLElement) || (node instanceof HTMLButtonElement && node.disabled)) {
+    return false;
+  }
+  if ((node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement) && node.disabled) {
+    return false;
+  }
+  node.focus();
+  return true;
+}
+
+function focusAction(id: string, which: ResolveFocus): boolean {
+  return focusInCard(id, `button[data-approval-focus="${which}"]`);
+}
+
+/** 下一张先落到主按钮。ask_user 还没写回答时主按钮不可用，就落到回答框或取消。 */
+function focusNeighbor(id: string): boolean {
+  return (
+    focusInCard(id, 'button[data-approval-focus="approve"]') ||
+    focusInCard(id, "textarea, input") ||
+    focusInCard(id, 'button[data-approval-focus="reject"]')
+  );
+}
+
+function neighborId(items: readonly EnrichedApproval[], id: string): string | null {
+  const index = items.findIndex((item) => item.id === id);
+  if (index < 0) return null;
+  return items[index + 1]?.id ?? items[index - 1]?.id ?? null;
+}
+
 export default function ApprovalsPage() {
   const navigate = useNavigate();
   const {
@@ -54,7 +110,9 @@ export default function ApprovalsPage() {
   } = useApprovalsQuery();
   const { data: policy } = useCapabilityPolicyQuery();
   const invalidateApprovals = useInvalidateApprovals();
+  const resolvingRef = useRef(new Set<string>());
   const [resolving, setResolving] = useState<Set<string>>(new Set());
+  const focusAfter = useRef<FocusAfter | null>(null);
   const addError = useErrorStore((s) => s.addError);
   const loadErrorRef = useRef<HTMLDivElement>(null);
   // 首次失败时缓存里没有列表。重试一开始会把查询错误清掉，这里留住原因，按钮才不会被「加载中」换掉。
@@ -84,8 +142,57 @@ export default function ApprovalsPage() {
     button.focus();
   }, [shownError]);
 
+  useEffect(() => {
+    const pending = focusAfter.current;
+    if (!pending) return;
+    if (!focusIsIdle()) {
+      focusAfter.current = null;
+      return;
+    }
+    if (pending.type === "action") {
+      if (resolving.has(pending.id)) return;
+      if (!focusAction(pending.id, pending.which)) return;
+      focusAfter.current = null;
+      return;
+    }
+    const refresh = document.querySelector("[data-approval-refresh]");
+    if (!(refresh instanceof HTMLButtonElement) || refresh.disabled) return;
+    focusAfter.current = null;
+    refresh.focus();
+  }, [approvals, resolving, isFetching]);
+
+  const beginResolve = (id: string, which: ResolveFocus) => {
+    if (resolvingRef.current.has(id)) return false;
+    resolvingRef.current.add(id);
+    setResolving(new Set(resolvingRef.current));
+    focusAfter.current = { type: "action", id, which };
+    return true;
+  };
+
+  const endResolve = (id: string) => {
+    resolvingRef.current.delete(id);
+    setResolving(new Set(resolvingRef.current));
+  };
+
+  const placeFocusAfterRemoval = async (id: string) => {
+    const nextId = neighborId(approvals, id);
+    const result = await refetch();
+    const rows = result.data;
+    if (result.isError || !rows || rows.some((row) => row.id === id)) return;
+    if (!focusIsIdle()) {
+      focusAfter.current = null;
+      return;
+    }
+    const nextStillThere = nextId != null && rows.some((row) => row.id === nextId);
+    if (nextStillThere && nextId && focusNeighbor(nextId)) {
+      focusAfter.current = null;
+      return;
+    }
+    focusAfter.current = { type: "refresh" };
+  };
+
   const handleApprove = async (item: EnrichedApproval, answer?: string) => {
-    setResolving((prev) => new Set(prev).add(item.id));
+    if (!beginResolve(item.id, "approve")) return;
     try {
       const convId = item.conversation_id || "";
       const toolCallId = item.tool_call_id || "";
@@ -110,30 +217,34 @@ export default function ApprovalsPage() {
           addError(res.error || "续写失败，可再试一次", "审批");
           return;
         }
-        invalidateApprovals();
-        if (convId) navigate(`/chat/${convId}`);
+        if (convId) {
+          focusAfter.current = null;
+          invalidateApprovals();
+          navigate(`/chat/${convId}`);
+          return;
+        }
+        await placeFocusAfterRemoval(item.id);
         return;
       }
 
       await approveApproval(item.id);
-      invalidateApprovals();
       if (convId) {
+        focusAfter.current = null;
+        invalidateApprovals();
         navigate(`/chat/${convId}`);
+        return;
       }
+      await placeFocusAfterRemoval(item.id);
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "审批操作失败";
       addError(msg, "审批");
     } finally {
-      setResolving((prev) => {
-        const n = new Set(prev);
-        n.delete(item.id);
-        return n;
-      });
+      endResolve(item.id);
     }
   };
 
   const handleReject = async (item: EnrichedApproval) => {
-    setResolving((prev) => new Set(prev).add(item.id));
+    if (!beginResolve(item.id, "reject")) return;
     try {
       if (canContinueApproval(item) || item.action === "ask_user") {
         const args = parseParams(item.params) || {};
@@ -148,16 +259,12 @@ export default function ApprovalsPage() {
       } else {
         await rejectApproval(item.id, "手动拒绝");
       }
-      invalidateApprovals();
+      await placeFocusAfterRemoval(item.id);
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "拒绝操作失败";
       addError(msg, "审批");
     } finally {
-      setResolving((prev) => {
-        const n = new Set(prev);
-        n.delete(item.id);
-        return n;
-      });
+      endResolve(item.id);
     }
   };
 
@@ -175,6 +282,7 @@ export default function ApprovalsPage() {
               <Button
                 variant="secondary"
                 size="sm"
+                data-approval-refresh=""
                 onClick={() => void refetch()}
                 disabled={refreshing}
               >
@@ -272,61 +380,72 @@ function ApprovalCard({
   })();
 
   return (
-    <RiskCard
-      action={item.action || ""}
-      args={item.params ?? "{}"}
-      variant="panel"
-      policy={policy}
-      riskLevel={isAskUser ? "low" : undefined}
-      title={isAskUser ? "需要你补充一点信息" : undefined}
-      source={{
-        flowLabel: item.flow_label || item.flow_type,
-        proposedBy: item.proposed_by ?? undefined,
-        conversationId: item.conversation_id ?? undefined,
-        taskHref: taskPageHref(item.task_id),
-      }}
-      timing={{
-        createdAt: item.created_at ?? undefined,
-        expiresAt: item.expires_at ?? undefined,
-      }}
-      expiringSoon={isExpiringSoon}
-    >
-      {isAskUser && (
-        <div className="w-full basis-full space-y-2">
-          <p className="text-sm text-fg-primary whitespace-pre-wrap">
-            {question || "助手需要你的回答才能继续。"}
-          </p>
-          <TextArea
-            aria-label="你的回答"
-            className="w-full"
-            maxLength={8000}
-            value={draft}
-            placeholder="输入回答，助手会带着它继续"
-            onChange={(event) => setDraft(event.target.value)}
-          />
-        </div>
-      )}
-      <Button
-        size="sm"
-        onClick={() => (isAskUser ? onApprove(answer) : onApprove())}
-        disabled={resolving || (isAskUser && !answer)}
-        title={
-          isAskUser ? "发送回答并继续对话" : canContinue ? "批准、续写回复并打开对话" : "批准此操作"
-        }
+    <div data-approval-card={item.id}>
+      <RiskCard
+        action={item.action || ""}
+        args={item.params ?? "{}"}
+        variant="panel"
+        policy={policy}
+        riskLevel={isAskUser ? "low" : undefined}
+        title={isAskUser ? "需要你补充一点信息" : undefined}
+        source={{
+          flowLabel: item.flow_label || item.flow_type,
+          proposedBy: item.proposed_by ?? undefined,
+          conversationId: item.conversation_id ?? undefined,
+          taskHref: taskPageHref(item.task_id),
+        }}
+        timing={{
+          createdAt: item.created_at ?? undefined,
+          expiresAt: item.expires_at ?? undefined,
+        }}
+        expiringSoon={isExpiringSoon}
       >
-        {canContinue || isAskUser ? <MessageSquare size={14} /> : <Check size={14} />}
-        {isAskUser ? "发送回答" : canContinue ? "批准并续写" : "批准"}
-      </Button>
-      <Button
-        size="sm"
-        variant="secondary"
-        onClick={onReject}
-        disabled={resolving}
-        title={isAskUser ? "取消这次澄清" : "拒绝此操作"}
-      >
-        <X size={14} />
-        {isAskUser ? "取消" : "拒绝"}
-      </Button>
-    </RiskCard>
+        {isAskUser && (
+          <div className="w-full basis-full space-y-2">
+            <p className="text-sm text-fg-primary whitespace-pre-wrap">
+              {question || "助手需要你的回答才能继续。"}
+            </p>
+            <TextArea
+              aria-label="你的回答"
+              className="w-full"
+              maxLength={8000}
+              value={draft}
+              disabled={resolving}
+              placeholder="输入回答，助手会带着它继续"
+              onChange={(event) => setDraft(event.target.value)}
+            />
+          </div>
+        )}
+        <Button
+          size="sm"
+          data-approval-focus="approve"
+          onClick={() => (isAskUser ? onApprove(answer) : onApprove())}
+          disabled={resolving || (isAskUser && !answer)}
+          aria-busy={resolving || undefined}
+          title={
+            isAskUser
+              ? "发送回答并继续对话"
+              : canContinue
+                ? "批准、续写回复并打开对话"
+                : "批准此操作"
+          }
+        >
+          {canContinue || isAskUser ? <MessageSquare size={14} /> : <Check size={14} />}
+          {isAskUser ? "发送回答" : canContinue ? "批准并续写" : "批准"}
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          data-approval-focus="reject"
+          onClick={onReject}
+          disabled={resolving}
+          aria-busy={resolving || undefined}
+          title={isAskUser ? "取消这次澄清" : "拒绝此操作"}
+        >
+          <X size={14} />
+          {isAskUser ? "取消" : "拒绝"}
+        </Button>
+      </RiskCard>
+    </div>
   );
 }
