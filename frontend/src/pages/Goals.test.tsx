@@ -98,7 +98,10 @@ describe("GoalsPage", () => {
     vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
     renderGoals("/goals");
 
-    expect(await screen.findByRole("button", { name: /学习 Rust/ })).toBeInTheDocument();
+    const row = await screen.findByRole("link", { name: /学习 Rust/ });
+    expect(row).toHaveAttribute("href", "/goals/g1");
+    expect(row).toHaveClass("focus-visible:ring-focus-ring");
+    expect(row).not.toHaveAttribute("aria-current");
     const list = screen.getByRole("region", { name: "目标列表" });
     const detail = screen.getByRole("region", { name: "目标详情" });
     expect(list).not.toHaveClass("hidden");
@@ -112,7 +115,22 @@ describe("GoalsPage", () => {
 
     expect(await screen.findByText("进度 30%")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "目标列表" })).toHaveClass("hidden", "lg:block");
-    expect(screen.getByRole("button", { name: "返回列表" }).parentElement).toHaveClass("lg:hidden");
-    expect(screen.getByRole("button", { name: /学习 Rust/ })).toHaveTextContent("30%");
+    const back = screen.getByRole("link", { name: "返回列表" });
+    expect(back).toHaveAttribute("href", "/goals");
+    expect(back).toHaveClass("focus-visible:ring-focus-ring");
+    expect(back.parentElement).toHaveClass("lg:hidden");
+    const row = screen.getByRole("link", { name: /学习 Rust/ });
+    expect(row).toHaveTextContent("30%");
+    expect(row).toHaveAttribute("aria-current", "page");
+  });
+
+  it("encodes a goal id that contains a slash", async () => {
+    vi.mocked(listGoals).mockResolvedValue([{ ...sampleGoal, id: "goal/2", title: "斜杠目标" }]);
+    renderGoals("/goals");
+
+    expect(await screen.findByRole("link", { name: /斜杠目标/ })).toHaveAttribute(
+      "href",
+      "/goals/goal%2F2",
+    );
   });
 });

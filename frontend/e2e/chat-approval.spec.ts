@@ -24,7 +24,10 @@ test.describe("Navigation and pages", () => {
   test("navigation to goals page lists goals", async ({ page }) => {
     await page.goto("/goals");
     await expect(page).toHaveURL(/\/goals/);
-    await expect(page.getByText("学习 Rust")).toBeVisible({ timeout: 5000 });
+    // 目标标题若带上导航词「目标」，定位收到主内容，避免和侧栏撞名。
+    const goal = page.getByRole("main").getByRole("link", { name: /学习 Rust/ });
+    await expect(goal).toBeVisible({ timeout: 5000 });
+    await expect(goal).toHaveAttribute("href", "/goals/goal-1");
   });
 
   test("navigation to memories page shows memories", async ({ page }) => {

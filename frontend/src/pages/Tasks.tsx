@@ -49,6 +49,23 @@ import { ListTodo } from "lucide-react";
 const ACTIVE_STATUSES = new Set(["pending", "running", "blocked", "waiting_approval"]);
 const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
 const OUTPUT_PREVIEW = 240;
+const focusRing =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-app";
+const backLinkClass = `inline-flex items-center justify-center rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${focusRing}`;
+const backLinkSecondary = `${backLinkClass} border border-border-subtle bg-surface-raised text-fg-primary hover:bg-surface-hover`;
+const backLinkPrimary = `${backLinkClass} bg-insight-strong text-fg-on-accent shadow-sm hover:bg-insight`;
+const adoptedLinkClass = `inline-flex shrink-0 items-center justify-center rounded-md bg-transparent px-3 py-1.5 text-xs font-medium text-fg-secondary transition-colors hover:bg-surface-hover ${focusRing}`;
+
+function taskPageHref(taskId: string): string {
+  return `/tasks/${encodeURIComponent(taskId)}`;
+}
+
+/** 已转任务的 id 去掉空白后仍非空才打开任务页。 */
+function adoptedTaskHref(workId: string | null | undefined): string | undefined {
+  const id = workId?.trim();
+  if (!id) return undefined;
+  return taskPageHref(id);
+}
 
 function statusLabel(status: string): string {
   const map: Record<string, string> = {
@@ -1259,11 +1276,10 @@ export default function TasksPage() {
           const active = item.id === urlTaskId;
           return (
             <li key={item.id}>
-              <button
-                type="button"
-                onClick={() => navigate(`/tasks/${item.id}`)}
-                aria-current={active ? "true" : undefined}
-                className={`w-full rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
+              <Link
+                to={taskPageHref(item.id)}
+                aria-current={active ? "page" : undefined}
+                className={`block w-full rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
                   active
                     ? "border-insight/40 bg-insight/10"
                     : "border-border-subtle bg-surface-raised shadow-sm hover:border-border-strong hover:bg-surface-hover/40"
@@ -1287,7 +1303,7 @@ export default function TasksPage() {
                   <span>·</span>
                   <span>{timeAgo(item.updated_at || item.created_at)}</span>
                 </div>
-              </button>
+              </Link>
             </li>
           );
         })}
@@ -1423,9 +1439,9 @@ export default function TasksPage() {
             >
               {detailOpen && !notFound && (
                 <div className="mb-4 lg:hidden">
-                  <Button size="sm" variant="secondary" onClick={() => navigate("/tasks")}>
+                  <Link to="/tasks" className={backLinkSecondary}>
                     返回列表
-                  </Button>
+                  </Link>
                 </div>
               )}
               {!urlTaskId && (
@@ -1436,9 +1452,9 @@ export default function TasksPage() {
                   title="任务不存在"
                   description="该任务可能已被删除。"
                   action={
-                    <Button size="sm" onClick={() => navigate("/tasks")}>
+                    <Link to="/tasks" className={backLinkPrimary}>
                       返回列表
-                    </Button>
+                    </Link>
                   }
                 />
               )}
@@ -1669,41 +1685,48 @@ export default function TasksPage() {
                         <div>
                           <h4 className="text-xs font-medium text-fg-tertiary mb-1">建议待办</h4>
                           <ul className="text-sm text-fg-secondary space-y-2">
-                            {shownDelivery.suggested_actions.map((action, index) => (
-                              <li
-                                key={`${action.title}-${index}`}
-                                className="flex items-start justify-between gap-3"
-                              >
-                                <span>
-                                  {action.title}
-                                  {action.reason ? ` — ${action.reason}` : ""}
-                                  <SourceIdChips
-                                    ids={action.source_ids}
-                                    onCite={(sourceId) =>
-                                      void openCitedSource(sourceId, shownDelivery.sources)
-                                    }
-                                  />
-                                </span>
-                                {!viewingHistory && action.adopted_work_id ? (
-                                  <Button
-                                    size="sm"
-                                    variant="subtle"
-                                    onClick={() => navigate(`/tasks/${action.adopted_work_id}`)}
-                                  >
-                                    已转为任务
-                                  </Button>
-                                ) : !viewingHistory ? (
-                                  <Button
-                                    size="sm"
-                                    variant="secondary"
-                                    onClick={() => handleAdopt(shownDelivery, index)}
-                                    disabled={busy}
-                                  >
-                                    转为任务
-                                  </Button>
-                                ) : null}
-                              </li>
-                            ))}
+                            {shownDelivery.suggested_actions.map((action, index) => {
+                              const adoptedHref = action.adopted_work_id
+                                ? adoptedTaskHref(action.adopted_work_id)
+                                : undefined;
+                              return (
+                                <li
+                                  key={`${action.title}-${index}`}
+                                  className="flex items-start justify-between gap-3"
+                                >
+                                  <span>
+                                    {action.title}
+                                    {action.reason ? ` — ${action.reason}` : ""}
+                                    <SourceIdChips
+                                      ids={action.source_ids}
+                                      onCite={(sourceId) =>
+                                        void openCitedSource(sourceId, shownDelivery.sources)
+                                      }
+                                    />
+                                  </span>
+                                  {!viewingHistory && action.adopted_work_id ? (
+                                    adoptedHref ? (
+                                      <Link to={adoptedHref} className={adoptedLinkClass}>
+                                        已转为任务
+                                      </Link>
+                                    ) : (
+                                      <span className="shrink-0 px-3 py-1.5 text-xs text-fg-secondary">
+                                        已转为任务
+                                      </span>
+                                    )
+                                  ) : !viewingHistory ? (
+                                    <Button
+                                      size="sm"
+                                      variant="secondary"
+                                      onClick={() => handleAdopt(shownDelivery, index)}
+                                      disabled={busy}
+                                    >
+                                      转为任务
+                                    </Button>
+                                  ) : null}
+                                </li>
+                              );
+                            })}
                           </ul>
                         </div>
                       )}
