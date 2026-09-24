@@ -232,7 +232,8 @@ describe("TasksPage", () => {
     expect(await screen.findByText("近 30 日简报")).toBeInTheDocument();
     expect(screen.getByText("首版采纳 50%（1/2）")).toBeInTheDocument();
     expect(screen.getByText(/返工 1 · 已转任务 1 · 平均评审 1.5 小时/)).toBeInTheDocument();
-    expect(screen.getByText("审批 2 · 恢复 1 · 模型成本未分开计")).toBeInTheDocument();
+    expect(screen.getByText("审批 2 · 恢复 1 · 窗口模型成本未分开计")).toBeInTheDocument();
+    expect(screen.queryByTestId("delivery-metrics-works")).not.toBeInTheDocument();
   });
 
   it("shows attributed brief cost beside unattributed calls", async () => {
@@ -259,7 +260,7 @@ describe("TasksPage", () => {
     });
     renderTasks("/tasks");
     expect(
-      await screen.findByText("审批 0 · 恢复 0 · 模型成本 $0.0125 · 未归因 $1.9000（2 次）"),
+      await screen.findByText("审批 0 · 恢复 0 · 窗口模型成本 $0.0125 · 未归因 $1.9000（2 次）"),
     ).toBeInTheDocument();
   });
 
@@ -287,8 +288,77 @@ describe("TasksPage", () => {
     });
     renderTasks("/tasks");
     expect(
-      await screen.findByText("审批 0 · 恢复 0 · 模型成本 $0.0000 · 未归因 $2.2500（3 次）"),
+      await screen.findByText("审批 0 · 恢复 0 · 窗口模型成本 $0.0000 · 未归因 $2.2500（3 次）"),
     ).toBeInTheDocument();
+  });
+
+  it("links window briefs by work id and leaves a blank id as text", async () => {
+    vi.mocked(getDeliveryMetrics).mockResolvedValue({
+      window_days: 30,
+      reviewed_tasks: 3,
+      accepted_tasks: 1,
+      first_reviewed_tasks: 1,
+      first_version_accepted_tasks: 1,
+      first_version_acceptance_rate: 1,
+      rework_count: 1,
+      adopted_action_count: 1,
+      average_review_latency_hours: null,
+      attribution: {
+        approval_interventions: 0,
+        recovery_interventions: 0,
+        llm_cost: 0.5,
+        unattributed_project_brief_calls: 0,
+        unattributed_project_brief_cost: 0,
+      },
+      capped: false,
+      cap_limit: 5000,
+      items: [
+        {
+          work_id: "brief/1",
+          title: "项目 A",
+          reviews: 1,
+          accepted: true,
+          first_review_accepted_v1: true,
+          reworks: 0,
+          adopted_actions: 0,
+          average_review_latency_hours: null,
+        },
+        {
+          work_id: "   ",
+          title: "没有任务",
+          reviews: 1,
+          accepted: false,
+          first_review_accepted_v1: false,
+          reworks: 1,
+          adopted_actions: 0,
+          average_review_latency_hours: null,
+        },
+        {
+          work_id: "brief_2",
+          title: "  ",
+          reviews: 1,
+          accepted: false,
+          first_review_accepted_v1: false,
+          reworks: 0,
+          adopted_actions: 1,
+          average_review_latency_hours: 1,
+        },
+      ],
+    });
+    renderTasks("/tasks");
+
+    const list = await screen.findByTestId("delivery-metrics-works");
+    expect(within(list).getByRole("link", { name: "项目 A" })).toHaveAttribute(
+      "href",
+      "/tasks/brief%2F1",
+    );
+    expect(within(list).getByText("没有任务").closest("a")).toBeNull();
+    expect(within(list).queryByRole("link", { name: "没有任务" })).not.toBeInTheDocument();
+    expect(within(list).getByRole("link", { name: "项目简报" })).toHaveAttribute(
+      "href",
+      "/tasks/brief_2",
+    );
+    expect(screen.getByText("审批 0 · 恢复 0 · 窗口模型成本 $0.5000")).toBeInTheDocument();
   });
 
   it("renders empty tasks shell", async () => {

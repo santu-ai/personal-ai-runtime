@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
   acceptWorkDelivery,
@@ -714,8 +714,9 @@ function formatAttributedCost(
   unattributedCalls: number | "unavailable" | undefined,
   unattributedCost?: number | "unavailable",
 ): string {
-  if (value === "unavailable") return "模型成本未分开计";
-  const cost = `模型成本 $${value.toFixed(4)}`;
+  // Window total. A delivery's own line stays「模型成本」and is not this sum.
+  if (value === "unavailable") return "窗口模型成本未分开计";
+  const cost = `窗口模型成本 $${value.toFixed(4)}`;
   if (typeof unattributedCalls !== "number" || unattributedCalls <= 0) return cost;
   if (unattributedCost === "unavailable") return `${cost} · 未归因未分开计`;
   if (typeof unattributedCost === "number") {
@@ -740,6 +741,36 @@ function DeliveryModelCost({ delivery }: { delivery: WorkDelivery }) {
 
 function hasDeliveryMetrics(metrics: DeliveryMetrics | null): metrics is DeliveryMetrics {
   return Boolean(metrics && (metrics.reviewed_tasks > 0 || metrics.adopted_action_count > 0));
+}
+
+function DeliveryMetricsWorks({ items }: { items: DeliveryMetrics["items"] | undefined }) {
+  const rows = items ?? [];
+  if (rows.length === 0) return null;
+  return (
+    <ul className="space-y-1 pt-1" data-testid="delivery-metrics-works">
+      {rows.map((item, index) => {
+        const workId = item.work_id.trim();
+        const title = item.title.trim() || "项目简报";
+        if (!workId) {
+          return (
+            <li key={`blank-${index}`} className="text-xs text-fg-secondary">
+              {title}
+            </li>
+          );
+        }
+        return (
+          <li key={`${workId}-${index}`} className="text-xs">
+            <Link
+              to={`/tasks/${encodeURIComponent(workId)}`}
+              className="text-fg-primary hover:underline"
+            >
+              {title}
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 function RerunFailureReason({ reason }: { reason: string }) {
@@ -1228,6 +1259,7 @@ export default function TasksPage() {
             {metrics.capped ? (
               <p className="text-xs text-warning">窗口内事件较多，统计可能不完整</p>
             ) : null}
+            <DeliveryMetricsWorks items={metrics.items} />
           </section>
         )}
 
