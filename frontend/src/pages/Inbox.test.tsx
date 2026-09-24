@@ -92,10 +92,39 @@ vi.mock("../stores/chatStore", () => ({
     }),
 }));
 
+const idleSync = {
+  status: "idle" as const,
+  error: null,
+  error_kind: null,
+  new_count: 0,
+  synced_read: 0,
+  duplicate_count: 0,
+  classification_fallback: 0,
+  uid_validity: null,
+  next_uid: null,
+  cursor_reset: false,
+  synced_at: null,
+  event_id: null,
+  metrics: {
+    days: 7,
+    poll_count: 0,
+    requested_count: 0,
+    error_count: 0,
+    errors_by_kind: {},
+    new_count: 0,
+    duplicate_count: 0,
+    synced_read: 0,
+    classification_fallback: 0,
+    rapid_repeat_polls: 0,
+  },
+};
+
 describe("InboxPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(listInboxEmails).mockResolvedValue([]);
+    vi.mocked(triggerInboxPoll).mockResolvedValue({});
+    vi.mocked(getInboxSyncStatus).mockResolvedValue(idleSync);
     vi.mocked(updateInboxEmailStatus).mockResolvedValue({ id: "x", status: "read" });
     quickChat.mockResolvedValue(true);
   });
@@ -103,7 +132,7 @@ describe("InboxPage", () => {
   it("keeps recent emails visible and opens the digest in a dialog", async () => {
     renderWithRouter(<InboxPage />);
     expect(screen.getByText("收件箱")).toBeInTheDocument();
-    expect(screen.getByText("立即轮询")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "立即轮询" })).toBeEnabled();
     const openDigest = await screen.findByRole("button", { name: "查看摘要" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByText("无新邮件")).not.toBeInTheDocument();
