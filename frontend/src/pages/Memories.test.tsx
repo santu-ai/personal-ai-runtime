@@ -5,11 +5,13 @@ import MemoriesPage from "./Memories";
 import {
   ApiError,
   createMemory,
+  deleteMemory,
   getMemoryGraph,
   getMemoryProvenance,
   listMemoriesGrouped,
   ratifyMemory,
   rejectMemory,
+  updateMemory,
 } from "../api/client";
 
 const { addError } = vi.hoisted(() => ({ addError: vi.fn() }));
@@ -447,5 +449,147 @@ describe("MemoriesPage", () => {
     release({ id: "m-new", status: "ok" });
     await waitFor(() => expect(input).toHaveValue(""));
     expect(input).toBeEnabled();
+  });
+
+  it("keeps the reject reason when reject fails and does not send or close again while it is in flight", async () => {
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "proposed") {
+        return {
+          memories: [
+            {
+              id: "p1",
+              content: "待确认的习惯",
+              origin: "claim",
+              claim_status: "proposed",
+              confidence: 0.7,
+            },
+          ],
+          total: 1,
+        };
+      }
+      return { memories: [], total: 0 };
+    });
+    let fail: (err: unknown) => void = () => {};
+    vi.mocked(rejectMemory).mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
+    fireEvent.click(await screen.findByRole("button", { name: "拒绝" }));
+    const dialog = await screen.findByRole("dialog", { name: "拒绝这条记忆？" });
+    const field = within(dialog).getByPlaceholderText("例如：记错了、过时了");
+    fireEvent.change(field, { target: { value: "  过时了  " } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "拒绝" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "拒绝中..." }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(dialog.parentElement as HTMLElement);
+
+    const pending = await within(dialog).findByRole("button", { name: "拒绝中..." });
+    expect(pending).toBeDisabled();
+    expect(pending).toHaveAttribute("aria-busy", "true");
+    expect(field).toHaveValue("  过时了  ");
+    expect(field).toBeDisabled();
+    expect(rejectMemory).toHaveBeenCalledTimes(1);
+    expect(rejectMemory).toHaveBeenCalledWith("p1", "过时了");
+    expect(dialog).toBeInTheDocument();
+
+    fail(new ApiError("拒绝记忆失败", 500));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("拒绝记忆失败", "记忆"));
+    expect(dialog).toBeInTheDocument();
+    expect(field).toHaveValue("  过时了  ");
+    expect(field).toBeEnabled();
+
+    vi.mocked(rejectMemory).mockResolvedValueOnce({ status: "ok", claim_status: "rejected" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "拒绝" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "拒绝这条记忆？" })).not.toBeInTheDocument(),
+    );
+    expect(rejectMemory).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the edited memory when save fails and ignores a second click while saving", async () => {
+    let fail: (err: unknown) => void = () => {};
+    vi.mocked(updateMemory).mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+
+    renderWithRouter(<MemoriesPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
+    const dialog = await screen.findByRole("dialog", { name: "编辑记忆" });
+    const content = within(dialog).getByPlaceholderText("记忆内容");
+    const category = within(dialog).getByPlaceholderText("如 fact, preference, habit");
+    fireEvent.change(content, { target: { value: "  改为夜跑  " } });
+    fireEvent.change(category, { target: { value: "habit" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存中..." }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(dialog.parentElement as HTMLElement);
+
+    const pending = await within(dialog).findByRole("button", { name: "保存中..." });
+    expect(pending).toBeDisabled();
+    expect(pending).toHaveAttribute("aria-busy", "true");
+    expect(content).toHaveValue("  改为夜跑  ");
+    expect(category).toHaveValue("habit");
+    expect(content).toBeDisabled();
+    expect(updateMemory).toHaveBeenCalledTimes(1);
+    expect(updateMemory).toHaveBeenCalledWith("m1", { content: "改为夜跑", category: "habit" });
+    expect(dialog).toBeInTheDocument();
+
+    fail(new ApiError("更新记忆失败", 500));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("更新记忆失败", "记忆"));
+    expect(dialog).toBeInTheDocument();
+    expect(content).toHaveValue("  改为夜跑  ");
+    expect(category).toHaveValue("habit");
+    expect(content).toBeEnabled();
+
+    vi.mocked(updateMemory).mockResolvedValueOnce({ status: "ok" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "编辑记忆" })).not.toBeInTheDocument(),
+    );
+    expect(updateMemory).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the forget dialog open until delete succeeds and ignores Escape while deleting", async () => {
+    let fail: (err: unknown) => void = () => {};
+    vi.mocked(deleteMemory).mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+
+    renderWithRouter(<MemoriesPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "忘掉" }));
+    const dialog = await screen.findByRole("dialog", { name: "忘掉这条记忆？" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "忘掉" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "忘掉中..." }));
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    const pending = await within(dialog).findByRole("button", { name: "忘掉中..." });
+    expect(pending).toBeDisabled();
+    expect(pending).toHaveAttribute("aria-busy", "true");
+    expect(deleteMemory).toHaveBeenCalledTimes(1);
+    expect(deleteMemory).toHaveBeenCalledWith("m1");
+    expect(dialog).toBeInTheDocument();
+
+    fail(new ApiError("删除记忆失败", 500));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("删除记忆失败", "记忆"));
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "忘掉" })).toBeEnabled();
+
+    vi.mocked(deleteMemory).mockResolvedValueOnce({ status: "ok" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "忘掉" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "忘掉这条记忆？" })).not.toBeInTheDocument(),
+    );
+    expect(deleteMemory).toHaveBeenCalledTimes(2);
   });
 });

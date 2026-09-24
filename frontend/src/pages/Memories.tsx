@@ -132,11 +132,17 @@ export default function MemoriesPage() {
   const [creating, setCreating] = useState(false);
   const creatingRef = useRef(false);
   const [deleteTarget, setDeleteTarget] = useState<MemoryRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const deletingRef = useRef(false);
   const [rejectTarget, setRejectTarget] = useState<MemoryRow | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [rejecting, setRejecting] = useState(false);
+  const rejectingRef = useRef(false);
   const [editTarget, setEditTarget] = useState<MemoryRow | null>(null);
   const [editContent, setEditContent] = useState("");
   const [editCategory, setEditCategory] = useState("");
+  const [editing, setEditing] = useState(false);
+  const editingRef = useRef(false);
   const [provenanceTarget, setProvenanceTarget] = useState<MemoryRow | null>(null);
   const [graphData, setGraphData] = useState<MemoryGraph | null>(null);
   const [graphLoading, setGraphLoading] = useState(false);
@@ -207,26 +213,40 @@ export default function MemoriesPage() {
   };
 
   const confirmDelete = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || deletingRef.current) return;
     const id = deleteTarget.id;
-    setDeleteTarget(null);
+    deletingRef.current = true;
+    setDeleting(true);
     try {
       await deleteMemory(id);
+      setDeleteTarget(null);
       invalidateMemories();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "删除记忆失败", "记忆");
+    } finally {
+      deletingRef.current = false;
+      setDeleting(false);
     }
   };
 
   const confirmEdit = async () => {
-    if (!editTarget || !editContent.trim()) return;
+    if (!editTarget || !editContent.trim() || editingRef.current) return;
     const id = editTarget.id;
-    setEditTarget(null);
+    const content = editContent.trim();
+    const category = editCategory;
+    editingRef.current = true;
+    setEditing(true);
     try {
-      await updateMemory(id, { content: editContent.trim(), category: editCategory || undefined });
+      await updateMemory(id, { content, category: category || undefined });
+      setEditTarget(null);
+      setEditContent("");
+      setEditCategory("");
       invalidateMemories();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "更新记忆失败", "记忆");
+    } finally {
+      editingRef.current = false;
+      setEditing(false);
     }
   };
 
@@ -245,16 +265,21 @@ export default function MemoriesPage() {
   };
 
   const confirmReject = async () => {
-    if (!rejectTarget) return;
+    if (!rejectTarget || rejectingRef.current) return;
     const id = rejectTarget.id;
     const reason = rejectReason.trim();
-    setRejectTarget(null);
-    setRejectReason("");
+    rejectingRef.current = true;
+    setRejecting(true);
     try {
       await rejectMemory(id, reason);
+      setRejectTarget(null);
+      setRejectReason("");
       invalidateMemories();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "拒绝记忆失败", "记忆");
+    } finally {
+      rejectingRef.current = false;
+      setRejecting(false);
     }
   };
 
@@ -343,12 +368,24 @@ export default function MemoriesPage() {
   const editPanelRef = useRef<HTMLDivElement>(null);
   const rejectTitleId = useId();
   const editTitleId = useId();
-  useOverlayDismiss(rejectTarget != null, rejectPanelRef, () => setRejectTarget(null), {
-    initialFocus: "field",
-  });
-  useOverlayDismiss(editTarget != null, editPanelRef, () => setEditTarget(null), {
-    initialFocus: "field",
-  });
+  useOverlayDismiss(
+    rejectTarget != null,
+    rejectPanelRef,
+    () => {
+      if (rejectingRef.current) return;
+      setRejectTarget(null);
+    },
+    { initialFocus: "field" },
+  );
+  useOverlayDismiss(
+    editTarget != null,
+    editPanelRef,
+    () => {
+      if (editingRef.current) return;
+      setEditTarget(null);
+    },
+    { initialFocus: "field" },
+  );
 
   // 列表或待确认重试一开始会把 isLoading 再置上。已经写出的失败要留在页面上。
   if (
@@ -642,16 +679,23 @@ export default function MemoriesPage() {
         open={!!deleteTarget}
         title="忘掉这条记忆？"
         description="确定让我忘掉这条记忆？此操作不可撤销。"
-        confirmLabel="忘掉"
+        confirmLabel={deleting ? "忘掉中..." : "忘掉"}
         variant="danger"
-        onConfirm={confirmDelete}
-        onCancel={() => setDeleteTarget(null)}
+        confirmBusy={deleting}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => {
+          if (deletingRef.current) return;
+          setDeleteTarget(null);
+        }}
       />
 
       {rejectTarget && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-          onClick={() => setRejectTarget(null)}
+          onClick={() => {
+            if (rejectingRef.current) return;
+            setRejectTarget(null);
+          }}
         >
           <div
             ref={rejectPanelRef}
@@ -668,25 +712,32 @@ export default function MemoriesPage() {
             <p className="text-xs text-fg-tertiary">可选填写原因，便于之后核对误报。</p>
             <input
               value={rejectReason}
+              disabled={rejecting}
               onChange={(e) => setRejectReason(e.target.value)}
               maxLength={200}
-              className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary outline-none focus:border-focus-ring"
+              className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary outline-none focus:border-focus-ring disabled:opacity-50"
               placeholder="例如：记错了、过时了"
             />
             <div className="flex gap-2 justify-end">
               <button
                 type="button"
-                onClick={() => setRejectTarget(null)}
-                className="px-3 py-1.5 bg-surface-overlay hover:bg-border-strong rounded-lg text-sm text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                disabled={rejecting}
+                onClick={() => {
+                  if (rejectingRef.current) return;
+                  setRejectTarget(null);
+                }}
+                className="px-3 py-1.5 bg-surface-overlay hover:bg-border-strong rounded-lg text-sm text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
               >
                 取消
               </button>
               <button
                 type="button"
+                disabled={rejecting}
+                aria-busy={rejecting || undefined}
                 onClick={() => void confirmReject()}
-                className="px-3 py-1.5 bg-surface-overlay hover:bg-border-strong rounded-lg text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                className="px-3 py-1.5 bg-surface-overlay hover:bg-border-strong rounded-lg text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
               >
-                拒绝
+                {rejecting ? "拒绝中..." : "拒绝"}
               </button>
             </div>
           </div>
@@ -696,7 +747,10 @@ export default function MemoriesPage() {
       {editTarget && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-          onClick={() => setEditTarget(null)}
+          onClick={() => {
+            if (editingRef.current) return;
+            setEditTarget(null);
+          }}
         >
           <div
             ref={editPanelRef}
@@ -716,8 +770,9 @@ export default function MemoriesPage() {
                 <label className="text-xs text-fg-secondary mb-1 block">内容</label>
                 <input
                   value={editContent}
+                  disabled={editing}
                   onChange={(e) => setEditContent(e.target.value)}
-                  className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary outline-none focus:border-focus-ring"
+                  className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary outline-none focus:border-focus-ring disabled:opacity-50"
                   placeholder="记忆内容"
                 />
               </div>
@@ -725,24 +780,33 @@ export default function MemoriesPage() {
                 <label className="text-xs text-fg-secondary mb-1 block">分类</label>
                 <input
                   value={editCategory}
+                  disabled={editing}
                   onChange={(e) => setEditCategory(e.target.value)}
-                  className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary outline-none focus:border-focus-ring"
+                  className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary outline-none focus:border-focus-ring disabled:opacity-50"
                   placeholder="如 fact, preference, habit"
                 />
               </div>
             </div>
             <div className="flex gap-2 justify-end">
               <button
-                onClick={() => setEditTarget(null)}
-                className="px-3 py-1.5 bg-surface-overlay hover:bg-border-strong rounded-lg text-sm text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                type="button"
+                disabled={editing}
+                onClick={() => {
+                  if (editingRef.current) return;
+                  setEditTarget(null);
+                }}
+                className="px-3 py-1.5 bg-surface-overlay hover:bg-border-strong rounded-lg text-sm text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
               >
                 取消
               </button>
               <button
-                onClick={confirmEdit}
-                className="px-3 py-1.5 bg-surface-overlay hover:bg-border-strong rounded-lg text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                type="button"
+                disabled={editing || !editContent.trim()}
+                aria-busy={editing || undefined}
+                onClick={() => void confirmEdit()}
+                className="px-3 py-1.5 bg-surface-overlay hover:bg-border-strong rounded-lg text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
               >
-                保存
+                {editing ? "保存中..." : "保存"}
               </button>
             </div>
           </div>
