@@ -11,7 +11,7 @@ interface Props {
   variant?: "danger" | "primary";
   /** Disable confirm while an async action is in flight (prevents double-submit). */
   confirmDisabled?: boolean;
-  /** Confirm is in flight: disabled, and announced as busy. */
+  /** Confirm is in flight: confirm and cancel stay disabled, Esc and the backdrop do not close. */
   confirmBusy?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -34,14 +34,18 @@ export default function Dialog({
   const titleId = useId();
   const descId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
-  useOverlayDismiss(open, panelRef, onCancel);
+  const dismiss = () => {
+    if (confirmBusy) return;
+    onCancel();
+  };
+  useOverlayDismiss(open, panelRef, dismiss);
 
   if (!open) return null;
 
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 backdrop-blur-[2px]"
-      onClick={onCancel}
+      onClick={dismiss}
       role="presentation"
     >
       <div
@@ -64,7 +68,13 @@ export default function Dialog({
         )}
         {children ? <div className="mt-4">{children}</div> : null}
         <div className="flex justify-end gap-2 mt-5">
-          <Button type="button" variant="secondary" size="sm" onClick={onCancel}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={confirmBusy}
+            onClick={dismiss}
+          >
             {cancelLabel}
           </Button>
           <Button
