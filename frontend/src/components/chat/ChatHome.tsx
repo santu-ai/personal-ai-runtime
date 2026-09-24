@@ -16,6 +16,7 @@ import { useErrorStore } from "../../stores/errorStore";
 import { timeAgo, isStagnant } from "../../utils/timeUtils";
 import ProposedMemoryBanner from "./ProposedMemoryBanner";
 import ChatComposer from "./ChatComposer";
+import { COMPOSER_DRAFT_HOME, readComposerDraft, writeComposerDraft } from "./composerDraft";
 import LoadErrorNotice, { queryErrorMessage, useHeldQueryError } from "../ui/LoadErrorNotice";
 import { STATUS_TONE } from "../ui/statusTone";
 
@@ -49,8 +50,10 @@ export default function ChatHome() {
   const [inbox, setInbox] = useState<InboxEmail[] | null>(null);
   const [fetching, setFetching] = useState(true);
   const [insightError, setInsightError] = useState<string | null>(null);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(() => readComposerDraft(COMPOSER_DRAFT_HOME));
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const mountedRef = useRef(true);
+  const sendingRef = useRef(false);
   const known = useRef<{
     memories: InsightMemory[] | null;
     goals: WorkItem[] | null;
@@ -111,6 +114,13 @@ export default function ChatHome() {
   useEffect(() => {
     void loadInsights();
   }, [loadInsights]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (approvalsQuery.error && pendingApprovals === undefined) {
@@ -247,11 +257,26 @@ export default function ChatHome() {
     quickChat({ prompt: nudge.prompt, title: nudge.title });
   };
 
+  const updateInput = (value: string) => {
+    setInput(value);
+    writeComposerDraft(COMPOSER_DRAFT_HOME, value);
+  };
+
   const handleSend = () => {
     const text = input.trim();
-    if (!text) return;
+    if (!text || sendingRef.current) return;
+    sendingRef.current = true;
     const title = text.length > 25 ? `讨论「${text.slice(0, 25)}…」` : `讨论「${text}」`;
-    void quickChat({ prompt: text, title });
+    void (async () => {
+      try {
+        const ok = await quickChat({ prompt: text, title });
+        if (!ok) return;
+        writeComposerDraft(COMPOSER_DRAFT_HOME, "");
+        if (mountedRef.current) setInput("");
+      } finally {
+        sendingRef.current = false;
+      }
+    })();
   };
 
   const retryInsights = () => {
@@ -375,7 +400,12 @@ export default function ChatHome() {
       </div>
       <div className="border-t border-border-subtle bg-surface-app/80 p-4 shrink-0 backdrop-blur-sm">
         <div className="mx-auto max-w-2xl">
-          <ChatComposer value={input} onChange={setInput} onSend={handleSend} inputRef={inputRef} />
+          <ChatComposer
+            value={input}
+            onChange={updateInput}
+            onSend={handleSend}
+            inputRef={inputRef}
+          />
         </div>
       </div>
     </div>

@@ -26,9 +26,11 @@ export function useQuickChat() {
       setActiveConversation(conv.id);
       if (prompt) setPendingPrompt(prompt);
       navigate(`/chat/${conv.id}`);
+      return true;
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : fallbackError;
       addError(msg, "对话");
+      return false;
     }
   };
 }

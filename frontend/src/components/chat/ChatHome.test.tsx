@@ -1,7 +1,8 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { act, cleanup, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { renderWithRouter } from "../../test-utils";
 import ChatHome from "./ChatHome";
+import { clearComposerDrafts } from "./composerDraft";
 
 const quickChat = vi.fn();
 const setActiveConversation = vi.fn();
@@ -75,6 +76,7 @@ const mockCount = vi.mocked(countMemories);
 describe("ChatHome", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    quickChat.mockReset();
     approvalsState.data = [];
     approvalsState.isPending = false;
     approvalsState.isFetching = false;
@@ -86,6 +88,7 @@ describe("ChatHome", () => {
     mockGoals.mockResolvedValue([]);
     mockInbox.mockResolvedValue([]);
     mockCount.mockResolvedValue({ count: 0 });
+    clearComposerDrafts();
   });
 
   afterEach(() => {
@@ -315,5 +318,39 @@ describe("ChatHome", () => {
     fireEvent.click(within(error).getByRole("button", { name: "重试" }));
     expect(await screen.findByText(/我还不太了解你/)).toBeInTheDocument();
     expect(screen.queryByTestId("chat-home-load-error")).not.toBeInTheDocument();
+  });
+
+  it("keeps the home draft until the new chat is created", async () => {
+    const first = renderWithRouter(<ChatHome />);
+    const box = await screen.findByPlaceholderText(/输入消息/);
+    fireEvent.change(box, { target: { value: "首页这句" } });
+    first.unmount();
+
+    renderWithRouter(<ChatHome />);
+    expect(await screen.findByPlaceholderText(/输入消息/)).toHaveValue("首页这句");
+
+    let release: ((ok: boolean) => void) | undefined;
+    quickChat.mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          release = resolve;
+        }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    expect(quickChat).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      release?.(false);
+    });
+    expect(screen.getByPlaceholderText(/输入消息/)).toHaveValue("首页这句");
+
+    quickChat.mockResolvedValue(true);
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() => expect(screen.getByPlaceholderText(/输入消息/)).toHaveValue(""));
+
+    cleanup();
+    renderWithRouter(<ChatHome />);
+    expect(await screen.findByPlaceholderText(/输入消息/)).toHaveValue("");
   });
 });

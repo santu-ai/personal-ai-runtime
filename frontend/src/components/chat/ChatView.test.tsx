@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import ChatView from "./ChatView";
+import { clearComposerDrafts, writeComposerDraft } from "./composerDraft";
 import {
   ApiError,
   cancelChat,
@@ -146,6 +147,7 @@ describe("ChatView", () => {
     approvalsState.data = [];
     vi.mocked(getMessages).mockResolvedValue([]);
     chatStoreState.pendingPrompt = null;
+    clearComposerDrafts();
   });
 
   it("renders input area and send button", () => {
@@ -792,5 +794,118 @@ describe("ChatView", () => {
     });
     expect(await screen.findByText("已取消生成。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "发送" })).toBeInTheDocument();
+  });
+
+  function composer() {
+    const inputs = screen.getAllByPlaceholderText(/输入消息/);
+    return inputs[inputs.length - 1];
+  }
+
+  it("restores an unsent draft after leaving and does not carry it to another conversation", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+    function renderWith(id: string) {
+      return (
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <ChatView conversationId={id} />
+          </MemoryRouter>
+        </QueryClientProvider>
+      );
+    }
+
+    const first = render(renderWith("test-conv-1"));
+    fireEvent.change(composer(), { target: { value: "只在第一条" } });
+    first.unmount();
+
+    const second = render(renderWith("test-conv-1"));
+    expect(composer()).toHaveValue("只在第一条");
+
+    second.rerender(renderWith("test-conv-2"));
+    expect(composer()).toHaveValue("");
+    fireEvent.change(composer(), { target: { value: "第二条自己的" } });
+
+    second.rerender(renderWith("test-conv-1"));
+    expect(composer()).toHaveValue("只在第一条");
+    second.rerender(renderWith("test-conv-2"));
+    expect(composer()).toHaveValue("第二条自己的");
+  });
+
+  it("drops the draft after the line is submitted", async () => {
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({ type: "text_delta", content: "好" });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+    const { unmount } = renderChatView();
+    fireEvent.change(composer(), { target: { value: "发出去" } });
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "发送" })[
+        screen.getAllByRole("button", { name: "发送" }).length - 1
+      ],
+    );
+    await waitFor(() => expect(sendMessage).toHaveBeenCalled());
+    expect(composer()).toHaveValue("");
+    unmount();
+    renderChatView();
+    expect(composer()).toHaveValue("");
+  });
+
+  it("keeps a draft typed while a confirmation is open", async () => {
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({
+          type: "confirmation_required",
+          tool_name: "write_file",
+          tool_args: { path: "/tmp/x", content: "data" },
+          approval_id: "ap-draft",
+          tool_call_id: "tc-draft",
+        });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+    renderChatView();
+    fireEvent.change(composer(), { target: { value: "先发出" } });
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "发送" })[
+        screen.getAllByRole("button", { name: "发送" }).length - 1
+      ],
+    );
+    expect(await screen.findByText(/建议：写入文件/)).toBeInTheDocument();
+
+    fireEvent.change(composer(), { target: { value: "确认期间先留着" } });
+    fireEvent.keyDown(composer(), { key: "Enter" });
+    expect(composer()).toHaveValue("确认期间先留着");
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends a pending home prompt without erasing the unsent draft", async () => {
+    writeComposerDraft("test-conv-1", "先写着");
+    chatStoreState.pendingPrompt = "帮我规划今天";
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({ type: "text_delta", content: "好的，开始规划。" });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+
+    renderChatView();
+
+    await waitFor(() => {
+      expect(sendMessage).toHaveBeenCalledWith(
+        "test-conv-1",
+        "帮我规划今天",
+        expect.any(Function),
+        expect.any(Function),
+        expect.any(Function),
+        expect.any(AbortSignal),
+      );
+    });
+    expect(composer()).toHaveValue("先写着");
   });
 });
