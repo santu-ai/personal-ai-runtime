@@ -22,8 +22,10 @@ import { Radar } from "lucide-react";
 import { timeAgo } from "../../utils/timeUtils";
 
 type MonitorHandoff =
-  | { kind: "create-inbox" | "create-url"; id: string; token: string }
-  | { kind: "delete-inbox" | "delete-url"; nextId: string | null; token: string };
+  | { kind: "create-inbox"; id: string; token: string }
+  | { kind: "create-url"; id: string; token: string }
+  | { kind: "delete-inbox"; nextId: string | null; token: string }
+  | { kind: "delete-url"; nextId: string | null; token: string };
 
 /** 焦点在页面空白处，或还停在这次操作的按钮上，才可以把焦点挪走。 */
 function focusIsIdle(token: string): boolean {
