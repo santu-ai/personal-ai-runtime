@@ -102,7 +102,7 @@ Kernel 每次 emit 单独提交，所以打开和派发不是一个事务。打�
 
 `ExecuteRequested` 没落库时，同一次请求失败、稍后再次提交（暂存还在），或启动扫描，都把游标放回，并把 Work 收回打开前的 `completed` 或 `failed`，reason 仍是 `rework_restore`。已经发出 `ExecuteRequested` 的返工打开不收回。这次收回不是新的完成，依赖钩子与周期统计都不把它算进去。
 
-任务页读模型：若这次 `changes_requested` 之后已有 `rework_restore`，且该决定之后或这次打开之后没有 `ExecuteRequested`，当前交付的 `review_status` 呈现为 `unreviewed`，`latest_decision` 为 null。决定事件仍在。已经派出的返工仍是 `changes_requested`，交付区仍显示「已要求返工」。若用户随后验收，旧返工请求用原幂等键重试时只返回无副作用回放，不再派发旧决定。
+任务页读模型：若这次 `changes_requested` 之后已有 `rework_restore`，且该决定之后或这次打开之后没有 `ExecuteRequested`，当前交付的 `review_status` 呈现为 `unreviewed`，`latest_decision` 为 null。决定事件仍在。已经派出的返工仍是 `changes_requested`，交付区仍显示「已要求返工」。若用户随后验收，旧返工请求用原幂等键重试时只返回无副作用回放（`replayed` 且 `superseded`），不再派发旧决定。
 
 ### 死信重放
 
@@ -117,4 +117,4 @@ Kernel 每次 emit 单独提交，所以打开和派发不是一个事务。打�
 
 ### 单次交付的模型成本
 
-近 N 日 `delivery-metrics` 仍是窗口内各次交付的合计。任务详情每个交付版本另带 `model_cost`，从该 `execution_id` 的 `ExecutionRequested` 起覆盖完整执行生命周期，只含两件事：成功且 `caused_by` 指向这次执行的 `LLMCallRecorded` 金额（`llm_cost`），以及同一次执行的恢复次数（`recovery_interventions`：handler replay，加上没有配上的 `interrupted_before_audit`）。其它执行的金额、以及缺少 `caused_by` 的未归因金额，不并入这一对象；未归因仍只出现在窗口汇总的 `unattributed_project_brief_cost`。这一读打满上限时两项都是 `unavailable`，不写成 0。没有 `execution_id` 时为 0。任务页在该版本下写出恢复次数和「模型成本」；`unavailable` 时这一行是「恢复未分开计」或「模型成本未分开计」。有多版时，版本历史同一行也写出这一版的恢复次数和金额，措辞与交付区相同；列表行没有 `model_cost` 时不补这段。窗口合计在任务页另写「窗口模型成本」（`llm_cost` 不可用时是「窗口模型成本未分开计」），两处不是同一个数。响应里的 `items` 列出该窗口有评审或已转任务的简报（`work_id` 与 `title`）；非空 `work_id` 打开 `/tasks/:id`。
+近 N 日 `delivery-metrics` 仍是窗口内各次交付的合计。任务详情每个交付版本另带 `model_cost`，从该 `execution_id` 最早一条 `ExecutionRequested` 起覆盖完整执行生命周期（没有这条事件时从该版发布时间起），只含两件事：成功且 `caused_by` 指向这次执行的 `LLMCallRecorded` 金额（`llm_cost`），以及同一次执行的恢复次数（`recovery_interventions`：handler replay，加上没有配上的 `interrupted_before_audit`）。其它执行的金额、以及缺少 `caused_by` 的未归因金额，不并入这一对象；未归因仍只出现在窗口汇总的 `unattributed_project_brief_cost`。这一读打满上限时两项都是 `unavailable`，不写成 0。没有 `execution_id` 时为 0。任务页在该版本下写出恢复次数和「模型成本」；`unavailable` 时这一行是「恢复未分开计」或「模型成本未分开计」。有多版时，版本历史同一行也写出这一版的恢复次数和金额，措辞与交付区相同；列表行没有 `model_cost` 时不补这段。窗口合计在任务页另写「窗口模型成本」（`llm_cost` 不可用时是「窗口模型成本未分开计」），两处不是同一个数。响应里的 `items` 列出该窗口有评审或已转任务的简报（`work_id` 与 `title`）；非空 `work_id` 打开 `/tasks/:id`。
