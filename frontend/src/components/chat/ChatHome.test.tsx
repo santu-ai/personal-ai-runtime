@@ -44,8 +44,10 @@ vi.mock("../../hooks/useQuickChat", () => ({
   useQuickChat: () => quickChat,
 }));
 
+const approvalsState: { data: { id: string }[] } = { data: [] };
+
 vi.mock("../../hooks/useApprovalsQuery", () => ({
-  useApprovalsQuery: () => ({ data: [] }),
+  useApprovalsQuery: () => approvalsState,
 }));
 
 import { listMemoriesGrouped, listInboxEmails, countMemories } from "../../api/client";
@@ -59,6 +61,7 @@ const mockCount = vi.mocked(countMemories);
 describe("ChatHome", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    approvalsState.data = [];
     vi.spyOn(Date.prototype, "getHours").mockReturnValue(9);
     mockMemories.mockResolvedValue({ memories: [] });
     mockGoals.mockResolvedValue([]);
@@ -136,11 +139,28 @@ describe("ChatHome", () => {
     expect(await screen.findByText(/我已经记住了 1 件关于你的事/)).toBeInTheDocument();
   });
 
-  it("continues last conversation on click", async () => {
+  it("continues last conversation from a link", async () => {
     renderWithRouter(<ChatHome />, { initialEntries: ["/"] });
-    await waitFor(() => expect(screen.getByText("上次对话")).toBeInTheDocument());
-    fireEvent.click(screen.getByText("上次对话"));
+    const link = await screen.findByRole("link", { name: /上次对话/ });
+    expect(link).toHaveAttribute("href", "/chat/conv-1");
+    expect(link).toHaveClass("focus-visible:ring-focus-ring");
+    fireEvent.click(link);
     expect(setActiveConversation).toHaveBeenCalledWith("conv-1");
+  });
+
+  it("leaves the current page when the last conversation opens in a new tab", async () => {
+    renderWithRouter(<ChatHome />, { initialEntries: ["/"] });
+    const link = await screen.findByRole("link", { name: /上次对话/ });
+    fireEvent.click(link, { ctrlKey: true });
+    expect(setActiveConversation).not.toHaveBeenCalled();
+  });
+
+  it("links the approval nudge to the approvals page", async () => {
+    approvalsState.data = [{ id: "ap-1" }];
+    renderWithRouter(<ChatHome />);
+    const link = await screen.findByRole("link", { name: "去审批" });
+    expect(link).toHaveAttribute("href", "/approvals");
+    expect(link).toHaveClass("focus-visible:ring-focus-ring");
   });
 
   it("sends from the home composer into a new chat", async () => {
@@ -153,8 +173,9 @@ describe("ChatHome", () => {
 
   it("handles proactive nudge click", async () => {
     renderWithRouter(<ChatHome />);
-    await waitFor(() => expect(screen.getByText("开始对话")).toBeInTheDocument());
-    fireEvent.click(screen.getByText("开始对话"));
+    const start = await screen.findByRole("button", { name: "开始对话" });
+    expect(start).toHaveClass("focus-visible:ring-focus-ring");
+    fireEvent.click(start);
     expect(quickChat).toHaveBeenCalledWith(expect.objectContaining({ title: "建立记忆" }));
   });
 });

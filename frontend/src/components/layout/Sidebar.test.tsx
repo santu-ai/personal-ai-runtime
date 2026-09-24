@@ -89,11 +89,24 @@ describe("Sidebar", () => {
     expect(screen.getAllByText("记忆")[0]).toBeInTheDocument();
   });
 
-  it("calls onSelectConversation when conversation clicked", () => {
+  it("links a conversation to its chat and selects it on a plain click", () => {
     const onSelectConversation = vi.fn();
     renderSidebar("/", { onSelectConversation });
-    fireEvent.click(screen.getByText("周末计划"));
+    const current = screen.getByRole("link", { name: "Rust学习讨论" });
+    const link = screen.getByRole("link", { name: "周末计划" });
+    expect(current).toHaveAttribute("aria-current", "page");
+    expect(link).toHaveAttribute("href", "/chat/c2");
+    expect(link).toHaveClass("focus-visible:ring-focus-ring");
+    expect(link).not.toHaveAttribute("aria-current");
+    fireEvent.click(link);
     expect(onSelectConversation).toHaveBeenCalledWith("c2");
+  });
+
+  it("keeps the current page when opening a conversation in a new tab", () => {
+    const onSelectConversation = vi.fn();
+    renderSidebar("/", { onSelectConversation });
+    fireEvent.click(screen.getByRole("link", { name: "周末计划" }), { ctrlKey: true });
+    expect(onSelectConversation).not.toHaveBeenCalled();
   });
 
   it("calls onNewChat when 新对话 clicked", () => {

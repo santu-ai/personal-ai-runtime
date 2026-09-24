@@ -128,7 +128,7 @@ types.ts       ← 共享 TS 接口
 
 - **`ui/`** — 原语：`Button`、`Badge`、`Card`、`Dialog`、`EmptyState`、`ErrorBoundary`、`Input`（含 `PasswordInput`）、`Spinner`。每个有 co-located `.test.tsx`。
 - **`layout/`** — `Sidebar.tsx`（聊天列表 + 导航，[`Sidebar.tsx`](../../frontend/src/components/layout/Sidebar.tsx)）、`NotificationBell.tsx`。
-- **`chat/`** — `ChatView.tsx`（活跃会话；`ProposedMemoryBanner` 只展示当前会话 `source=conv:{id}` 的待确认记忆，toast 文案为「待确认」）、`ChatHome.tsx`（落地，横幅仍用全局 proposed 计数）、`MessageItem.tsx`、`ToolCallDisplay.tsx`、`ContextPanel.tsx`、`ConfirmationDialog.tsx`（审批模态；`needs_user` 写工具用「建议」话术；`ask_user` 展示问题与文本回答）、`VoiceInput.tsx`、`CodeBlock.tsx`（懒加载 `react-syntax-highlighter`）。
+- **`chat/`** — `ChatView.tsx`（活跃会话；`ProposedMemoryBanner` 只展示当前会话 `source=conv:{id}` 的待确认记忆，toast 文案为「待确认」）、`ChatHome.tsx`（落地，横幅仍用全局 proposed 计数；「继续上次」链到该会话，带地址的提示如「去审批」是链接，开始对话这类仍是按钮）、`MessageItem.tsx`（正文链接带与时间线相同的焦点环；与当前站点同源的地址走路由，外链仍新开标签）、`ToolCallDisplay.tsx`、`ContextPanel.tsx`（活跃目标链到 `/goals/:id`）、`ConfirmationDialog.tsx`（审批模态；`needs_user` 写工具用「建议」话术；`ask_user` 展示问题与文本回答）、`VoiceInput.tsx`、`CodeBlock.tsx`（懒加载 `react-syntax-highlighter`）。
 - **`dashboard/`** — `todayBuckets.ts` 纯前端分桶：需要你决定（待审批 / 待确认记忆 / important·actionable 邮件）、今天要做（3 日内截止或停滞目标）、AI 已处理（当日晨报 / 收件箱摘要 / 目标进展 / 可忽略邮件计数）。`AdoptionSummary` 在今日页展示近 7 日采纳率（工具建议确认 + 记忆确认，数据来自 `GET /api/telemetry/governance`），点击进入信任页。`PeriodComparison` 展示近 7 日与前 7 日的完成目标、完成任务、新邮件和采纳率（`GET /api/dashboard/periods`）；`work_completed_untyped` 只在非零时出现。收回用的 `rerun_restore` / `rework_restore` 不进完成数。`RemindersPanel` 只保留 `reminder` / `url_monitor` / `morning_brief_failed`，先按 `related_id` 去重再截断。`morning_brief` 通知路由到 `/dashboard`。
 - **`notifications/`** — `NotificationDetailModal.tsx`。
 - **`onboarding/`** — `OnboardingWizard.tsx`（首次运行，`localStorage.onboarding_done` 门控）。
@@ -139,7 +139,7 @@ types.ts       ← 共享 TS 接口
 - 分组「任务」：`/goals`「目标」、`/tasks`「任务」、`/inbox`「收件箱」、`/approvals`「审批」（角标：收件箱未读、待审批）
 - 分组「知识」：`/memories`「记忆」、`/timeline`「时间线」。待确认记忆角标大于 0 时，「记忆」链到 `/memories?tab=review`
 - 分组「系统」：`/settings`「设置」；底部通知铃
-- 侧栏可收起（`localStorage.sidebar_collapsed`）；会话列表只在 chat 路由且展开时显示。视口窄于 `md`（768px）时强制保持图标栏宽度，不改已保存的收起偏好，避免主内容被 240px 侧栏挤没
+- 侧栏可收起（`localStorage.sidebar_collapsed`）；会话列表只在 chat 路由且展开时显示。会话标题是链到 `/chat/:id` 的链接，带与时间线相同的焦点环，当前会话标 `aria-current="page"`；删除仍是旁边的按钮。视口窄于 `md`（768px）时强制保持图标栏宽度，不改已保存的收起偏好，避免主内容被 240px 侧栏挤没
 
 ## Layout
 

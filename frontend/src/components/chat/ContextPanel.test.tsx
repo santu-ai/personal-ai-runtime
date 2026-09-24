@@ -111,9 +111,10 @@ describe("ContextPanel", () => {
       </MemoryRouter>,
     );
 
-    await waitFor(() => {
-      expect(screen.getByText("学习 Rust")).toBeInTheDocument();
-    });
+    const rust = await screen.findByRole("link", { name: "学习 Rust" });
+    expect(rust).toHaveAttribute("href", "/goals/g1");
+    expect(rust).toHaveClass("focus-visible:ring-focus-ring");
+    expect(screen.getByRole("link", { name: "健身计划" })).toHaveAttribute("href", "/goals/g2");
     expect(screen.getByText("健身计划")).toBeInTheDocument();
     expect(screen.getByText("旧目标")).toBeInTheDocument();
     expect(screen.queryByText("已完成")).not.toBeInTheDocument();

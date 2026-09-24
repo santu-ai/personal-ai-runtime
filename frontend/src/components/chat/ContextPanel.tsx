@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   searchMemories,
   listPendingApprovals,
@@ -19,7 +19,6 @@ interface Props {
 }
 
 export default function ContextPanel({ lastUserMessage, toolResults = [], open, onToggle }: Props) {
-  const navigate = useNavigate();
   const addError = useErrorStore((s) => s.addError);
   const [goals, setGoals] = useState<WorkItem[]>([]);
   const [memories, setMemories] = useState<MemoryRow[]>([]);
@@ -102,13 +101,13 @@ export default function ContextPanel({ lastUserMessage, toolResults = [], open, 
             <p className="text-xs text-fg-disabled">暂无活跃目标</p>
           ) : (
             goals.map((g) => (
-              <button
+              <Link
                 key={g.id}
-                onClick={() => navigate(`/goals/${g.id}`)}
+                to={`/goals/${g.id}`}
                 className="block w-full text-left text-xs text-fg-primary p-2 hover:bg-surface-overlay rounded-lg mb-1 truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               >
                 {g.title}
-              </button>
+              </Link>
             ))
           )}
         </section>

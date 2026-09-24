@@ -1,13 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { Brain, Mail, ShieldCheck, Sparkles, Target } from "lucide-react";
 import { useChatStore } from "../../stores/chatStore";
-import {
-  listMemoriesGrouped,
-  listInboxEmails,
-  type Conversation,
-  type WorkItem,
-} from "../../api/client";
+import { listMemoriesGrouped, listInboxEmails, type WorkItem } from "../../api/client";
 import { listWorkItems } from "../../api/workItems";
 import { useQuickChat } from "../../hooks/useQuickChat";
 import { useApprovalsQuery } from "../../hooks/useApprovalsQuery";
@@ -28,8 +23,9 @@ interface ProactiveNudge {
   href?: string;
 }
 
+const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
+
 export default function ChatHome() {
-  const navigate = useNavigate();
   const conversations = useChatStore((s) => s.conversations);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const quickChat = useQuickChat();
@@ -151,18 +147,8 @@ export default function ChatHome() {
   }
 
   const handleNudge = (nudge: ProactiveNudge) => {
-    if (nudge.href) {
-      navigate(nudge.href);
-      return;
-    }
-    if (nudge.prompt) {
-      quickChat({ prompt: nudge.prompt, title: nudge.title });
-    }
-  };
-
-  const handleContinueConversation = (conv: Conversation) => {
-    setActiveConversation(conv.id);
-    navigate(`/chat/${conv.id}`);
+    if (!nudge.prompt) return;
+    quickChat({ prompt: nudge.prompt, title: nudge.title });
   };
 
   const handleSend = () => {
@@ -201,12 +187,13 @@ export default function ChatHome() {
             <div className="space-y-2">
               {nudges.map((nudge, i) => {
                 const tone = STATUS_TONE[nudge.tone];
-                const actionClass =
+                const actionTone =
                   nudge.tone === "warning"
                     ? "bg-warning/20 hover:bg-warning/30 text-warning"
                     : nudge.tone === "success"
                       ? "bg-success/20 hover:bg-success/30 text-success"
                       : "bg-insight/20 hover:bg-insight/30 text-insight";
+                const actionClass = `shrink-0 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${focusRing} ${actionTone}`;
                 const Icon = nudge.icon;
                 return (
                   <div
@@ -217,13 +204,19 @@ export default function ChatHome() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-fg-primary">{nudge.message}</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleNudge(nudge)}
-                      className={`shrink-0 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${actionClass}`}
-                    >
-                      {nudge.action}
-                    </button>
+                    {nudge.href ? (
+                      <Link to={nudge.href} className={actionClass}>
+                        {nudge.action}
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleNudge(nudge)}
+                        className={actionClass}
+                      >
+                        {nudge.action}
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -231,9 +224,21 @@ export default function ChatHome() {
           )}
 
           {lastConversation && (
-            <div
-              className="cursor-pointer rounded-lg border border-border-subtle bg-surface-raised p-4 shadow-sm transition-colors hover:border-border-strong hover:bg-surface-hover/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-              onClick={() => handleContinueConversation(lastConversation)}
+            <Link
+              to={`/chat/${lastConversation.id}`}
+              onClick={(event) => {
+                if (
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey ||
+                  event.button !== 0
+                ) {
+                  return;
+                }
+                setActiveConversation(lastConversation.id);
+              }}
+              className={`block rounded-lg border border-border-subtle bg-surface-raised p-4 shadow-sm transition-colors hover:border-border-strong hover:bg-surface-hover/30 ${focusRing}`}
             >
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-sm text-fg-tertiary">继续上次</span>
@@ -247,7 +252,7 @@ export default function ChatHome() {
               <p className="text-xs text-fg-disabled mt-2">
                 {timeAgo(lastConversation.updated_at)}
               </p>
-            </div>
+            </Link>
           )}
         </div>
       </div>

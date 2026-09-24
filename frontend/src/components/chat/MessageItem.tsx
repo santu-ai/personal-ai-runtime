@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { Copy, Check, Brain, Mail, Target, FileText } from "lucide-react";
 import ToolCallDisplay from "./ToolCallDisplay";
 import TaskTrack from "./TaskTrack";
@@ -27,6 +28,8 @@ interface Props {
 }
 
 const BLOCKED_LINK_PROTOCOLS = new Set(["javascript:", "data:", "vbscript:", "file:"]);
+const focusRing =
+  "rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
 
 export function MarkdownLink({ href, children }: { href?: string; children?: React.ReactNode }) {
   if (!href) {
@@ -42,7 +45,11 @@ export function MarkdownLink({ href, children }: { href?: string; children?: Rea
     return <span>{children}</span>;
   }
   if (parsed.origin === window.location.origin) {
-    return <a href={href}>{children}</a>;
+    return (
+      <Link to={`${parsed.pathname}${parsed.search}${parsed.hash}`} className={focusRing}>
+        {children}
+      </Link>
+    );
   }
   if (
     parsed.protocol === "http:" ||
@@ -50,7 +57,7 @@ export function MarkdownLink({ href, children }: { href?: string; children?: Rea
     parsed.protocol === "mailto:"
   ) {
     return (
-      <a href={parsed.href} target="_blank" rel="noopener noreferrer">
+      <a href={parsed.href} target="_blank" rel="noopener noreferrer" className={focusRing}>
         {children}
       </a>
     );
