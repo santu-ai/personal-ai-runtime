@@ -34,6 +34,55 @@ describe("NotificationBell", () => {
     listNotifications.mockResolvedValue([sample]);
   });
 
+  it("moves focus into the panel and returns it to the bell on Escape", async () => {
+    renderWithRouter(<NotificationBell />);
+    const bell = screen.getByRole("button", { name: "通知" });
+    bell.focus();
+    fireEvent.click(bell);
+    const panel = await screen.findByRole("dialog", { name: "最近通知" });
+    await waitFor(() => expect(panel).toHaveFocus());
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "最近通知" })).not.toBeInTheDocument();
+    expect(bell).toHaveFocus();
+  });
+
+  it("closes on an outside press without pulling focus back to the bell", async () => {
+    renderWithRouter(
+      <>
+        <button type="button">旁边</button>
+        <NotificationBell />
+      </>,
+    );
+    const bell = screen.getByRole("button", { name: "通知" });
+    fireEvent.click(bell);
+    await screen.findByRole("dialog", { name: "最近通知" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const other = screen.getByRole("button", { name: "旁边" });
+    other.focus();
+    fireEvent.mouseDown(other);
+    expect(screen.queryByRole("dialog", { name: "最近通知" })).not.toBeInTheDocument();
+    expect(other).toHaveFocus();
+  });
+
+  it("returns focus to the bell after the opened detail closes", async () => {
+    renderWithRouter(<NotificationBell />);
+    const bell = screen.getByRole("button", { name: "通知" });
+    fireEvent.click(bell);
+    fireEvent.click(await screen.findByRole("button", { name: /待审批/ }));
+
+    const detail = await screen.findByRole("dialog", { name: "待审批" });
+    await waitFor(() => expect(detail).toHaveFocus());
+    expect(screen.queryByRole("dialog", { name: "最近通知" })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "待审批" })).not.toBeInTheDocument(),
+    );
+    expect(bell).toHaveFocus();
+  });
+
   it("toggles the notification panel closed on a second bell click", async () => {
     renderWithRouter(<NotificationBell />);
     const bell = screen.getByRole("button", { name: "通知" });
