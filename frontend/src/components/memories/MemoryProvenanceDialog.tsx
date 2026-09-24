@@ -1,14 +1,10 @@
 import { useEffect, useState } from "react";
-import {
-  getMemoryProvenance,
-  ApiError,
-  type MemoryRow,
-  type MemoryProvenance,
-} from "../../api/client";
+import { getMemoryProvenance, type MemoryRow, type MemoryProvenance } from "../../api/client";
 import { useErrorStore } from "../../stores/errorStore";
 import { timeAgoShort } from "../../utils/timeUtils";
 import { eventTypeLabel, eventDescription } from "./provenanceFormatting";
 import { History } from "lucide-react";
+import LoadErrorNotice, { queryErrorMessage, useHeldQueryError } from "../ui/LoadErrorNotice";
 
 interface Props {
   target: MemoryRow;
@@ -19,20 +15,41 @@ export default function MemoryProvenanceDialog({ target, onClose }: Props) {
   const addError = useErrorStore((s) => s.addError);
   const [data, setData] = useState<MemoryProvenance | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<unknown>(null);
+  const [attempt, setAttempt] = useState(0);
+  const memoryId = target.id;
+  const [trackedId, setTrackedId] = useState(memoryId);
+  // 换一条记忆时先丢掉上一条的失败，避免那条原因被记到新记忆上。
+  if (memoryId !== trackedId) {
+    setTrackedId(memoryId);
+    setData(null);
+    setLoadError(null);
+    setLoading(true);
+    setAttempt(0);
+  }
+  // 重试会把这次错误清掉。原因留在对话框里，避免改回「加载中...」。
+  const shownError = useHeldQueryError(
+    data !== null,
+    loadError,
+    loading,
+    "加载来源链失败",
+    memoryId,
+  );
 
-  // Load on mount; provenance state stays scoped to this dialog instead of
-  // being carried by every memory row in the parent.
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    setLoadError(null);
+    setLoading(true);
+    void (async () => {
       try {
-        const result = await getMemoryProvenance(target.id);
-        if (!cancelled) setData(result);
+        const result = await getMemoryProvenance(memoryId);
+        if (cancelled) return;
+        setData(result);
+        setLoadError(null);
       } catch (err) {
-        if (!cancelled) {
-          addError(err instanceof ApiError ? err.message : "加载来源链失败", "记忆");
-          onClose();
-        }
+        if (cancelled) return;
+        setLoadError(err);
+        addError(queryErrorMessage(err, "加载来源链失败"), "记忆");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -40,7 +57,7 @@ export default function MemoryProvenanceDialog({ target, onClose }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [target.id, addError, onClose]);
+  }, [memoryId, attempt, addError]);
 
   return (
     <div
@@ -48,15 +65,30 @@ export default function MemoryProvenanceDialog({ target, onClose }: Props) {
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="memory-provenance-title"
         className="bg-surface-raised border border-border-strong rounded-xl p-6 w-[32rem] max-w-[90vw] max-h-[80vh] overflow-y-auto space-y-4 outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2">
           <History size={16} className="text-insight" />
-          <h3 className="text-lg font-semibold text-fg-primary">记忆来源链</h3>
+          <h3 id="memory-provenance-title" className="text-lg font-semibold text-fg-primary">
+            记忆来源链
+          </h3>
         </div>
         <p className="text-sm text-fg-secondary italic">{target.content}</p>
-        {loading ? (
+        {shownError ? (
+          <LoadErrorNotice
+            message={shownError}
+            busy={loading}
+            onRetry={() => {
+              if (loading) return;
+              setAttempt((value) => value + 1);
+            }}
+            testId="memory-provenance-load-error"
+          />
+        ) : loading ? (
           <p className="text-sm text-fg-tertiary">加载中...</p>
         ) : data && data.events.length > 0 ? (
           <ol className="space-y-3 border-l border-border-strong pl-4">

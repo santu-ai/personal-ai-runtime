@@ -5,6 +5,7 @@ import MemoriesPage from "./Memories";
 import {
   ApiError,
   getMemoryGraph,
+  getMemoryProvenance,
   listMemoriesGrouped,
   ratifyMemory,
   rejectMemory,
@@ -68,6 +69,7 @@ describe("MemoriesPage", () => {
       total: 1,
     });
     vi.mocked(getMemoryGraph).mockResolvedValue({ nodes: [], edges: [] });
+    vi.mocked(getMemoryProvenance).mockResolvedValue({ memory_id: "m1", events: [] });
   });
 
   it("renders memories list", async () => {
@@ -216,5 +218,134 @@ describe("MemoriesPage", () => {
     expect(alert).toHaveTextContent("加载失败");
     expect(screen.queryByText("暂无记忆数据可显示")).not.toBeInTheDocument();
     await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+  });
+
+  function memoryItem(content: string): HTMLElement {
+    const item = screen
+      .getAllByText(content)
+      .map((node) => node.closest("li"))
+      .find((node): node is HTMLElement => node instanceof HTMLElement);
+    if (!item) throw new Error(`missing memory row: ${content}`);
+    return item;
+  }
+
+  it("keeps the provenance dialog and a retry when the chain fails to load", async () => {
+    vi.mocked(getMemoryProvenance).mockRejectedValue(new ApiError("来源链暂时读不到", 503));
+    renderWithRouter(<MemoriesPage />);
+    await screen.findByText("喜欢早起跑步");
+    fireEvent.click(within(memoryItem("喜欢早起跑步")).getByRole("button", { name: "来源" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "记忆来源链" });
+    const alert = await screen.findByTestId("memory-provenance-load-error");
+    expect(alert).toHaveTextContent("来源链暂时读不到");
+    expect(addError).toHaveBeenCalledWith("来源链暂时读不到", "记忆");
+    expect(within(dialog).getByText("喜欢早起跑步")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "关闭" })).toBeInTheDocument();
+    expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
+    expect(screen.queryByText("无事件记录")).not.toBeInTheDocument();
+    expect(memoryItem("喜欢早起跑步")).toBeInTheDocument();
+    await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+  });
+
+  it("holds the provenance failure while that reread is in flight", async () => {
+    vi.mocked(getMemoryProvenance).mockRejectedValueOnce(new ApiError("来源链暂时读不到", 503));
+    renderWithRouter(<MemoriesPage />);
+    await screen.findByText("喜欢早起跑步");
+    fireEvent.click(within(memoryItem("喜欢早起跑步")).getByRole("button", { name: "来源" }));
+    const retry = await screen.findByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+
+    let release:
+      | ((row: {
+          memory_id: string;
+          events: {
+            seq: number;
+            type: string;
+            ts: string;
+            actor: string;
+            payload: { confidence: number };
+            correlation_id: null;
+          }[];
+        }) => void)
+      | undefined;
+    vi.mocked(getMemoryProvenance).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    fireEvent.click(retry);
+    await waitFor(() => expect(retry).toHaveAttribute("aria-busy", "true"));
+    expect(retry).toHaveFocus();
+    expect(screen.getByTestId("memory-provenance-load-error")).toHaveTextContent(
+      "来源链暂时读不到",
+    );
+    expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "记忆来源链" })).toBeInTheDocument();
+
+    release?.({
+      memory_id: "m1",
+      events: [
+        {
+          seq: 1,
+          type: "MemoryDerived",
+          ts: "2026-09-01T00:00:00Z",
+          actor: "brain",
+          payload: { confidence: 0.9 },
+          correlation_id: null,
+        },
+      ],
+    });
+    expect(await screen.findByText("由 brain 抽取，置信度 0.90")).toBeInTheDocument();
+    expect(screen.queryByTestId("memory-provenance-load-error")).not.toBeInTheDocument();
+  });
+
+  it("uses the dialog fallback when provenance fails without a message", async () => {
+    vi.mocked(getMemoryProvenance).mockRejectedValue(new Error("   "));
+    renderWithRouter(<MemoriesPage />);
+    await screen.findByText("喜欢早起跑步");
+    fireEvent.click(within(memoryItem("喜欢早起跑步")).getByRole("button", { name: "来源" }));
+    expect(await screen.findByTestId("memory-provenance-load-error")).toHaveTextContent(
+      "加载来源链失败",
+    );
+    expect(addError).toHaveBeenCalledWith("加载来源链失败", "记忆");
+    expect(screen.getByRole("dialog", { name: "记忆来源链" })).toBeInTheDocument();
+    expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
+  });
+
+  it("drops the previous memory's provenance failure when another memory is opened", async () => {
+    vi.mocked(listMemoriesGrouped).mockResolvedValue({
+      memories: [
+        { id: "m1", content: "喜欢早起跑步", confidence: 0.9, category: "habit" },
+        { id: "m2", content: "住在上海", confidence: 0.8, category: "fact" },
+      ],
+      total: 2,
+    });
+    vi.mocked(getMemoryProvenance).mockImplementation(async (id: string) => {
+      if (id === "m1") throw new ApiError("来源链暂时读不到", 503);
+      return new Promise(() => {});
+    });
+    renderWithRouter(<MemoriesPage />);
+    await screen.findByText("喜欢早起跑步");
+    fireEvent.click(within(memoryItem("喜欢早起跑步")).getByRole("button", { name: "来源" }));
+    expect(await screen.findByTestId("memory-provenance-load-error")).toHaveTextContent(
+      "来源链暂时读不到",
+    );
+
+    fireEvent.click(within(memoryItem("住在上海")).getByRole("button", { name: "来源" }));
+    expect(await screen.findByText("加载中...")).toBeInTheDocument();
+    expect(screen.queryByText("来源链暂时读不到")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("memory-provenance-load-error")).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "记忆来源链" })).toHaveTextContent("住在上海");
+    expect(memoryItem("喜欢早起跑步")).toBeInTheDocument();
+  });
+
+  it("shows an empty provenance chain after a successful read", async () => {
+    renderWithRouter(<MemoriesPage />);
+    await screen.findByText("喜欢早起跑步");
+    fireEvent.click(within(memoryItem("喜欢早起跑步")).getByRole("button", { name: "来源" }));
+    expect(await screen.findByText("无事件记录")).toBeInTheDocument();
+    expect(screen.queryByTestId("memory-provenance-load-error")).not.toBeInTheDocument();
+    expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
   });
 });
