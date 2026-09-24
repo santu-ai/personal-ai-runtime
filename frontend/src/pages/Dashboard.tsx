@@ -21,10 +21,13 @@ import {
   buildTodayBuckets,
   mergeLiveAndServerNotifications,
 } from "../components/dashboard/todayBuckets";
-import { Shield, AlertCircle, Radar } from "lucide-react";
+import { Shield, Radar } from "lucide-react";
 import Button from "../components/ui/Button";
 import PageHeader from "../components/ui/PageHeader";
-import { queryErrorMessage, useHeldQueryError } from "../components/ui/LoadErrorNotice";
+import LoadErrorNotice, {
+  queryErrorMessage,
+  useHeldQueryError,
+} from "../components/ui/LoadErrorNotice";
 import { useErrorStore } from "../stores/errorStore";
 import type { TodayColumnState } from "../components/dashboard/TodayActions";
 
@@ -115,6 +118,7 @@ export default function DashboardPage() {
     dashboard,
     loading,
     error,
+    errorBusy,
     refresh,
     retryNotifications,
   } = useDashboard();
@@ -276,26 +280,26 @@ export default function DashboardPage() {
     );
   }
 
-  // ── Loading ──
-  if (loading) {
+  // 整页还没有数据时，重试会把查询错误清掉并把加载态再置上。原因留在钩子里，先画失败。
+  if (error) {
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <div className="animate-pulse text-fg-secondary">加载中...</div>
+      <div className="flex flex-1 items-center justify-center p-6">
+        <div className="w-full max-w-lg">
+          <LoadErrorNotice
+            message={error}
+            busy={errorBusy}
+            onRetry={refresh}
+            testId="dashboard-load-error"
+          />
+        </div>
       </div>
     );
   }
 
-  // ── Error ──
-  if (error) {
+  if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <div className="text-center">
-          <div className="mb-2 text-fg-tertiary">
-            <AlertCircle size={32} className="mx-auto mb-2" />
-          </div>
-          <div className="mb-4 text-fg-secondary">{error}</div>
-          <Button onClick={refresh}>重试</Button>
-        </div>
+        <div className="animate-pulse text-fg-secondary">加载中...</div>
       </div>
     );
   }
