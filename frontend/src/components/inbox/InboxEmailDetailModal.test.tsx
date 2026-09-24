@@ -12,6 +12,17 @@ vi.mock("../../api/inbox", async (importOriginal) => {
   };
 });
 
+type SummaryRow = Awaited<ReturnType<typeof getInboxEmailSummary>>;
+
+function summaryRow(email: InboxEmail, summary: string): SummaryRow {
+  return {
+    email_id: email.id,
+    subject: email.subject,
+    sender: email.sender,
+    summary,
+  };
+}
+
 function mail(id: string, subject: string): InboxEmail {
   return {
     id,
@@ -56,10 +67,11 @@ describe("InboxEmailDetailModal", () => {
     expect(screen.queryByText("AI 正在生成摘要...")).not.toBeInTheDocument();
     await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
 
-    let release: (row: { summary: string }) => void = () => {};
+    const openMail = mail("e1", "请尽快回复");
+    let release: (row: SummaryRow) => void = () => {};
     vi.mocked(getInboxEmailSummary).mockImplementationOnce(
       () =>
-        new Promise((resolve) => {
+        new Promise<SummaryRow>((resolve) => {
           release = resolve;
         }),
     );
@@ -70,7 +82,7 @@ describe("InboxEmailDetailModal", () => {
     expect(screen.getByTestId("inbox-summary-load-error")).toHaveTextContent("摘要生成失败");
     expect(screen.queryByText("AI 正在生成摘要...")).not.toBeInTheDocument();
 
-    release({ summary: "需要今天回复" });
+    release(summaryRow(openMail, "需要今天回复"));
     expect(await screen.findByText("需要今天回复")).toBeInTheDocument();
     expect(screen.queryByTestId("inbox-summary-load-error")).not.toBeInTheDocument();
   });
@@ -82,20 +94,21 @@ describe("InboxEmailDetailModal", () => {
     );
     expect(await screen.findByTestId("inbox-summary-load-error")).toHaveTextContent("上一封读不到");
 
-    let release: (row: { summary: string }) => void = () => {};
+    const nextMail = mail("e2", "另一封账单");
+    let release: (row: SummaryRow) => void = () => {};
     vi.mocked(getInboxEmailSummary).mockImplementationOnce(
       () =>
-        new Promise((resolve) => {
+        new Promise<SummaryRow>((resolve) => {
           release = resolve;
         }),
     );
-    rerender(<InboxEmailDetailModal email={mail("e2", "另一封账单")} onClose={vi.fn()} />);
+    rerender(<InboxEmailDetailModal email={nextMail} onClose={vi.fn()} />);
     expect(await screen.findByText("AI 正在生成摘要...")).toBeInTheDocument();
     expect(screen.queryByText("上一封读不到")).not.toBeInTheDocument();
     expect(screen.queryByTestId("inbox-summary-load-error")).not.toBeInTheDocument();
     expect(screen.getByText("另一封账单")).toBeInTheDocument();
 
-    release({ summary: "这封的摘要" });
+    release(summaryRow(nextMail, "这封的摘要"));
     expect(await screen.findByText("这封的摘要")).toBeInTheDocument();
   });
 });
