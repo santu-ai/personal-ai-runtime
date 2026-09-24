@@ -133,6 +133,10 @@ export function useDashboard() {
     dashboard.refetch();
   }, [cost, costByModel, tools, memory, health, notifications, dashboard]);
 
+  const retryNotifications = useCallback(() => {
+    void notifications.refetch();
+  }, [notifications]);
+
   return {
     cost: cost.data ?? null,
     costByModel: costByModel.data ?? [],
@@ -140,9 +144,14 @@ export function useDashboard() {
     memory: memory.data ?? null,
     health: health.data ?? null,
     notifications: notifications.data ?? [],
+    notificationsLoaded: notifications.data !== undefined,
+    notificationsError: notifications.error,
+    notificationsFetching: notifications.isFetching,
+    notificationsPending: notifications.isPending && notifications.data === undefined,
     dashboard: dashboard.data ?? null,
     loading,
     error: fatalError ?? "",
     refresh,
+    retryNotifications,
   };
 }

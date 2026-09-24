@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { markNotificationRead, type Notification } from "../api/client";
 import { useDashboard } from "../hooks/useDashboard";
@@ -24,6 +24,61 @@ import {
 import { Shield, AlertCircle, Radar } from "lucide-react";
 import Button from "../components/ui/Button";
 import PageHeader from "../components/ui/PageHeader";
+import { queryErrorMessage, useHeldQueryError } from "../components/ui/LoadErrorNotice";
+import { useErrorStore } from "../stores/errorStore";
+import type { TodayColumnState } from "../components/dashboard/TodayActions";
+
+interface BucketSource {
+  hasData: boolean;
+  error: unknown;
+  isFetching: boolean;
+  isPending: boolean;
+  refetch: () => void;
+}
+
+function bucketSource(query: {
+  data?: unknown;
+  error?: unknown;
+  isFetching?: boolean;
+  isPending?: boolean;
+  refetch?: () => unknown;
+}): BucketSource {
+  const hasData = query.data !== undefined;
+  const error = query.error ?? null;
+  return {
+    hasData,
+    error,
+    isFetching: query.isFetching ?? false,
+    isPending: !hasData && !error && Boolean(query.isPending),
+    refetch: () => {
+      void query.refetch?.();
+    },
+  };
+}
+
+function joinMessages(parts: Array<string | null>): string | null {
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const part of parts) {
+    if (!part || seen.has(part)) continue;
+    seen.add(part);
+    lines.push(part);
+  }
+  return lines.length > 0 ? lines.join("；") : null;
+}
+
+function columnState(message: string | null, sources: BucketSource[]): TodayColumnState {
+  return {
+    error: message,
+    busy: sources.some((source) => !source.hasData && source.isFetching),
+    pending: !message && sources.some((source) => source.isPending),
+    onRetry: () => {
+      for (const source of sources) {
+        if (!source.hasData) source.refetch();
+      }
+    },
+  };
+}
 
 function getDateString(): string {
   const d = new Date();
@@ -47,13 +102,106 @@ export default function DashboardPage() {
     }
   };
 
-  const { cost, tools, memory, health, notifications, dashboard, loading, error, refresh } =
-    useDashboard();
+  const {
+    cost,
+    tools,
+    memory,
+    health,
+    notifications,
+    notificationsLoaded,
+    notificationsError,
+    notificationsFetching,
+    notificationsPending,
+    dashboard,
+    loading,
+    error,
+    refresh,
+    retryNotifications,
+  } = useDashboard();
   const liveNotifications = useLiveNotifications();
-  const { data: pendingApprovals = [] } = useApprovalsQuery();
-  const { data: inboxData } = useInboxQuery();
-  const { data: goals = [] } = useGoalsQuery();
-  const { data: proposedMemoryCount = 0 } = useProposedMemoryCountQuery();
+  const approvalsQuery = useApprovalsQuery();
+  const inboxQuery = useInboxQuery();
+  const goalsQuery = useGoalsQuery();
+  const proposedQuery = useProposedMemoryCountQuery();
+  const addError = useErrorStore((s) => s.addError);
+  const pendingApprovals = approvalsQuery.data ?? [];
+  const inboxData = inboxQuery.data;
+  const goals = goalsQuery.data ?? [];
+  const proposedMemoryCount = proposedQuery.data ?? 0;
+  const approvalsSource = bucketSource(approvalsQuery);
+  const inboxSource = bucketSource(inboxQuery);
+  const goalsSource = bucketSource(goalsQuery);
+  const memorySource = bucketSource(proposedQuery);
+  const notificationsKnown = notificationsLoaded || liveNotifications.length > 0;
+  const notificationsSource: BucketSource = {
+    hasData: notificationsKnown,
+    error: notificationsKnown ? null : notificationsError,
+    isFetching: notificationsFetching,
+    isPending: !notificationsKnown && !notificationsError && notificationsPending,
+    refetch: retryNotifications,
+  };
+  const approvalsHeld = useHeldQueryError(
+    approvalsSource.hasData,
+    approvalsSource.error,
+    approvalsSource.isFetching,
+    "加载待审批失败",
+    "today-approvals",
+  );
+  const inboxHeld = useHeldQueryError(
+    inboxSource.hasData,
+    inboxSource.error,
+    inboxSource.isFetching,
+    "加载收件箱失败",
+    "today-inbox",
+  );
+  const goalsHeld = useHeldQueryError(
+    goalsSource.hasData,
+    goalsSource.error,
+    goalsSource.isFetching,
+    "加载目标失败",
+    "today-goals",
+  );
+  const memoryHeld = useHeldQueryError(
+    memorySource.hasData,
+    memorySource.error,
+    memorySource.isFetching,
+    "加载待确认记忆失败",
+    "today-memories",
+  );
+  const notificationsHeld = useHeldQueryError(
+    notificationsSource.hasData,
+    notificationsSource.error,
+    notificationsSource.isFetching,
+    "加载提醒失败",
+    "today-notifications",
+  );
+  const decideStatus = columnState(joinMessages([approvalsHeld, memoryHeld, inboxHeld]), [
+    approvalsSource,
+    memorySource,
+    inboxSource,
+  ]);
+  const doStatus = columnState(goalsHeld, [goalsSource]);
+  const handledStatus = columnState(joinMessages([notificationsHeld, inboxHeld]), [
+    notificationsSource,
+    inboxSource,
+  ]);
+
+  useEffect(() => {
+    if (tab !== "today" || !approvalsQuery.error) return;
+    addError(queryErrorMessage(approvalsQuery.error, "加载待审批失败"), "今天");
+  }, [tab, approvalsQuery.error, addError]);
+  useEffect(() => {
+    if (tab !== "today" || !inboxQuery.error) return;
+    addError(queryErrorMessage(inboxQuery.error, "加载收件箱失败"), "今天");
+  }, [tab, inboxQuery.error, addError]);
+  useEffect(() => {
+    if (tab !== "today" || !goalsQuery.error) return;
+    addError(queryErrorMessage(goalsQuery.error, "加载目标失败"), "今天");
+  }, [tab, goalsQuery.error, addError]);
+  useEffect(() => {
+    if (tab !== "today" || !proposedQuery.error) return;
+    addError(queryErrorMessage(proposedQuery.error, "加载待确认记忆失败"), "今天");
+  }, [tab, proposedQuery.error, addError]);
 
   const activeGoals = useMemo(() => goals.filter((g) => g.status === "active"), [goals]);
 
@@ -73,6 +221,10 @@ export default function DashboardPage() {
       }),
     [pendingApprovals, proposedMemoryCount, inboxData?.emails, activeGoals, mergedNotifications],
   );
+  const columnOwnsRetryFocus =
+    (todayBuckets.decide.length === 0 && Boolean(decideStatus.error)) ||
+    (todayBuckets.do.length === 0 && Boolean(doStatus.error)) ||
+    (todayBuckets.handled.length === 0 && Boolean(handledStatus.error));
 
   const handleNotificationClick = async (n: Notification) => {
     setSelectedNotification(n);
@@ -175,7 +327,12 @@ export default function DashboardPage() {
 
         <PeriodComparisonCard />
 
-        <TodayActions buckets={todayBuckets} />
+        <TodayActions
+          buckets={todayBuckets}
+          decideStatus={decideStatus}
+          doStatus={doStatus}
+          handledStatus={handledStatus}
+        />
 
         {dashboard?.execution_trust && <ExecutionTrustPanel trust={dashboard.execution_trust} />}
 
@@ -188,6 +345,11 @@ export default function DashboardPage() {
         <RemindersPanel
           notifications={todayBuckets.reminders}
           onNotificationClick={handleNotificationClick}
+          loadError={notificationsHeld}
+          loadBusy={notificationsSource.isFetching && !notificationsSource.hasData}
+          loadPending={notificationsSource.isPending}
+          onRetry={notificationsSource.refetch}
+          autoFocusRetry={Boolean(notificationsHeld) && !columnOwnsRetryFocus}
         />
 
         <HealthPanel
