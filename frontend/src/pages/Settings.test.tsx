@@ -2,7 +2,13 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
 import SettingsPage from "./Settings";
-import { ApiError, getMcpStatus, getPromptConfig } from "../api/client";
+import {
+  ApiError,
+  getCapabilityPolicy,
+  getLlmSettings,
+  getMcpStatus,
+  getPromptConfig,
+} from "../api/client";
 import { listMcpRegistry } from "../api/connectors";
 import { getTelegramGatewayStatus, type TelegramGatewayStatus } from "../api/settings";
 
@@ -311,6 +317,110 @@ describe("SettingsPage", () => {
     release?.(telegramStatus);
     expect(await screen.findByText("启用每分钟本地轮询")).toBeInTheDocument();
     expect(screen.queryByTestId("telegram-load-error")).not.toBeInTheDocument();
+  });
+
+  it("shows a retry when saved settings fail to load", async () => {
+    vi.mocked(getLlmSettings).mockRejectedValueOnce(new ApiError("配置暂时读不到", 503));
+    renderWithRouter(<SettingsPage />);
+    const alert = await screen.findByTestId("settings-core-load-error");
+    expect(alert).toHaveTextContent("配置暂时读不到");
+    expect(screen.queryByText("加载设置…")).not.toBeInTheDocument();
+    expect(screen.queryByText("设置")).not.toBeInTheDocument();
+    await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+  });
+
+  it("uses the settings fallback when the config error has no message", async () => {
+    vi.mocked(getLlmSettings).mockRejectedValueOnce(new ApiError("   ", 500));
+    renderWithRouter(<SettingsPage />);
+    expect(await screen.findByTestId("settings-core-load-error")).toHaveTextContent(
+      "无法加载已保存的配置",
+    );
+    expect(screen.queryByText("加载设置…")).not.toBeInTheDocument();
+  });
+
+  it("keeps the settings retry until the reread finishes", async () => {
+    let release: ((row: Awaited<ReturnType<typeof getLlmSettings>>) => void) | undefined;
+    vi.mocked(getLlmSettings)
+      .mockRejectedValueOnce(new ApiError("配置暂时读不到", 503))
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          }),
+      );
+    renderWithRouter(<SettingsPage />);
+    const retry = await screen.findByRole("button", { name: "重试" });
+    fireEvent.click(retry);
+    expect(retry).toBeInTheDocument();
+    await waitFor(() => expect(retry).toHaveAttribute("aria-busy", "true"));
+    expect(screen.getByTestId("settings-core-load-error")).toHaveTextContent("配置暂时读不到");
+    expect(screen.queryByText("加载设置…")).not.toBeInTheDocument();
+
+    release?.({
+      config: {
+        default_provider: "deepseek",
+        temperature: 0.7,
+        max_tokens: 4096,
+        providers: [],
+      },
+      default_model: "deepseek-chat",
+      providers_status: [],
+      presets: {},
+      provider_types: {},
+    });
+    expect(await screen.findByText("设置")).toBeInTheDocument();
+    expect(screen.queryByTestId("settings-core-load-error")).not.toBeInTheDocument();
+  });
+
+  it("shows a retry when the capability policy fails to load", async () => {
+    vi.mocked(getCapabilityPolicy).mockRejectedValueOnce(new ApiError("策略暂时读不到", 503));
+    renderWithRouter(<SettingsPage />);
+    await expandSection("AI 能力与信任");
+    const alert = await screen.findByTestId("capability-policy-load-error");
+    expect(alert).toHaveTextContent("策略暂时读不到");
+    expect(screen.queryByText("加载策略中…")).not.toBeInTheDocument();
+    expect(screen.queryByText("加载失败，点击重试")).not.toBeInTheDocument();
+    expect(screen.queryByText("（无）")).not.toBeInTheDocument();
+    await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+  });
+
+  it("uses the capability fallback when the policy error has no message", async () => {
+    vi.mocked(getCapabilityPolicy).mockRejectedValueOnce(new ApiError("   ", 500));
+    renderWithRouter(<SettingsPage />);
+    await expandSection("AI 能力与信任");
+    expect(await screen.findByTestId("capability-policy-load-error")).toHaveTextContent(
+      "加载能力策略失败",
+    );
+    expect(screen.queryByText("加载策略中…")).not.toBeInTheDocument();
+  });
+
+  it("keeps the capability retry until the reread finishes", async () => {
+    let release: ((row: Awaited<ReturnType<typeof getCapabilityPolicy>>) => void) | undefined;
+    vi.mocked(getCapabilityPolicy)
+      .mockRejectedValueOnce(new ApiError("策略暂时读不到", 503))
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          }),
+      );
+    renderWithRouter(<SettingsPage />);
+    await expandSection("AI 能力与信任");
+    const retry = await screen.findByRole("button", { name: "重试" });
+    fireEvent.click(retry);
+    expect(retry).toBeInTheDocument();
+    await waitFor(() => expect(retry).toHaveAttribute("aria-busy", "true"));
+    expect(screen.getByTestId("capability-policy-load-error")).toHaveTextContent("策略暂时读不到");
+    expect(screen.queryByText("加载策略中…")).not.toBeInTheDocument();
+
+    release?.({
+      auto_allow: ["read_file"],
+      needs_user: [],
+      forbidden: [],
+      external_ingestion: [],
+    });
+    expect(await screen.findByText("读取文件")).toBeInTheDocument();
+    expect(screen.queryByTestId("capability-policy-load-error")).not.toBeInTheDocument();
   });
 
   it("shows a retry when the prompt config fails to load", async () => {

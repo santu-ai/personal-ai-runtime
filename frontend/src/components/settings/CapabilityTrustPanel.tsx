@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useErrorStore } from "../../stores/errorStore";
 import { useCapabilityPolicyQuery } from "../../hooks/useSettingsQuery";
+import LoadErrorNotice, { queryErrorMessage, useHeldQueryError } from "../ui/LoadErrorNotice";
 import { toolLabel } from "../../utils/toolLabels";
 
 function ToolChipList({
@@ -30,28 +31,34 @@ function ToolChipList({
 }
 
 export default function CapabilityTrustPanel() {
-  const { data, isLoading, error, refetch } = useCapabilityPolicyQuery();
+  const { data, isFetching, error, refetch } = useCapabilityPolicyQuery();
+  const shownError = useHeldQueryError(
+    Boolean(data),
+    error,
+    isFetching,
+    "加载能力策略失败",
+    "capability-policy",
+  );
   const addError = useErrorStore((s) => s.addError);
 
   useEffect(() => {
     if (error) {
-      addError(error instanceof Error ? error.message : "加载能力策略失败", "设置");
+      addError(queryErrorMessage(error, "加载能力策略失败"), "设置");
     }
   }, [error, addError]);
 
-  if (isLoading) {
-    return <p className="text-xs text-fg-disabled">加载策略中…</p>;
+  if (shownError) {
+    return (
+      <LoadErrorNotice
+        message={shownError}
+        busy={isFetching}
+        onRetry={() => void refetch()}
+        testId="capability-policy-load-error"
+      />
+    );
   }
   if (!data) {
-    return (
-      <button
-        type="button"
-        onClick={() => void refetch()}
-        className="text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
-      >
-        加载失败，点击重试
-      </button>
-    );
+    return <p className="text-xs text-fg-disabled">加载策略中…</p>;
   }
 
   return (

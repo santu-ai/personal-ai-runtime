@@ -41,8 +41,40 @@ describe("PortraitPage", () => {
       { timeout: 3000 },
     );
     const before = mockGetPortrait.mock.calls.length;
-    fireEvent.click(screen.getByText("重试"));
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
     await waitFor(() => expect(mockGetPortrait.mock.calls.length).toBeGreaterThan(before));
+    expect(screen.queryByText("画像尚未建立")).not.toBeInTheDocument();
+  });
+
+  it("uses the portrait fallback when the error has no message", async () => {
+    mockGetPortrait.mockRejectedValue(new Error("   "));
+    renderPortrait();
+    expect(await screen.findByTestId("portrait-load-error")).toHaveTextContent("加载画像失败");
+    expect(screen.queryByText("正在生成你的 AI 画像…")).not.toBeInTheDocument();
+    expect(screen.queryByText("画像尚未建立")).not.toBeInTheDocument();
+  });
+
+  it("keeps the portrait retry until the reread finishes", async () => {
+    let release: ((row: PortraitData) => void) | undefined;
+    mockGetPortrait.mockRejectedValue(new Error("获取画像失败"));
+    renderPortrait();
+    const retry = await screen.findByRole("button", { name: "重试" });
+    mockGetPortrait.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    fireEvent.click(retry);
+    expect(retry).toBeInTheDocument();
+    await waitFor(() => expect(retry).toHaveAttribute("aria-busy", "true"));
+    expect(screen.getByTestId("portrait-load-error")).toHaveTextContent("获取画像失败");
+    expect(screen.queryByText("正在生成你的 AI 画像…")).not.toBeInTheDocument();
+    expect(screen.queryByText("画像尚未建立")).not.toBeInTheDocument();
+
+    release?.({ profile: {}, habits: [], goals: [] });
+    expect(await screen.findByText("画像尚未建立")).toBeInTheDocument();
+    expect(screen.queryByTestId("portrait-load-error")).not.toBeInTheDocument();
   });
 
   it("shows empty state when no data available", async () => {

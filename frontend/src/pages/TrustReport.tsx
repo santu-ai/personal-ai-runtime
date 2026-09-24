@@ -8,7 +8,6 @@ import {
   AlertTriangle,
   AlertCircle,
   Loader2,
-  RefreshCw,
   Brain,
   MessageSquare,
   Target,
@@ -17,6 +16,7 @@ import {
 } from "lucide-react";
 import { retryMemoryIndexRepair } from "../api/telemetry";
 import { useTrustReportQuery, useInvalidateTrustReport } from "../hooks/useTrustReportQuery";
+import LoadErrorNotice, { useHeldQueryError } from "../components/ui/LoadErrorNotice";
 import { AdoptionSummaryView, formatAdoptionRate } from "../components/dashboard/AdoptionSummary";
 
 const FLOW_COLORS: Record<string, string> = {
@@ -34,14 +34,23 @@ function approvalsHref(id: string | null | undefined): "/approvals" | null {
 
 /** Trust report content — embedded as a Dashboard tab; also used by tests. */
 export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
-  const { data, isLoading: loading, error: queryError, refetch } = useTrustReportQuery();
+  const {
+    data,
+    isLoading: loading,
+    isFetching,
+    error: queryError,
+    refetch,
+  } = useTrustReportQuery();
+  const shownLoadError = useHeldQueryError(
+    Boolean(data),
+    queryError,
+    isFetching,
+    "加载信任报告失败",
+    "trust-report",
+  );
   const invalidate = useInvalidateTrustReport();
   const [retryingId, setRetryingId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-
-  const error =
-    actionError ??
-    (queryError instanceof Error ? queryError.message : queryError ? String(queryError) : null);
 
   const handleRetryRepair = async (repairId: number) => {
     setRetryingId(repairId);
@@ -56,34 +65,26 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
     }
   };
 
-  if (loading) {
+  if (shownLoadError) {
+    return (
+      <LoadErrorNotice
+        message={shownLoadError}
+        busy={isFetching}
+        onRetry={() => {
+          setActionError(null);
+          void refetch();
+        }}
+        testId="trust-report-load-error"
+      />
+    );
+  }
+
+  if (loading || !data) {
     return (
       <div className={`flex items-center justify-center ${compact ? "py-16" : "h-full"}`}>
         <div className="flex flex-col items-center gap-3 text-fg-secondary">
           <Loader2 size={32} className="animate-spin" />
           <p className="text-sm">正在生成信任报告…</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error && !data) {
-    return (
-      <div className={`flex items-center justify-center ${compact ? "py-16" : "h-full"}`}>
-        <div className="flex flex-col items-center gap-3 text-fg-secondary">
-          <AlertCircle size={32} className="text-danger" />
-          <p className="text-sm">{error}</p>
-          <button
-            type="button"
-            onClick={() => {
-              setActionError(null);
-              void refetch();
-            }}
-            className="flex items-center gap-2 px-4 py-2 mt-2 text-sm bg-surface-overlay hover:bg-border-strong text-white rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-          >
-            <RefreshCw size={14} />
-            重试
-          </button>
         </div>
       </div>
     );

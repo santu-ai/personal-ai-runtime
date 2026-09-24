@@ -158,6 +158,34 @@ describe("MemoriesPage", () => {
     await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
   });
 
+  it("keeps the memory list retry until the reread finishes", async () => {
+    let release: ((row: { memories: []; total: number }) => void) | undefined;
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status) return { memories: [], total: 0 };
+      throw new ApiError("加载失败", 500);
+    });
+    renderWithRouter(<MemoriesPage />);
+    const retry = await screen.findByRole("button", { name: "重试" });
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status) return { memories: [], total: 0 };
+      return new Promise((resolve) => {
+        release = resolve;
+      });
+    });
+    fireEvent.click(retry);
+    expect(retry).toBeInTheDocument();
+    await waitFor(() => expect(retry).toHaveAttribute("aria-busy", "true"));
+    expect(screen.getByTestId("memories-load-error")).toHaveTextContent("加载失败");
+    expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
+    expect(screen.queryByText(/我还没有记住任何事/)).not.toBeInTheDocument();
+
+    release?.({ memories: [], total: 0 });
+    expect(await screen.findByText(/我还没有记住任何事/)).toBeInTheDocument();
+    expect(screen.queryByTestId("memories-load-error")).not.toBeInTheDocument();
+  });
+
   it("shows a retry when proposed memories fail to load", async () => {
     vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
       const status = typeof opts === "string" ? opts : opts?.claimStatus;

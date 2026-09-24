@@ -69,6 +69,38 @@ describe("TrustReportPanel", () => {
     expect(retry).toHaveClass("focus-visible:ring-focus-ring");
     fireEvent.click(retry);
     await waitFor(() => expect(mockGetReport.mock.calls.length).toBeGreaterThanOrEqual(2));
+    expect(screen.queryByText("0 条")).not.toBeInTheDocument();
+  });
+
+  it("uses the trust report fallback when the error has no message", async () => {
+    mockGetReport.mockRejectedValue(new Error("   "));
+    renderPage();
+    expect(await screen.findByTestId("trust-report-load-error")).toHaveTextContent(
+      "加载信任报告失败",
+    );
+    expect(screen.queryByText("正在生成信任报告…")).not.toBeInTheDocument();
+  });
+
+  it("keeps the trust report retry until the reread finishes", async () => {
+    let release: ((row: TrustReportData) => void) | undefined;
+    mockGetReport.mockRejectedValue(new Error("失败"));
+    renderPage();
+    const retry = await screen.findByRole("button", { name: "重试" });
+    mockGetReport.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    fireEvent.click(retry);
+    expect(retry).toBeInTheDocument();
+    expect(retry).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByTestId("trust-report-load-error")).toHaveTextContent("失败");
+    expect(screen.queryByText("正在生成信任报告…")).not.toBeInTheDocument();
+
+    release?.(BASE);
+    expect(await screen.findByText("数据存储位置")).toBeInTheDocument();
+    expect(screen.queryByTestId("trust-report-load-error")).not.toBeInTheDocument();
   });
 
   it("shows data location section", async () => {
