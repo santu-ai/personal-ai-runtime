@@ -18,6 +18,7 @@ import {
 import { useApprovalsQuery } from "../../hooks/useApprovalsQuery";
 import { useInboxQuery } from "../../hooks/useInboxQuery";
 import { useProposedMemoryCountQuery } from "../../hooks/useMemoriesQuery";
+import LoadErrorNotice from "../ui/LoadErrorNotice";
 
 type BadgeKey = "inbox" | "approvals" | "memories" | null;
 
@@ -77,6 +78,12 @@ interface SidebarProps {
   onSelectConversation: (id: string) => void;
   onNewChat: () => void;
   onDeleteChat: (id: string) => void;
+  /** 列表还没读到时的失败原因。已有会话时忽略，列表留着。 */
+  conversationsLoadError?: string | null;
+  conversationsLoadBusy?: boolean;
+  /** 还没有任何会话，且这次读取尚未结束。 */
+  conversationsLoadPending?: boolean;
+  onRetryConversations?: () => void;
   footer?: React.ReactNode;
 }
 
@@ -153,6 +160,10 @@ export default function Sidebar({
   onSelectConversation,
   onNewChat,
   onDeleteChat,
+  conversationsLoadError = null,
+  conversationsLoadBusy = false,
+  conversationsLoadPending = false,
+  onRetryConversations,
   footer,
 }: SidebarProps) {
   const location = useLocation();
@@ -311,9 +322,19 @@ export default function Sidebar({
                   </div>
                 );
               })}
-              {conversations.length === 0 && (
-                <p className="text-fg-disabled text-xs text-center py-6">暂无对话</p>
-              )}
+              {conversations.length === 0 &&
+                (conversationsLoadError ? (
+                  <LoadErrorNotice
+                    message={conversationsLoadError}
+                    busy={conversationsLoadBusy}
+                    onRetry={() => onRetryConversations?.()}
+                    testId="conversations-load-error"
+                  />
+                ) : conversationsLoadPending ? (
+                  <p className="text-fg-disabled text-xs text-center py-6">加载中…</p>
+                ) : (
+                  <p className="text-fg-disabled text-xs text-center py-6">暂无对话</p>
+                ))}
             </div>
           </>
         )}

@@ -9,7 +9,9 @@ import {
   useNotificationsQuery,
   useInvalidateNotifications,
 } from "../../hooks/useNotificationsQuery";
+import { useErrorStore } from "../../stores/errorStore";
 import NotificationDetailModal from "../notifications/NotificationDetailModal";
+import LoadErrorNotice, { queryErrorMessage, useHeldQueryError } from "../ui/LoadErrorNotice";
 import { notificationPreview } from "../../utils/notificationUtils";
 
 interface Props {
@@ -20,9 +22,24 @@ interface Props {
 export default function NotificationBell({ compact = false }: Props) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Notification | null>(null);
-  const { data: notifications = [], refetch } = useNotificationsQuery(15);
+  const notificationsQuery = useNotificationsQuery(15);
+  const notifications = notificationsQuery.data ?? [];
+  const refetch = notificationsQuery.refetch;
+  const addError = useErrorStore((s) => s.addError);
+  const shownError = useHeldQueryError(
+    notificationsQuery.data !== undefined,
+    notificationsQuery.error,
+    notificationsQuery.isFetching,
+    "加载通知失败",
+    "notification-bell",
+  );
   const invalidateNotifications = useInvalidateNotifications();
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!notificationsQuery.error) return;
+    addError(queryErrorMessage(notificationsQuery.error, "加载通知失败"), "通知");
+  }, [notificationsQuery.error, addError]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -121,7 +138,18 @@ export default function NotificationBell({ compact = false }: Props) {
                 </button>
               )}
             </div>
-            {notifications.length === 0 ? (
+            {shownError ? (
+              <div className="p-3">
+                <LoadErrorNotice
+                  message={shownError}
+                  busy={notificationsQuery.isFetching}
+                  onRetry={() => void refetch()}
+                  testId="notifications-load-error"
+                />
+              </div>
+            ) : notificationsQuery.isPending && notificationsQuery.data === undefined ? (
+              <p className="text-xs text-fg-disabled p-4 text-center">加载中…</p>
+            ) : notifications.length === 0 ? (
               <p className="text-xs text-fg-disabled p-4 text-center">暂无通知</p>
             ) : (
               notifications.map((n) => (
