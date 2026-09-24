@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   updateEmailSettings,
   testEmailConnection,
@@ -26,6 +26,7 @@ export default function EmailConfigCard({ email, onSaved, embedded = false }: Pr
   const [emailUser, setEmailUser] = useState(email.config.user);
   const [emailPass, setEmailPass] = useState(email.config.password);
   const [savingEmail, setSavingEmail] = useState(false);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [testingEmail, setTestingEmail] = useState(false);
   const [emailTestResult, setEmailTestResult] = useState<{
     ok: boolean;
@@ -33,9 +34,20 @@ export default function EmailConfigCard({ email, onSaved, embedded = false }: Pr
     smtp_ok: boolean;
     error?: string | null;
   } | null>(null);
+  const savingRef = useRef(false);
+  const saveGen = useRef(0);
+
+  const markDirty = () => {
+    saveGen.current += 1;
+    setSaveNotice(null);
+  };
 
   const handleSaveEmail = async () => {
+    if (savingRef.current) return;
+    const gen = saveGen.current;
+    savingRef.current = true;
     setSavingEmail(true);
+    setSaveNotice(null);
     try {
       const result = await updateEmailSettings({
         user: emailUser,
@@ -49,9 +61,11 @@ export default function EmailConfigCard({ email, onSaved, embedded = false }: Pr
         help: email.help,
         config: result.config,
       });
+      if (saveGen.current === gen) setSaveNotice("已保存");
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "保存邮箱配置失败", "设置");
     } finally {
+      savingRef.current = false;
       setSavingEmail(false);
     }
   };
@@ -90,7 +104,10 @@ export default function EmailConfigCard({ email, onSaved, embedded = false }: Pr
           <Input
             type="email"
             value={emailUser}
-            onChange={(e) => setEmailUser(e.target.value)}
+            onChange={(e) => {
+              setEmailUser(e.target.value);
+              markDirty();
+            }}
             placeholder="your-email@gmail.com"
           />
         </div>
@@ -99,7 +116,10 @@ export default function EmailConfigCard({ email, onSaved, embedded = false }: Pr
           <PasswordInput
             value={emailPass}
             isSavedSecret={emailPass === MASKED_SECRET}
-            onChange={(e) => setEmailPass(e.target.value)}
+            onChange={(e) => {
+              setEmailPass(e.target.value);
+              markDirty();
+            }}
             placeholder="16 位应用专用密码"
           />
           {emailPass === MASKED_SECRET && (
@@ -119,13 +139,18 @@ export default function EmailConfigCard({ email, onSaved, embedded = false }: Pr
         </div>
       )}
 
-      <div className="flex gap-3 mt-4">
-        <Button onClick={handleSaveEmail} disabled={savingEmail}>
+      <div className="mt-4 flex items-center gap-3">
+        <Button onClick={() => void handleSaveEmail()} disabled={savingEmail}>
           {savingEmail ? "保存中…" : "保存邮箱配置"}
         </Button>
-        <Button variant="ghost" onClick={handleTestEmail} disabled={testingEmail}>
+        <Button variant="ghost" onClick={() => void handleTestEmail()} disabled={testingEmail}>
           {testingEmail ? "测试中…" : "测试连接"}
         </Button>
+        {saveNotice ? (
+          <p className="text-xs text-success" role="status" data-testid="email-save-notice">
+            {saveNotice}
+          </p>
+        ) : null}
       </div>
     </>
   );
