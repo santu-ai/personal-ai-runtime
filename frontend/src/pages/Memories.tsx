@@ -20,6 +20,10 @@ import { useMemoriesGroupedQuery, useProposedMemoryCountQuery } from "../hooks/u
 import { queryKeys } from "../hooks/useWsInvalidationBridge";
 import { PortraitPanel } from "./Portrait";
 import Dialog from "../components/ui/Dialog";
+import LoadErrorNotice, {
+  queryErrorMessage,
+  useHeldQueryError,
+} from "../components/ui/LoadErrorNotice";
 import PageHeader from "../components/ui/PageHeader";
 import SegmentedControl from "../components/ui/SegmentedControl";
 import MemoryGraphView from "../components/memories/MemoryGraphView";
@@ -58,11 +62,19 @@ export default function MemoriesPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
 
-  const { data, isLoading: loading, error: loadError } = useMemoriesGroupedQuery();
+  const {
+    data,
+    isLoading: loading,
+    isFetching: listFetching,
+    error: loadError,
+    refetch: refetchMemories,
+  } = useMemoriesGroupedQuery();
   const {
     data: proposedData,
     isLoading: proposedLoading,
     isFetching: proposedFetching,
+    error: reviewError,
+    refetch: refetchReview,
   } = useMemoriesGroupedQuery({
     claimStatus: "proposed",
     category: reviewCategory || undefined,
@@ -70,7 +82,12 @@ export default function MemoriesPage() {
     limit: 100,
   });
   const { data: proposedTotal = 0 } = useProposedMemoryCountQuery();
-  const { data: rejectedData } = useMemoriesGroupedQuery({
+  const {
+    data: rejectedData,
+    isFetching: rejectedFetching,
+    error: rejectedError,
+    refetch: refetchRejected,
+  } = useMemoriesGroupedQuery({
     claimStatus: "rejected",
     limit: 50,
     order: "created_at_desc",
@@ -84,6 +101,27 @@ export default function MemoriesPage() {
   const proposedMemories = proposedData?.memories ?? [];
   const rejectedMemories = rejectedData?.memories ?? [];
   const filteredTotal = proposedData?.total ?? proposedMemories.length;
+  const shownListError = useHeldQueryError(
+    Boolean(data),
+    loadError,
+    listFetching,
+    "加载记忆失败",
+    "list",
+  );
+  const shownReviewError = useHeldQueryError(
+    Boolean(proposedData),
+    reviewError,
+    proposedFetching,
+    "加载待确认记忆失败",
+    `${reviewCategory}|${reviewOrder}`,
+  );
+  const shownRejectedError = useHeldQueryError(
+    Boolean(rejectedData),
+    rejectedError,
+    rejectedFetching,
+    "加载已拒绝记忆失败",
+    "rejected",
+  );
   // First visit only — filter changes keep placeholderData so the page stays up.
   const reviewInitialLoading = viewMode === "review" && proposedLoading && !proposedData;
   const addError = useErrorStore((s) => s.addError);
@@ -99,6 +137,8 @@ export default function MemoriesPage() {
   const [provenanceTarget, setProvenanceTarget] = useState<MemoryRow | null>(null);
   const [graphData, setGraphData] = useState<MemoryGraph | null>(null);
   const [graphLoading, setGraphLoading] = useState(false);
+  const [graphError, setGraphError] = useState<string | null>(null);
+  const [graphAttempt, setGraphAttempt] = useState(0);
 
   const invalidateMemories = () => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.memories });
@@ -130,10 +170,21 @@ export default function MemoriesPage() {
 
   useEffect(() => {
     if (loadError) {
-      const msg = loadError instanceof ApiError ? loadError.message : "加载记忆失败";
-      addError(msg, "记忆");
+      addError(queryErrorMessage(loadError, "加载记忆失败"), "记忆");
     }
   }, [loadError, addError]);
+
+  useEffect(() => {
+    if (viewMode === "review" && reviewError) {
+      addError(queryErrorMessage(reviewError, "加载待确认记忆失败"), "记忆");
+    }
+  }, [viewMode, reviewError, addError]);
+
+  useEffect(() => {
+    if (viewMode === "review" && rejectedError) {
+      addError(queryErrorMessage(rejectedError, "加载已拒绝记忆失败"), "记忆");
+    }
+  }, [viewMode, rejectedError, addError]);
 
   const handleCreate = async () => {
     if (!newContent.trim()) return;
@@ -256,12 +307,20 @@ export default function MemoriesPage() {
     setGraphLoading(true);
     (async () => {
       try {
-        const data = await getMemoryGraph(30);
-        if (!cancelled) setGraphData(data);
-      } catch (err) {
-        if (!cancelled) {
-          addError(err instanceof ApiError ? err.message : "加载记忆图谱失败", "记忆");
+        const next = await getMemoryGraph(30);
+        if (cancelled) return;
+        if (!next || !Array.isArray(next.nodes)) {
+          setGraphError("加载记忆图谱失败");
+          addError("加载记忆图谱失败", "记忆");
+          return;
         }
+        setGraphData(next);
+        setGraphError(null);
+      } catch (err) {
+        if (cancelled) return;
+        const msg = queryErrorMessage(err, "加载记忆图谱失败");
+        setGraphError(msg);
+        addError(msg, "记忆");
       } finally {
         if (!cancelled) setGraphLoading(false);
       }
@@ -269,7 +328,7 @@ export default function MemoriesPage() {
     return () => {
       cancelled = true;
     };
-  }, [viewMode, graphData, addError]);
+  }, [viewMode, graphData, graphAttempt, addError]);
 
   if (loading || reviewInitialLoading) {
     return <div className="flex-1 flex items-center justify-center text-fg-tertiary">加载中…</div>;
@@ -398,7 +457,14 @@ export default function MemoriesPage() {
               </div>
             )}
 
-            {proposedMemories.length === 0 ? (
+            {shownReviewError ? (
+              <LoadErrorNotice
+                message={shownReviewError}
+                busy={proposedFetching}
+                onRetry={() => void refetchReview()}
+                testId="memories-review-load-error"
+              />
+            ) : proposedMemories.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-fg-tertiary text-sm">
                   {reviewCategory ? "该分类下没有待确认的记忆。" : "没有待确认的记忆。"}
@@ -423,7 +489,17 @@ export default function MemoriesPage() {
               </ul>
             )}
 
-            {rejectedMemories.length > 0 && (
+            {shownRejectedError ? (
+              <div className="pt-4">
+                <LoadErrorNotice
+                  message={shownRejectedError}
+                  busy={rejectedFetching}
+                  onRetry={() => void refetchRejected()}
+                  testId="memories-rejected-load-error"
+                  autoFocus={false}
+                />
+              </div>
+            ) : rejectedMemories.length > 0 ? (
               <section className="pt-4">
                 <h3 className="text-sm font-semibold text-fg-secondary mb-3">已拒绝</h3>
                 <p className="text-xs text-fg-tertiary mb-2">
@@ -444,7 +520,7 @@ export default function MemoriesPage() {
                   ))}
                 </ul>
               </section>
-            )}
+            ) : null}
           </>
         ) : viewMode === "list" ? (
           <>
@@ -465,7 +541,14 @@ export default function MemoriesPage() {
               </button>
             </div>
 
-            {Object.keys(grouped).length === 0 ? (
+            {shownListError ? (
+              <LoadErrorNotice
+                message={shownListError}
+                busy={listFetching}
+                onRetry={() => void refetchMemories()}
+                testId="memories-load-error"
+              />
+            ) : Object.keys(grouped).length === 0 ? (
               <div className="text-center py-12">
                 <Brain size={40} className="mx-auto mb-3 text-fg-disabled" />
                 <p className="text-fg-tertiary text-sm">
@@ -504,11 +587,18 @@ export default function MemoriesPage() {
           </>
         ) : (
           <div className="bg-surface-raised border border-border-subtle rounded-lg p-4">
-            {graphLoading ? (
+            {graphError ? (
+              <LoadErrorNotice
+                message={graphError}
+                busy={graphLoading}
+                onRetry={() => setGraphAttempt((n) => n + 1)}
+                testId="memories-graph-load-error"
+              />
+            ) : graphLoading || !graphData ? (
               <div className="flex items-center justify-center h-96 text-fg-tertiary">
                 加载记忆图谱...
               </div>
-            ) : graphData && graphData.nodes.length > 0 ? (
+            ) : graphData.nodes.length > 0 ? (
               <MemoryGraphView graph={graphData} />
             ) : (
               <div className="flex items-center justify-center h-96 text-fg-tertiary">

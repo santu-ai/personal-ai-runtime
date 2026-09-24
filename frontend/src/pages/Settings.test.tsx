@@ -1,7 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, waitFor, fireEvent } from "@testing-library/react";
+import { screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
 import SettingsPage from "./Settings";
+import { ApiError, getMcpStatus, getPromptConfig } from "../api/client";
+import { listMcpRegistry } from "../api/connectors";
 
 vi.mock("../api/client", () => ({
   getSystemHealth: vi.fn().mockResolvedValue({
@@ -144,6 +146,25 @@ async function expandSection(title: string) {
 describe("SettingsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(listMcpRegistry).mockResolvedValue([]);
+    vi.mocked(getPromptConfig).mockResolvedValue({
+      identity: "test identity",
+      coding_rules: "test rules",
+      is_custom_identity: false,
+      is_custom_coding_rules: false,
+    });
+    vi.mocked(getMcpStatus).mockResolvedValue({
+      enabled: true,
+      servers: [
+        {
+          name: "email",
+          status: "connected",
+          tool_count: 3,
+          startup_connect: true,
+        },
+      ],
+      total_tools: 3,
+    });
   });
 
   it("renders header, status badge and export button", async () => {
@@ -189,5 +210,57 @@ describe("SettingsPage", () => {
       expect(screen.getByText("写入文件")).toBeInTheDocument();
       expect(screen.getByText("发送邮件")).toBeInTheDocument();
     });
+  });
+
+  it("shows an empty MCP registry after a successful read", async () => {
+    renderWithRouter(<SettingsPage />);
+    await expandSection("MCP 市场");
+    expect(await screen.findByText("暂无可用 MCP 服务器")).toBeInTheDocument();
+    expect(screen.queryByTestId("mcp-registry-load-error")).not.toBeInTheDocument();
+  });
+
+  it("shows a retry when the MCP registry fails to load", async () => {
+    vi.mocked(listMcpRegistry).mockRejectedValue(new ApiError("加载失败", 500));
+    renderWithRouter(<SettingsPage />);
+    await expandSection("MCP 市场");
+    const alert = await screen.findByTestId("mcp-registry-load-error");
+    expect(alert).toHaveTextContent("加载失败");
+    expect(screen.queryByText("暂无可用 MCP 服务器")).not.toBeInTheDocument();
+    const retry = within(alert).getByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+  });
+
+  it("shows an empty MCP server list when none are enabled", async () => {
+    vi.mocked(getMcpStatus).mockResolvedValue({
+      enabled: true,
+      servers: [],
+      total_tools: 0,
+    });
+    renderWithRouter(<SettingsPage />);
+    expect(await screen.findByText("暂无 MCP 服务器")).toBeInTheDocument();
+    expect(screen.queryByTestId("mcp-status-load-error")).not.toBeInTheDocument();
+    expect(screen.queryByText("MCP 未启用或连接信息不可用")).not.toBeInTheDocument();
+  });
+
+  it("shows a retry when MCP status fails to load", async () => {
+    vi.mocked(getMcpStatus).mockRejectedValue(new ApiError("   ", 500));
+    renderWithRouter(<SettingsPage />);
+    const alert = await screen.findByTestId("mcp-status-load-error", {}, { timeout: 4000 });
+    expect(alert).toHaveTextContent("加载 MCP 服务器失败");
+    expect(screen.queryByText("暂无 MCP 服务器")).not.toBeInTheDocument();
+    expect(screen.queryByText("MCP 未启用或连接信息不可用")).not.toBeInTheDocument();
+    await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+  });
+
+  it("shows a retry when the prompt config fails to load", async () => {
+    vi.mocked(getPromptConfig).mockRejectedValue(new ApiError("加载失败", 500));
+    renderWithRouter(<SettingsPage />);
+    await expandSection("系统人设");
+    const alert = await screen.findByTestId("prompt-load-error");
+    expect(alert).toHaveTextContent("加载失败");
+    expect(
+      screen.queryByPlaceholderText("定义 AI 的身份、性格、行为准则..."),
+    ).not.toBeInTheDocument();
+    await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
   });
 });

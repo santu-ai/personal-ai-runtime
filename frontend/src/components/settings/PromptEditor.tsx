@@ -4,11 +4,19 @@ import { getPromptConfig, updatePromptConfig } from "../../api/client";
 import { useErrorStore } from "../../stores/errorStore";
 import { usePromptConfigQuery } from "../../hooks/useSettingsQuery";
 import { queryKeys } from "../../hooks/useWsInvalidationBridge";
+import LoadErrorNotice, { queryErrorMessage, useHeldQueryError } from "../ui/LoadErrorNotice";
 
 export default function PromptEditor() {
   const addError = useErrorStore((s) => s.addError);
   const queryClient = useQueryClient();
-  const { data: cfg, isLoading, error } = usePromptConfigQuery();
+  const { data: cfg, isLoading, isFetching, error, refetch } = usePromptConfigQuery();
+  const shownError = useHeldQueryError(
+    Boolean(cfg),
+    error,
+    isFetching,
+    "加载人设配置失败",
+    "prompt",
+  );
   const [identity, setIdentity] = useState("");
   const [codingRules, setCodingRules] = useState("");
   const [isCustomIdentity, setIsCustomIdentity] = useState(false);
@@ -19,7 +27,7 @@ export default function PromptEditor() {
 
   useEffect(() => {
     if (error) {
-      addError(error instanceof Error ? error.message : "加载人设配置失败", "设置");
+      addError(queryErrorMessage(error, "加载人设配置失败"), "设置");
     }
   }, [error, addError]);
 
@@ -74,6 +82,17 @@ export default function PromptEditor() {
       setSaving(false);
     }
   };
+
+  if (shownError) {
+    return (
+      <LoadErrorNotice
+        message={shownError}
+        busy={isFetching}
+        onRetry={() => void refetch()}
+        testId="prompt-load-error"
+      />
+    );
+  }
 
   if (isLoading && !hydrated) {
     return <p className="text-xs text-fg-disabled">加载人设中…</p>;

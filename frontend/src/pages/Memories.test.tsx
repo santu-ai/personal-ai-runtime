@@ -1,8 +1,16 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
 import MemoriesPage from "./Memories";
-import { listMemoriesGrouped, ratifyMemory, rejectMemory } from "../api/client";
+import {
+  ApiError,
+  getMemoryGraph,
+  listMemoriesGrouped,
+  ratifyMemory,
+  rejectMemory,
+} from "../api/client";
+
+const { addError } = vi.hoisted(() => ({ addError: vi.fn() }));
 
 vi.mock("../api/client", () => ({
   listMemoriesGrouped: vi.fn().mockResolvedValue({
@@ -39,8 +47,8 @@ vi.mock("../api/client", () => ({
 }));
 
 vi.mock("../stores/errorStore", () => ({
-  useErrorStore: (selector: (s: { addError: () => void }) => unknown) =>
-    selector({ addError: vi.fn() }),
+  useErrorStore: (selector: (s: { addError: typeof addError }) => unknown) =>
+    selector({ addError }),
 }));
 
 vi.mock("../stores/chatStore", () => ({
@@ -55,6 +63,11 @@ vi.mock("../stores/chatStore", () => ({
 describe("MemoriesPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(listMemoriesGrouped).mockResolvedValue({
+      memories: [{ id: "m1", content: "喜欢早起跑步", confidence: 0.9, category: "habit" }],
+      total: 1,
+    });
+    vi.mocked(getMemoryGraph).mockResolvedValue({ nodes: [], edges: [] });
   });
 
   it("renders memories list", async () => {
@@ -126,5 +139,54 @@ describe("MemoriesPage", () => {
     const confirmReject = screen.getAllByRole("button", { name: "拒绝" }).slice(-1)[0];
     fireEvent.click(confirmReject!);
     await waitFor(() => expect(rejectMemory).toHaveBeenCalledWith("p1", "过时了"));
+  });
+
+  it("shows the empty memory list after a successful read", async () => {
+    vi.mocked(listMemoriesGrouped).mockResolvedValue({ memories: [], total: 0 });
+    renderWithRouter(<MemoriesPage />);
+    expect(await screen.findByText(/我还没有记住任何事/)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("shows a retry when the memory list fails to load", async () => {
+    vi.mocked(listMemoriesGrouped).mockRejectedValue(new ApiError("加载失败", 500));
+    renderWithRouter(<MemoriesPage />);
+    const alert = await screen.findByTestId("memories-load-error");
+    expect(alert).toHaveTextContent("加载失败");
+    expect(addError).toHaveBeenCalledWith("加载失败", "记忆");
+    expect(screen.queryByText(/我还没有记住任何事/)).not.toBeInTheDocument();
+    await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+  });
+
+  it("shows a retry when proposed memories fail to load", async () => {
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "proposed") throw new ApiError("加载失败", 500);
+      if (status === "rejected") throw new ApiError("拒绝列表失败", 500);
+      return { memories: [], total: 0 };
+    });
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
+    const alert = await screen.findByTestId("memories-review-load-error");
+    expect(alert).toHaveTextContent("加载失败");
+    expect(screen.queryByText("没有待确认的记忆。")).not.toBeInTheDocument();
+    const rejected = screen.getByTestId("memories-rejected-load-error");
+    expect(rejected).toHaveTextContent("拒绝列表失败");
+    expect(within(rejected).getByRole("button", { name: "重试" })).not.toHaveFocus();
+    await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+  });
+
+  it("shows an empty graph after a successful read", async () => {
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=graph"] });
+    expect(await screen.findByText("暂无记忆数据可显示")).toBeInTheDocument();
+    expect(screen.queryByTestId("memories-graph-load-error")).not.toBeInTheDocument();
+  });
+
+  it("shows a retry when the memory graph fails to load", async () => {
+    vi.mocked(getMemoryGraph).mockRejectedValue(new ApiError("加载失败", 500));
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=graph"] });
+    const alert = await screen.findByTestId("memories-graph-load-error");
+    expect(alert).toHaveTextContent("加载失败");
+    expect(screen.queryByText("暂无记忆数据可显示")).not.toBeInTheDocument();
+    await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
   });
 });

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { installMcpConnector } from "../../api/connectors";
 import { useErrorStore } from "../../stores/errorStore";
 import { useMcpRegistryQuery } from "../../hooks/useSettingsQuery";
+import LoadErrorNotice, { queryErrorMessage, useHeldQueryError } from "../ui/LoadErrorNotice";
 
 const CATEGORIES: Record<string, string> = {
   browser: "浏览器",
@@ -15,12 +16,20 @@ const CATEGORIES: Record<string, string> = {
 
 export default function McpMarketplace() {
   const addError = useErrorStore((s) => s.addError);
-  const { data: servers = [], isLoading, error, isFetched } = useMcpRegistryQuery();
+  const { data, isLoading, error, isFetching, refetch } = useMcpRegistryQuery();
+  const servers = data ?? [];
+  const shownError = useHeldQueryError(
+    data !== undefined,
+    error,
+    isFetching,
+    "加载 MCP 市场失败",
+    "mcp-registry",
+  );
   const [installing, setInstalling] = useState<string | null>(null);
 
   useEffect(() => {
     if (error) {
-      addError(error instanceof Error ? error.message : "加载 MCP 市场失败", "设置");
+      addError(queryErrorMessage(error, "加载 MCP 市场失败"), "设置");
     }
   }, [error, addError]);
 
@@ -40,7 +49,18 @@ export default function McpMarketplace() {
     }
   };
 
-  if (isLoading || !isFetched) {
+  if (shownError) {
+    return (
+      <LoadErrorNotice
+        message={shownError}
+        busy={isFetching}
+        onRetry={() => void refetch()}
+        testId="mcp-registry-load-error"
+      />
+    );
+  }
+
+  if (isLoading || data === undefined) {
     return <p className="text-xs text-fg-disabled">加载市场中…</p>;
   }
 

@@ -13,6 +13,10 @@ import { useQuickChat } from "../hooks/useQuickChat";
 import { useInboxQuery, useInvalidateInbox, RECENT_INBOX_LIMIT } from "../hooks/useInboxQuery";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
+import LoadErrorNotice, {
+  queryErrorMessage,
+  useHeldQueryError,
+} from "../components/ui/LoadErrorNotice";
 import NoticeBanner from "../components/ui/NoticeBanner";
 import PageHeader from "../components/ui/PageHeader";
 import InboxEmailDetailModal from "../components/inbox/InboxEmailDetailModal";
@@ -101,12 +105,14 @@ function SyncStatusBar({
 }
 
 export default function InboxPage() {
-  const { data, isLoading: loading, error, refetch } = useInboxQuery();
+  const { data, isLoading: loading, isFetching, error, refetch } = useInboxQuery();
   const invalidateInbox = useInvalidateInbox();
   const emails = data?.emails ?? [];
   const allEmails = data?.allEmails ?? [];
   const digest = data?.digest ?? null;
   const sync = data?.sync ?? null;
+  const hasMail = emails.length > 0 || allEmails.length > 0;
+  const shownLoadError = useHeldQueryError(hasMail, error, isFetching, "加载收件箱失败", "inbox");
   const [polling, setPolling] = useState(false);
   const [initialPollDone, setInitialPollDone] = useState(false);
   const [selectedEmail, setSelectedEmail] = useState<InboxEmail | null>(null);
@@ -117,8 +123,7 @@ export default function InboxPage() {
 
   useEffect(() => {
     if (error) {
-      const msg = error instanceof ApiError ? error.message : "加载收件箱失败";
-      addError(msg, "收件箱");
+      addError(queryErrorMessage(error, "加载收件箱失败"), "收件箱");
     }
   }, [error, addError]);
 
@@ -216,7 +221,14 @@ export default function InboxPage() {
 
         <SyncStatusBar sync={sync} polling={polling} onRetry={() => void handlePoll()} />
 
-        {loading && allEmails.length === 0 && emails.length === 0 ? (
+        {shownLoadError ? (
+          <LoadErrorNotice
+            message={shownLoadError}
+            busy={isFetching}
+            onRetry={() => void refetch()}
+            testId="inbox-load-error"
+          />
+        ) : loading && !hasMail ? (
           <p className="text-fg-tertiary text-center py-12">加载中...</p>
         ) : (
           <>
