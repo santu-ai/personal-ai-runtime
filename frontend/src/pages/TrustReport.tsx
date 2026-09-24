@@ -74,11 +74,12 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
           <AlertCircle size={32} className="text-danger" />
           <p className="text-sm">{error}</p>
           <button
+            type="button"
             onClick={() => {
               setActionError(null);
               void refetch();
             }}
-            className="flex items-center gap-2 px-4 py-2 mt-2 text-sm bg-surface-overlay hover:bg-border-strong text-white rounded-lg transition-colors"
+            className="flex items-center gap-2 px-4 py-2 mt-2 text-sm bg-surface-overlay hover:bg-border-strong text-white rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
           >
             <RefreshCw size={14} />
             重试
@@ -271,7 +272,7 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
                     aria-label="重试索引"
                     disabled={retryingId === repair.id}
                     onClick={() => void handleRetryRepair(repair.id)}
-                    className="shrink-0 px-3 py-1.5 text-xs bg-danger/20 text-danger rounded-lg hover:bg-danger/30 disabled:opacity-50"
+                    className="shrink-0 px-3 py-1.5 text-xs bg-danger/20 text-danger rounded-lg hover:bg-danger/30 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                   >
                     {retryingId === repair.id ? "重试中…" : "重试索引"}
                   </button>
@@ -321,9 +322,9 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
                         <Link
                           to={href}
                           title="打开审批"
-                          className="block truncate text-sm text-fg-primary hover:underline"
+                          className="block rounded-sm text-sm text-fg-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                         >
-                          {actionLabel}
+                          <span className="block truncate">{actionLabel}</span>
                         </Link>
                       ) : (
                         <p className="text-sm text-fg-primary truncate">{actionLabel}</p>

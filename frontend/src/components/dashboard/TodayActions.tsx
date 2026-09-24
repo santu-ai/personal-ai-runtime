@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { CheckCircle2, Mail, ShieldCheck, Sparkles, Target } from "lucide-react";
 import type { TodayBuckets, TodayDecideItem, TodayDoItem, TodayHandledItem } from "./todayBuckets";
 
@@ -6,7 +6,9 @@ interface TodayActionsProps {
   buckets: TodayBuckets;
 }
 
-function DecideRow({ item, onClick }: { item: TodayDecideItem; onClick: () => void }) {
+const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
+
+function DecideRow({ item }: { item: TodayDecideItem }) {
   const icon =
     item.kind === "approval" ? (
       <ShieldCheck size={14} className="text-warning shrink-0" />
@@ -16,48 +18,44 @@ function DecideRow({ item, onClick }: { item: TodayDecideItem; onClick: () => vo
       <Mail size={14} className="text-insight shrink-0" />
     );
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="w-full flex items-center gap-2 text-xs p-2 bg-warning/5 rounded-lg border border-warning/20 text-left hover:bg-warning/10"
+    <Link
+      to={item.href}
+      className={`w-full flex items-center gap-2 text-xs p-2 bg-warning/5 rounded-lg border border-warning/20 text-left hover:bg-warning/10 ${focusRing}`}
     >
       {icon}
       <span className="text-fg-primary truncate flex-1">{item.title}</span>
-    </button>
+    </Link>
   );
 }
 
-function DoRow({ item, onClick }: { item: TodayDoItem; onClick: () => void }) {
+function DoRow({ item }: { item: TodayDoItem }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="w-full flex items-center gap-2 text-xs p-2 rounded-lg hover:bg-surface-overlay text-left"
+    <Link
+      to={item.href}
+      className={`w-full flex items-center gap-2 text-xs p-2 rounded-lg hover:bg-surface-overlay text-left ${focusRing}`}
     >
       <Target size={14} className="text-warning shrink-0" />
       <span className="text-fg-primary truncate flex-1">{item.title}</span>
       <span className="text-fg-tertiary shrink-0">
         {item.reason === "deadline" ? "截止将近" : "已停滞"}
       </span>
-    </button>
+    </Link>
   );
 }
 
-function HandledRow({ item, onClick }: { item: TodayHandledItem; onClick: () => void }) {
+function HandledRow({ item }: { item: TodayHandledItem }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="w-full flex items-center gap-2 text-xs p-2 rounded-lg hover:bg-surface-overlay text-left"
+    <Link
+      to={item.href}
+      className={`w-full flex items-center gap-2 text-xs p-2 rounded-lg hover:bg-surface-overlay text-left ${focusRing}`}
     >
       <CheckCircle2 size={14} className="text-success shrink-0" />
       <span className="text-fg-secondary truncate flex-1">{item.title}</span>
-    </button>
+    </Link>
   );
 }
 
 export default function TodayActions({ buckets }: TodayActionsProps) {
-  const navigate = useNavigate();
   const { decide, do: doItems, handled, leftoverGoalCount } = buckets;
   const empty = decide.length === 0 && doItems.length === 0 && handled.length === 0;
 
@@ -71,13 +69,12 @@ export default function TodayActions({ buckets }: TodayActionsProps) {
             : "去和 AI 聊聊天，或创建第一个目标开始使用"}
         </p>
         {leftoverGoalCount > 0 && (
-          <button
-            type="button"
-            onClick={() => navigate("/goals")}
-            className="mt-3 text-xs text-insight hover:text-insight/80"
+          <Link
+            to="/goals"
+            className={`mt-3 inline-block text-xs text-insight hover:text-insight/80 rounded-sm ${focusRing}`}
           >
             查看全部目标 →
-          </button>
+          </Link>
         )}
       </div>
     );
@@ -96,11 +93,7 @@ export default function TodayActions({ buckets }: TodayActionsProps) {
         ) : (
           <div className="space-y-1.5">
             {decide.slice(0, 5).map((item) => (
-              <DecideRow
-                key={`${item.kind}:${item.id}`}
-                item={item}
-                onClick={() => navigate(item.href)}
-              />
+              <DecideRow key={`${item.kind}:${item.id}`} item={item} />
             ))}
           </div>
         )}
@@ -119,16 +112,15 @@ export default function TodayActions({ buckets }: TodayActionsProps) {
         ) : (
           <div className="space-y-1.5">
             {doItems.slice(0, 5).map((item) => (
-              <DoRow key={item.id} item={item} onClick={() => navigate(item.href)} />
+              <DoRow key={item.id} item={item} />
             ))}
             {leftoverGoalCount > 0 && (
-              <button
-                type="button"
-                onClick={() => navigate("/goals")}
-                className="mt-1 text-xs text-insight hover:text-insight/80"
+              <Link
+                to="/goals"
+                className={`mt-1 inline-block text-xs text-insight hover:text-insight/80 rounded-sm ${focusRing}`}
               >
                 还有 {leftoverGoalCount} 个目标 →
-              </button>
+              </Link>
             )}
           </div>
         )}
@@ -145,11 +137,7 @@ export default function TodayActions({ buckets }: TodayActionsProps) {
         ) : (
           <div className="space-y-1.5">
             {handled.slice(0, 5).map((item) => (
-              <HandledRow
-                key={`${item.kind}:${item.id}`}
-                item={item}
-                onClick={() => navigate(item.href)}
-              />
+              <HandledRow key={`${item.kind}:${item.id}`} item={item} />
             ))}
           </div>
         )}

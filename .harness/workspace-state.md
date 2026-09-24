@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-09-24：Batch 51：今日三栏和空状态里的目标入口改成链接。执行、定时和信任报告「需要审批」的已有链接补上与时间线相同的焦点环；截断文字放在链接里面。没有 `work_id` 或审批 `id` 的行仍是纯文本。不新增事件类型，未改 Kernel，未改 `read_ports/work.py`。
 - 2026-09-24：Batch 50：任务页读取历史全文时，转圈留在交付区，正在看的那一行标为忙碌。失败后的「重试」拿键盘焦点，请求结束前不卸下；读完后若焦点已丢，落到该版标题。换一版会清掉上一条失败。「相对 vN」用与正文相同的下沉底，长编号在面板内换行。只有一版时仍不单列版本历史。不新增事件类型，未改 Kernel，未改 `read_ports/work.py`。
 - 2026-09-24：Batch 49：任务页版本历史标出正在看的一行。全文加载失败时可以重试；再点同一行也会再读一次。成功打开后再点同一行不重复请求。不新增事件类型，未改 Kernel，未改 `read_ports/work.py`。
 - 2026-09-24：Batch 48：文档对齐 `f08835e`。收回后的返工若被后续验收替换，旧幂等键只回放（`replayed` 且 `superseded`）不再派发；死信 `limit` 只计实际重放的行，扫描越过终态或旧尝试；单次交付 `model_cost` 从该执行最早的 `ExecutionRequested` 起，没有这条事件时从发布时间起。写在 `docs/01-overview/architecture.md`、`docs/02-concepts/execution-model.md`、`docs/03-subsystems/frontend.md`、`docs/03-subsystems/backend-api.md`、`docs/03-subsystems/backend-core.md` 与 `docs/04-data/data-model.md`。#131–#134 的版本历史成本、信任报告审批链接、审批卡片 `task_id` 和时间线 `work_id` 已在各自 PR 写入文档，本批不改跳转。不新增事件类型，未改 Kernel。

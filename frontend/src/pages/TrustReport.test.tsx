@@ -65,7 +65,9 @@ describe("TrustReportPanel", () => {
     await waitFor(() => expect(screen.getByText("失败")).toBeInTheDocument(), {
       timeout: 3000,
     });
-    fireEvent.click(screen.getByText("重试"));
+    const retry = screen.getByRole("button", { name: "重试" });
+    expect(retry).toHaveClass("focus-visible:ring-focus-ring");
+    fireEvent.click(retry);
     await waitFor(() => expect(mockGetReport.mock.calls.length).toBeGreaterThanOrEqual(2));
   });
 
@@ -191,8 +193,12 @@ describe("TrustReportPanel", () => {
       expect(screen.getByText("write_file")).toBeInTheDocument();
       expect(screen.getByText("send_email")).toBeInTheDocument();
     });
-    expect(screen.getByRole("link", { name: "write_file" })).toHaveAttribute("href", "/approvals");
-    expect(screen.getByRole("link", { name: "send_email" })).toHaveAttribute("href", "/approvals");
+    const writeFile = screen.getByRole("link", { name: "write_file" });
+    expect(writeFile).toHaveAttribute("href", "/approvals");
+    expect(writeFile).toHaveClass("focus-visible:ring-focus-ring");
+    const sendEmail = screen.getByRole("link", { name: "send_email" });
+    expect(sendEmail).toHaveAttribute("href", "/approvals");
+    expect(sendEmail).toHaveClass("focus-visible:ring-focus-ring");
     expect(screen.getByText("讨论").closest("a")).toBeNull();
     expect(screen.getByText("邮件").closest("a")).toBeNull();
   });
@@ -247,7 +253,9 @@ describe("TrustReportPanel", () => {
       expect(screen.getByText("记忆索引修复失败")).toBeInTheDocument();
       expect(screen.getByText("mem-abc")).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByRole("button", { name: "重试索引" }));
+    const retryIndex = screen.getByRole("button", { name: "重试索引" });
+    expect(retryIndex).toHaveClass("focus-visible:ring-focus-ring");
+    fireEvent.click(retryIndex);
     await waitFor(() => expect(mockRetryRepair).toHaveBeenCalledWith(7));
   });
 });
