@@ -268,6 +268,82 @@ describe("ChatView", () => {
     });
     expect(within(container).getByRole("button", { name: "确认写入" })).toBeInTheDocument();
     expect(screen.queryByText("File written.")).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/输入消息/)).not.toHaveFocus();
+  });
+
+  it("focuses the confirm button and does not return focus to the composer", async () => {
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({
+          type: "confirmation_required",
+          tool_name: "write_file",
+          tool_args: { path: "/tmp/x", content: "data" },
+          approval_id: "ap-focus",
+          tool_call_id: "tc-focus",
+        });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+
+    renderChatView();
+    fireEvent.change(screen.getByPlaceholderText(/输入消息/), {
+      target: { value: "create a file" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    const confirmBtn = await screen.findByRole("button", { name: "确认写入" });
+    const composer = screen.getByPlaceholderText(/输入消息/);
+    expect(confirmBtn).toHaveFocus();
+    expect(composer).not.toHaveFocus();
+    expect(composer).toBeDisabled();
+  });
+
+  it("keeps the ask_user answer when resume fails", async () => {
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({
+          type: "confirmation_required",
+          tool_name: "ask_user",
+          tool_args: { question: "简报要覆盖最近几天？" },
+          approval_id: "ap-ask",
+          tool_call_id: "tc-ask",
+        });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+    let release:
+      ((value: { status: string; retryable?: boolean; error?: string }) => void) | undefined;
+    vi.mocked(resolveApproval).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    renderChatView();
+    fireEvent.change(screen.getByPlaceholderText(/输入消息/), {
+      target: { value: "做一份简报" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    const answer = await screen.findByLabelText("你的回答");
+    expect(answer).toHaveFocus();
+    fireEvent.change(answer, { target: { value: "最近三天" } });
+    const sendAnswer = screen.getByRole("button", { name: "发送回答" });
+    fireEvent.click(sendAnswer);
+    fireEvent.click(sendAnswer);
+
+    await waitFor(() => expect(resolveApproval).toHaveBeenCalledTimes(1));
+    expect(answer).toHaveValue("最近三天");
+    expect(sendAnswer).toBeDisabled();
+
+    release?.({ status: "resume_failed", retryable: true, error: "LLM API error" });
+
+    await waitFor(() => expect(sendAnswer).toBeEnabled());
+    expect(answer).toHaveValue("最近三天");
+    expect(screen.getByPlaceholderText(/输入消息/)).not.toHaveFocus();
   });
 
   it("clears the confirmation when switching conversations", async () => {
@@ -557,7 +633,10 @@ describe("ChatView", () => {
     ];
     renderChatView();
     expect(await screen.findByText(/建议：写入文件/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "确认写入" })).toBeInTheDocument();
+    const confirmBtn = screen.getByRole("button", { name: "确认写入" });
+    expect(confirmBtn).toBeInTheDocument();
+    expect(confirmBtn).toHaveFocus();
+    expect(screen.getByPlaceholderText(/输入消息/)).not.toHaveFocus();
   });
 
   it("shows a review banner when proposed memories exist", () => {
