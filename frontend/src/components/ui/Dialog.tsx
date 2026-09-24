@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useId, useRef, type ReactNode } from "react";
 import Button from "./Button";
+import { useOverlayDismiss } from "./useOverlayDismiss";
 
 interface Props {
   open: boolean;
@@ -30,30 +31,7 @@ export default function Dialog({
   const titleId = useId();
   const descId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
-  const previouslyFocused = useRef<HTMLElement | null>(null);
-  // Keep latest callbacks in refs so the Esc/focus effect only depends on `open`
-  // (callers typically pass inline lambdas that change every render).
-  const onCancelRef = useRef(onCancel);
-  onCancelRef.current = onCancel;
-
-  useEffect(() => {
-    if (!open) return;
-
-    previouslyFocused.current = document.activeElement as HTMLElement | null;
-    panelRef.current?.focus();
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onCancelRef.current();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      previouslyFocused.current?.focus?.();
-    };
-  }, [open]);
+  useOverlayDismiss(open, panelRef, onCancel);
 
   if (!open) return null;
 

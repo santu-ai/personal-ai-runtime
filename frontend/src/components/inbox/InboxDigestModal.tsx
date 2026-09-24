@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef } from "react";
+import { useId, useRef } from "react";
 import type { Components } from "react-markdown";
 import Button from "../ui/Button";
+import { useOverlayDismiss } from "../ui/useOverlayDismiss";
 import { LazyMarkdown } from "../chat/LazyMarkdown";
 
 const DIGEST_MARKDOWN_COMPONENTS: Components = {};
@@ -15,21 +16,7 @@ interface Props {
 export default function InboxDigestModal({ open, title, content, onClose }: Props) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  useEffect(() => {
-    if (!open) return;
-    panelRef.current?.focus();
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onCloseRef.current();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open]);
+  useOverlayDismiss(open, panelRef, onClose);
 
   if (!open) return null;
 

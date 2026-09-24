@@ -63,6 +63,22 @@ describe("QuickCaptureDialog", () => {
     expect(screen.queryByText("快速捕获")).not.toBeInTheDocument();
   });
 
+  it("returns focus to the opener after Escape", async () => {
+    const opener = document.createElement("button");
+    opener.type = "button";
+    opener.textContent = "快捷捕获";
+    document.body.appendChild(opener);
+    opener.focus();
+    renderWithRouter(<QuickCaptureDialog />);
+    openDialog();
+    const field = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    await waitFor(() => expect(field).toHaveFocus());
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByText("快速捕获")).not.toBeInTheDocument());
+    expect(opener).toHaveFocus();
+    opener.remove();
+  });
+
   it("opens on Ctrl+Shift+M", async () => {
     renderWithRouter(<QuickCaptureDialog />);
     fireEvent.keyDown(window, { key: "m", ctrlKey: true, shiftKey: true });

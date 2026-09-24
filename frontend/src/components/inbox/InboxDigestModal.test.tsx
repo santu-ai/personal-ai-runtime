@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -43,5 +43,24 @@ describe("InboxDigestModal", () => {
     render(<InboxDigestModal open title="今日摘要" content="无新邮件" onClose={onClose} />);
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("moves focus into the digest and returns it after close", async () => {
+    const opener = document.createElement("button");
+    opener.type = "button";
+    opener.textContent = "查看摘要";
+    document.body.appendChild(opener);
+    opener.focus();
+    const onClose = vi.fn();
+    const view = render(
+      <InboxDigestModal open title="今日摘要" content="无新邮件" onClose={onClose} />,
+    );
+    const dialog = screen.getByRole("dialog", { name: "今日摘要" });
+    await waitFor(() => expect(dialog).toHaveFocus());
+    view.rerender(
+      <InboxDigestModal open={false} title="今日摘要" content="无新邮件" onClose={onClose} />,
+    );
+    expect(opener).toHaveFocus();
+    opener.remove();
   });
 });

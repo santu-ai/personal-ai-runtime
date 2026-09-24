@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -20,6 +20,7 @@ import { useMemoriesGroupedQuery, useProposedMemoryCountQuery } from "../hooks/u
 import { queryKeys } from "../hooks/useWsInvalidationBridge";
 import { PortraitPanel } from "./Portrait";
 import Dialog from "../components/ui/Dialog";
+import { useOverlayDismiss } from "../components/ui/useOverlayDismiss";
 import LoadErrorNotice, {
   queryErrorMessage,
   useHeldQueryError,
@@ -330,6 +331,17 @@ export default function MemoriesPage() {
     };
   }, [viewMode, graphData, graphAttempt, addError]);
 
+  const rejectPanelRef = useRef<HTMLDivElement>(null);
+  const editPanelRef = useRef<HTMLDivElement>(null);
+  const rejectTitleId = useId();
+  const editTitleId = useId();
+  useOverlayDismiss(rejectTarget != null, rejectPanelRef, () => setRejectTarget(null), {
+    initialFocus: "field",
+  });
+  useOverlayDismiss(editTarget != null, editPanelRef, () => setEditTarget(null), {
+    initialFocus: "field",
+  });
+
   // 列表或待确认重试一开始会把 isLoading 再置上。已经写出的失败要留在页面上。
   if (
     (loading && !shownListError && !shownReviewError) ||
@@ -629,10 +641,17 @@ export default function MemoriesPage() {
           onClick={() => setRejectTarget(null)}
         >
           <div
+            ref={rejectPanelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={rejectTitleId}
+            tabIndex={-1}
             className="bg-surface-raised border border-border-strong rounded-xl p-6 w-96 max-w-[90vw] space-y-4 outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-semibold text-fg-primary">拒绝这条记忆？</h3>
+            <h3 id={rejectTitleId} className="text-lg font-semibold text-fg-primary">
+              拒绝这条记忆？
+            </h3>
             <p className="text-xs text-fg-tertiary">可选填写原因，便于之后核对误报。</p>
             <input
               value={rejectReason}
@@ -640,7 +659,6 @@ export default function MemoriesPage() {
               maxLength={200}
               className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary outline-none focus:border-focus-ring"
               placeholder="例如：记错了、过时了"
-              autoFocus
             />
             <div className="flex gap-2 justify-end">
               <button
@@ -668,10 +686,17 @@ export default function MemoriesPage() {
           onClick={() => setEditTarget(null)}
         >
           <div
+            ref={editPanelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={editTitleId}
+            tabIndex={-1}
             className="bg-surface-raised border border-border-strong rounded-xl p-6 w-96 max-w-[90vw] space-y-4 outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-semibold text-fg-primary">编辑记忆</h3>
+            <h3 id={editTitleId} className="text-lg font-semibold text-fg-primary">
+              编辑记忆
+            </h3>
             <p className="text-xs text-fg-tertiary">更新会保留旧版本——可在"来源"查看完整版本演进</p>
             <div className="space-y-3">
               <div>
@@ -681,7 +706,6 @@ export default function MemoriesPage() {
                   onChange={(e) => setEditContent(e.target.value)}
                   className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary outline-none focus:border-focus-ring"
                   placeholder="记忆内容"
-                  autoFocus
                 />
               </div>
               <div>
