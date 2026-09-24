@@ -290,4 +290,199 @@ describe("TrustReportPanel", () => {
     fireEvent.click(retryIndex);
     await waitFor(() => expect(mockRetryRepair).toHaveBeenCalledWith(7));
   });
+
+  function repair(id: number, aggregate: string) {
+    return {
+      id,
+      aggregate_id: aggregate,
+      event_type: "MemoryUpdated",
+      event_seq: id,
+      error: "chroma unavailable",
+      retry_count: 5,
+      status: "failed_permanent",
+      created_at: "2026-01-01T00:00:00Z",
+      last_retry_at: "2026-01-01T00:10:00Z",
+    };
+  }
+
+  function reportWith(items: ReturnType<typeof repair>[], pending = items.length) {
+    return {
+      ...BASE,
+      memoryIndexRepairs: {
+        pending,
+        failed_permanent: items.length,
+        items,
+      },
+    };
+  }
+
+  it("does not retry the same index twice and keeps focus while in flight", async () => {
+    mockGetReport.mockResolvedValue(reportWith([repair(7, "mem-abc"), repair(8, "mem-def")]));
+    const pending = new Map<number, (value: { ok: boolean }) => void>();
+    mockRetryRepair.mockImplementation(
+      (id: number) =>
+        new Promise((resolve) => {
+          pending.set(id, resolve);
+        }),
+    );
+    renderPage();
+    const [first, second] = await screen.findAllByRole("button", { name: "重试索引" });
+    first.focus();
+    fireEvent.click(first);
+    fireEvent.click(first);
+    await waitFor(() => expect(first).toHaveAttribute("aria-busy", "true"));
+    expect(first).not.toBeDisabled();
+    expect(first).toHaveFocus();
+    expect(first).toHaveClass("opacity-50");
+    expect(first).toHaveTextContent("重试中…");
+    expect(second).not.toHaveAttribute("aria-busy");
+    expect(second).not.toBeDisabled();
+    expect(mockRetryRepair).toHaveBeenCalledTimes(1);
+    expect(mockRetryRepair).toHaveBeenCalledWith(7);
+
+    fireEvent.click(second);
+    await waitFor(() => expect(second).toHaveAttribute("aria-busy", "true"));
+    expect(mockRetryRepair).toHaveBeenCalledTimes(2);
+    expect(mockRetryRepair).toHaveBeenNthCalledWith(2, 8);
+    expect(first).toHaveAttribute("aria-busy", "true");
+    pending.get(7)?.({ ok: true });
+    pending.get(8)?.({ ok: true });
+    await waitFor(() => expect(first).not.toHaveAttribute("aria-busy"));
+    expect(second).not.toHaveAttribute("aria-busy");
+  });
+
+  it("keeps focus on 重试索引 when the retry fails", async () => {
+    mockGetReport.mockResolvedValue(reportWith([repair(7, "mem-abc")]));
+    mockRetryRepair.mockRejectedValue(new Error("索引服务不可用"));
+    renderPage();
+    const retry = await screen.findByRole("button", { name: "重试索引" });
+    retry.focus();
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.getByText("索引服务不可用")).toBeInTheDocument());
+    expect(retry).toHaveFocus();
+    expect(retry).toBeEnabled();
+    expect(retry).not.toHaveAttribute("aria-busy");
+    expect(screen.getByText("mem-abc")).toBeInTheDocument();
+    expect(mockRetryRepair).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(retry);
+    await waitFor(() => expect(mockRetryRepair).toHaveBeenCalledTimes(2));
+  });
+
+  it("keeps focus on the same 重试索引 when the row is still failed", async () => {
+    mockGetReport.mockResolvedValue(reportWith([repair(7, "mem-abc")]));
+    mockRetryRepair.mockResolvedValue({ ok: true });
+    renderPage();
+    const retry = await screen.findByRole("button", { name: "重试索引" });
+    retry.focus();
+    fireEvent.click(retry);
+    await waitFor(() => expect(retry).not.toHaveAttribute("aria-busy"));
+    expect(retry).toHaveFocus();
+    expect(screen.getByText("mem-abc")).toBeInTheDocument();
+    expect(mockRetryRepair).toHaveBeenCalledTimes(1);
+  });
+
+  it("moves focus to the next 重试索引 after this row leaves", async () => {
+    let items = [repair(7, "mem-abc"), repair(8, "mem-def")];
+    mockGetReport.mockImplementation(async () => reportWith(items));
+    mockRetryRepair.mockImplementation(async (id: number) => {
+      items = items.filter((row) => row.id !== id);
+      return { ok: true };
+    });
+    renderPage();
+    const [first] = await screen.findAllByRole("button", { name: "重试索引" });
+    first.focus();
+    fireEvent.click(first);
+    await waitFor(() => expect(screen.getByRole("button", { name: "重试索引" })).toHaveFocus());
+    expect(screen.getByText("mem-def")).toBeInTheDocument();
+    expect(screen.queryByText("mem-abc")).not.toBeInTheDocument();
+    expect(mockRetryRepair).toHaveBeenCalledTimes(1);
+  });
+
+  it("moves focus to the previous 重试索引 when the last row leaves", async () => {
+    let items = [repair(7, "mem-abc"), repair(8, "mem-def")];
+    mockGetReport.mockImplementation(async () => reportWith(items));
+    mockRetryRepair.mockImplementation(async (id: number) => {
+      items = items.filter((row) => row.id !== id);
+      return { ok: true };
+    });
+    renderPage();
+    const buttons = await screen.findAllByRole("button", { name: "重试索引" });
+    buttons[1].focus();
+    fireEvent.click(buttons[1]);
+    await waitFor(() => expect(screen.getByRole("button", { name: "重试索引" })).toHaveFocus());
+    expect(screen.getByText("mem-abc")).toBeInTheDocument();
+    expect(screen.queryByText("mem-def")).not.toBeInTheDocument();
+  });
+
+  it("does not pull focus back when it already moved away", async () => {
+    let items = [repair(7, "mem-abc"), repair(8, "mem-def")];
+    let release: (value: { ok: boolean }) => void = () => {};
+    mockGetReport.mockImplementation(async () => reportWith(items));
+    mockRetryRepair.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(
+      <>
+        <button type="button" data-dashboard-back="">
+          返回今日
+        </button>
+        <TrustReportPanel compact />
+      </>,
+    );
+    const [first] = await screen.findAllByRole("button", { name: "重试索引" });
+    const back = screen.getByRole("button", { name: "返回今日" });
+    first.focus();
+    fireEvent.click(first);
+    await waitFor(() => expect(first).toHaveAttribute("aria-busy", "true"));
+    back.focus();
+    items = items.filter((row) => row.id !== 7);
+    release({ ok: true });
+    await waitFor(() => expect(screen.queryByText("mem-abc")).not.toBeInTheDocument());
+    expect(back).toHaveFocus();
+    expect(screen.getByText("mem-def")).toBeInTheDocument();
+  });
+
+  it("focuses 返回今日 when the last failed repair leaves", async () => {
+    let items = [repair(7, "mem-abc")];
+    mockGetReport.mockImplementation(async () => reportWith(items, items.length === 0 ? 1 : 0));
+    mockRetryRepair.mockImplementation(async () => {
+      items = [];
+      return { ok: true };
+    });
+    renderWithRouter(
+      <>
+        <button type="button" data-dashboard-back="">
+          返回今日
+        </button>
+        <TrustReportPanel compact />
+      </>,
+    );
+    const retry = await screen.findByRole("button", { name: "重试索引" });
+    retry.focus();
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.getByRole("button", { name: "返回今日" })).toHaveFocus());
+    expect(screen.queryByText("记忆索引修复失败")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重试索引" })).not.toBeInTheDocument();
+  });
+
+  it("leaves focus on the page when the last row leaves and there is no back button", async () => {
+    let items = [repair(7, "mem-abc")];
+    mockGetReport.mockImplementation(async () => reportWith(items));
+    mockRetryRepair.mockImplementation(async () => {
+      items = [];
+      return { ok: true };
+    });
+    renderPage();
+    const retry = await screen.findByRole("button", { name: "重试索引" });
+    retry.focus();
+    fireEvent.click(retry);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "重试索引" })).not.toBeInTheDocument(),
+    );
+    expect(document.activeElement).toBe(document.body);
+  });
 });
