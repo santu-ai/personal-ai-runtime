@@ -12,6 +12,8 @@ import {
   deleteGoal,
   getGoal,
   listGoals,
+  updateGoal,
+  updateGoalAction,
   type WorkItem,
 } from "../api/client";
 
@@ -358,6 +360,274 @@ describe("GoalsPage", () => {
       expect(screen.queryByRole("dialog", { name: "删除目标" })).not.toBeInTheDocument(),
     );
     expect(deleteGoal).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not send a second status write, keeps focus, then moves it to 恢复", async () => {
+    let current: WorkItem = { ...sampleGoal, status: "active" };
+    vi.mocked(listGoals).mockImplementation(async () => [current]);
+    vi.mocked(getGoal).mockImplementation(async () => current);
+    let release: (goal: WorkItem) => void = () => {};
+    vi.mocked(updateGoal).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = (goal) => {
+            current = goal;
+            resolve(goal);
+          };
+        }),
+    );
+    renderGoals("/goals/g1");
+    const pause = await screen.findByRole("button", { name: "暂停" });
+    const done = screen.getByRole("button", { name: "完成" });
+    pause.focus();
+    fireEvent.click(pause);
+    fireEvent.click(pause);
+    fireEvent.click(done);
+    await waitFor(() => expect(pause).toHaveAttribute("aria-busy", "true"));
+    expect(pause).not.toBeDisabled();
+    expect(pause).toHaveFocus();
+    expect(done).not.toHaveAttribute("aria-busy");
+    expect(updateGoal).toHaveBeenCalledTimes(1);
+    expect(updateGoal).toHaveBeenCalledWith("g1", { status: "paused" });
+
+    await act(async () => {
+      release({ ...current, status: "paused" });
+    });
+    const resume = await screen.findByRole("button", { name: "恢复" });
+    await waitFor(() => expect(resume).toHaveFocus());
+    expect(screen.queryByRole("button", { name: "暂停" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "完成" })).not.toBeInTheDocument();
+  });
+
+  it("moves focus to 暂停 after 恢复 succeeds", async () => {
+    let current: WorkItem = { ...sampleGoal, status: "paused" };
+    vi.mocked(listGoals).mockImplementation(async () => [current]);
+    vi.mocked(getGoal).mockImplementation(async () => current);
+    let release: (goal: WorkItem) => void = () => {};
+    vi.mocked(updateGoal).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = (goal) => {
+            current = goal;
+            resolve(goal);
+          };
+        }),
+    );
+    renderGoals("/goals/g1");
+    const resume = await screen.findByRole("button", { name: "恢复" });
+    resume.focus();
+    fireEvent.click(resume);
+    fireEvent.click(resume);
+    await waitFor(() => expect(resume).toHaveAttribute("aria-busy", "true"));
+    expect(resume).not.toBeDisabled();
+    expect(resume).toHaveFocus();
+    expect(updateGoal).toHaveBeenCalledTimes(1);
+    expect(updateGoal).toHaveBeenCalledWith("g1", { status: "active" });
+
+    await act(async () => {
+      release({ ...current, status: "active" });
+    });
+    const pause = await screen.findByRole("button", { name: "暂停" });
+    await waitFor(() => expect(pause).toHaveFocus());
+    expect(screen.getByRole("button", { name: "完成" })).not.toHaveFocus();
+  });
+
+  it("moves focus to 就此目标对话 after 完成, and does not steal it back", async () => {
+    let current: WorkItem = { ...sampleGoal, status: "active" };
+    vi.mocked(listGoals).mockImplementation(async () => [current]);
+    vi.mocked(getGoal).mockImplementation(async () => current);
+    let release: (goal: WorkItem) => void = () => {};
+    vi.mocked(updateGoal).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = (goal) => {
+            current = goal;
+            resolve(goal);
+          };
+        }),
+    );
+    renderGoals("/goals/g1");
+    const done = await screen.findByRole("button", { name: "完成" });
+    const remove = screen.getByRole("button", { name: "删除" });
+    done.focus();
+    fireEvent.click(done);
+    remove.focus();
+    await act(async () => {
+      release({ ...current, status: "completed" });
+    });
+    expect(await screen.findByRole("button", { name: "就此目标对话" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "完成" })).not.toBeInTheDocument();
+    expect(remove).toHaveFocus();
+    expect(updateGoal).toHaveBeenCalledTimes(1);
+  });
+
+  it("focuses 就此目标对话 when 完成 finishes and focus was still on that button", async () => {
+    let current: WorkItem = { ...sampleGoal, status: "active" };
+    vi.mocked(listGoals).mockImplementation(async () => [current]);
+    vi.mocked(getGoal).mockImplementation(async () => current);
+    let release: (goal: WorkItem) => void = () => {};
+    vi.mocked(updateGoal).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = (goal) => {
+            current = goal;
+            resolve(goal);
+          };
+        }),
+    );
+    renderGoals("/goals/g1");
+    const done = await screen.findByRole("button", { name: "完成" });
+    done.focus();
+    fireEvent.click(done);
+    fireEvent.click(screen.getByRole("button", { name: "暂停" }));
+    await waitFor(() => expect(done).toHaveAttribute("aria-busy", "true"));
+    expect(done).toHaveFocus();
+    expect(done).not.toBeDisabled();
+    expect(updateGoal).toHaveBeenCalledTimes(1);
+    expect(updateGoal).toHaveBeenCalledWith("g1", { status: "completed" });
+
+    await act(async () => {
+      release({ ...current, status: "completed" });
+    });
+    const chat = await screen.findByRole("button", { name: "就此目标对话" });
+    await waitFor(() => expect(chat).toHaveFocus());
+  });
+
+  it("keeps 完成 focused when the status write fails", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    vi.mocked(getGoal).mockResolvedValue(sampleGoal);
+    let fail: (err: unknown) => void = () => {};
+    vi.mocked(updateGoal).mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    renderGoals("/goals/g1");
+    const done = await screen.findByRole("button", { name: "完成" });
+    done.focus();
+    fireEvent.click(done);
+    fireEvent.click(done);
+    await waitFor(() => expect(done).toHaveAttribute("aria-busy", "true"));
+    expect(done).not.toBeDisabled();
+    expect(done).toHaveFocus();
+    expect(updateGoal).toHaveBeenCalledTimes(1);
+
+    fail(new ApiError("更新目标状态失败", 500));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("更新目标状态失败", "目标"));
+    expect(done).toHaveFocus();
+    expect(done).not.toHaveAttribute("aria-busy");
+    expect(screen.getByRole("button", { name: "暂停" })).toBeEnabled();
+  });
+
+  it("does not toggle one action twice and keeps focus on that checkbox", async () => {
+    const first = {
+      ...sampleGoal,
+      id: "a1",
+      title: "写测试",
+      work_type: "action",
+      status: "pending",
+      parent_work_id: "g1",
+      actions: [],
+    } as WorkItem;
+    const second = { ...first, id: "a2", title: "再看一眼" };
+    let current: WorkItem = { ...sampleGoal, actions: [first, second] };
+    vi.mocked(listGoals).mockImplementation(async () => [current]);
+    vi.mocked(getGoal).mockImplementation(async () => current);
+    const pending: Array<(goal: WorkItem) => void> = [];
+    vi.mocked(updateGoalAction).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          pending.push((goal) => {
+            current = goal;
+            resolve(goal);
+          });
+        }),
+    );
+    renderGoals("/goals/g1");
+    const box = await screen.findByRole("checkbox", { name: "写测试" });
+    const other = screen.getByRole("checkbox", { name: "再看一眼" });
+    box.focus();
+    fireEvent.click(box);
+    fireEvent.click(box);
+    await waitFor(() => expect(box).toHaveAttribute("aria-busy", "true"));
+    expect(box).not.toBeDisabled();
+    expect(box).toHaveFocus();
+    expect(box).not.toBeChecked();
+    expect(updateGoalAction).toHaveBeenCalledTimes(1);
+    expect(updateGoalAction).toHaveBeenCalledWith("g1", "a1", { status: "completed" });
+
+    other.focus();
+    fireEvent.click(other);
+    await waitFor(() => expect(updateGoalAction).toHaveBeenCalledTimes(2));
+    expect(updateGoalAction).toHaveBeenLastCalledWith("g1", "a2", { status: "completed" });
+    expect(other).toHaveFocus();
+
+    await act(async () => {
+      const next = {
+        ...current,
+        actions: [
+          { ...first, status: "completed" },
+          { ...second, status: "completed" },
+        ],
+      };
+      pending.forEach((finish) => finish(next));
+    });
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "写测试" })).toBeChecked());
+    expect(screen.getByRole("checkbox", { name: "再看一眼" })).toHaveFocus();
+    expect(screen.getByRole("checkbox", { name: "写测试" })).not.toHaveAttribute("aria-busy");
+  });
+
+  it("does not decompose twice and keeps focus on AI 拆解", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    vi.mocked(getGoal).mockResolvedValue(sampleGoal);
+    let release: (value: { steps: string[] }) => void = () => {};
+    vi.mocked(decomposeGoal).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderGoals("/goals/g1");
+    const button = await screen.findByRole("button", { name: "AI 拆解" });
+    button.focus();
+    fireEvent.click(button);
+    fireEvent.click(button);
+    const busy = await screen.findByRole("button", { name: "AI 拆解中..." });
+    expect(busy).toHaveAttribute("aria-busy", "true");
+    expect(busy).not.toBeDisabled();
+    expect(busy).toHaveFocus();
+    expect(decomposeGoal).toHaveBeenCalledTimes(1);
+    expect(decomposeGoal).toHaveBeenCalledWith("g1");
+
+    await act(async () => {
+      release({ steps: ["先写测试"] });
+    });
+    expect(await screen.findByText("先写测试")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "AI 拆解" })).toHaveFocus();
+  });
+
+  it("does not pull focus back to AI 拆解 when it already moved", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    vi.mocked(getGoal).mockResolvedValue(sampleGoal);
+    let release: (value: { steps: string[] }) => void = () => {};
+    vi.mocked(decomposeGoal).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderGoals("/goals/g1");
+    const button = await screen.findByRole("button", { name: "AI 拆解" });
+    const remove = screen.getByRole("button", { name: "删除" });
+    button.focus();
+    fireEvent.click(button);
+    remove.focus();
+    await act(async () => {
+      release({ steps: ["先写测试"] });
+    });
+    expect(await screen.findByText("先写测试")).toBeInTheDocument();
+    expect(remove).toHaveFocus();
   });
 });
 

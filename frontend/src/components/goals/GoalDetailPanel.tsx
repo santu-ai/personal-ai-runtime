@@ -18,9 +18,40 @@ const statusLabels: Record<string, string> = {
 interface GoalDetailPanelProps {
   goal: WorkItem;
   onStartChat: (goal: WorkItem) => void;
-  onUpdateStatus: (goalId: string, status: string) => void;
+  onUpdateStatus: (goalId: string, status: string) => void | Promise<boolean | void>;
   onRequestDelete: (goal: WorkItem) => void;
   onCreatedAction: () => void;
+}
+
+const statusButtonClass =
+  "px-3 py-1.5 text-xs bg-surface-overlay hover:bg-border-strong text-fg-primary rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
+
+/** 焦点在页面空白处，或还停在已经卸掉的按钮上，才安放。已经在别的控件上就不再抢。 */
+function focusIsIdle(): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  return false;
+}
+
+function focusGoalControl(selector: string): void {
+  const node = document.querySelector<HTMLElement>(selector);
+  node?.focus();
+}
+
+/** 状态写成功后，原来的按钮会卸掉。焦点还在原处或空白处时，落到还在的下一处。 */
+function placeGoalStatusFocus(status: string): void {
+  if (status === "paused") {
+    focusGoalControl('button[data-goal-status="active"]');
+    return;
+  }
+  if (status === "active") {
+    focusGoalControl('button[data-goal-status="paused"]');
+    return;
+  }
+  if (status === "completed") {
+    focusGoalControl("[data-goal-chat]");
+  }
 }
 
 export default function GoalDetailPanel({
@@ -37,6 +68,13 @@ export default function GoalDetailPanel({
   const goalIdRef = useRef(goal.id);
   const pendingStepsRef = useRef(new Set<string>());
   const addingAllRef = useRef(false);
+  const statusLock = useRef(false);
+  const [statusBusy, setStatusBusy] = useState<string | null>(null);
+  const actionLocks = useRef(new Set<string>());
+  const [busyActions, setBusyActions] = useState<ReadonlySet<string>>(() => new Set());
+  const decomposeLock = useRef(false);
+  const focusAfter = useRef<{ goalId: string; from: string } | null>(null);
+  const seenGoalId = useRef<string | null>(null);
   goalIdRef.current = goal.id;
 
   const handleCreateAction = async (goalId: string, title: string): Promise<boolean> => {
@@ -54,6 +92,9 @@ export default function GoalDetailPanel({
   };
 
   const handleToggleAction = async (goalId: string, actionId: string, currentStatus: string) => {
+    if (actionLocks.current.has(actionId)) return;
+    actionLocks.current.add(actionId);
+    setBusyActions(new Set(actionLocks.current));
     const newStatus = currentStatus === "completed" ? "pending" : "completed";
     try {
       await updateGoalAction(goalId, actionId, { status: newStatus });
@@ -61,18 +102,73 @@ export default function GoalDetailPanel({
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "更新行动步骤失败";
       addError(msg, "目标");
+    } finally {
+      if (goalIdRef.current === goalId) {
+        actionLocks.current.delete(actionId);
+        setBusyActions(new Set(actionLocks.current));
+      }
     }
   };
 
+  const requestStatus = (status: string) => {
+    if (statusLock.current) return;
+    const goalId = goal.id;
+    statusLock.current = true;
+    setStatusBusy(status);
+    focusAfter.current = { goalId, from: goal.status };
+    void (async () => {
+      let ok = false;
+      try {
+        const result = await onUpdateStatus(goalId, status);
+        ok = result !== false;
+      } catch {
+        ok = false;
+      } finally {
+        if (goalIdRef.current === goalId) {
+          statusLock.current = false;
+          setStatusBusy(null);
+          if (!ok) focusAfter.current = null;
+        }
+      }
+    })();
+  };
+
   useEffect(() => {
+    if (seenGoalId.current === null) {
+      seenGoalId.current = goal.id;
+      return;
+    }
+    if (seenGoalId.current === goal.id) return;
+    seenGoalId.current = goal.id;
     pendingStepsRef.current.clear();
     addingAllRef.current = false;
+    statusLock.current = false;
+    actionLocks.current.clear();
+    decomposeLock.current = false;
+    focusAfter.current = null;
     setSuggestedSteps([]);
     setDecomposing(false);
+    setStatusBusy(null);
+    setBusyActions(new Set());
   }, [goal.id]);
 
+  useEffect(() => {
+    const pending = focusAfter.current;
+    if (!pending || statusBusy) return;
+    if (pending.goalId !== goal.id) {
+      focusAfter.current = null;
+      return;
+    }
+    if (goal.status === pending.from) return;
+    focusAfter.current = null;
+    if (!focusIsIdle()) return;
+    placeGoalStatusFocus(goal.status);
+  }, [goal.id, goal.status, statusBusy]);
+
   const handleDecomposeGoal = async () => {
+    if (decomposeLock.current) return;
     const goalId = goal.id;
+    decomposeLock.current = true;
     setDecomposing(true);
     setSuggestedSteps([]);
     try {
@@ -84,7 +180,10 @@ export default function GoalDetailPanel({
       const msg = err instanceof ApiError ? err.message : "AI 拆解失败";
       addError(msg, "目标");
     } finally {
-      if (goalIdRef.current === goalId) setDecomposing(false);
+      if (goalIdRef.current === goalId) {
+        decomposeLock.current = false;
+        setDecomposing(false);
+      }
     }
   };
 
@@ -143,20 +242,26 @@ export default function GoalDetailPanel({
           <p className="mt-1 text-xs text-fg-tertiary">进度 {progressPct}%</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" onClick={() => onStartChat(goal)}>
+          <Button size="sm" data-goal-chat="" onClick={() => onStartChat(goal)}>
             就此目标对话
           </Button>
           {goal.status === "active" && (
             <>
               <button
-                onClick={() => onUpdateStatus(goal.id, "paused")}
-                className="px-3 py-1.5 text-xs bg-surface-overlay hover:bg-border-strong text-fg-primary rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                type="button"
+                data-goal-status="paused"
+                aria-busy={statusBusy === "paused" || undefined}
+                onClick={() => requestStatus("paused")}
+                className={`${statusButtonClass} ${statusBusy ? "opacity-50" : ""}`}
               >
                 暂停
               </button>
               <button
-                onClick={() => onUpdateStatus(goal.id, "completed")}
-                className="px-3 py-1.5 text-xs bg-surface-overlay hover:bg-border-strong text-fg-primary rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                type="button"
+                data-goal-status="completed"
+                aria-busy={statusBusy === "completed" || undefined}
+                onClick={() => requestStatus("completed")}
+                className={`${statusButtonClass} ${statusBusy ? "opacity-50" : ""}`}
               >
                 完成
               </button>
@@ -164,8 +269,11 @@ export default function GoalDetailPanel({
           )}
           {goal.status === "paused" && (
             <button
-              onClick={() => onUpdateStatus(goal.id, "active")}
-              className="px-3 py-1.5 text-xs bg-surface-overlay hover:bg-border-strong text-fg-primary rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+              type="button"
+              data-goal-status="active"
+              aria-busy={statusBusy === "active" || undefined}
+              onClick={() => requestStatus("active")}
+              className={`${statusButtonClass} ${statusBusy ? "opacity-50" : ""}`}
             >
               恢复
             </button>
@@ -185,9 +293,12 @@ export default function GoalDetailPanel({
             行动步骤 ({goal.actions?.length || 0})
           </h3>
           <button
-            onClick={handleDecomposeGoal}
-            disabled={decomposing}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-insight/15 hover:bg-insight/25 text-insight rounded-lg border border-insight/30 disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+            type="button"
+            onClick={() => void handleDecomposeGoal()}
+            aria-busy={decomposing || undefined}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs bg-insight/15 hover:bg-insight/25 text-insight rounded-lg border border-insight/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
+              decomposing ? "opacity-50" : ""
+            }`}
           >
             <Sparkles size={12} />
             {decomposing ? "AI 拆解中..." : "AI 拆解"}
@@ -235,8 +346,12 @@ export default function GoalDetailPanel({
               <input
                 type="checkbox"
                 checked={action.status === "completed"}
-                onChange={() => handleToggleAction(goal.id, action.id, action.status)}
-                className="w-4 h-4 rounded border-border-strong bg-surface-overlay accent-success"
+                aria-label={action.title || "行动步骤"}
+                aria-busy={busyActions.has(action.id) || undefined}
+                onChange={() => void handleToggleAction(goal.id, action.id, action.status)}
+                className={`w-4 h-4 rounded border-border-strong bg-surface-overlay accent-success ${
+                  busyActions.has(action.id) ? "opacity-50" : ""
+                }`}
               />
               <span
                 className={`text-sm flex-1 ${action.status === "completed" ? "line-through text-fg-tertiary" : "text-fg-primary"}`}
