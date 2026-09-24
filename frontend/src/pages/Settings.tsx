@@ -6,7 +6,6 @@ import {
   useMcpStatusQuery,
 } from "../hooks/useSettingsQuery";
 import type { LlmSettingsResponse, EmailSettingsResponse } from "../api/client";
-import Button from "../components/ui/Button";
 import Badge from "../components/ui/Badge";
 import Spinner from "../components/ui/Spinner";
 import Disclosure from "../components/ui/Disclosure";
@@ -28,10 +27,17 @@ export default function SettingsPage() {
   const addError = useErrorStore((s) => s.addError);
   const {
     data: core,
-    isLoading: coreLoading,
+    isFetching: coreFetching,
     error: coreError,
     refetch: refetchCore,
   } = useSettingsCoreQuery();
+  const shownCoreError = useHeldQueryError(
+    Boolean(core),
+    coreError,
+    coreFetching,
+    "无法加载已保存的配置",
+    "settings-core",
+  );
   const { data: health, error: healthError } = useSettingsHealthQuery();
   const {
     data: mcpStatus,
@@ -73,22 +79,24 @@ export default function SettingsPage() {
     }
   }, [mcpError, addError]);
 
-  if (coreLoading && !core) {
+  if (shownCoreError) {
     return (
-      <div className="flex-1 flex items-center justify-center gap-2 text-fg-tertiary">
-        <Spinner />
-        加载设置…
+      <div className="flex flex-1 items-center justify-center p-6">
+        <LoadErrorNotice
+          message={shownCoreError}
+          busy={coreFetching}
+          onRetry={() => void refetchCore()}
+          testId="settings-core-load-error"
+        />
       </div>
     );
   }
 
   if (!core) {
-    const loadError =
-      coreError instanceof Error ? coreError.message : coreError ? String(coreError) : null;
     return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-4 text-fg-tertiary p-6">
-        <p>{loadError || "无法加载已保存的配置"}</p>
-        <Button onClick={() => void refetchCore()}>重试</Button>
+      <div className="flex-1 flex items-center justify-center gap-2 text-fg-tertiary">
+        <Spinner />
+        加载设置…
       </div>
     );
   }

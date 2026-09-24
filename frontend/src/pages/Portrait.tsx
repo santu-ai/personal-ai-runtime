@@ -13,6 +13,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { usePortraitQuery } from "../hooks/usePortraitQuery";
+import LoadErrorNotice, { useHeldQueryError } from "../components/ui/LoadErrorNotice";
 
 const CATEGORY_META: Record<string, { label: string; icon: typeof User; description: string }> = {
   preferences: { label: "偏好", icon: Heart, description: "你的喜好与倾向" },
@@ -32,34 +33,34 @@ function confidenceLevel(score: number): { color: string; label: string; pct: nu
 
 /** Portrait content — embedded as a Memories tab; also used by tests. */
 export function PortraitPanel({ compact = false }: { compact?: boolean }) {
-  const { data, isLoading: loading, error: queryError, refetch } = usePortraitQuery();
+  const { data, isLoading: loading, isFetching, error: queryError, refetch } = usePortraitQuery();
+  const shownError = useHeldQueryError(
+    Boolean(data),
+    queryError,
+    isFetching,
+    "加载画像失败",
+    "portrait",
+  );
   const error =
     queryError instanceof Error ? queryError.message : queryError ? String(queryError) : null;
 
-  if (loading) {
+  if (shownError) {
+    return (
+      <LoadErrorNotice
+        message={shownError}
+        busy={isFetching}
+        onRetry={() => void refetch()}
+        testId="portrait-load-error"
+      />
+    );
+  }
+
+  if (loading || !data) {
     return (
       <div className={`flex items-center justify-center ${compact ? "py-16" : "h-full"}`}>
         <div className="flex flex-col items-center gap-3 text-fg-secondary">
           <Loader2 size={32} className="animate-spin" />
           <p className="text-sm">正在生成你的 AI 画像…</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error && !data) {
-    return (
-      <div className={`flex items-center justify-center ${compact ? "py-16" : "h-full"}`}>
-        <div className="flex flex-col items-center gap-3 text-fg-secondary">
-          <AlertCircle size={32} className="text-danger" />
-          <p className="text-sm">{error}</p>
-          <button
-            onClick={() => void refetch()}
-            className="flex items-center gap-2 px-4 py-2 mt-2 text-sm bg-surface-overlay hover:bg-border-strong text-white rounded-lg transition-colors"
-          >
-            <RefreshCw size={14} />
-            重试
-          </button>
         </div>
       </div>
     );

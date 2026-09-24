@@ -330,7 +330,11 @@ export default function MemoriesPage() {
     };
   }, [viewMode, graphData, graphAttempt, addError]);
 
-  if (loading || reviewInitialLoading) {
+  // 列表或待确认重试一开始会把 isLoading 再置上。已经写出的失败要留在页面上。
+  if (
+    (loading && !shownListError && !shownReviewError) ||
+    (reviewInitialLoading && !shownReviewError)
+  ) {
     return <div className="flex-1 flex items-center justify-center text-fg-tertiary">加载中…</div>;
   }
 
