@@ -65,7 +65,7 @@ connectors, timeline, work_items
 | system | `/api/system` | health/live/ready/info/mcp-status、export/import/encrypted、`DELETE /data`、`POST /morning-brief/test`（诊断生成早安简报，正文含同一周期对比） | 数据主权（含破坏性）+ 诊断 |
 | settings_api | `/api/settings` | llm GET/PUT/test、email GET/PUT/test、prompt GET/PUT、notifications | DB 写 + 网络出口 + 文件写 |
 | telemetry_api | `/api/telemetry` | cost/summary/by-model、llm-calls、tool-calls、tool-summary、memory/stats、health、governance（`adoption`：工具建议采纳 + 记忆确认；通过/拒绝/过期读 `ApprovalGranted` / `ApprovalDenied`，`auto_allow` 与 `auto_expired` 不进采纳率） | 只读 |
-| timeline | `/api/timeline` | `/events`（分页 + 中文标签） | 只读 event_log |
+| timeline | `/api/timeline` | `/events`（分页 + 中文标签）。每条带 `work_id`：顶层已有 `work_id` 时用它（去掉空白）；该键不存在才用顶层 `task_id`。键在但为空白或不是字符串时不改用别的键。审批事件的 `task_id` 在 `ctx` 里，按同一规则读取。`WorkItemCreated` / `WorkItemUpdated` / `WorkItemStatusChanged` / `WorkItemDeleted` 的 id 在 `aggregate_id` 上。`TimerFired` 只读嵌套 `payload.payload` 里已有的 `work_id` 或 `task_id`。没有这些 id 时为 null。`correlation_id`、`parent_work_id`、`action_id`、定时器 id 和审批 id 不当作任务 id | 只读 event_log |
 | connectors | `/api/connectors` | 列表、详情、test、registry、install、uninstall | 可能进程间/网络 + 文件写 |
 
 ## SSE 流式端点

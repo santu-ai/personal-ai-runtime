@@ -9,6 +9,8 @@ export interface TimelineEvent {
   description: string;
   actor: string;
   ts: string;
+  /** Set only when the event already stores a work id. Never correlation_id. */
+  work_id?: string | null;
   payload_snippet: Record<string, string>;
 }
 
