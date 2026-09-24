@@ -100,6 +100,31 @@ function taskPageHref(workId: string | null | undefined): string | undefined {
   return `/tasks/${encodeURIComponent(id)}`;
 }
 
+type TimelineFocus = { type: "initial" | "more"; seen: readonly string[] };
+
+/** 焦点在页面空白处，或还停在已经卸掉的按钮上，才安放。已经在别的控件上就不再抢。 */
+function focusIsIdle(): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  if (active instanceof HTMLButtonElement && active.disabled) return true;
+  return false;
+}
+
+function focusTimelineLink(ids: readonly string[]): boolean {
+  for (const id of ids) {
+    const escaped =
+      typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(id)
+        : id.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    const node = document.querySelector<HTMLAnchorElement>(`a[data-timeline-id="${escaped}"]`);
+    if (!node) continue;
+    node.focus();
+    if (document.activeElement === node) return true;
+  }
+  return false;
+}
+
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
   const now = new Date();
@@ -165,6 +190,80 @@ export default function TimelinePage() {
     if (error) setHeldInitialError(errorMessage);
   }, [events.length, error, errorMessage, isFetching]);
 
+  // 不用 disabled：禁用会把键盘焦点卸掉。请求还在时用 ref 挡住第二次。
+  const actionRef = useRef(false);
+  const [armed, setArmed] = useState(false);
+  const focusAfter = useRef<TimelineFocus | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const emptyRef = useRef<HTMLDivElement>(null);
+  const endRef = useRef<HTMLParagraphElement>(null);
+  const moreRef = useRef<HTMLButtonElement>(null);
+  const moreBusy = armed || loadingMore;
+
+  const runFetch = async (type: TimelineFocus["type"], fn: () => Promise<unknown>) => {
+    if (actionRef.current) return;
+    actionRef.current = true;
+    setArmed(true);
+    focusAfter.current = { type, seen: events.map((event) => event.id) };
+    try {
+      await fn();
+    } finally {
+      actionRef.current = false;
+      setArmed(false);
+    }
+  };
+
+  const retryInitial = () => {
+    if (actionRef.current || isFetching) return;
+    void runFetch("initial", () => refetch());
+  };
+
+  const requestMore = () => {
+    if (actionRef.current || loadingMore) return;
+    void runFetch("more", () => fetchNextPage());
+  };
+
+  const retryLoaded = () => {
+    if (actionRef.current || isFetching || loadingMore) return;
+    void runFetch("more", () => (isFetchNextPageError ? fetchNextPage() : refetch()));
+  };
+
+  useEffect(() => {
+    const pending = focusAfter.current;
+    if (!pending || armed || isFetching || loadingMore) return;
+    if (shownInitialError || loadedError) {
+      focusAfter.current = null;
+      return;
+    }
+    if (!focusIsIdle()) {
+      focusAfter.current = null;
+      return;
+    }
+    focusAfter.current = null;
+    if (pending.type === "more" && hasMore) {
+      moreRef.current?.focus();
+      return;
+    }
+    const fresh =
+      pending.type === "initial"
+        ? events.map((event) => event.id)
+        : events.map((event) => event.id).filter((id) => !pending.seen.includes(id));
+    if (pending.type === "more") {
+      if (!focusTimelineLink(fresh)) endRef.current?.focus();
+      return;
+    }
+    if (focusTimelineLink(fresh)) return;
+    if (hasMore) {
+      moreRef.current?.focus();
+      return;
+    }
+    if (events.length > 0) {
+      listRef.current?.focus();
+      return;
+    }
+    emptyRef.current?.focus();
+  }, [armed, events, hasMore, isFetching, loadedError, loadingMore, shownInitialError]);
+
   return (
     <div className="page-shell">
       <div className="page-container-narrow">
@@ -178,8 +277,8 @@ export default function TimelinePage() {
         {shownInitialError ? (
           <LoadErrorNotice
             message={shownInitialError}
-            busy={isFetching}
-            onRetry={() => void refetch()}
+            busy={isFetching || armed}
+            onRetry={retryInitial}
           />
         ) : loading ? (
           <div className="flex items-center justify-center gap-2 py-16 text-sm text-fg-tertiary">
@@ -187,7 +286,12 @@ export default function TimelinePage() {
             加载中…
           </div>
         ) : dayKeys.length === 0 ? (
-          <div className="text-center py-16">
+          <div
+            ref={emptyRef}
+            tabIndex={-1}
+            data-testid="timeline-empty"
+            className="text-center py-16 outline-none"
+          >
             <Clock size={48} className="mx-auto mb-4 text-fg-disabled" />
             <p className="text-fg-tertiary">还没有任何事件</p>
             <p className="text-fg-disabled text-sm mt-1">
@@ -195,7 +299,12 @@ export default function TimelinePage() {
             </p>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div
+            ref={listRef}
+            tabIndex={-1}
+            data-testid="timeline-events"
+            className="space-y-6 outline-none"
+          >
             {dayKeys.map((day) => (
               <div key={day}>
                 <div className="flex items-center gap-2 mb-3">
@@ -224,6 +333,7 @@ export default function TimelinePage() {
                           {taskHref ? (
                             <Link
                               to={taskHref}
+                              data-timeline-id={event.id}
                               className="block text-sm text-fg-secondary hover:underline rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                             >
                               {event.description}
@@ -257,8 +367,8 @@ export default function TimelinePage() {
           <div className="mt-4">
             <LoadErrorNotice
               message={errorMessage}
-              busy={isFetching || loadingMore}
-              onRetry={() => void (isFetchNextPageError ? fetchNextPage() : refetch())}
+              busy={isFetching || loadingMore || armed}
+              onRetry={retryLoaded}
             />
           </div>
         ) : null}
@@ -266,19 +376,32 @@ export default function TimelinePage() {
         {hasMore && !loadedError && (
           <div className="flex justify-center py-6">
             <button
+              ref={moreRef}
               type="button"
-              onClick={() => void fetchNextPage()}
-              disabled={loadingMore}
-              className="px-6 py-2 bg-surface-overlay hover:bg-border-strong text-fg-secondary rounded-lg text-sm transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+              onClick={requestMore}
+              aria-busy={moreBusy || undefined}
+              className={`px-6 py-2 bg-surface-overlay hover:bg-border-strong text-fg-secondary rounded-lg text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                moreBusy ? "opacity-50" : ""
+              }`}
             >
-              {loadingMore ? <Loader2 size={14} className="animate-spin inline mr-1" /> : null}
+              {moreBusy ? (
+                <span aria-hidden="true" className="inline-flex mr-1">
+                  <Loader2 size={14} className="animate-spin" />
+                </span>
+              ) : null}
               加载更多
             </button>
           </div>
         )}
 
         {!hasMore && events.length > 0 && !loadedError && (
-          <p className="text-center text-fg-disabled text-xs py-6">已经是最早的记录</p>
+          <p
+            ref={endRef}
+            tabIndex={-1}
+            className="text-center text-fg-disabled text-xs py-6 outline-none"
+          >
+            已经是最早的记录
+          </p>
         )}
       </div>
     </div>
