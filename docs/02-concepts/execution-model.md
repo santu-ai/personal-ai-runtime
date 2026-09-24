@@ -65,7 +65,7 @@ Domain FSM 不含 `retrying`；操作层重试由 Lane A（`ScheduledExecution`�
 
 ## 当前尝试、半开收回与单次交付成本
 
-`e863c8f` 与 #117–#123 把再次运行、返工和死信收口收成同一条「当前尝试」边界。事实在既有事件 payload 与 `plan_resumes` 合成键上，不新增事件类型、投影表或 Kernel 方法。任务页与 API 的呈现见 [frontend.md](../03-subsystems/frontend.md)、[backend-api.md](../03-subsystems/backend-api.md)；启动扫描见 [backend-core.md](../03-subsystems/backend-core.md)；键形状见 [data-model.md](../04-data/data-model.md) 与 [ADR-R017](../07-adr/ADR-R017-execution-trustworthiness.md) E-3 / E-5。
+`e863c8f`、#117–#123 与 #125 把再次运行、返工、死信收口和审批恢复补写的 running 收成同一条「当前尝试」边界。事实在既有事件 payload 与 `plan_resumes` 合成键上，不新增事件类型、投影表或 Kernel 方法。任务页与 API 的呈现见 [frontend.md](../03-subsystems/frontend.md)、[backend-api.md](../03-subsystems/backend-api.md)；启动扫描见 [backend-core.md](../03-subsystems/backend-core.md)；键形状见 [data-model.md](../04-data/data-model.md) 与 [ADR-R017](../07-adr/ADR-R017-execution-trustworthiness.md) E-3 / E-5。
 
 ### 当前尝试
 
@@ -115,4 +115,4 @@ Kernel 每次 emit 单独提交，所以打开和派发不是一个事务。打�
 
 ### 单次交付的模型成本
 
-近 N 日 `delivery-metrics` 仍是窗口内各次交付的合计。任务详情每个交付版本另带 `model_cost`，只含该版本 `execution_id` 的两件事：成功且 `caused_by` 指向这次执行的 `LLMCallRecorded` 金额（`llm_cost`），以及同一次执行的恢复次数（`recovery_interventions`：handler replay，加上没有配上的 `interrupted_before_audit`）。其它执行的金额、以及缺少 `caused_by` 的未归因金额，不并入这一对象；未归因仍只出现在窗口汇总的 `unattributed_project_brief_cost`。这一读打满上限时两项都是 `unavailable`，不写成 0。没有 `execution_id` 时为 0。任务页在该版本下写出恢复次数和金额；`unavailable` 显示「未分开计」。
+近 N 日 `delivery-metrics` 仍是窗口内各次交付的合计。任务详情每个交付版本另带 `model_cost`，只含该版本 `execution_id` 的两件事：成功且 `caused_by` 指向这次执行的 `LLMCallRecorded` 金额（`llm_cost`），以及同一次执行的恢复次数（`recovery_interventions`：handler replay，加上没有配上的 `interrupted_before_audit`）。其它执行的金额、以及缺少 `caused_by` 的未归因金额，不并入这一对象；未归因仍只出现在窗口汇总的 `unattributed_project_brief_cost`。这一读打满上限时两项都是 `unavailable`，不写成 0。没有 `execution_id` 时为 0。任务页在该版本下写出恢复次数和「模型成本」；`unavailable` 时这一行是「恢复未分开计」或「模型成本未分开计」。窗口合计在任务页另写「窗口模型成本」（`llm_cost` 不可用时是「窗口模型成本未分开计」），两处不是同一个数。响应里的 `items` 列出该窗口有评审或已转任务的简报（`work_id` 与 `title`）；非空 `work_id` 打开 `/tasks/:id`。

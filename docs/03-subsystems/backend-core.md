@@ -166,7 +166,7 @@ Handlers（[`handlers/`](../../backend/app/core/agents/handlers/)）：
 - 循环每 50ms tick，每 tick 处理至多 `_MAX_CONCURRENT=8` 个 item。
 - `enqueue(instance_id, actor, event, policy)` → 查 handler → 创建 ScheduledExecution → emit `ExecutionRequested`。
 - `_process_work_item` 在 `execution_scope(item.id)` 内跑 handler，使能力调用正确归属。
-- `_emit_verify` 每次写后跑 `verify_persist_matches_projection`（影子比对）。`dead_letter` 置位后调用 `close_dead_lettered_domain_work`：最新 `ExecuteRequested` 的 handler 都已终态且至少一条失败时，把仍为 running 的领域 Work 收成 `failed`（`WorkItemStatusChanged`），不另开 retry 预算。
+- `_emit_verify` 每次写后跑 `verify_persist_matches_projection`（影子比对）。`dead_letter` 置位后调用 `close_dead_lettered_domain_work`：该死信属于当前尝试的 `ExecuteRequested`（最新 `status=running` 之后，或 handler 事后补写 running 且 `caused_by` 指向该请求），且该请求的 handler 都已终态、至少一条失败时，把仍为 running 的领域 Work 收成 `failed`（`WorkItemStatusChanged`），不另开 retry 预算。更早一次请求不收口后来的 running。
 - `kernel.expire_stale_running_leases` 是不取消在途任务、也不把剩余重试重新入队的薄事件路径。这次调用里过期的行都写成 `ExecutionFailed` 之后，终态死信走同一个收口函数；仍有未结束的 sibling handler 时不收口。RuntimeLoop 维护周期仍调用 `Scheduler.reclaim_stale_leases`。
 - `replay_dead_letters` 把死信重新排成 pending 之前先读 `work_items`。状态已是 `failed`、`completed` 或 `cancelled` 时跳过（`work_terminal:<status>`），不发 `ExecutionRetried`。死信不属于当前尝试时也跳过（`not_current_attempt`）。handler 事后补写 running 且 `caused_by` 指向该请求时，这一条仍是当前尝试。没有领域 Work 的执行（例如 `TimerFired`）仍重放。Work 仍为 running 且死信就是当前这次请求时，重放行为不变。
 - 默认 `ExecutionPolicy(timeout=30s, max_retries=3, retry_delay=5s)`；`ChatRequested` 由 `policy_for_event` 覆盖为工具环超时 + `max_retries=2`（第三次崩溃仍 DLQ，见 [ADR-R011](../07-adr/ADR-R011-chat-approval-continuation.md)）。
