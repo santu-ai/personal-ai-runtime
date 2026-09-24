@@ -5,6 +5,8 @@
 
 ## 当前状态
 
+- 2026-09-24：修复近 24 小时审查发现的三处回归：后续验收会使旧返工幂等重试变成无副作用回放；死信 `limit` 按实际可重放行计数；单次交付成本从该 execution 的 `ExecutionRequested` 起覆盖完整生命周期。新增三项回归测试；完整后端 1750 passed、9 skipped、6 deselected，lint/boundary/layer-deps/architecture-check/docs-links 通过。
+- 2026-09-24：审查 09-23 11:41 至 09-24 11:41 的提交（75186af..6ead56c）：后端重点 120 测试、前端 311 测试及 boundary/layer-deps/architecture-check 通过。临时用例复现：撤回返工后验收，重试旧幂等键仍派发；死信先截 limit 再过滤导致后续可重放项饥饿；单次交付成本漏掉发布前超过一天的同 execution_id 调用。临时用例已移除，未改业务代码。
 - 2026-09-24：Batch 45：信任报告「需要审批」里，非空 `id` 的待审批行打开 `/approvals`。没有 `id` 的行仍是纯文本。不把 `correlation_id` 当成链接。不新增事件类型，未改 Kernel，未改 `read_ports/work.py`。
 - 2026-09-24：Batch 44：任务详情有多版时，版本历史同一行写出该版列表里的 `model_cost`（恢复次数和「模型成本」，措辞与交付区相同；`unavailable` 为「未分开计」，不写成 $0）。字段缺失时不补这段。不新增事件类型，未改 Kernel，未改 `read_ports/work.py`。
 - 2026-09-24：Batch 43：文档对齐 #125–#129。审批恢复先写 `ExecuteRequested`、handler 再补 running（`caused_by` 指向该请求）时仍是当前尝试，启动恢复、死信收口、`latest_execute_handler_failed` 和死信重放共用这一判定，写在 `docs/01-overview/architecture.md`、`docs/02-concepts/execution-model.md` 与 `docs/03-subsystems/backend-core.md`。任务页来源跳转（`deliverySourceNav`：相对 vN 的当前与上一版编号、去掉的条目、正文反引号精确匹配；只在上一版的邮件打开收件箱且不滚动）和近 N 日「窗口模型成本」及非空 `work_id` 打开 `/tasks/:id`，写在 `docs/03-subsystems/frontend.md`。`delivery-metrics` 的 `items` 写在 `docs/03-subsystems/backend-api.md`。不新增事件类型，未改 Kernel。

@@ -218,9 +218,14 @@ def replay_dead_letters(kernel: Any, *, limit: int = 50) -> list[str]:
     from app.core.runtime.execution_events import emit_execution_retried
     from app.core.runtime.runtime_loop import dead_letter_replay_block_reason
 
+    replay_limit = max(0, int(limit))
+    if replay_limit == 0:
+        return []
     durable_ids: list[str] = []
-    items = list_dead_letter_executions(kernel._db)[: max(0, int(limit))]
+    items = list_dead_letter_executions(kernel._db)
     for item in items:
+        if len(durable_ids) >= replay_limit:
+            break
         reason = dead_letter_replay_block_reason(kernel, item)
         if reason:
             logger.info(

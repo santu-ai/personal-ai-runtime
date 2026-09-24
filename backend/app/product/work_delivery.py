@@ -1216,6 +1216,20 @@ def _complete_rework_dispatch(
     decision_id = str(decision.get("decision_id") or "") or None
     with _work_lock(work_id):
         folded = fold_delivery_history(work_id)
+        latest = folded.get("latest_decision") or {}
+        latest_id = str(latest.get("decision_id") or "") or None
+        if (
+            decision_id is None
+            or latest_id != decision_id
+            or str(latest.get("decision") or "") != DECISION_CHANGES_REQUESTED
+        ):
+            # A later review replaced this retried decision. Replay its result
+            # without restarting work that the newer decision has settled.
+            result["replayed"] = True
+            result["superseded"] = True
+            result["bundle"] = public_bundle(work_id)
+            result["work"] = read_ports.query_work_item(work_id)
+            return result
         if _dispatch_recorded(folded, delivery_id, decision_id):
             result["replayed"] = True
             result["bundle"] = public_bundle(work_id)
@@ -1992,9 +2006,21 @@ def model_cost_for_delivery(
     moment = datetime.now(UTC)
     published = _metric_datetime(published_at) or moment
     until = moment if moment >= published else published
+    requested = kernel.read_events(
+        type=EVENT_EXECUTION_REQUESTED,
+        aggregate_type=AGGREGATE_EXECUTION,
+        aggregate_id=resolved,
+        order="asc",
+        limit=1,
+    )
+    started = (
+        _metric_datetime(getattr(requested[0], "ts", None))
+        if requested
+        else None
+    )
     attribution, _capped = _attribute_delivery_activity(
         {resolved},
-        earliest=published,
+        earliest=started or published,
         until=until,
         limit=max(1, int(_DELIVERY_MODEL_COST_LIMIT if limit is None else limit)),
     )

@@ -202,6 +202,49 @@ def test_replay_dead_letters_clears_flag(kernel):
     assert kernel.list_dead_letter_executions() == []
 
 
+def test_replay_limit_counts_replayable_rows_after_blocked_rows(kernel):
+    """队首不可重放的死信不占 limit，后面的可重放行仍能前进。"""
+    from app.core.runtime.execution_events import (
+        emit_execution_failed,
+        emit_execution_requested,
+    )
+    from app.core.runtime.scheduled_execution import ExecutionPolicy, ScheduledExecution
+
+    kernel.emit_event(
+        "WorkItemCreated", "work_item", "already-done",
+        payload={"title": "done", "work_type": "task", "status": "completed"},
+    )
+    trigger = kernel.emit_event(
+        "ExecuteRequested", "action", "exec_already-done",
+        payload={"action_id": "already-done"},
+    )
+    blocked = ScheduledExecution(
+        event_id=trigger.id,
+        event_seq=trigger.seq or 0,
+        event_type="ExecuteRequested",
+        policy=ExecutionPolicy(max_retries=0),
+    )
+    emit_execution_requested(kernel, blocked, "scheduler")
+    blocked.transition_to("running")
+    blocked.transition_to("failed")
+    emit_execution_failed(kernel, blocked, terminal=True, dead_letter=True)
+
+    eligible = ScheduledExecution(
+        event_type="TimerFired",
+        event_id="timer-after-blocked",
+        handler_name="timer",
+        policy=ExecutionPolicy(max_retries=0),
+    )
+    emit_execution_requested(kernel, eligible, "scheduler")
+    eligible.transition_to("running")
+    eligible.transition_to("failed")
+    emit_execution_failed(kernel, eligible, terminal=True, dead_letter=True)
+
+    assert kernel.replay_dead_letters(limit=1) == [eligible.id]
+    assert kernel.read_scheduled_execution(blocked.id).dead_letter is True
+    assert kernel.read_scheduled_execution(eligible.id).dead_letter is False
+
+
 # ── E-4: lease TTL ─────────────────────────────────────────────────────────
 
 

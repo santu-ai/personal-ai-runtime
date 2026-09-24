@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from app.core.runtime import read_ports
@@ -15,6 +17,7 @@ from app.product.work_delivery import (
     get_delivery,
     list_rerunnable_briefs,
     list_unreviewed_deliveries,
+    model_cost_for_delivery,
     public_bundle,
     publish_delivery,
     request_rework,
@@ -1352,6 +1355,30 @@ def test_each_delivery_keeps_its_own_model_cost(isolated_kernel):
     assert metrics["attribution"]["unattributed_project_brief_calls"] == 1
 
 
+def test_delivery_model_cost_starts_with_execution_lifecycle(isolated_kernel, monkeypatch):
+    """隔天交付仍包含同一 execution_id 从启动起记录的费用。"""
+    kernel, _db = isolated_kernel
+    started = datetime.now(UTC) - timedelta(days=2)
+
+    class ExecutionClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return started.replace(tzinfo=None)
+            return started.astimezone(tz)
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr("app.core.runtime.kernel.event.datetime", ExecutionClock)
+        _emit_execution(kernel, "exec-long-delivery", "corr-long-delivery")
+        _emit_brief_cost(kernel, "exec-long-delivery", 0.25, "llm-long-delivery")
+
+    cost = model_cost_for_delivery(
+        "exec-long-delivery",
+        published_at=datetime.now(UTC).isoformat(),
+    )
+    assert cost == {"llm_cost": 0.25, "recovery_interventions": 0}
+
+
 def test_delivery_model_cost_stays_unavailable_when_read_is_capped(isolated_kernel, monkeypatch):
     monkeypatch.setattr("app.product.work_delivery._DELIVERY_MODEL_COST_LIMIT", 1)
     kernel, _db = isolated_kernel
@@ -1820,6 +1847,7 @@ def test_withdrawn_rework_is_not_presented_as_in_progress(isolated_kernel, monke
         execution_id="rework-present",
     )
     _seed_rerun_progress(k, work_id)
+    original_request = read_ports.request_work_item_execute
 
     def drop_execute(_work_id: str):
         raise RuntimeError("execute request dropped")
@@ -1852,6 +1880,17 @@ def test_withdrawn_rework_is_not_presented_as_in_progress(isolated_kernel, monke
     )
     assert accepted["bundle"]["current_review_status"] == "accepted"
     assert accepted["bundle"]["current"]["latest_decision"]["reason"] == "可以留下"
+
+    monkeypatch.setattr(read_ports, "request_work_item_execute", original_request)
+    retried = request_rework(
+        work_id, published["delivery_id"], reason="需要补风险",
+        idempotency_key="rework-present",
+    )
+    assert retried["replayed"] is True
+    assert retried["superseded"] is True
+    assert retried["bundle"]["current_review_status"] == "accepted"
+    assert read_ports.query_work_item(work_id)["status"] == "completed"
+    assert k.read_events(type="ExecuteRequested", aggregate_id=f"exec_{work_id}") == []
 
 
 def test_half_open_rework_pending_is_not_presented_as_in_progress(isolated_kernel):
