@@ -92,10 +92,39 @@ vi.mock("../stores/chatStore", () => ({
     }),
 }));
 
+const idleSync = {
+  status: "idle" as const,
+  error: null,
+  error_kind: null,
+  new_count: 0,
+  synced_read: 0,
+  duplicate_count: 0,
+  classification_fallback: 0,
+  uid_validity: null,
+  next_uid: null,
+  cursor_reset: false,
+  synced_at: null,
+  event_id: null,
+  metrics: {
+    days: 7,
+    poll_count: 0,
+    requested_count: 0,
+    error_count: 0,
+    errors_by_kind: {},
+    new_count: 0,
+    duplicate_count: 0,
+    synced_read: 0,
+    classification_fallback: 0,
+    rapid_repeat_polls: 0,
+  },
+};
+
 describe("InboxPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(listInboxEmails).mockResolvedValue([]);
+    vi.mocked(triggerInboxPoll).mockResolvedValue({});
+    vi.mocked(getInboxSyncStatus).mockResolvedValue(idleSync);
     vi.mocked(updateInboxEmailStatus).mockResolvedValue({ id: "x", status: "read" });
     quickChat.mockResolvedValue(true);
   });
@@ -103,7 +132,7 @@ describe("InboxPage", () => {
   it("keeps recent emails visible and opens the digest in a dialog", async () => {
     renderWithRouter(<InboxPage />);
     expect(screen.getByText("收件箱")).toBeInTheDocument();
-    expect(screen.getByText("立即轮询")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "立即轮询" })).toBeEnabled();
     const openDigest = await screen.findByRole("button", { name: "查看摘要" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByText("无新邮件")).not.toBeInTheDocument();
@@ -823,5 +852,135 @@ describe("InboxPage", () => {
     );
     expect(addError).toHaveBeenCalledWith("加载邮件详情失败", "收件箱");
     expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
+  });
+
+  function holdPoll() {
+    let release: (value: Record<string, unknown>) => void = () => {};
+    vi.mocked(triggerInboxPoll).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    return (value: Record<string, unknown> = {}) => release(value);
+  }
+
+  it("does not start another poll while the opening sync is in flight and keeps focus", async () => {
+    const release = holdPoll();
+    renderWithRouter(<InboxPage />);
+    const poll = await screen.findByRole("button", { name: "轮询中..." });
+    expect(poll).toBeEnabled();
+    expect(poll).toHaveAttribute("aria-busy", "true");
+    expect(triggerInboxPoll).toHaveBeenCalledTimes(1);
+    poll.focus();
+    fireEvent.click(poll);
+    fireEvent.click(poll);
+    expect(triggerInboxPoll).toHaveBeenCalledTimes(1);
+    expect(poll).toHaveFocus();
+
+    await act(async () => {
+      release();
+    });
+    const idle = await screen.findByRole("button", { name: "立即轮询" });
+    expect(idle).not.toHaveAttribute("aria-busy");
+    expect(idle).toHaveFocus();
+    expect(triggerInboxPoll).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not start a second poll from 重试同步 while one is in flight", async () => {
+    vi.mocked(getInboxSyncStatus).mockResolvedValue({
+      status: "error",
+      error: "invalid inbox JSON",
+      error_kind: "json",
+      new_count: 0,
+      synced_read: 0,
+      duplicate_count: 0,
+      classification_fallback: 0,
+      uid_validity: null,
+      next_uid: null,
+      cursor_reset: false,
+      synced_at: new Date().toISOString(),
+      event_id: "evt_1",
+      metrics: {
+        days: 7,
+        poll_count: 1,
+        requested_count: 1,
+        error_count: 1,
+        errors_by_kind: { json: 1 },
+        new_count: 0,
+        duplicate_count: 0,
+        synced_read: 0,
+        classification_fallback: 0,
+        rapid_repeat_polls: 0,
+      },
+    });
+    const release = holdPoll();
+    renderWithRouter(<InboxPage />);
+    const retry = await screen.findByRole("button", { name: "重试中..." });
+    const poll = screen.getByRole("button", { name: "轮询中..." });
+    expect(retry).toBeEnabled();
+    expect(retry).toHaveAttribute("aria-busy", "true");
+    expect(poll).toHaveAttribute("aria-busy", "true");
+    expect(triggerInboxPoll).toHaveBeenCalledTimes(1);
+    retry.focus();
+    fireEvent.click(retry);
+    fireEvent.click(poll);
+    expect(triggerInboxPoll).toHaveBeenCalledTimes(1);
+    expect(retry).toHaveFocus();
+
+    await act(async () => {
+      release();
+    });
+    expect(await screen.findByRole("button", { name: "重试同步" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "立即轮询" })).not.toHaveAttribute("aria-busy");
+  });
+
+  it("keeps focus on 立即轮询 when the poll fails", async () => {
+    renderWithRouter(<InboxPage />);
+    await waitFor(() => expect(triggerInboxPoll).toHaveBeenCalledTimes(1));
+    const poll = await screen.findByRole("button", { name: "立即轮询" });
+    await waitFor(() => expect(poll).not.toHaveAttribute("aria-busy"));
+
+    let fail: (err: unknown) => void = () => {};
+    vi.mocked(triggerInboxPoll).mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    poll.focus();
+    fireEvent.click(poll);
+    const busy = await screen.findByRole("button", { name: "轮询中..." });
+    expect(busy).toBeEnabled();
+    expect(busy).toHaveAttribute("aria-busy", "true");
+    expect(busy).toHaveFocus();
+    fireEvent.click(busy);
+    expect(triggerInboxPoll).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      fail(new ApiError("邮箱暂时连不上", 503));
+    });
+    const again = await screen.findByRole("button", { name: "立即轮询" });
+    expect(again).not.toHaveAttribute("aria-busy");
+    expect(again).toHaveFocus();
+    expect(addError).toHaveBeenCalledWith("邮箱暂时连不上", "收件箱");
+  });
+
+  it("does not pull focus back when it moved during the opening sync", async () => {
+    const release = holdPoll();
+    renderWithRouter(
+      <>
+        <button type="button">旁边</button>
+        <InboxPage />
+      </>,
+    );
+    await screen.findByRole("button", { name: "轮询中..." });
+    const other = screen.getByRole("button", { name: "旁边" });
+    other.focus();
+    await act(async () => {
+      release();
+    });
+    await screen.findByRole("button", { name: "立即轮询" });
+    expect(other).toHaveFocus();
   });
 });
