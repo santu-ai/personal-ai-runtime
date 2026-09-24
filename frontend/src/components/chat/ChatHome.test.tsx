@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { renderWithRouter } from "../../test-utils";
 import ChatHome from "./ChatHome";
 
@@ -44,7 +44,21 @@ vi.mock("../../hooks/useQuickChat", () => ({
   useQuickChat: () => quickChat,
 }));
 
-const approvalsState: { data: { id: string }[] } = { data: [] };
+const approvalsState: {
+  data?: { id: string }[];
+  isPending: boolean;
+  isFetching: boolean;
+  isError: boolean;
+  error: Error | null;
+  refetch: ReturnType<typeof vi.fn>;
+} = {
+  data: [],
+  isPending: false,
+  isFetching: false,
+  isError: false,
+  error: null,
+  refetch: vi.fn(),
+};
 
 vi.mock("../../hooks/useApprovalsQuery", () => ({
   useApprovalsQuery: () => approvalsState,
@@ -62,6 +76,11 @@ describe("ChatHome", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     approvalsState.data = [];
+    approvalsState.isPending = false;
+    approvalsState.isFetching = false;
+    approvalsState.isError = false;
+    approvalsState.error = null;
+    approvalsState.refetch = vi.fn();
     vi.spyOn(Date.prototype, "getHours").mockReturnValue(9);
     mockMemories.mockResolvedValue({ memories: [] });
     mockGoals.mockResolvedValue([]);
@@ -177,5 +196,124 @@ describe("ChatHome", () => {
     expect(start).toHaveClass("focus-visible:ring-focus-ring");
     fireEvent.click(start);
     expect(quickChat).toHaveBeenCalledWith(expect.objectContaining({ title: "建立记忆" }));
+  });
+
+  it("does not treat a failed insight read as an empty new user", async () => {
+    let ratifiedCalls = 0;
+    mockMemories.mockImplementation(async (opts = {}) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "ratified") {
+        ratifiedCalls += 1;
+        if (ratifiedCalls === 1) throw new Error("   ");
+      }
+      return { memories: [], total: 0 };
+    });
+    renderWithRouter(<ChatHome />);
+
+    const error = await screen.findByTestId("chat-home-load-error");
+    expect(error).toHaveTextContent("加载记忆失败");
+    expect(screen.queryByText(/我还不太了解你/)).not.toBeInTheDocument();
+    expect(screen.queryByText("今天没有待决断事项，开始新对话吧")).not.toBeInTheDocument();
+
+    fireEvent.click(within(error).getByRole("button", { name: "重试" }));
+    expect(await screen.findByText(/我还不太了解你/)).toBeInTheDocument();
+    expect(screen.getByText("今天没有待决断事项，开始新对话吧")).toBeInTheDocument();
+    expect(screen.queryByTestId("chat-home-load-error")).not.toBeInTheDocument();
+  });
+
+  it("keeps the home retry and the failure reason while the next read is in flight", async () => {
+    let ratifiedCalls = 0;
+    let release: ((value: { memories: [] }) => void) | undefined;
+    mockMemories.mockImplementation(async (opts = {}) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status !== "ratified") return { memories: [], total: 0 };
+      ratifiedCalls += 1;
+      if (ratifiedCalls === 1) throw new Error("记忆暂时读不到");
+      return new Promise((resolve) => {
+        release = resolve;
+      });
+    });
+    renderWithRouter(<ChatHome />);
+
+    const retry = await screen.findByRole("button", { name: "重试" });
+    expect(screen.getByTestId("chat-home-load-error")).toHaveTextContent("记忆暂时读不到");
+    expect(screen.queryByText(/我还不太了解你/)).not.toBeInTheDocument();
+    await waitFor(() => expect(retry).toHaveFocus());
+
+    fireEvent.click(retry);
+    expect(retry).toBeInTheDocument();
+    expect(retry).toHaveAttribute("aria-busy", "true");
+    expect(retry).toHaveFocus();
+    expect(screen.getByTestId("chat-home-load-error")).toHaveTextContent("记忆暂时读不到");
+    expect(screen.queryByText(/我还不太了解你/)).not.toBeInTheDocument();
+
+    release?.({ memories: [] });
+    expect(await screen.findByText(/我还不太了解你/)).toBeInTheDocument();
+    expect(screen.queryByTestId("chat-home-load-error")).not.toBeInTheDocument();
+  });
+
+  it("keeps a loaded goal nudge when another insight read fails", async () => {
+    mockMemories.mockImplementation(async (opts = {}) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "ratified") throw new Error("记忆暂时读不到");
+      return { memories: [], total: 0 };
+    });
+    mockGoals.mockResolvedValue([
+      {
+        id: "g1",
+        title: "学习 Rust",
+        description: null,
+        work_type: "goal",
+        parent_work_id: null,
+        status: "active",
+        priority: 0,
+        dependencies_json: null,
+        executable_plan: null,
+        created_at: "2020-01-01T00:00:00Z",
+        updated_at: "2020-01-01T00:00:00Z",
+        completed_at: null,
+        progress: 0,
+        importance: 1,
+        urgency: 1,
+        deadline: null,
+        last_activity_at: "2020-01-01T00:00:00Z",
+      },
+    ]);
+    renderWithRouter(<ChatHome />);
+
+    expect(await screen.findByText(/学习 Rust/)).toBeInTheDocument();
+    const error = screen.getByTestId("chat-home-load-error");
+    expect(error).toHaveTextContent("记忆暂时读不到");
+    expect(screen.queryByText(/我还不太了解你/)).not.toBeInTheDocument();
+    expect(within(error).getByRole("button", { name: "重试" })).not.toHaveFocus();
+  });
+
+  it("does not treat a failed approval read as nothing to decide", async () => {
+    approvalsState.data = undefined;
+    approvalsState.isError = true;
+    approvalsState.error = new Error("审批暂时读不到");
+    renderWithRouter(<ChatHome />);
+
+    const error = await screen.findByTestId("chat-home-load-error");
+    expect(error).toHaveTextContent("审批暂时读不到");
+    expect(screen.queryByText(/我还不太了解你/)).not.toBeInTheDocument();
+    expect(screen.queryByText("今天没有待决断事项，开始新对话吧")).not.toBeInTheDocument();
+
+    fireEvent.click(within(error).getByRole("button", { name: "重试" }));
+    expect(approvalsState.refetch).toHaveBeenCalled();
+  });
+
+  it("does not treat a failed proposed-memory count as an empty home", async () => {
+    mockCount.mockRejectedValueOnce(new Error("待确认暂时读不到"));
+    renderWithRouter(<ChatHome />);
+
+    const error = await screen.findByTestId("chat-home-load-error");
+    expect(error).toHaveTextContent("待确认暂时读不到");
+    expect(screen.queryByText(/我还不太了解你/)).not.toBeInTheDocument();
+
+    mockCount.mockResolvedValue({ count: 0 });
+    fireEvent.click(within(error).getByRole("button", { name: "重试" }));
+    expect(await screen.findByText(/我还不太了解你/)).toBeInTheDocument();
+    expect(screen.queryByTestId("chat-home-load-error")).not.toBeInTheDocument();
   });
 });
