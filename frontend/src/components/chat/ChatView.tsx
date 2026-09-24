@@ -16,13 +16,16 @@ import ChatComposer from "./ChatComposer";
 import WelcomeScreen from "./WelcomeScreen";
 import ProposedMemoryBanner from "./ProposedMemoryBanner";
 import LoadErrorNotice from "../ui/LoadErrorNotice";
+import { readComposerDraft, writeComposerDraft } from "./composerDraft";
 
 interface Props {
   conversationId: string;
 }
 
+type SendOutcome = "blocked" | "finished" | "retry";
+
 export default function ChatView({ conversationId }: Props) {
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState(() => readComposerDraft(conversationId));
   const [contextOpen, setContextOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [memoryNotice, setMemoryNotice] = useState<string | null>(null);
@@ -98,15 +101,27 @@ export default function ChatView({ conversationId }: Props) {
     pendingSentKeyRef.current = null;
   }, [conversationId]);
 
+  useEffect(() => {
+    setInput(readComposerDraft(conversationId));
+  }, [conversationId]);
+
+  const updateInput = useCallback(
+    (value: string) => {
+      setInput(value);
+      writeComposerDraft(conversationId, value);
+    },
+    [conversationId],
+  );
+
   const dispatchSend = useCallback(
-    async (trimmed: string) => {
-      if (!trimmed || isLoading || pendingConfirmation) return false;
+    async (trimmed: string): Promise<SendOutcome> => {
+      if (!trimmed || isLoading || pendingConfirmation) return "blocked";
       hasSentRef.current = true;
       isAtBottomRef.current = true;
       setShowJumpToLatest(false);
       isProgrammaticScrollRef.current = false;
       prevMemoryTotalRef.current = proposedTotal;
-      return (
+      const accepted =
         (await sendMessageBase(
           trimmed,
           (assistantMsgId, event: StreamEvent) => {
@@ -115,8 +130,8 @@ export default function ChatView({ conversationId }: Props) {
           (error) => {
             addError(error, "对话");
           },
-        )) === true
-      );
+        )) === true;
+      return accepted ? "finished" : "retry";
     },
     [
       isLoading,
@@ -142,9 +157,8 @@ export default function ChatView({ conversationId }: Props) {
     if (pendingSentKeyRef.current === key) return;
     pendingSentKeyRef.current = key;
     const prompt = pendingPrompt;
-    setInput("");
-    void dispatchSend(prompt).then((sent) => {
-      if (sent) setPendingPrompt(null);
+    void dispatchSend(prompt).then((outcome) => {
+      if (outcome === "finished") setPendingPrompt(null);
       else pendingSentKeyRef.current = null;
     });
   }, [
@@ -338,11 +352,17 @@ export default function ChatView({ conversationId }: Props) {
   }, [pendingConfirmation, initialLoad]);
 
   const handleSend = useCallback(async () => {
-    const trimmed = input.trim();
-    if (!trimmed) return;
+    const raw = input;
+    const trimmed = raw.trim();
+    if (!trimmed || isLoading || pendingConfirmation) return;
     setInput("");
-    await dispatchSend(trimmed);
-  }, [input, dispatchSend]);
+    writeComposerDraft(conversationId, "");
+    const outcome = await dispatchSend(trimmed);
+    if (outcome === "blocked") {
+      setInput(raw);
+      writeComposerDraft(conversationId, raw);
+    }
+  }, [input, isLoading, pendingConfirmation, conversationId, dispatchSend]);
 
   const handleConfirm = useCallback(
     async (answer?: string) => {
@@ -355,10 +375,13 @@ export default function ChatView({ conversationId }: Props) {
     await deny(setMessages, addError);
   }, [deny, setMessages, addError]);
 
-  const handlePickPrompt = useCallback((prompt: string) => {
-    setInput(prompt);
-    setTimeout(() => inputRef.current?.focus(), 0);
-  }, []);
+  const handlePickPrompt = useCallback(
+    (prompt: string) => {
+      updateInput(prompt);
+      setTimeout(() => inputRef.current?.focus(), 0);
+    },
+    [updateInput],
+  );
 
   // Mark initial load complete once messages are loaded or user sends a message
   useEffect(() => {
@@ -400,7 +423,7 @@ export default function ChatView({ conversationId }: Props) {
           <div className="max-w-3xl mx-auto">
             <ChatComposer
               value={input}
-              onChange={setInput}
+              onChange={updateInput}
               onSend={handleSend}
               onCancel={isLoading ? cancelMessage : undefined}
               disabled={isLoading || !!pendingConfirmation}
@@ -516,7 +539,7 @@ export default function ChatView({ conversationId }: Props) {
           )}
           <ChatComposer
             value={input}
-            onChange={setInput}
+            onChange={updateInput}
             onSend={handleSend}
             onCancel={isLoading ? cancelMessage : undefined}
             disabled={isLoading || !!pendingConfirmation}
