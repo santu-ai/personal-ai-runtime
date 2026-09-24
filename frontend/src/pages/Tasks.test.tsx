@@ -1320,6 +1320,111 @@ describe("TasksPage", () => {
     await waitFor(() => expect(getWorkDelivery).toHaveBeenCalledWith("brief_1", "d1"));
   });
 
+  it("scrolls the delivery into view when switching versions and keeps row focus", async () => {
+    let release: ((row: WorkDelivery) => void) | undefined;
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [briefTask];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(briefTask);
+    vi.mocked(getWorkDelivery).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const scrolled: Array<{ el: HTMLElement; arg?: ScrollIntoViewOptions }> = [];
+    const previousScroll = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = function (
+      this: HTMLElement,
+      arg?: boolean | ScrollIntoViewOptions,
+    ) {
+      scrolled.push({ el: this, arg: typeof arg === "object" ? arg : undefined });
+    };
+    const slotScrolls = () =>
+      scrolled.filter((entry) => entry.el.getAttribute("data-testid") === "delivery-slot");
+
+    try {
+      renderTasks("/tasks/brief_1");
+      const current = await screen.findByRole("button", { name: /v2 · 待验收/ });
+      const previous = screen.getByRole("button", { name: /v1 · 已要求返工/ });
+      expect(slotScrolls()).toEqual([]);
+
+      previous.focus();
+      fireEvent.click(previous);
+      expect(await screen.findByTestId("history-load-status")).toBeInTheDocument();
+      expect(slotScrolls()).toEqual([
+        { el: screen.getByTestId("delivery-slot"), arg: { block: "start", inline: "nearest" } },
+      ]);
+      expect(previous).toHaveFocus();
+      expect(
+        screen.queryByText("还没有交付结果。确认资料范围后执行任务。"),
+      ).not.toBeInTheDocument();
+
+      release?.(historyFull);
+      expect(await screen.findByText("历史版本完整正文甲")).toBeInTheDocument();
+      expect(slotScrolls()).toHaveLength(2);
+      expect(slotScrolls()[1]).toEqual({
+        el: screen.getByTestId("delivery-slot"),
+        arg: { block: "start", inline: "nearest" },
+      });
+      expect(previous).toHaveFocus();
+
+      fireEvent.click(current);
+      expect(screen.getByText("完整正文超过预览长度".repeat(20))).toBeInTheDocument();
+      expect(slotScrolls()).toHaveLength(3);
+      expect(previous).toHaveFocus();
+      expect(screen.getByRole("heading", { name: /交付 v2/ })).not.toHaveFocus();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = previousScroll;
+    }
+  });
+
+  it("does not scroll when leaving a task that had another version open", async () => {
+    const plain: WorkItem = {
+      ...sampleTask,
+      delivery_bundle: {
+        work_id: "task_1",
+        current_review_status: null,
+        current: null,
+        deliveries: [],
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [briefTask, plain];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockImplementation(async (id: string) => {
+      if (id === "task_1") return plain;
+      return briefTask;
+    });
+    vi.mocked(getWorkDelivery).mockResolvedValue(historyFull);
+    const scrolled: HTMLElement[] = [];
+    const previousScroll = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = function (this: HTMLElement) {
+      scrolled.push(this);
+    };
+
+    try {
+      renderTasks("/tasks/brief_1");
+      fireEvent.click(await screen.findByRole("button", { name: /v1 · 已要求返工/ }));
+      expect(await screen.findByText("历史版本完整正文甲")).toBeInTheDocument();
+      const beforeLeave = scrolled.filter(
+        (el) => el.getAttribute("data-testid") === "delivery-slot",
+      ).length;
+      expect(beforeLeave).toBeGreaterThan(0);
+
+      fireEvent.click(screen.getByRole("link", { name: /整理报告/ }));
+      expect(await screen.findByRole("heading", { name: "整理报告" })).toBeInTheDocument();
+      expect(screen.queryByText("历史版本完整正文甲")).not.toBeInTheDocument();
+      expect(
+        scrolled.filter((el) => el.getAttribute("data-testid") === "delivery-slot"),
+      ).toHaveLength(beforeLeave);
+    } finally {
+      HTMLElement.prototype.scrollIntoView = previousScroll;
+    }
+  });
+
   it("shows the stored rework reason on the current delivery", async () => {
     const reason = "需要补上风险，并给每条结论带来源";
     const reworked: WorkItem = {

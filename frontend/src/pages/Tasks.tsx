@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
@@ -954,6 +954,13 @@ export default function TasksPage() {
   const historyRequestKey = useRef<string | null>(null);
   const historyErrorRef = useRef<HTMLDivElement>(null);
   const deliveryTitleRef = useRef<HTMLHeadingElement>(null);
+  const deliverySlotRef = useRef<HTMLDivElement>(null);
+  const deliveryScrollRef = useRef<{
+    taskId: string | undefined;
+    historyId: string | null;
+    loading: boolean;
+    suppressNull: boolean;
+  } | null>(null);
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
   const [inboxEmail, setInboxEmail] = useState<InboxEmail | null>(null);
   const [citeSourceId, setCiteSourceId] = useState<string | null>(null);
@@ -1432,6 +1439,36 @@ export default function TasksPage() {
     deliveryTitleRef.current?.focus();
   }, [viewingHistory, historyFull]);
 
+  useLayoutEffect(() => {
+    // 版本行在交付下面。换一版时上面的正文高度会变，视口容易停在版本列表上。
+    // 把交付区滚到滚动容器顶部，焦点仍留在版本行。刚打开任务，或换任务清掉历史版时，不滚。
+    const prev = deliveryScrollRef.current;
+    const taskChanged = !prev || prev.taskId !== urlTaskId;
+    let suppressNull = false;
+    if (taskChanged) {
+      suppressNull = historyId !== null;
+    } else if (prev.suppressNull && historyId === null) {
+      suppressNull = false;
+    } else if (prev) {
+      suppressNull = prev.suppressNull;
+    }
+    deliveryScrollRef.current = {
+      taskId: urlTaskId,
+      historyId,
+      loading: historyLoading,
+      suppressNull,
+    };
+    if (taskChanged || !prev) return;
+    if (prev.suppressNull && historyId === null) return;
+    const switched = prev.historyId !== historyId;
+    const settled =
+      prev.historyId === historyId && Boolean(historyId) && prev.loading && !historyLoading;
+    if (!switched && !settled) return;
+    const slot = deliverySlotRef.current;
+    if (!slot || typeof slot.scrollIntoView !== "function") return;
+    slot.scrollIntoView({ block: "start", inline: "nearest" });
+  }, [urlTaskId, historyId, historyLoading]);
+
   const detailOpen = Boolean(urlTaskId);
   const showSplit = items.length > 0 || detailOpen;
 
@@ -1646,232 +1683,238 @@ export default function TasksPage() {
                     ) : null}
                   </header>
 
-                  {viewingHistory && historyLoading && !historyError ? (
-                    <div
-                      className="flex min-h-32 items-center gap-2 rounded-xl border border-border-subtle p-4 text-sm text-fg-tertiary"
-                      data-testid="history-load-status"
-                      role="status"
-                      aria-live="polite"
-                      aria-busy="true"
-                    >
-                      <span aria-hidden="true" className="inline-flex">
-                        <Spinner size="sm" />
-                      </span>
-                      加载历史版本全文…
-                    </div>
-                  ) : null}
-                  {viewingHistory && historyError ? (
-                    <div
-                      ref={historyErrorRef}
-                      className="space-y-2 rounded-xl border border-danger/30 p-4"
-                      data-testid="history-load-error"
-                      role="alert"
-                    >
-                      <p className="text-sm text-danger">{historyError}</p>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        aria-busy={historyLoading || undefined}
-                        onClick={() => {
-                          if (historyLoading) return;
-                          setHistoryRetry((attempt) => attempt + 1);
-                        }}
+                  <div ref={deliverySlotRef} data-testid="delivery-slot" className="scroll-mt-3">
+                    {viewingHistory && historyLoading && !historyError ? (
+                      <div
+                        className="flex min-h-32 items-center gap-2 rounded-xl border border-border-subtle p-4 text-sm text-fg-tertiary"
+                        data-testid="history-load-status"
+                        role="status"
+                        aria-live="polite"
+                        aria-busy="true"
                       >
-                        {historyLoading ? (
-                          <span aria-hidden="true" className="inline-flex">
-                            <Spinner size="sm" />
-                          </span>
-                        ) : null}
-                        重试
-                      </Button>
-                    </div>
-                  ) : null}
-                  {shownDelivery && failureReason ? (
-                    <RerunFailureReason reason={failureReason} />
-                  ) : null}
-                  {shownDelivery ? (
-                    <section className="space-y-3 rounded-xl border border-border-subtle p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h3
-                            ref={deliveryTitleRef}
-                            tabIndex={-1}
-                            className="rounded-sm text-sm font-medium text-fg-primary outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-                          >
-                            交付 v{shownDelivery.version}
-                            {viewingHistory ? "（历史版本）" : ""}
-                          </h3>
-                          <p className="text-xs text-fg-tertiary mt-1">
-                            {reviewLabel(shownDelivery.review_status)}
-                            {shownDelivery.qualified ? "" : " · 非完整合格简报"}
-                          </p>
-                          <DeliveryModelCost delivery={shownDelivery} />
-                          {deliveryReworkReason(shownDelivery) ? (
-                            <p
-                              className="text-sm text-fg-secondary mt-1 whitespace-pre-wrap break-words"
-                              data-testid="rework-reason"
-                            >
-                              <span className="text-fg-tertiary">返工理由：</span>
-                              {deliveryReworkReason(shownDelivery)}
-                            </p>
+                        <span aria-hidden="true" className="inline-flex">
+                          <Spinner size="sm" />
+                        </span>
+                        加载历史版本全文…
+                      </div>
+                    ) : null}
+                    {viewingHistory && historyError ? (
+                      <div
+                        ref={historyErrorRef}
+                        className="space-y-2 rounded-xl border border-danger/30 p-4"
+                        data-testid="history-load-error"
+                        role="alert"
+                      >
+                        <p className="text-sm text-danger">{historyError}</p>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          aria-busy={historyLoading || undefined}
+                          onClick={() => {
+                            if (historyLoading) return;
+                            setHistoryRetry((attempt) => attempt + 1);
+                          }}
+                        >
+                          {historyLoading ? (
+                            <span aria-hidden="true" className="inline-flex">
+                              <Spinner size="sm" />
+                            </span>
                           ) : null}
-                          {deliveryAcceptReason(shownDelivery) ? (
-                            <p
-                              className="text-sm text-fg-secondary mt-1 whitespace-pre-wrap break-words"
-                              data-testid="accept-reason"
+                          重试
+                        </Button>
+                      </div>
+                    ) : null}
+                    {shownDelivery && failureReason ? (
+                      <RerunFailureReason reason={failureReason} />
+                    ) : null}
+                    {shownDelivery ? (
+                      <section className="space-y-3 rounded-xl border border-border-subtle p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <h3
+                              ref={deliveryTitleRef}
+                              tabIndex={-1}
+                              className="rounded-sm text-sm font-medium text-fg-primary outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                             >
-                              <span className="text-fg-tertiary">验收说明：</span>
-                              {deliveryAcceptReason(shownDelivery)}
+                              交付 v{shownDelivery.version}
+                              {viewingHistory ? "（历史版本）" : ""}
+                            </h3>
+                            <p className="text-xs text-fg-tertiary mt-1">
+                              {reviewLabel(shownDelivery.review_status)}
+                              {shownDelivery.qualified ? "" : " · 非完整合格简报"}
                             </p>
-                          ) : null}
+                            <DeliveryModelCost delivery={shownDelivery} />
+                            {deliveryReworkReason(shownDelivery) ? (
+                              <p
+                                className="text-sm text-fg-secondary mt-1 whitespace-pre-wrap break-words"
+                                data-testid="rework-reason"
+                              >
+                                <span className="text-fg-tertiary">返工理由：</span>
+                                {deliveryReworkReason(shownDelivery)}
+                              </p>
+                            ) : null}
+                            {deliveryAcceptReason(shownDelivery) ? (
+                              <p
+                                className="text-sm text-fg-secondary mt-1 whitespace-pre-wrap break-words"
+                                data-testid="accept-reason"
+                              >
+                                <span className="text-fg-tertiary">验收说明：</span>
+                                {deliveryAcceptReason(shownDelivery)}
+                              </p>
+                            ) : null}
+                          </div>
+                          {!viewingHistory && shownDelivery.review_status === "unreviewed" && (
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => setAcceptTarget(shownDelivery)}
+                                disabled={busy}
+                              >
+                                验收
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="subtle"
+                                onClick={() => setReworkOpen(true)}
+                                disabled={busy}
+                              >
+                                返工
+                              </Button>
+                            </div>
+                          )}
                         </div>
-                        {!viewingHistory && shownDelivery.review_status === "unreviewed" && (
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => setAcceptTarget(shownDelivery)}
-                              disabled={busy}
-                            >
-                              验收
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="subtle"
-                              onClick={() => setReworkOpen(true)}
-                              disabled={busy}
-                            >
-                              返工
-                            </Button>
+                        <DeliveryChecks delivery={shownDelivery} />
+                        <DeliveryVersionDiff
+                          delivery={shownDelivery}
+                          onCite={(sourceId) => void openCitedSource(sourceId, citeSources)}
+                          canCite={canCiteDeliverySource}
+                        />
+                        <p className="text-sm text-fg-secondary whitespace-pre-wrap">
+                          {shownDelivery.summary}
+                        </p>
+                        <pre
+                          className="text-sm text-fg-primary whitespace-pre-wrap break-words bg-surface-sunken rounded-lg p-3"
+                          data-testid="delivery-body"
+                        >
+                          <DeliveryBodyText
+                            content={deliveryBodyText(shownDelivery.content)}
+                            sources={shownDelivery.sources}
+                            onCite={(sourceId) =>
+                              void openCitedSource(sourceId, shownDelivery.sources)
+                            }
+                          />
+                        </pre>
+                        {shownDelivery.limitations.length > 0 && (
+                          <div>
+                            <h4 className="text-xs font-medium text-fg-tertiary mb-1">
+                              限制与不足
+                            </h4>
+                            <ul className="text-sm text-warning space-y-1">
+                              {shownDelivery.limitations.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
                           </div>
                         )}
-                      </div>
-                      <DeliveryChecks delivery={shownDelivery} />
-                      <DeliveryVersionDiff
-                        delivery={shownDelivery}
-                        onCite={(sourceId) => void openCitedSource(sourceId, citeSources)}
-                        canCite={canCiteDeliverySource}
-                      />
-                      <p className="text-sm text-fg-secondary whitespace-pre-wrap">
-                        {shownDelivery.summary}
-                      </p>
-                      <pre
-                        className="text-sm text-fg-primary whitespace-pre-wrap break-words bg-surface-sunken rounded-lg p-3"
-                        data-testid="delivery-body"
-                      >
-                        <DeliveryBodyText
-                          content={deliveryBodyText(shownDelivery.content)}
-                          sources={shownDelivery.sources}
+                        <DeliveryFindings
+                          delivery={shownDelivery}
                           onCite={(sourceId) =>
                             void openCitedSource(sourceId, shownDelivery.sources)
                           }
                         />
-                      </pre>
-                      {shownDelivery.limitations.length > 0 && (
-                        <div>
-                          <h4 className="text-xs font-medium text-fg-tertiary mb-1">限制与不足</h4>
-                          <ul className="text-sm text-warning space-y-1">
-                            {shownDelivery.limitations.map((item) => (
-                              <li key={item}>{item}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      <DeliveryFindings
-                        delivery={shownDelivery}
-                        onCite={(sourceId) => void openCitedSource(sourceId, shownDelivery.sources)}
-                      />
-                      <DeliverySources
-                        sources={shownDelivery.sources}
-                        activeSourceId={activeSourceId}
-                        onOpenEmail={(sourceId) =>
-                          void openCitedSource(sourceId, shownDelivery.sources)
-                        }
-                      />
-                      {shownCiteError ? (
-                        <LoadErrorNotice
-                          message={shownCiteError}
-                          busy={citeBusy}
-                          onRetry={() => {
-                            if (!citeSourceId || citeBusy) return;
-                            void openCitedSource(citeSourceId, citeSources);
-                          }}
-                          testId="task-mail-load-error"
+                        <DeliverySources
+                          sources={shownDelivery.sources}
+                          activeSourceId={activeSourceId}
+                          onOpenEmail={(sourceId) =>
+                            void openCitedSource(sourceId, shownDelivery.sources)
+                          }
                         />
-                      ) : null}
-                      {shownDelivery.suggested_actions.length > 0 && (
-                        <div>
-                          <h4 className="text-xs font-medium text-fg-tertiary mb-1">建议待办</h4>
-                          <ul className="text-sm text-fg-secondary space-y-2">
-                            {shownDelivery.suggested_actions.map((action, index) => {
-                              const adoptedHref = action.adopted_work_id
-                                ? adoptedTaskHref(action.adopted_work_id)
-                                : undefined;
-                              return (
-                                <li
-                                  key={`${action.title}-${index}`}
-                                  className="flex items-start justify-between gap-3"
-                                >
-                                  <span>
-                                    {action.title}
-                                    {action.reason ? ` — ${action.reason}` : ""}
-                                    <SourceIdChips
-                                      ids={action.source_ids}
-                                      onCite={(sourceId) =>
-                                        void openCitedSource(sourceId, shownDelivery.sources)
-                                      }
-                                    />
-                                  </span>
-                                  {!viewingHistory && action.adopted_work_id ? (
-                                    adoptedHref ? (
-                                      <Link to={adoptedHref} className={adoptedLinkClass}>
-                                        已转为任务
-                                      </Link>
-                                    ) : (
-                                      <span className="shrink-0 px-3 py-1.5 text-xs text-fg-secondary">
-                                        已转为任务
-                                      </span>
-                                    )
-                                  ) : !viewingHistory ? (
-                                    <Button
-                                      size="sm"
-                                      variant="secondary"
-                                      onClick={() => handleAdopt(shownDelivery, index)}
-                                      disabled={busy}
-                                    >
-                                      转为任务
-                                    </Button>
-                                  ) : null}
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </div>
-                      )}
-                    </section>
-                  ) : isProjectBrief(selected) ? (
-                    <div className="space-y-2">
-                      <p className="text-sm text-fg-tertiary">
-                        {selected.status === "failed" || executionFailed
-                          ? "执行失败，尚未发布合格交付。可查看执行日志后重试。"
-                          : "还没有交付结果。确认资料范围后执行任务。"}
-                      </p>
+                        {shownCiteError ? (
+                          <LoadErrorNotice
+                            message={shownCiteError}
+                            busy={citeBusy}
+                            onRetry={() => {
+                              if (!citeSourceId || citeBusy) return;
+                              void openCitedSource(citeSourceId, citeSources);
+                            }}
+                            testId="task-mail-load-error"
+                          />
+                        ) : null}
+                        {shownDelivery.suggested_actions.length > 0 && (
+                          <div>
+                            <h4 className="text-xs font-medium text-fg-tertiary mb-1">建议待办</h4>
+                            <ul className="text-sm text-fg-secondary space-y-2">
+                              {shownDelivery.suggested_actions.map((action, index) => {
+                                const adoptedHref = action.adopted_work_id
+                                  ? adoptedTaskHref(action.adopted_work_id)
+                                  : undefined;
+                                return (
+                                  <li
+                                    key={`${action.title}-${index}`}
+                                    className="flex items-start justify-between gap-3"
+                                  >
+                                    <span>
+                                      {action.title}
+                                      {action.reason ? ` — ${action.reason}` : ""}
+                                      <SourceIdChips
+                                        ids={action.source_ids}
+                                        onCite={(sourceId) =>
+                                          void openCitedSource(sourceId, shownDelivery.sources)
+                                        }
+                                      />
+                                    </span>
+                                    {!viewingHistory && action.adopted_work_id ? (
+                                      adoptedHref ? (
+                                        <Link to={adoptedHref} className={adoptedLinkClass}>
+                                          已转为任务
+                                        </Link>
+                                      ) : (
+                                        <span className="shrink-0 px-3 py-1.5 text-xs text-fg-secondary">
+                                          已转为任务
+                                        </span>
+                                      )
+                                    ) : !viewingHistory ? (
+                                      <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        onClick={() => handleAdopt(shownDelivery, index)}
+                                        disabled={busy}
+                                      >
+                                        转为任务
+                                      </Button>
+                                    ) : null}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </div>
+                        )}
+                      </section>
+                    ) : viewingHistory ? null : isProjectBrief(selected) ? (
+                      <div className="space-y-2">
+                        <p className="text-sm text-fg-tertiary">
+                          {selected.status === "failed" || executionFailed
+                            ? "执行失败，尚未发布合格交付。可查看执行日志后重试。"
+                            : "还没有交付结果。确认资料范围后执行任务。"}
+                        </p>
+                        <RerunFailureReason reason={failureReason} />
+                      </div>
+                    ) : selected.status === "failed" && canExecute ? (
+                      <div className="space-y-2">
+                        <p className="text-sm text-danger">上次执行已失败。可以重新执行。</p>
+                        <RerunFailureReason reason={failureReason} />
+                      </div>
+                    ) : executionFailed && selected.status === "running" ? (
+                      <div className="space-y-2">
+                        <p className="text-sm text-danger">
+                          上次执行已失败，任务仍显示为进行中。可以重新执行。
+                        </p>
+                        <RerunFailureReason reason={failureReason} />
+                      </div>
+                    ) : (
                       <RerunFailureReason reason={failureReason} />
-                    </div>
-                  ) : selected.status === "failed" && canExecute ? (
-                    <div className="space-y-2">
-                      <p className="text-sm text-danger">上次执行已失败。可以重新执行。</p>
-                      <RerunFailureReason reason={failureReason} />
-                    </div>
-                  ) : executionFailed && selected.status === "running" ? (
-                    <div className="space-y-2">
-                      <p className="text-sm text-danger">
-                        上次执行已失败，任务仍显示为进行中。可以重新执行。
-                      </p>
-                      <RerunFailureReason reason={failureReason} />
-                    </div>
-                  ) : (
-                    <RerunFailureReason reason={failureReason} />
-                  )}
+                    )}
+                  </div>
 
                   {bundle && bundle.deliveries.length > 1 ? (
                     <DeliveryVersionHistory
@@ -1889,6 +1932,10 @@ export default function TasksPage() {
                           }
                           return;
                         }
+                        // 同一帧换上加载态，避免正文先被收成空交付再出现转圈。
+                        setHistoryError(null);
+                        setHistoryFull(null);
+                        setHistoryLoading(true);
                         setHistoryId(deliveryId);
                       }}
                     />
