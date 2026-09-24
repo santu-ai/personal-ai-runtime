@@ -174,6 +174,12 @@ function parseLoadedMessages(msgs: Message[]): DisplayMessage[] {
   return merged;
 }
 
+/** 有原文用原文。空白或不是 Error 时用页面自己的说法，避免把读失败写成空会话。 */
+function historyLoadErrorMessage(err: unknown): string {
+  if (err instanceof Error && err.message.trim()) return err.message.trim();
+  return "加载消息失败";
+}
+
 export function useChatMessages(
   conversationId: string,
   onLoadError?: (msg: string, source: string) => void,
@@ -181,6 +187,7 @@ export function useChatMessages(
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [messagesHydrated, setMessagesHydrated] = useState(false);
+  const [messagesLoadError, setMessagesLoadError] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState("");
 
   const conversations = useChatStore((s) => s.conversations);
@@ -217,19 +224,21 @@ export function useChatMessages(
       if (stream && !stream.signal.aborted) {
         // An in-flight send already owns the visible transcript; applying
         // history now would wipe the optimistic user/assistant bubbles.
+        setMessagesLoadError(null);
         setMessagesHydrated(true);
         return;
       }
       setMessages(parseLoadedMessages(msgs));
+      setMessagesLoadError(null);
       setStreamingContent("");
       setMessagesHydrated(true);
     } catch (err) {
       if (controller.signal.aborted || gen !== loadGenRef.current) {
         return;
       }
-      const msg =
-        err instanceof ApiError ? err.message : err instanceof Error ? err.message : "加载消息失败";
+      const msg = historyLoadErrorMessage(err);
       onLoadErrorRef.current?.(msg, "对话");
+      setMessagesLoadError(msg);
       setStreamingContent("");
       setMessagesHydrated(true);
     }
@@ -241,6 +250,7 @@ export function useChatMessages(
     setMessages([]);
     setIsLoading(false);
     setStreamingContent("");
+    setMessagesLoadError(null);
     void loadMessages();
     return () => {
       loadAbortRef.current?.abort();
@@ -472,6 +482,7 @@ export function useChatMessages(
     setMessages,
     isLoading,
     messagesHydrated,
+    messagesLoadError,
     streamingContent,
     setStreamingContent,
     loadMessages,
