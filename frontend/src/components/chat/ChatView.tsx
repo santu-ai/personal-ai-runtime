@@ -77,10 +77,11 @@ export default function ChatView({ conversationId }: Props) {
     allToolResults,
   } = useChatMessages(conversationId, addError);
 
-  const { pendingConfirmation, resolving, setFromEvent, confirm, deny } =
+  const { pendingConfirmation, resolvingAction, setFromEvent, confirm, deny } =
     useApprovalFlow(conversationId);
   const confirmationRef = useRef<HTMLDivElement>(null);
   const focusedApprovalRef = useRef<string | null>(null);
+  const focusAfterResolve = useRef<"confirm" | "deny" | null>(null);
   const { data: pendingApprovals = [] } = useApprovalsQuery();
 
   useEffect(() => {
@@ -333,6 +334,31 @@ export default function ChatView({ conversationId }: Props) {
   }, [isLoading, pendingConfirmation]);
 
   useEffect(() => {
+    if (resolvingAction) return;
+    const action = focusAfterResolve.current;
+    if (!action) return;
+    focusAfterResolve.current = null;
+    if (!pendingConfirmation) return;
+    const active = document.activeElement;
+    const idle =
+      !active ||
+      active === document.body ||
+      active === document.documentElement ||
+      !(active instanceof HTMLElement) ||
+      !active.isConnected;
+    if (!idle) return;
+    const root = confirmationRef.current;
+    const button = root?.querySelector<HTMLButtonElement>(
+      `button[data-confirm-action="${action}"]`,
+    );
+    if (button && !button.disabled) {
+      button.focus();
+      return;
+    }
+    root?.querySelector<HTMLElement>("textarea")?.focus();
+  }, [resolvingAction, pendingConfirmation]);
+
+  useEffect(() => {
     const approvalId = pendingConfirmation
       ? pendingConfirmation.approvalId || pendingConfirmation.toolCall.id
       : null;
@@ -366,12 +392,14 @@ export default function ChatView({ conversationId }: Props) {
 
   const handleConfirm = useCallback(
     async (answer?: string) => {
+      focusAfterResolve.current = "confirm";
       await confirm(setMessages, addError, answer);
     },
     [confirm, setMessages, addError],
   );
 
   const handleDeny = useCallback(async () => {
+    focusAfterResolve.current = "deny";
     await deny(setMessages, addError);
   }, [deny, setMessages, addError]);
 
@@ -509,7 +537,7 @@ export default function ChatView({ conversationId }: Props) {
           >
             <ConfirmationDialog
               toolCall={pendingConfirmation.toolCall}
-              busy={resolving}
+              busyAction={resolvingAction}
               onConfirm={handleConfirm}
               onDeny={handleDeny}
             />
