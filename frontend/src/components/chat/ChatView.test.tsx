@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import ChatView from "./ChatView";
@@ -100,6 +100,23 @@ vi.mock("../../hooks/useSettingsQuery", () => ({
     error: null,
   }),
 }));
+
+function markTranscriptScrolledUp() {
+  const el = screen.getByTestId("chat-transcript");
+  Object.defineProperty(el, "scrollHeight", { configurable: true, value: 2000 });
+  Object.defineProperty(el, "clientHeight", { configurable: true, value: 400 });
+  Object.defineProperty(el, "scrollTop", { configurable: true, value: 0 });
+  fireEvent.scroll(el);
+}
+
+async function flushTranscriptScroll() {
+  await act(async () => {
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => resolve(undefined));
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
 
 function renderChatView() {
   const queryClient = new QueryClient({
@@ -297,6 +314,76 @@ describe("ChatView", () => {
     expect(confirmBtn).toHaveFocus();
     expect(composer).not.toHaveFocus();
     expect(composer).toBeDisabled();
+  });
+
+  it("scrolls the transcript when a confirmation appears while following the latest turn", async () => {
+    let emit: ((event: Record<string, unknown>) => void) | undefined;
+    vi.mocked(sendMessage).mockImplementation(
+      (_convId, _content, onEvent) =>
+        new Promise(() => {
+          emit = (event) => onEvent(event as never);
+        }),
+    );
+
+    renderChatView();
+    fireEvent.change(screen.getByPlaceholderText(/输入消息/), {
+      target: { value: "create a file" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByTestId("chat-transcript")).toBeInTheDocument();
+    await flushTranscriptScroll();
+    vi.mocked(Element.prototype.scrollIntoView).mockClear();
+
+    act(() => {
+      emit?.({
+        type: "confirmation_required",
+        tool_name: "write_file",
+        tool_args: { path: "/tmp/x", content: "data" },
+        approval_id: "ap-scroll",
+        tool_call_id: "tc-scroll",
+      });
+    });
+
+    expect(await screen.findByRole("button", { name: "确认写入" })).toBeInTheDocument();
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "↓ 待确认" })).not.toBeInTheDocument();
+  });
+
+  it("offers a jump to the pending confirmation instead of pulling a scrolled transcript", async () => {
+    let emit: ((event: Record<string, unknown>) => void) | undefined;
+    vi.mocked(sendMessage).mockImplementation(
+      (_convId, _content, onEvent) =>
+        new Promise(() => {
+          emit = (event) => onEvent(event as never);
+        }),
+    );
+
+    renderChatView();
+    fireEvent.change(screen.getByPlaceholderText(/输入消息/), {
+      target: { value: "create a file" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByTestId("chat-transcript")).toBeInTheDocument();
+    await flushTranscriptScroll();
+    markTranscriptScrolledUp();
+    vi.mocked(Element.prototype.scrollIntoView).mockClear();
+
+    act(() => {
+      emit?.({
+        type: "confirmation_required",
+        tool_name: "write_file",
+        tool_args: { path: "/tmp/x", content: "data" },
+        approval_id: "ap-jump",
+        tool_call_id: "tc-jump",
+      });
+    });
+
+    const jump = await screen.findByRole("button", { name: "↓ 待确认" });
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+    fireEvent.click(jump);
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "↓ 待确认" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认写入" })).toBeInTheDocument();
   });
 
   it("keeps the ask_user answer when resume fails", async () => {

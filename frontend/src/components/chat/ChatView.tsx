@@ -277,6 +277,17 @@ export default function ChatView({ conversationId }: Props) {
   }, [scrollToBottom]);
 
   useEffect(() => {
+    // 确认卡片长在记录下面，会把记录区挤矮。正跟在底部时再滚一次，刚才那一轮才不会被裁掉。
+    // 已经往上翻了就不硬拉，只留下「↓ 待确认」。
+    if (!pendingConfirmation) return;
+    if (!isAtBottomRef.current) {
+      setShowJumpToLatest(true);
+      return;
+    }
+    scrollToBottom("auto");
+  }, [pendingConfirmation, scrollToBottom]);
+
+  useEffect(() => {
     if (!isAtBottomRef.current) {
       // Only surface the jump chip while new content is actually arriving.
       if (isLoading || streamingContent) {
@@ -438,6 +449,7 @@ export default function ChatView({ conversationId }: Props) {
           <div
             ref={scrollContainerRef}
             onScroll={handleScroll}
+            data-testid="chat-transcript"
             className="h-full overflow-y-auto px-4 py-4"
           >
             <div className="max-w-3xl mx-auto space-y-4">
@@ -453,7 +465,7 @@ export default function ChatView({ conversationId }: Props) {
               onClick={jumpToLatest}
               className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 text-xs rounded-full bg-surface-raised border border-border-strong text-fg-secondary shadow-md hover:text-fg-primary hover:border-focus-ring transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             >
-              ↓ 新消息
+              {pendingConfirmation ? "↓ 待确认" : "↓ 新消息"}
             </button>
           )}
         </div>
