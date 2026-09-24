@@ -270,9 +270,9 @@ describe("DashboardPage", () => {
     } as unknown as ReturnType<typeof useApprovalsQuery>);
     renderDashboard();
     expect(screen.getByText("需要你决定")).toBeInTheDocument();
-    expect(screen.getByText("write_file")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("write_file"));
-    expect(mockNavigate).toHaveBeenCalledWith("/approvals");
+    const link = screen.getByRole("link", { name: "write_file" });
+    expect(link).toHaveAttribute("href", "/approvals");
+    expect(link).toHaveClass("focus-visible:ring-focus-ring");
   });
 
   it("shows inbox card when pending emails exist", () => {
@@ -466,10 +466,9 @@ describe("DashboardPage", () => {
       },
     });
     renderDashboard();
-    expect(screen.getByRole("link", { name: /handler down/ })).toHaveAttribute(
-      "href",
-      "/tasks/task_failed",
-    );
+    const failed = screen.getByRole("link", { name: /handler down/ });
+    expect(failed).toHaveAttribute("href", "/tasks/task_failed");
+    expect(failed).toHaveClass("focus-visible:ring-focus-ring");
     expect(screen.getByRole("link", { name: /plan crashed/ })).toHaveAttribute(
       "href",
       "/tasks/task%2Fdead",
@@ -911,11 +910,12 @@ describe("DashboardPage", () => {
     renderDashboard();
     expect(screen.getByText(/早安简报/)).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /早安简报/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /提醒/ })).toHaveAttribute("href", "/tasks/brief_9");
-    expect(screen.getByRole("link", { name: /项目 A 简报 · 当前 v2/ })).toHaveAttribute(
-      "href",
-      "/tasks/brief_9",
-    );
+    const timer = screen.getByRole("link", { name: /提醒/ });
+    expect(timer).toHaveAttribute("href", "/tasks/brief_9");
+    expect(timer).toHaveClass("focus-visible:ring-focus-ring");
+    const brief = screen.getByRole("link", { name: /项目 A 简报 · 当前 v2/ });
+    expect(brief).toHaveAttribute("href", "/tasks/brief_9");
+    expect(brief).toHaveClass("focus-visible:ring-focus-ring");
     expect(screen.getByText(/相对上一版/)).toBeInTheDocument();
   });
 });

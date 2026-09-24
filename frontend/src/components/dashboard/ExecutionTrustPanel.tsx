@@ -74,8 +74,12 @@ function TrustText({
     );
   }
   return (
-    <Link to={href} className="min-w-0 truncate text-inherit hover:underline" title={title}>
-      {text}
+    <Link
+      to={href}
+      className="min-w-0 rounded-sm text-inherit hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+      title={title}
+    >
+      <span className="block truncate">{text}</span>
     </Link>
   );
 }
