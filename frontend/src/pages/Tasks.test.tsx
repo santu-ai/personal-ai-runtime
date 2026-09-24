@@ -6,6 +6,7 @@ import TasksPage from "./Tasks";
 import {
   acceptWorkDelivery,
   adoptSuggestedAction,
+  ApiError,
   createProjectBrief,
   executeWorkItem,
   getDeliveryMetrics,
@@ -1031,6 +1032,45 @@ describe("TasksPage", () => {
     });
     expect(await screen.findByText("历史版本完整正文甲")).toBeInTheDocument();
     expect(screen.queryByText("完整正文超过预览长度".repeat(20))).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /v1 · 已要求返工/ })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /v2 · 待验收/ })).not.toHaveAttribute("aria-current");
+  });
+
+  it("retries a failed history load from the error and the same row", async () => {
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [briefTask];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(briefTask);
+    vi.mocked(getWorkDelivery).mockRejectedValueOnce(new ApiError("历史版本暂时读不到", 503));
+    renderTasks("/tasks/brief_1");
+
+    const current = await screen.findByRole("button", { name: /v2 · 待验收/ });
+    expect(current).toHaveAttribute("aria-current", "true");
+    fireEvent.click(screen.getByRole("button", { name: /v1 · 已要求返工/ }));
+    const error = await screen.findByTestId("history-load-error");
+    expect(error).toHaveTextContent("历史版本暂时读不到");
+    expect(screen.getByRole("button", { name: /v1 · 已要求返工/ })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    expect(screen.queryByText("完整正文超过预览长度".repeat(20))).not.toBeInTheDocument();
+
+    vi.mocked(getWorkDelivery).mockRejectedValueOnce(new Error("still down"));
+    fireEvent.click(within(error).getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(getWorkDelivery).toHaveBeenCalledTimes(2));
+    expect(await screen.findByTestId("history-load-error")).toHaveTextContent("加载历史版本失败");
+
+    vi.mocked(getWorkDelivery).mockResolvedValueOnce(historyFull);
+    fireEvent.click(screen.getByRole("button", { name: /v1 · 已要求返工/ }));
+    expect(await screen.findByText("历史版本完整正文甲")).toBeInTheDocument();
+    expect(screen.queryByTestId("history-load-error")).not.toBeInTheDocument();
+    expect(getWorkDelivery).toHaveBeenCalledTimes(3);
+    fireEvent.click(screen.getByRole("button", { name: /v1 · 已要求返工/ }));
+    expect(getWorkDelivery).toHaveBeenCalledTimes(3);
   });
 
   it("shows the stored rework reason on the current delivery", async () => {
