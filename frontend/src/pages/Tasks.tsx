@@ -753,6 +753,98 @@ function hasDeliveryMetrics(metrics: DeliveryMetrics | null): metrics is Deliver
   return Boolean(metrics && (metrics.reviewed_tasks > 0 || metrics.adopted_action_count > 0));
 }
 
+function deliveryBodyText(content: string | undefined): string {
+  if (content?.trim()) return content;
+  return "这一版没有正文";
+}
+
+function versionRowButton(list: HTMLElement, deliveryId: string): HTMLButtonElement | null {
+  const escaped =
+    typeof CSS !== "undefined" && typeof CSS.escape === "function"
+      ? CSS.escape(deliveryId)
+      : deliveryId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return list.querySelector<HTMLButtonElement>(`button[data-delivery-id="${escaped}"]`);
+}
+
+function nextVersionIndex(index: number, count: number, key: string): number | null {
+  if (index < 0 || count === 0) return null;
+  if (key === "ArrowDown") return Math.min(count - 1, index + 1);
+  if (key === "ArrowUp") return Math.max(0, index - 1);
+  if (key === "Home") return 0;
+  if (key === "End") return count - 1;
+  return null;
+}
+
+function DeliveryVersionHistory({
+  rows,
+  openDeliveryId,
+  historyLoading,
+  onOpen,
+}: {
+  rows: readonly WorkDelivery[];
+  openDeliveryId: string | null | undefined;
+  historyLoading: boolean;
+  onOpen: (deliveryId: string) => void;
+}) {
+  const listRef = useRef<HTMLUListElement>(null);
+  const [tabId, setTabId] = useState<string | null>(null);
+  const tabTarget =
+    tabId && rows.some((row) => row.delivery_id === tabId)
+      ? tabId
+      : (openDeliveryId ?? rows[0]?.delivery_id);
+
+  const focusRow = (deliveryId: string) => {
+    setTabId(deliveryId);
+    const list = listRef.current;
+    if (!list) return;
+    versionRowButton(list, deliveryId)?.focus();
+  };
+
+  return (
+    <section className="space-y-2">
+      <h3 className="text-sm font-medium text-fg-primary">版本历史</h3>
+      <ul ref={listRef} className="space-y-1">
+        {rows.map((row) => {
+          const open = row.delivery_id === openDeliveryId;
+          return (
+            <li key={row.delivery_id}>
+              <button
+                type="button"
+                data-delivery-id={row.delivery_id}
+                tabIndex={row.delivery_id === tabTarget ? 0 : -1}
+                aria-current={open ? "true" : undefined}
+                aria-busy={open && historyLoading ? true : undefined}
+                className={`break-words rounded-sm text-left text-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                  open ? "bg-insight/10 px-1 text-fg-primary" : "text-insight"
+                }`}
+                onKeyDown={(event) => {
+                  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+                  const next = nextVersionIndex(
+                    rows.findIndex((item) => item.delivery_id === row.delivery_id),
+                    rows.length,
+                    event.key,
+                  );
+                  if (next == null) return;
+                  event.preventDefault();
+                  const target = rows[next];
+                  if (!target || target.delivery_id === row.delivery_id) return;
+                  focusRow(target.delivery_id);
+                }}
+                onClick={() => {
+                  setTabId(row.delivery_id);
+                  onOpen(row.delivery_id);
+                }}
+              >
+                {deliveryVersionLabel(row)}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 function DeliveryMetricsWorks({ items }: { items: DeliveryMetrics["items"] | undefined }) {
   const rows = items ?? [];
   if (rows.length === 0) return null;
@@ -1545,7 +1637,7 @@ export default function TasksPage() {
                         data-testid="delivery-body"
                       >
                         <DeliveryBodyText
-                          content={shownDelivery.content || "（正在加载完整正文）"}
+                          content={deliveryBodyText(shownDelivery.content)}
                           sources={shownDelivery.sources}
                           onCite={(sourceId) =>
                             void openCitedSource(sourceId, shownDelivery.sources)
@@ -1641,43 +1733,34 @@ export default function TasksPage() {
                     <RerunFailureReason reason={failureReason} />
                   )}
 
-                  {bundle && bundle.deliveries.length > 1 && (
-                    <section className="space-y-2">
-                      <h3 className="text-sm font-medium text-fg-primary">版本历史</h3>
-                      <ul className="space-y-1">
-                        {bundle.deliveries.map((row) => {
-                          const open = row.delivery_id === openDeliveryId;
-                          return (
-                            <li key={row.delivery_id}>
-                              <button
-                                type="button"
-                                aria-current={open ? "true" : undefined}
-                                aria-busy={open && historyLoading ? true : undefined}
-                                className={`break-words rounded-sm text-left text-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
-                                  open ? "bg-insight/10 px-1 text-fg-primary" : "text-insight"
-                                }`}
-                                onClick={() => {
-                                  if (row.delivery_id === currentDelivery?.delivery_id) {
-                                    setHistoryId(null);
-                                    return;
-                                  }
-                                  if (historyId === row.delivery_id) {
-                                    if (historyError && !historyLoading) {
-                                      setHistoryRetry((attempt) => attempt + 1);
-                                    }
-                                    return;
-                                  }
-                                  setHistoryId(row.delivery_id);
-                                }}
-                              >
-                                {deliveryVersionLabel(row)}
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </section>
-                  )}
+                  {bundle && bundle.deliveries.length > 1 ? (
+                    <DeliveryVersionHistory
+                      rows={bundle.deliveries}
+                      openDeliveryId={openDeliveryId}
+                      historyLoading={historyLoading}
+                      onOpen={(deliveryId) => {
+                        if (deliveryId === currentDelivery?.delivery_id) {
+                          setHistoryId(null);
+                          return;
+                        }
+                        if (historyId === deliveryId) {
+                          if (historyError && !historyLoading) {
+                            setHistoryRetry((attempt) => attempt + 1);
+                          }
+                          return;
+                        }
+                        setHistoryId(deliveryId);
+                      }}
+                    />
+                  ) : bundle && bundle.deliveries.length === 1 ? (
+                    <p className="text-sm text-fg-tertiary" data-testid="delivery-single-version">
+                      目前只有这一版。
+                    </p>
+                  ) : bundle && bundle.deliveries.length === 0 && isProjectBrief(selected) ? (
+                    <p className="text-sm text-fg-tertiary" data-testid="delivery-version-empty">
+                      还没有版本历史。
+                    </p>
+                  ) : null}
 
                   <Disclosure
                     title="执行日志"
