@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { act, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
-import MemoriesPage from "./Memories";
+import MemoriesPage, { memoryPageLayoutFocus } from "./Memories";
 import {
   ApiError,
   createConversation,
@@ -74,7 +74,20 @@ vi.mock("../stores/chatStore", () => {
 });
 
 describe("MemoriesPage", () => {
+  /** 确认框卸下的那一轮，绘制前焦点已经在下一行上。useEffect 会先停在页面空白。 */
+  function captureFocusWhenGone(gone: () => boolean): { read: () => Element | null } {
+    let focusAtLayout: Element | null = null;
+    memoryPageLayoutFocus.notify = () => {
+      if (!gone()) return;
+      focusAtLayout ??= document.activeElement;
+    };
+    return {
+      read: () => focusAtLayout,
+    };
+  }
+
   beforeEach(() => {
+    memoryPageLayoutFocus.notify = null;
     vi.clearAllMocks();
     vi.mocked(listMemoriesGrouped).mockResolvedValue({
       memories: [{ id: "m1", content: "喜欢早起跑步", confidence: 0.9, category: "habit" }],
@@ -876,6 +889,9 @@ describe("MemoriesPage", () => {
     const dialog = await screen.findByRole("dialog", { name: "忘掉这条记忆？" });
     const confirm = within(dialog).getByRole("button", { name: "忘掉" });
     confirm.focus();
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("dialog", { name: "忘掉这条记忆？" }),
+    );
     fireEvent.click(confirm);
 
     await act(async () => {
@@ -885,7 +901,9 @@ describe("MemoriesPage", () => {
       expect(screen.queryByRole("dialog", { name: "忘掉这条记忆？" })).not.toBeInTheDocument(),
     );
     const next = screen.getByText("后记").closest("li");
-    expect(within(next as HTMLElement).getByRole("button", { name: "忘掉" })).toHaveFocus();
+    const nextForget = within(next as HTMLElement).getByRole("button", { name: "忘掉" });
+    expect(nextForget).toHaveFocus();
+    expect(focusWhenGone.read()).toBe(nextForget);
   });
 
   it("moves focus to the previous forget button when the last memory is forgotten", async () => {

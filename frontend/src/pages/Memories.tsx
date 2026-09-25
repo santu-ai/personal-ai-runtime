@@ -213,6 +213,11 @@ function focusContinueChat(memoryId: string): void {
 
 type ForgetHandoff = { id: string; nextId: string | null; anchor: "capture" | "tab" };
 
+/** 绘制前通知。测试在忘掉确认框卸下的同一轮读取焦点。 */
+export const memoryPageLayoutFocus = {
+  notify: null as null | (() => void),
+};
+
 function escapeAttr(value: string): string {
   return typeof CSS !== "undefined" && typeof CSS.escape === "function"
     ? CSS.escape(value)
@@ -511,7 +516,8 @@ export default function MemoriesPage() {
     }
   };
 
-  useEffect(() => {
+  // 确认框卸下的同一轮就把焦点交到下一行。放到绘制前，不把焦点留在页面空白。
+  useLayoutEffect(() => {
     if (deleting) return;
     const pending = forgetHandoff.current;
     if (!pending) return;
@@ -874,6 +880,10 @@ export default function MemoriesPage() {
     },
     { initialFocus: "field" },
   );
+
+  useLayoutEffect(() => {
+    memoryPageLayoutFocus.notify?.();
+  });
 
   // 列表或待确认重试一开始会把 isLoading 再置上。已经写出的失败要留在页面上。
   if (
