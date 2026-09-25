@@ -54,10 +54,11 @@ function cardRoot(id: string): HTMLElement | null {
   return null;
 }
 
-/** 焦点在页面空白处，或还停在这次操作里已经禁用的控件上，才可以把焦点挪走。 */
+/** 焦点在页面空白处、已经卸下的节点，或停在已经禁用的控件上。 */
 function focusIsIdle(): boolean {
   const active = document.activeElement;
   if (!active || active === document.body || active === document.documentElement) return true;
+  if (!active.isConnected) return true;
   if (active instanceof HTMLButtonElement && active.disabled) return true;
   if (
     (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) &&
@@ -66,6 +67,14 @@ function focusIsIdle(): boolean {
     return true;
   }
   return false;
+}
+
+function activeIsAction(id: string, which: ResolveFocus): boolean {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return false;
+  const card = cardRoot(id);
+  if (!card?.contains(active)) return false;
+  return active.matches(`button[data-approval-focus="${which}"]`);
 }
 
 function focusInCard(id: string, selector: string): boolean {
@@ -110,8 +119,10 @@ export default function ApprovalsPage() {
   } = useApprovalsQuery();
   const { data: policy } = useCapabilityPolicyQuery();
   const invalidateApprovals = useInvalidateApprovals();
-  const resolvingRef = useRef(new Set<string>());
-  const [resolving, setResolving] = useState<Set<string>>(new Set());
+  const resolvingRef = useRef(new Map<string, ResolveFocus>());
+  const [resolving, setResolving] = useState<Map<string, ResolveFocus>>(() => new Map());
+  const refreshLock = useRef(false);
+  const [refreshBusy, setRefreshBusy] = useState(false);
   const focusAfter = useRef<FocusAfter | null>(null);
   const addError = useErrorStore((s) => s.addError);
   const loadErrorRef = useRef<HTMLDivElement>(null);
@@ -145,13 +156,23 @@ export default function ApprovalsPage() {
   useEffect(() => {
     const pending = focusAfter.current;
     if (!pending) return;
-    if (!focusIsIdle()) {
+    if (pending.type === "action") {
+      const held = activeIsAction(pending.id, pending.which);
+      const resolvingNow = resolving.has(pending.id);
+      if (held) {
+        if (!resolvingNow) focusAfter.current = null;
+        return;
+      }
+      if (!focusIsIdle()) {
+        focusAfter.current = null;
+        return;
+      }
+      if (resolvingNow) return;
+      if (!focusAction(pending.id, pending.which)) return;
       focusAfter.current = null;
       return;
     }
-    if (pending.type === "action") {
-      if (resolving.has(pending.id)) return;
-      if (!focusAction(pending.id, pending.which)) return;
+    if (!focusIsIdle()) {
       focusAfter.current = null;
       return;
     }
@@ -159,19 +180,19 @@ export default function ApprovalsPage() {
     if (!(refresh instanceof HTMLButtonElement) || refresh.disabled) return;
     focusAfter.current = null;
     refresh.focus();
-  }, [approvals, resolving, isFetching]);
+  }, [approvals, resolving, isFetching, refreshBusy]);
 
   const beginResolve = (id: string, which: ResolveFocus) => {
     if (resolvingRef.current.has(id)) return false;
-    resolvingRef.current.add(id);
-    setResolving(new Set(resolvingRef.current));
+    resolvingRef.current.set(id, which);
+    setResolving(new Map(resolvingRef.current));
     focusAfter.current = { type: "action", id, which };
     return true;
   };
 
   const endResolve = (id: string) => {
     resolvingRef.current.delete(id);
-    setResolving(new Set(resolvingRef.current));
+    setResolving(new Map(resolvingRef.current));
   };
 
   const placeFocusAfterRemoval = async (id: string) => {
@@ -179,7 +200,10 @@ export default function ApprovalsPage() {
     const result = await refetch();
     const rows = result.data;
     if (result.isError || !rows || rows.some((row) => row.id === id)) return;
-    if (!focusIsIdle()) {
+    const pending = focusAfter.current;
+    const held =
+      pending?.type === "action" && pending.id === id && activeIsAction(id, pending.which);
+    if (!focusIsIdle() && !held) {
       focusAfter.current = null;
       return;
     }
@@ -189,6 +213,16 @@ export default function ApprovalsPage() {
       return;
     }
     focusAfter.current = { type: "refresh" };
+  };
+
+  const handleRefresh = () => {
+    if (refreshLock.current || loading || isFetching) return;
+    refreshLock.current = true;
+    setRefreshBusy(true);
+    void refetch().finally(() => {
+      refreshLock.current = false;
+      setRefreshBusy(false);
+    });
   };
 
   const handleApprove = async (item: EnrichedApproval, answer?: string) => {
@@ -268,7 +302,7 @@ export default function ApprovalsPage() {
     }
   };
 
-  const refreshing = loading || isFetching;
+  const refreshing = loading || isFetching || refreshBusy;
 
   return (
     <div className="page-shell">
@@ -283,8 +317,9 @@ export default function ApprovalsPage() {
                 variant="secondary"
                 size="sm"
                 data-approval-refresh=""
-                onClick={() => void refetch()}
-                disabled={refreshing}
+                aria-busy={refreshBusy || undefined}
+                className={refreshBusy ? "opacity-50" : ""}
+                onClick={handleRefresh}
               >
                 <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
                 刷新
@@ -341,7 +376,7 @@ export default function ApprovalsPage() {
                 key={item.id}
                 item={item}
                 policy={policy}
-                resolving={resolving.has(item.id)}
+                busyAction={resolving.get(item.id) ?? null}
                 onApprove={(answer) => handleApprove(item, answer)}
                 onReject={() => handleReject(item)}
               />
@@ -356,13 +391,13 @@ export default function ApprovalsPage() {
 function ApprovalCard({
   item,
   policy,
-  resolving,
+  busyAction,
   onApprove,
   onReject,
 }: {
   item: EnrichedApproval;
   policy?: CapabilityPolicy;
-  resolving: boolean;
+  busyAction: ResolveFocus | null;
   onApprove: (answer?: string) => void;
   onReject: () => void;
 }) {
@@ -410,7 +445,6 @@ function ApprovalCard({
               className="w-full"
               maxLength={8000}
               value={draft}
-              disabled={resolving}
               placeholder="输入回答，助手会带着它继续"
               onChange={(event) => setDraft(event.target.value)}
             />
@@ -420,8 +454,9 @@ function ApprovalCard({
           size="sm"
           data-approval-focus="approve"
           onClick={() => (isAskUser ? onApprove(answer) : onApprove())}
-          disabled={resolving || (isAskUser && !answer)}
-          aria-busy={resolving || undefined}
+          disabled={isAskUser && !answer && busyAction !== "approve"}
+          aria-busy={busyAction === "approve" || undefined}
+          className={busyAction === "approve" ? "opacity-50" : ""}
           title={
             isAskUser
               ? "发送回答并继续对话"
@@ -438,8 +473,8 @@ function ApprovalCard({
           variant="secondary"
           data-approval-focus="reject"
           onClick={onReject}
-          disabled={resolving}
-          aria-busy={resolving || undefined}
+          aria-busy={busyAction === "reject" || undefined}
+          className={busyAction === "reject" ? "opacity-50" : ""}
           title={isAskUser ? "取消这次澄清" : "拒绝此操作"}
         >
           <X size={14} />
