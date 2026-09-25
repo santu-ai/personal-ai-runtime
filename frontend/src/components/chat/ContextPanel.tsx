@@ -97,6 +97,7 @@ export default function ContextPanel({ lastUserMessage, toolResults = [], open, 
         <h3 className="text-sm font-medium text-fg-primary">上下文</h3>
         <button
           type="button"
+          data-confirm-exit=""
           onClick={onToggle}
           className="text-xs text-fg-tertiary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
         >

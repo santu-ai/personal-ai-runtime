@@ -17,6 +17,7 @@ import WelcomeScreen from "./WelcomeScreen";
 import ProposedMemoryBanner from "./ProposedMemoryBanner";
 import LoadErrorNotice from "../ui/LoadErrorNotice";
 import { readComposerDraft, writeComposerDraft } from "./composerDraft";
+import { useConfirmFocusContainment } from "./confirmFocus";
 
 interface Props {
   conversationId: string;
@@ -94,6 +95,7 @@ export default function ChatView({ conversationId }: Props) {
   const { pendingConfirmation, resolvingAction, setFromEvent, confirm, deny } =
     useApprovalFlow(conversationId);
   const confirmationRef = useRef<HTMLDivElement>(null);
+  useConfirmFocusContainment(pendingConfirmation != null, confirmationRef);
   const focusedApprovalRef = useRef<string | null>(null);
   const focusAfterResolve = useRef<"confirm" | "deny" | null>(null);
   const { data: pendingApprovals = [] } = useApprovalsQuery();
@@ -521,6 +523,7 @@ export default function ChatView({ conversationId }: Props) {
         <div className="flex shrink-0 items-center justify-end border-b border-border-subtle px-3 py-1.5">
           <button
             type="button"
+            data-confirm-exit=""
             onClick={() => setContextOpen(true)}
             className="rounded-md border border-border-subtle bg-surface-overlay px-2.5 py-1 text-xs text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             title="展开上下文面板"
@@ -566,7 +569,10 @@ export default function ChatView({ conversationId }: Props) {
         <div className="px-4 py-2 shrink-0">
           <div
             ref={confirmationRef}
-            className="max-w-3xl mx-auto"
+            role="group"
+            aria-label="待确认"
+            tabIndex={-1}
+            className="max-w-3xl mx-auto rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             key={pendingConfirmation.approvalId || pendingConfirmation.toolCall.id}
           >
             <ConfirmationDialog
