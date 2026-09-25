@@ -187,7 +187,7 @@ export default function PromptEditor() {
             touch("identity");
           }}
           rows={6}
-          className="w-full bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary font-mono focus:border-focus-ring focus:outline-none resize-y placeholder:text-fg-tertiary"
+          className="w-full bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary font-mono focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring resize-y placeholder:text-fg-tertiary"
           placeholder="定义 AI 的身份、性格、行为准则..."
         />
       </div>
@@ -237,7 +237,7 @@ export default function PromptEditor() {
             touch("coding_rules");
           }}
           rows={6}
-          className="w-full bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary font-mono focus:border-focus-ring focus:outline-none resize-y placeholder:text-fg-tertiary"
+          className="w-full bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary font-mono focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring resize-y placeholder:text-fg-tertiary"
           placeholder="定义 AI 编码时的行为规则..."
         />
       </div>

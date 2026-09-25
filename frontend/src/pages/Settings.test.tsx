@@ -220,6 +220,12 @@ describe("SettingsPage", () => {
     });
     // LLM is defaultOpen
     expect(screen.getByText("保存 LLM 配置")).toBeInTheDocument();
+    const llm = screen.getByRole("region", { name: "LLM 配置" });
+    const selects = within(llm).getAllByRole("combobox");
+    expect(selects.length).toBeGreaterThan(0);
+    for (const select of selects) {
+      expect(select).toHaveClass("focus-visible:ring-focus-ring");
+    }
 
     await expandSection("Gmail 邮箱配置");
     expect(await screen.findByText("保存邮箱配置")).toBeInTheDocument();
@@ -828,6 +834,10 @@ describe("SettingsPage", () => {
     renderWithRouter(<SettingsPage />);
     await expandSection("系统人设");
     const field = await screen.findByPlaceholderText("定义 AI 的身份、性格、行为准则...");
+    expect(field).toHaveClass("focus-visible:ring-focus-ring");
+    expect(screen.getByPlaceholderText("定义 AI 编码时的行为规则...")).toHaveClass(
+      "focus-visible:ring-focus-ring",
+    );
     expect(field).toHaveValue("test identity");
     const save = promptControl("identity", "save");
     const other = promptControl("coding_rules", "save");

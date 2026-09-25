@@ -192,6 +192,7 @@ describe("MemoriesPage", () => {
     opener.focus();
     fireEvent.click(opener);
     const field = await screen.findByPlaceholderText("例如：记错了、过时了");
+    expect(field).toHaveClass("focus-visible:ring-focus-ring");
     await waitFor(() => expect(field).toHaveFocus());
     fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() =>
@@ -428,6 +429,10 @@ describe("MemoriesPage", () => {
     opener.focus();
     fireEvent.click(opener);
     const field = await screen.findByPlaceholderText("记忆内容");
+    expect(field).toHaveClass("focus-visible:ring-focus-ring");
+    expect(screen.getByPlaceholderText("如 fact, preference, habit")).toHaveClass(
+      "focus-visible:ring-focus-ring",
+    );
     await waitFor(() => expect(field).toHaveFocus());
     fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() =>
@@ -439,6 +444,7 @@ describe("MemoriesPage", () => {
   it("does not remember while an IME composition is confirming", async () => {
     renderWithRouter(<MemoriesPage />);
     const input = await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住...");
+    expect(input).toHaveClass("focus-visible:ring-focus-ring");
     fireEvent.change(input, { target: { value: "喜欢喝茶" } });
     fireEvent.keyDown(input, { key: "Enter", isComposing: true });
     expect(createMemory).not.toHaveBeenCalled();

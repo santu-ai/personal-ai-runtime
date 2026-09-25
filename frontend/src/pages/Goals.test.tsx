@@ -531,6 +531,7 @@ describe("GoalsPage", () => {
     vi.mocked(createGoalAction).mockRejectedValueOnce(new ApiError("创建行动步骤失败", 500));
     renderGoals("/goals/g1");
     const input = await screen.findByPlaceholderText("添加行动步骤...");
+    expect(input).toHaveClass("focus-visible:ring-focus-ring");
     input.focus();
     fireEvent.change(input, { target: { value: "写测试" } });
     fireEvent.keyDown(input, { key: "Enter", isComposing: true });

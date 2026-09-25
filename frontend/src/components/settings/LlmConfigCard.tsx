@@ -168,7 +168,7 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
               setLlmDefault(e.target.value);
               markDirty();
             }}
-            className="w-full bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary focus:border-focus-ring focus:outline-none"
+            className="w-full bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
           >
             {llmForm.map((p) => (
               <option key={p.id} value={p.id}>
@@ -286,7 +286,7 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
                         api_key: e.target.value === "ollama" ? "ollama" : provider.api_key,
                       })
                     }
-                    className="w-full bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary focus:border-focus-ring focus:outline-none"
+                    className="w-full bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                   >
                     <option value="openai_compatible">OpenAI 兼容</option>
                     <option value="ollama">Ollama 本地</option>
