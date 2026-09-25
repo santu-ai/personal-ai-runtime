@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import Dialog from "./Dialog";
 
 describe("Dialog", () => {
@@ -95,6 +95,58 @@ describe("Dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "忘掉中..." }));
     expect(onCancel).not.toHaveBeenCalled();
     expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("keeps Tab on cancel and confirm", async () => {
+    render(
+      <>
+        <button type="button">外面</button>
+        <Dialog open title="删除" onConfirm={vi.fn()} onCancel={vi.fn()} />
+      </>,
+    );
+    const dialog = screen.getByRole("dialog");
+    const outside = screen.getByRole("button", { name: "外面" });
+    const cancel = screen.getByRole("button", { name: "取消" });
+    const confirm = screen.getByRole("button", { name: "确认" });
+    await waitFor(() => expect(dialog).toHaveFocus());
+
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(cancel).toHaveFocus();
+    fireEvent.keyDown(cancel, { key: "Tab" });
+    expect(confirm).toHaveFocus();
+    fireEvent.keyDown(confirm, { key: "Tab" });
+    expect(cancel).toHaveFocus();
+    fireEvent.keyDown(cancel, { key: "Tab", shiftKey: true });
+    expect(confirm).toHaveFocus();
+    expect(outside).not.toHaveFocus();
+  });
+
+  it("skips a disabled confirm and still cycles the busy confirm", async () => {
+    const { rerender } = render(
+      <Dialog open title="删除" confirmDisabled onConfirm={vi.fn()} onCancel={vi.fn()} />,
+    );
+    const cancel = screen.getByRole("button", { name: "取消" });
+    await waitFor(() => expect(screen.getByRole("dialog")).toHaveFocus());
+    fireEvent.keyDown(cancel, { key: "Tab" });
+    expect(cancel).toHaveFocus();
+    expect(screen.getByRole("button", { name: "确认" })).toBeDisabled();
+
+    rerender(
+      <Dialog
+        open
+        title="删除"
+        confirmLabel="删除中..."
+        confirmBusy
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    const busy = screen.getByRole("button", { name: "删除中..." });
+    expect(busy).toBeEnabled();
+    fireEvent.keyDown(screen.getByRole("button", { name: "取消" }), { key: "Tab" });
+    expect(busy).toHaveFocus();
+    fireEvent.keyDown(busy, { key: "Tab" });
+    expect(screen.getByRole("button", { name: "取消" })).toHaveFocus();
   });
 
   it("disables confirm when confirmDisabled is set", () => {
