@@ -464,8 +464,10 @@ describe("SettingsPage", () => {
     });
     renderWithRouter(<SettingsPage />);
     const save = await screen.findByRole("button", { name: "保存 LLM 配置" });
+    save.focus();
     fireEvent.click(save);
     expect(await screen.findByTestId("llm-save-notice")).toHaveTextContent("已保存");
+    expect(save).toHaveFocus();
 
     fireEvent.change(screen.getByDisplayValue("deepseek-chat"), {
       target: { value: "deepseek-reasoner" },
@@ -474,17 +476,21 @@ describe("SettingsPage", () => {
     expect(screen.getByDisplayValue("deepseek-reasoner")).toBeInTheDocument();
   });
 
-  it("keeps the LLM form and skips the saved notice when saving fails", async () => {
+  it("keeps the LLM form and focus on 保存 LLM 配置 when saving fails", async () => {
     vi.mocked(updateLlmSettings).mockRejectedValueOnce(new ApiError("写不进去", 500));
     renderWithRouter(<SettingsPage />);
     const save = await screen.findByRole("button", { name: "保存 LLM 配置" });
+    save.focus();
     fireEvent.click(save);
-    await waitFor(() => expect(save).toBeEnabled());
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("写不进去", "设置"));
     expect(screen.queryByTestId("llm-save-notice")).not.toBeInTheDocument();
     expect(screen.getByDisplayValue("deepseek-chat")).toBeInTheDocument();
+    expect(save).toBeEnabled();
+    expect(save).toHaveFocus();
+    expect(save).not.toHaveAttribute("aria-busy");
   });
 
-  it("does not send a second LLM save while the first is in flight", async () => {
+  it("does not save the LLM config twice and keeps focus on 保存 LLM 配置", async () => {
     let release: ((row: Awaited<ReturnType<typeof updateLlmSettings>>) => void) | undefined;
     vi.mocked(updateLlmSettings).mockImplementationOnce(
       () =>
@@ -494,25 +500,32 @@ describe("SettingsPage", () => {
     );
     renderWithRouter(<SettingsPage />);
     const save = await screen.findByRole("button", { name: "保存 LLM 配置" });
+    save.focus();
     fireEvent.click(save);
     fireEvent.click(save);
+    await waitFor(() => expect(save).toHaveAttribute("aria-busy", "true"));
     expect(updateLlmSettings).toHaveBeenCalledTimes(1);
     expect(save).toHaveTextContent("保存中…");
-    expect(save).toBeDisabled();
+    expect(save).toBeEnabled();
+    expect(save).toHaveFocus();
 
-    release?.({
-      config: {
-        default_provider: "deepseek",
-        temperature: 0.7,
-        max_tokens: 4096,
-        providers: [],
-      },
-      default_model: "deepseek-chat",
-      providers_status: [],
-      presets: {},
-      provider_types: {},
+    await act(async () => {
+      release?.({
+        config: {
+          default_provider: "deepseek",
+          temperature: 0.7,
+          max_tokens: 4096,
+          providers: [],
+        },
+        default_model: "deepseek-chat",
+        providers_status: [],
+        presets: {},
+        provider_types: {},
+      });
     });
     expect(await screen.findByTestId("llm-save-notice")).toHaveTextContent("已保存");
+    expect(save).toHaveFocus();
+    expect(save).not.toHaveAttribute("aria-busy");
   });
 
   it("does not say the LLM config was saved if the form changes before the response", async () => {
@@ -525,25 +538,29 @@ describe("SettingsPage", () => {
     );
     renderWithRouter(<SettingsPage />);
     const save = await screen.findByRole("button", { name: "保存 LLM 配置" });
+    const field = screen.getByDisplayValue("0.7");
+    save.focus();
     fireEvent.click(save);
-    fireEvent.change(screen.getByDisplayValue("0.7"), { target: { value: "0.2" } });
-    release?.({
-      config: {
-        default_provider: "deepseek",
-        temperature: 0.7,
-        max_tokens: 4096,
-        providers: [],
-      },
-      default_model: "deepseek-chat",
-      providers_status: [],
-      presets: {},
-      provider_types: {},
+    field.focus();
+    fireEvent.change(field, { target: { value: "0.2" } });
+    await act(async () => {
+      release?.({
+        config: {
+          default_provider: "deepseek",
+          temperature: 0.7,
+          max_tokens: 4096,
+          providers: [],
+        },
+        default_model: "deepseek-chat",
+        providers_status: [],
+        presets: {},
+        provider_types: {},
+      });
     });
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "保存 LLM 配置" })).toBeEnabled(),
-    );
+    await waitFor(() => expect(save).not.toHaveAttribute("aria-busy"));
     expect(screen.queryByTestId("llm-save-notice")).not.toBeInTheDocument();
-    expect(screen.getByDisplayValue("0.2")).toBeInTheDocument();
+    expect(field).toHaveValue("0.2");
+    expect(field).toHaveFocus();
   });
 
   it("shows a successful LLM connection test and clears it after that provider changes", async () => {
@@ -567,9 +584,82 @@ describe("SettingsPage", () => {
     });
     renderWithRouter(<SettingsPage />);
     const test = await screen.findByRole("button", { name: "测试" });
+    test.focus();
     fireEvent.click(test);
-    await waitFor(() => expect(test).toBeEnabled());
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("超时", "LLM"));
+    expect(test).toBeEnabled();
+    expect(test).toHaveFocus();
+    expect(test).not.toHaveAttribute("aria-busy");
     expect(screen.queryByText("连接正常")).not.toBeInTheDocument();
+  });
+
+  it("does not test one LLM provider twice and keeps focus on 测试", async () => {
+    let release: ((row: Awaited<ReturnType<typeof testLlmConnection>>) => void) | undefined;
+    vi.mocked(testLlmConnection).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    vi.mocked(getLlmSettings).mockResolvedValueOnce({
+      config: {
+        default_provider: "deepseek",
+        temperature: 0.7,
+        max_tokens: 4096,
+        providers: [
+          {
+            id: "deepseek",
+            name: "DeepSeek",
+            type: "openai_compatible",
+            base_url: "https://api.deepseek.com/v1",
+            model: "deepseek-chat",
+            api_key: "••••••••",
+            has_api_key: true,
+            enabled: true,
+          },
+          {
+            id: "ollama",
+            name: "Ollama",
+            type: "ollama",
+            base_url: "http://127.0.0.1:11434/v1",
+            model: "qwen2.5:7b",
+            api_key: "",
+            has_api_key: false,
+            enabled: true,
+          },
+        ],
+      },
+      default_model: "deepseek-chat",
+      providers_status: [],
+      presets: {},
+      provider_types: {},
+    });
+    renderWithRouter(<SettingsPage />);
+    expect(await screen.findByText("Ollama")).toBeInTheDocument();
+    const buttons = screen.getAllByRole("button", { name: "测试" });
+    expect(buttons).toHaveLength(2);
+    const deepseek = buttons[0];
+    const other = buttons[1];
+    deepseek.focus();
+    fireEvent.click(deepseek);
+    fireEvent.click(deepseek);
+    fireEvent.click(other);
+    await waitFor(() => expect(deepseek).toHaveAttribute("aria-busy", "true"));
+    expect(testLlmConnection).toHaveBeenCalledTimes(1);
+    expect(testLlmConnection).toHaveBeenCalledWith("deepseek");
+    expect(deepseek).toBeEnabled();
+    expect(deepseek).toHaveFocus();
+    expect(deepseek).toHaveTextContent("测试中…");
+    expect(other).toBeEnabled();
+    expect(other).not.toHaveAttribute("aria-busy");
+    expect(other).toHaveTextContent("测试");
+
+    await act(async () => {
+      release?.({ ok: true, provider: "deepseek" });
+    });
+    expect(await screen.findByTestId("llm-test-ok-deepseek")).toHaveTextContent("连接正常");
+    expect(deepseek).toHaveFocus();
+    expect(deepseek).not.toHaveAttribute("aria-busy");
   });
 
   it("does not mark the LLM connection ok if that provider changes before the test returns", async () => {
@@ -582,15 +672,19 @@ describe("SettingsPage", () => {
     );
     renderWithRouter(<SettingsPage />);
     const test = await screen.findByRole("button", { name: "测试" });
+    const field = screen.getByDisplayValue("deepseek-chat");
+    test.focus();
     fireEvent.click(test);
     fireEvent.click(test);
     expect(testLlmConnection).toHaveBeenCalledTimes(1);
-    fireEvent.change(screen.getByDisplayValue("deepseek-chat"), {
-      target: { value: "other-model" },
+    field.focus();
+    fireEvent.change(field, { target: { value: "other-model" } });
+    await act(async () => {
+      release?.({ ok: true, provider: "deepseek" });
     });
-    release?.({ ok: true, provider: "deepseek" });
-    await waitFor(() => expect(screen.getByRole("button", { name: "测试" })).toBeEnabled());
+    await waitFor(() => expect(test).not.toHaveAttribute("aria-busy"));
     expect(screen.queryByText("连接正常")).not.toBeInTheDocument();
+    expect(field).toHaveFocus();
   });
 
   it("shows that the email config was saved and clears it after another edit", async () => {
@@ -608,8 +702,10 @@ describe("SettingsPage", () => {
     renderWithRouter(<SettingsPage />);
     await expandSection("Gmail 邮箱配置");
     const save = await screen.findByRole("button", { name: "保存邮箱配置" });
+    save.focus();
     fireEvent.click(save);
     expect(await screen.findByTestId("email-save-notice")).toHaveTextContent("已保存");
+    expect(save).toHaveFocus();
 
     fireEvent.change(screen.getByDisplayValue("test@gmail.com"), {
       target: { value: "other@gmail.com" },
@@ -618,15 +714,95 @@ describe("SettingsPage", () => {
     expect(screen.getByDisplayValue("other@gmail.com")).toBeInTheDocument();
   });
 
-  it("keeps the email form and skips the saved notice when saving fails", async () => {
+  it("keeps the email form and focus on 保存邮箱配置 when saving fails", async () => {
     vi.mocked(updateEmailSettings).mockRejectedValueOnce(new ApiError("写不进去", 500));
     renderWithRouter(<SettingsPage />);
     await expandSection("Gmail 邮箱配置");
     const save = await screen.findByRole("button", { name: "保存邮箱配置" });
+    save.focus();
     fireEvent.click(save);
-    await waitFor(() => expect(save).toBeEnabled());
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("写不进去", "设置"));
     expect(screen.queryByTestId("email-save-notice")).not.toBeInTheDocument();
     expect(screen.getByDisplayValue("test@gmail.com")).toBeInTheDocument();
+    expect(save).toBeEnabled();
+    expect(save).toHaveFocus();
+    expect(save).not.toHaveAttribute("aria-busy");
+  });
+
+  it("does not save the email config twice and keeps focus on 保存邮箱配置", async () => {
+    let release: ((row: Awaited<ReturnType<typeof updateEmailSettings>>) => void) | undefined;
+    vi.mocked(updateEmailSettings).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<SettingsPage />);
+    await expandSection("Gmail 邮箱配置");
+    const save = await screen.findByRole("button", { name: "保存邮箱配置" });
+    const test = screen.getByRole("button", { name: "测试连接" });
+    save.focus();
+    fireEvent.click(save);
+    fireEvent.click(save);
+    await waitFor(() => expect(save).toHaveAttribute("aria-busy", "true"));
+    expect(updateEmailSettings).toHaveBeenCalledTimes(1);
+    expect(save).toHaveTextContent("保存中…");
+    expect(save).toBeEnabled();
+    expect(save).toHaveFocus();
+    expect(test).toBeEnabled();
+    expect(test).not.toHaveAttribute("aria-busy");
+
+    await act(async () => {
+      release?.({
+        config: {
+          provider: "gmail",
+          user: "test@gmail.com",
+          password: "••••••••",
+          imap_host: "imap.gmail.com",
+          smtp_host: "smtp.gmail.com",
+          smtp_port: 465,
+          configured: true,
+        },
+      });
+    });
+    expect(await screen.findByTestId("email-save-notice")).toHaveTextContent("已保存");
+    expect(save).toHaveFocus();
+    expect(save).not.toHaveAttribute("aria-busy");
+  });
+
+  it("does not steal focus when the email form changes before save returns", async () => {
+    let release: ((row: Awaited<ReturnType<typeof updateEmailSettings>>) => void) | undefined;
+    vi.mocked(updateEmailSettings).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<SettingsPage />);
+    await expandSection("Gmail 邮箱配置");
+    const save = await screen.findByRole("button", { name: "保存邮箱配置" });
+    const field = screen.getByDisplayValue("test@gmail.com");
+    save.focus();
+    fireEvent.click(save);
+    field.focus();
+    fireEvent.change(field, { target: { value: "other@gmail.com" } });
+    await act(async () => {
+      release?.({
+        config: {
+          provider: "gmail",
+          user: "test@gmail.com",
+          password: "••••••••",
+          imap_host: "imap.gmail.com",
+          smtp_host: "smtp.gmail.com",
+          smtp_port: 465,
+          configured: true,
+        },
+      });
+    });
+    await waitFor(() => expect(save).not.toHaveAttribute("aria-busy"));
+    expect(screen.queryByTestId("email-save-notice")).not.toBeInTheDocument();
+    expect(field).toHaveValue("other@gmail.com");
+    expect(field).toHaveFocus();
   });
 
   function promptControl(field: "identity" | "coding_rules", action: "save" | "reset") {
