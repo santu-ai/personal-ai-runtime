@@ -559,7 +559,7 @@ describe("SettingsPage", () => {
     });
     await waitFor(() => expect(save).not.toHaveAttribute("aria-busy"));
     expect(screen.queryByTestId("llm-save-notice")).not.toBeInTheDocument();
-    expect(field).toHaveValue("0.2");
+    expect(field).toHaveValue(0.2);
     expect(field).toHaveFocus();
   });
 
@@ -635,11 +635,14 @@ describe("SettingsPage", () => {
       provider_types: {},
     });
     renderWithRouter(<SettingsPage />);
-    expect(await screen.findByText("Ollama")).toBeInTheDocument();
-    const buttons = screen.getAllByRole("button", { name: "测试" });
-    expect(buttons).toHaveLength(2);
-    const deepseek = buttons[0];
-    const other = buttons[1];
+    await waitFor(() => {
+      expect(document.querySelectorAll('button[data-llm-action="test"]')).toHaveLength(2);
+    });
+    const deepseek = document.querySelector<HTMLButtonElement>(
+      'button[data-llm-provider="deepseek"]',
+    );
+    const other = document.querySelector<HTMLButtonElement>('button[data-llm-provider="ollama"]');
+    if (!deepseek || !other) throw new Error("missing LLM test buttons");
     deepseek.focus();
     fireEvent.click(deepseek);
     fireEvent.click(deepseek);
