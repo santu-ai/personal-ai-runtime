@@ -37,6 +37,54 @@ function focusFirstNotification(panel: HTMLElement | null): boolean {
   return document.activeElement === row;
 }
 
+const TABBABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled]):not([type='hidden'])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(", ");
+
+function canTabTo(node: HTMLElement): boolean {
+  if (node.tabIndex < 0) return false;
+  if (node.hasAttribute("disabled")) return false;
+  if (node instanceof HTMLInputElement && node.type === "hidden") return false;
+  if (node.closest("[hidden], [aria-hidden='true']")) return false;
+  return true;
+}
+
+/** 下拉里按顺序可以 Tab 到的控件。禁用、隐藏和 tabindex=-1 跳过。 */
+function tabbableNodes(panel: HTMLElement): HTMLElement[] {
+  const seen = new Set<HTMLElement>();
+  const items: HTMLElement[] = [];
+  for (const node of panel.querySelectorAll<HTMLElement>(TABBABLE_SELECTOR)) {
+    if (seen.has(node)) continue;
+    seen.add(node);
+    if (!canTabTo(node)) continue;
+    items.push(node);
+  }
+  return items;
+}
+
+function moveTab(panel: HTMLElement, shiftKey: boolean) {
+  const items = tabbableNodes(panel);
+  if (items.length === 0) {
+    if (document.activeElement !== panel) panel.focus();
+    return;
+  }
+  const active = document.activeElement;
+  const index = active instanceof HTMLElement ? items.indexOf(active) : -1;
+  const next = shiftKey
+    ? index <= 0
+      ? items[items.length - 1]
+      : items[index - 1]
+    : index < 0 || index >= items.length - 1
+      ? items[0]
+      : items[index + 1];
+  if (document.activeElement !== next) next.focus();
+}
+
 interface Props {
   /** Icon-only mode when the sidebar is collapsed. */
   compact?: boolean;
@@ -97,6 +145,13 @@ export default function NotificationBell({ compact = false }: Props) {
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Tab") {
+        const current = panelRef.current;
+        if (!current) return;
+        event.preventDefault();
+        moveTab(current, event.shiftKey);
+        return;
+      }
       if (event.key !== "Escape") return;
       event.preventDefault();
       setOpen(false);
