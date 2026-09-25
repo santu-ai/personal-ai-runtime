@@ -420,9 +420,74 @@ describe("InboxPage", () => {
     expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
     expect(within(firstCard as HTMLElement).getByRole("button", { name: "查看" })).toBeEnabled();
     expect(
+      within(firstCard as HTMLElement).getByRole("button", { name: "查看" }),
+    ).not.toHaveAttribute("aria-busy");
+    expect(
       within(secondCard as HTMLElement).getByRole("button", { name: "查看" }),
     ).not.toHaveAttribute("aria-busy");
     await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+  });
+
+  it("keeps focus on 查看 while that message is opening and returns there on Escape", async () => {
+    const first = pendingMail("e1", "请尽快回复");
+    vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") =>
+      status === "pending" ? [first] : [],
+    );
+    let release: ((row: InboxEmail) => void) | undefined;
+    vi.mocked(getInboxEmailDetail).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<InboxPage />);
+    const card = (await screen.findByText("请尽快回复")).closest("div.rounded-lg") as HTMLElement;
+    const view = within(card).getByRole("button", { name: "查看" });
+    view.focus();
+    fireEvent.click(view);
+    fireEvent.click(view);
+    await waitFor(() => expect(view).toHaveAttribute("aria-busy", "true"));
+    expect(view).toBeEnabled();
+    expect(view).toHaveFocus();
+    expect(view).not.toHaveTextContent("加载中");
+    expect(getInboxEmailDetail).toHaveBeenCalledTimes(1);
+
+    release?.(first);
+    const dialog = await screen.findByRole("dialog", { name: "请尽快回复" });
+    await waitFor(() => expect(dialog).toHaveFocus());
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(view).toHaveFocus());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("returns Escape to the control that had focus when the message dialog opened", async () => {
+    const first = pendingMail("e1", "请尽快回复");
+    vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") =>
+      status === "pending" ? [first] : [],
+    );
+    let release: ((row: InboxEmail) => void) | undefined;
+    vi.mocked(getInboxEmailDetail).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<InboxPage />);
+    const card = (await screen.findByText("请尽快回复")).closest("div.rounded-lg") as HTMLElement;
+    const view = within(card).getByRole("button", { name: "查看" });
+    const mark = within(card).getByRole("button", { name: "标记已读" });
+    view.focus();
+    fireEvent.click(view);
+    await waitFor(() => expect(view).toHaveAttribute("aria-busy", "true"));
+    mark.focus();
+    expect(view).not.toHaveFocus();
+
+    release?.(first);
+    const dialog = await screen.findByRole("dialog", { name: "请尽快回复" });
+    await waitFor(() => expect(dialog).toHaveFocus());
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(mark).toHaveFocus());
+    expect(view).not.toHaveFocus();
   });
 
   it("holds the open-mail failure while that reread is in flight", async () => {
