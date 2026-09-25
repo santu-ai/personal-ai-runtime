@@ -358,9 +358,7 @@ describe("OnboardingWizard", () => {
       auth_required: false,
       startup: { checks: { llm: { configured: false } } },
     } as Awaited<ReturnType<typeof getSystemHealth>>);
-    mockLlm.mockResolvedValue({ providers: [{ id: "deepseek" }], default: "deepseek" } as Awaited<
-      ReturnType<typeof getLlmProviders>
-    >);
+    mockLlm.mockResolvedValue({ providers: [{ name: "deepseek" }], default: "deepseek" });
     renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "下一步" }));
     expect(await screen.findByText("配置 AI 大脑")).toBeInTheDocument();
