@@ -1826,16 +1826,6 @@ export default function TasksPage() {
   }, [selected, actionBusy, canComplete, canCancel, currentDelivery]);
 
   useLayoutEffect(() => {
-    taskPageLayoutFocus.notify?.();
-  });
-
-  useEffect(() => {
-    if (!viewingHistory || !historyFull) return;
-    if (document.activeElement && document.activeElement !== document.body) return;
-    deliveryTitleRef.current?.focus();
-  }, [viewingHistory, historyFull]);
-
-  useLayoutEffect(() => {
     // 版本行在交付下面。换一版时上面的正文高度会变，视口容易停在版本列表上。
     // 把交付区滚到滚动容器顶部，焦点仍留在版本行。刚打开任务，或换任务清掉历史版时，不滚。
     const prev = deliveryScrollRef.current;
@@ -1864,6 +1854,19 @@ export default function TasksPage() {
     if (!slot || typeof slot.scrollIntoView !== "function") return;
     slot.scrollIntoView({ block: "start", inline: "nearest" });
   }, [urlTaskId, historyId, historyLoading]);
+
+  // 历史全文出现后，「重试」才卸下，焦点会先掉到页面空白。
+  // 放到绘制前，不先停在空白上。加载标志晚一拍清掉时再看一次。
+  // 已经移到版本行或别的控件上就不再抢。
+  useLayoutEffect(() => {
+    if (!viewingHistory || !historyFull) return;
+    if (!focusIsIdle()) return;
+    deliveryTitleRef.current?.focus();
+  }, [viewingHistory, historyFull, historyLoading]);
+
+  useLayoutEffect(() => {
+    taskPageLayoutFocus.notify?.();
+  });
 
   const detailOpen = Boolean(urlTaskId);
   const showSplit = items.length > 0 || detailOpen;

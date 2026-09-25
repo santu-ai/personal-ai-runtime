@@ -1286,10 +1286,16 @@ describe("TasksPage", () => {
     expect(retry).toHaveFocus();
     expect(screen.getByTestId("history-load-error")).toHaveTextContent("历史版本暂时读不到");
 
+    const focusWhenShown = captureFocusWhenGone(
+      () => screen.queryByText("历史版本完整正文甲") !== null,
+    );
     release?.(historyFull);
     expect(await screen.findByText("历史版本完整正文甲")).toBeInTheDocument();
     expect(screen.queryByTestId("history-load-error")).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /交付 v1/ })).toHaveFocus();
+    const heading = screen.getByRole("heading", { name: /交付 v1/ });
+    expect(heading).toHaveFocus();
+    expect(focusWhenShown.read()).toBe(heading);
+    expect(focusWhenShown.read()).not.toBe(document.body);
   });
 
   it("says there is only one version without listing a history row", async () => {
