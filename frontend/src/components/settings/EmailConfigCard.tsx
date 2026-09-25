@@ -35,6 +35,7 @@ export default function EmailConfigCard({ email, onSaved, embedded = false }: Pr
     error?: string | null;
   } | null>(null);
   const savingRef = useRef(false);
+  const testingRef = useRef(false);
   const saveGen = useRef(0);
 
   const markDirty = () => {
@@ -71,6 +72,8 @@ export default function EmailConfigCard({ email, onSaved, embedded = false }: Pr
   };
 
   const handleTestEmail = async () => {
+    if (testingRef.current) return;
+    testingRef.current = true;
     setTestingEmail(true);
     try {
       const result = await testEmailConnection({
@@ -87,6 +90,7 @@ export default function EmailConfigCard({ email, onSaved, embedded = false }: Pr
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "邮箱连接测试失败", "邮箱");
     } finally {
+      testingRef.current = false;
       setTestingEmail(false);
     }
   };
@@ -143,7 +147,13 @@ export default function EmailConfigCard({ email, onSaved, embedded = false }: Pr
         <Button onClick={() => void handleSaveEmail()} disabled={savingEmail}>
           {savingEmail ? "保存中…" : "保存邮箱配置"}
         </Button>
-        <Button variant="ghost" onClick={() => void handleTestEmail()} disabled={testingEmail}>
+        <Button
+          variant="ghost"
+          data-email-action="test"
+          onClick={() => void handleTestEmail()}
+          aria-busy={testingEmail || undefined}
+          className={testingEmail ? "opacity-50" : ""}
+        >
           {testingEmail ? "测试中…" : "测试连接"}
         </Button>
         {saveNotice ? (
