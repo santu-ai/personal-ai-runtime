@@ -60,6 +60,155 @@ describe("NotificationBell", () => {
     expect(bell).toHaveFocus();
   });
 
+  it("keeps Tab inside the notification panel", async () => {
+    const second = { ...sample, id: "n2", title: "另一条", content: "还在" };
+    listNotifications.mockResolvedValue([sample, second]);
+    renderWithRouter(
+      <>
+        <button type="button">旁边</button>
+        <NotificationBell />
+      </>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    const panel = await screen.findByRole("dialog", { name: "最近通知" });
+    const mark = await screen.findByRole("button", { name: "全部已读" });
+    const first = screen.getByRole("button", { name: /待审批/ });
+    const otherRow = screen.getByRole("button", { name: /另一条/ });
+    const outside = screen.getByRole("button", { name: "旁边" });
+    const bell = screen.getByRole("button", { name: "通知" });
+    await waitFor(() => expect(panel).toHaveFocus());
+
+    const disabled = document.createElement("button");
+    disabled.type = "button";
+    disabled.disabled = true;
+    disabled.textContent = "不可用";
+    const hidden = document.createElement("button");
+    hidden.type = "button";
+    hidden.hidden = true;
+    hidden.textContent = "藏起来";
+    const skipped = document.createElement("button");
+    skipped.type = "button";
+    skipped.tabIndex = -1;
+    skipped.textContent = "不进顺序";
+    panel.append(disabled, hidden, skipped);
+
+    fireEvent.keyDown(panel, { key: "Tab" });
+    expect(mark).toHaveFocus();
+    fireEvent.keyDown(mark, { key: "Tab" });
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(first, { key: "Tab" });
+    expect(otherRow).toHaveFocus();
+    fireEvent.keyDown(otherRow, { key: "Tab" });
+    expect(mark).toHaveFocus();
+    expect(outside).not.toHaveFocus();
+    expect(disabled).not.toHaveFocus();
+    expect(hidden).not.toHaveFocus();
+    expect(skipped).not.toHaveFocus();
+
+    fireEvent.keyDown(mark, { key: "Tab", shiftKey: true });
+    expect(otherRow).toHaveFocus();
+    panel.focus();
+    fireEvent.keyDown(panel, { key: "Tab", shiftKey: true });
+    expect(otherRow).toHaveFocus();
+
+    outside.focus();
+    fireEvent.keyDown(outside, { key: "Tab" });
+    expect(mark).toHaveFocus();
+    outside.focus();
+    fireEvent.keyDown(outside, { key: "Tab", shiftKey: true });
+    expect(otherRow).toHaveFocus();
+    expect(bell).not.toHaveFocus();
+
+    fireEvent.keyDown(otherRow, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "最近通知" })).not.toBeInTheDocument();
+    expect(bell).toHaveFocus();
+  });
+
+  it("keeps Tab on the panel when the list has no controls", async () => {
+    listNotifications.mockResolvedValue([]);
+    renderWithRouter(
+      <>
+        <button type="button">旁边</button>
+        <NotificationBell />
+      </>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    const panel = await screen.findByRole("dialog", { name: "最近通知" });
+    await screen.findByText("暂无通知");
+    await waitFor(() => expect(panel).toHaveFocus());
+    const outside = screen.getByRole("button", { name: "旁边" });
+
+    fireEvent.keyDown(panel, { key: "Tab" });
+    expect(panel).toHaveFocus();
+    fireEvent.keyDown(panel, { key: "Tab", shiftKey: true });
+    expect(panel).toHaveFocus();
+
+    outside.focus();
+    fireEvent.keyDown(outside, { key: "Tab" });
+    expect(panel).toHaveFocus();
+    expect(outside).not.toHaveFocus();
+  });
+
+  it("keeps Tab on the retry button when it is the only control", async () => {
+    listNotifications.mockRejectedValue(new Error("通知暂时读不到"));
+    renderWithRouter(
+      <>
+        <button type="button">旁边</button>
+        <NotificationBell />
+      </>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    const retry = await screen.findByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+
+    fireEvent.keyDown(retry, { key: "Tab" });
+    expect(retry).toHaveFocus();
+    fireEvent.keyDown(retry, { key: "Tab", shiftKey: true });
+    expect(retry).toHaveFocus();
+    expect(screen.getByRole("button", { name: "旁边" })).not.toHaveFocus();
+    expect(screen.getByRole("button", { name: "通知" })).not.toHaveFocus();
+  });
+
+  it("stops trapping Tab after the panel closes", async () => {
+    renderWithRouter(
+      <>
+        <button type="button">旁边</button>
+        <NotificationBell />
+      </>,
+    );
+    const bell = screen.getByRole("button", { name: "通知" });
+    fireEvent.click(bell);
+    await screen.findByRole("dialog", { name: "最近通知" });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "最近通知" })).not.toBeInTheDocument();
+
+    const outside = screen.getByRole("button", { name: "旁边" });
+    outside.focus();
+    fireEvent.keyDown(outside, { key: "Tab" });
+    expect(outside).toHaveFocus();
+    expect(bell).not.toHaveFocus();
+  });
+
+  it("keeps a busy mark-all button in the Tab cycle", async () => {
+    const release = holdMarkAll();
+    renderWithRouter(<NotificationBell />);
+    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    const mark = await screen.findByRole("button", { name: "全部已读" });
+    const row = screen.getByRole("button", { name: /待审批/ });
+    mark.focus();
+    fireEvent.click(mark);
+    expect(mark).toHaveAttribute("aria-busy", "true");
+    expect(mark).not.toBeDisabled();
+
+    fireEvent.keyDown(mark, { key: "Tab" });
+    expect(row).toHaveFocus();
+    fireEvent.keyDown(row, { key: "Tab", shiftKey: true });
+    expect(mark).toHaveFocus();
+
+    release();
+    await waitFor(() => expect(mark).not.toHaveAttribute("aria-busy"));
+  });
+
   it("closes on an outside press without pulling focus back to the bell", async () => {
     renderWithRouter(
       <>
