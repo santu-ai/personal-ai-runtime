@@ -862,11 +862,16 @@ describe("MemoriesPage", () => {
     fireEvent.click(first);
     fireEvent.click(first);
     await waitFor(() => expect(first).toHaveAttribute("aria-busy", "true"));
-    expect(first).toBeDisabled();
+    expect(first).toBeEnabled();
+    expect(first).toHaveFocus();
     const reject = within(screen.getByText("第一条").closest("li")!).getByRole("button", {
       name: "拒绝",
     });
-    expect(reject).toBeDisabled();
+    expect(reject).toBeEnabled();
+    expect(reject).not.toHaveAttribute("aria-busy");
+    const second = screen.getAllByRole("button", { name: "确认" })[1];
+    expect(second).toBeEnabled();
+    expect(second).not.toHaveAttribute("aria-busy");
     fireEvent.click(reject);
     expect(screen.queryByRole("dialog", { name: "拒绝这条记忆？" })).not.toBeInTheDocument();
     expect(ratifyMemory).toHaveBeenCalledTimes(1);
@@ -898,15 +903,26 @@ describe("MemoriesPage", () => {
       }
       return { memories: [], total: 0 };
     });
-    vi.mocked(ratifyMemory).mockRejectedValue(new ApiError("确认失败", 500));
+    let fail: (err: unknown) => void = () => {};
+    vi.mocked(ratifyMemory).mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
 
     renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
     const confirm = await screen.findByRole("button", { name: "确认" });
     confirm.focus();
     fireEvent.click(confirm);
+    await waitFor(() => expect(confirm).toHaveAttribute("aria-busy", "true"));
+    expect(confirm).toBeEnabled();
+    expect(confirm).toHaveFocus();
+    fail(new ApiError("确认失败", 500));
     await waitFor(() => expect(addError).toHaveBeenCalledWith("确认失败", "记忆"));
     expect(confirm).toHaveFocus();
     expect(confirm).toBeEnabled();
+    expect(confirm).not.toHaveAttribute("aria-busy");
     expect(ratifyMemory).toHaveBeenCalledTimes(1);
   });
 
@@ -1088,13 +1104,174 @@ describe("MemoriesPage", () => {
     renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
     fireEvent.click(await screen.findByRole("checkbox", { name: /全选当前页/ }));
     const bulk = screen.getByRole("button", { name: /批量确认/ });
+    bulk.focus();
     fireEvent.click(bulk);
     fireEvent.click(bulk);
     await waitFor(() => expect(bulk).toHaveAttribute("aria-busy", "true"));
-    expect(bulk).toBeDisabled();
+    expect(bulk).toBeEnabled();
+    expect(bulk).toHaveFocus();
+    const other = screen.getByRole("button", { name: /批量拒绝/ });
+    expect(other).toBeEnabled();
+    expect(other).not.toHaveAttribute("aria-busy");
+    fireEvent.click(other);
     expect(bulkClaimAction).toHaveBeenCalledTimes(1);
     expect(bulkClaimAction).toHaveBeenCalledWith("ratify", ["p1"]);
     release({ status: "ok", action: "ratify", ok: 1, skipped: [] });
+    await waitFor(() => expect(screen.getByRole("tab", { name: "待确认" })).toHaveFocus());
+    expect(bulk).not.toHaveAttribute("aria-busy");
+    expect(bulk).toBeDisabled();
+  });
+
+  it("keeps bulk confirm focus when it fails and does not clear the selection", async () => {
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "proposed") {
+        return {
+          memories: [
+            {
+              id: "p1",
+              content: "第一条",
+              origin: "claim",
+              claim_status: "proposed",
+              created_at: "2026-09-24T02:00:00Z",
+            },
+          ],
+          total: 1,
+        };
+      }
+      return { memories: [], total: 0 };
+    });
+    let fail: (err: unknown) => void = () => {};
+    vi.mocked(bulkClaimAction).mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
+    fireEvent.click(await screen.findByRole("checkbox", { name: /全选当前页/ }));
+    const bulk = screen.getByRole("button", { name: /批量确认/ });
+    bulk.focus();
+    fireEvent.click(bulk);
+    await waitFor(() => expect(bulk).toHaveAttribute("aria-busy", "true"));
+    expect(bulk).toBeEnabled();
+    expect(bulk).toHaveFocus();
+    fail(new ApiError("批量确认失败", 500));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("批量确认失败", "记忆"));
+    expect(bulk).toHaveFocus();
+    expect(bulk).toBeEnabled();
+    expect(bulk).not.toHaveAttribute("aria-busy");
+    expect(bulk).toHaveTextContent("批量确认（1）");
+    expect(bulkClaimAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("moves bulk confirm focus to a row that was not in this batch", async () => {
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "proposed") {
+        return {
+          memories: [
+            {
+              id: "p1",
+              content: "第一条",
+              origin: "claim",
+              claim_status: "proposed",
+              created_at: "2026-09-24T02:00:00Z",
+            },
+            {
+              id: "p2",
+              content: "第二条",
+              origin: "claim",
+              claim_status: "proposed",
+              created_at: "2026-09-24T01:00:00Z",
+            },
+          ],
+          total: 2,
+        };
+      }
+      return { memories: [], total: 0 };
+    });
+    let release: (value: {
+      status: string;
+      action: string;
+      ok: number;
+      skipped: Array<{ id: string; reason: string }>;
+    }) => void = () => {};
+    vi.mocked(bulkClaimAction).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
+    const row = (await screen.findByText("第一条")).closest("li");
+    fireEvent.click(within(row!).getByRole("checkbox"));
+    const bulk = screen.getByRole("button", { name: "批量确认（1）" });
+    bulk.focus();
+    fireEvent.click(bulk);
+    await waitFor(() => expect(bulk).toHaveAttribute("aria-busy", "true"));
+    expect(bulk).toHaveFocus();
+    release({ status: "ok", action: "ratify", ok: 1, skipped: [] });
+    const next = within(screen.getByText("第二条").closest("li")!).getByRole("button", {
+      name: "确认",
+    });
+    await waitFor(() => expect(next).toHaveFocus());
+    expect(screen.getByRole("tab", { name: "待确认" })).not.toHaveFocus();
+  });
+
+  it("does not pull bulk confirm focus back when it already moved", async () => {
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "proposed") {
+        return {
+          memories: [
+            {
+              id: "p1",
+              content: "第一条",
+              origin: "claim",
+              claim_status: "proposed",
+              created_at: "2026-09-24T02:00:00Z",
+            },
+            {
+              id: "p2",
+              content: "第二条",
+              origin: "claim",
+              claim_status: "proposed",
+              created_at: "2026-09-24T01:00:00Z",
+            },
+          ],
+          total: 2,
+        };
+      }
+      return { memories: [], total: 0 };
+    });
+    let release: (value: {
+      status: string;
+      action: string;
+      ok: number;
+      skipped: Array<{ id: string; reason: string }>;
+    }) => void = () => {};
+    vi.mocked(bulkClaimAction).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
+    fireEvent.click(await screen.findByRole("checkbox", { name: /全选当前页/ }));
+    const bulk = screen.getByRole("button", { name: /批量确认/ });
+    const kept = within(screen.getByText("第二条").closest("li")!).getByRole("button", {
+      name: "确认",
+    });
+    bulk.focus();
+    fireEvent.click(bulk);
+    await waitFor(() => expect(bulk).toHaveAttribute("aria-busy", "true"));
+    kept.focus();
+    release({ status: "ok", action: "ratify", ok: 2, skipped: [] });
     await waitFor(() => expect(bulk).not.toHaveAttribute("aria-busy"));
+    expect(kept).toHaveFocus();
   });
 });

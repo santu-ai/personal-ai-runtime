@@ -45,7 +45,7 @@ interface Props {
   /** When set, shows a selection checkbox (review triage). */
   selected?: boolean;
   onToggleSelect?: (m: MemoryRow) => void;
-  /** 这一条正在确认或恢复，按钮按住，避免连发。 */
+  /** 这一条正在确认或恢复。按钮不禁用，点到的那个标为忙碌。 */
   ratifying?: boolean;
 }
 
@@ -128,22 +128,21 @@ export default function MemoryListItem({
                 type="button"
                 data-memory-id={m.id}
                 data-memory-action="ratify"
-                disabled={ratifying}
+                data-memory-scope="proposed"
                 aria-busy={ratifying || undefined}
                 onClick={() => onRatify(m)}
-                className="text-xs text-success hover:text-success/80 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+                className={`text-xs text-success hover:text-success/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded${ratifying ? " opacity-50" : ""}`}
               >
                 <Check size={14} className="inline mr-0.5" />
                 确认
               </button>
               <button
                 type="button"
-                disabled={ratifying}
                 onClick={() => {
                   if (ratifying) return;
                   onReject(m);
                 }}
-                className="text-xs text-fg-secondary hover:text-fg-primary disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+                className="text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
               >
                 <X size={14} className="inline mr-0.5" />
                 拒绝
@@ -155,10 +154,10 @@ export default function MemoryListItem({
               type="button"
               data-memory-id={m.id}
               data-memory-action="ratify"
-              disabled={ratifying}
+              data-memory-scope="rejected"
               aria-busy={ratifying || undefined}
               onClick={() => onRatify(m)}
-              className="text-xs text-insight hover:text-insight/80 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+              className={`text-xs text-insight hover:text-insight/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded${ratifying ? " opacity-50" : ""}`}
             >
               <RotateCcw size={12} className="inline mr-0.5" />
               恢复

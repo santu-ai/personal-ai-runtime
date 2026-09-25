@@ -154,6 +154,47 @@ function focusMemoryDialogConfirm(name: MemoryDraftDialog): boolean {
   return document.activeElement === button;
 }
 
+type BulkAction = "ratify" | "reject";
+
+type BulkHandoff = {
+  action: BulkAction;
+  failed: boolean;
+  actedIds: string[];
+};
+
+function bulkButton(action: BulkAction): HTMLButtonElement | null {
+  return document.querySelector<HTMLButtonElement>(`button[data-memory-bulk="${action}"]`);
+}
+
+/** 焦点在页面空白处，或还停在这次批量按钮上。 */
+function bulkFocusIdle(action: BulkAction): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  return active.getAttribute("data-memory-bulk") === action;
+}
+
+function focusBulk(action: BulkAction): boolean {
+  const button = bulkButton(action);
+  if (!button || button.disabled) return false;
+  if (document.activeElement !== button) button.focus();
+  return document.activeElement === button;
+}
+
+/** 落到还没被这次批量处理的待确认「确认」。 */
+function focusProposedRatifyExcept(ids: readonly string[]): boolean {
+  const acted = new Set(ids);
+  for (const node of document.querySelectorAll<HTMLButtonElement>(
+    'button[data-memory-action="ratify"][data-memory-scope="proposed"]',
+  )) {
+    const id = node.getAttribute("data-memory-id");
+    if (!id || acted.has(id) || node.disabled) continue;
+    if (document.activeElement !== node) node.focus();
+    return document.activeElement === node;
+  }
+  return false;
+}
+
 function focusAnchor(scope: RatifyScope): boolean {
   if (scope === "list" && focusCaptureField()) return true;
   const tab = document.querySelector<HTMLButtonElement>(
@@ -187,8 +228,9 @@ export default function MemoriesPage() {
   const [reviewCategory, setReviewCategory] = useState<string>("");
   const [reviewOrder, setReviewOrder] = useState<ReviewOrder>("created_at_desc");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkAction, setBulkAction] = useState<BulkAction | null>(null);
   const bulkBusyRef = useRef(false);
+  const bulkHandoff = useRef<BulkHandoff | null>(null);
   const ratifyingRef = useRef(new Set<string>());
   const [ratifying, setRatifying] = useState<Set<string>>(() => new Set());
   const focusAfter = useRef<FocusAfter | null>(null);
@@ -601,11 +643,13 @@ export default function MemoriesPage() {
     setSelectedIds(new Set(proposedMemories.map((m) => m.id)));
   };
 
-  const handleBulk = async (action: "ratify" | "reject") => {
+  const handleBulk = async (action: BulkAction) => {
     const ids = [...selectedIds];
     if (ids.length === 0 || bulkBusyRef.current) return;
     bulkBusyRef.current = true;
-    setBulkBusy(true);
+    bulkHandoff.current = { action, failed: false, actedIds: ids };
+    setBulkAction(action);
+    let failed = false;
     try {
       const result = await bulkClaimAction(action, ids);
       setSelectedIds(new Set());
@@ -614,6 +658,7 @@ export default function MemoriesPage() {
         addError(`已处理 ${result.ok} 条，跳过 ${result.skipped.length} 条`, "记忆");
       }
     } catch (err) {
+      failed = true;
       addError(
         err instanceof ApiError
           ? err.message
@@ -623,10 +668,28 @@ export default function MemoriesPage() {
         "记忆",
       );
     } finally {
+      if (bulkHandoff.current) bulkHandoff.current = { ...bulkHandoff.current, failed };
       bulkBusyRef.current = false;
-      setBulkBusy(false);
+      setBulkAction(null);
     }
   };
+
+  useEffect(() => {
+    if (bulkAction) return;
+    const pending = bulkHandoff.current;
+    if (!pending) return;
+    if (!bulkFocusIdle(pending.action)) {
+      bulkHandoff.current = null;
+      return;
+    }
+    if (pending.failed) {
+      if (focusBulk(pending.action)) bulkHandoff.current = null;
+      return;
+    }
+    if (focusProposedRatifyExcept(pending.actedIds) || focusAnchor("proposed")) {
+      bulkHandoff.current = null;
+    }
+  }, [bulkAction, proposedMemories]);
 
   const handleEdit = (m: MemoryRow) => {
     if (editingRef.current) return;
@@ -808,19 +871,21 @@ export default function MemoriesPage() {
                 </label>
                 <button
                   type="button"
-                  disabled={selectedIds.size === 0 || bulkBusy}
-                  aria-busy={bulkBusy || undefined}
+                  data-memory-bulk="ratify"
+                  disabled={selectedIds.size === 0}
+                  aria-busy={bulkAction === "ratify" || undefined}
                   onClick={() => void handleBulk("ratify")}
-                  className="px-3 py-1.5 text-sm rounded-lg bg-success/15 text-success hover:bg-success/25 disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                  className={`px-3 py-1.5 text-sm rounded-lg bg-success/15 text-success hover:bg-success/25 disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring${bulkAction === "ratify" ? " opacity-50" : ""}`}
                 >
                   批量确认（{selectedIds.size}）
                 </button>
                 <button
                   type="button"
-                  disabled={selectedIds.size === 0 || bulkBusy}
-                  aria-busy={bulkBusy || undefined}
+                  data-memory-bulk="reject"
+                  disabled={selectedIds.size === 0}
+                  aria-busy={bulkAction === "reject" || undefined}
                   onClick={() => void handleBulk("reject")}
-                  className="px-3 py-1.5 text-sm rounded-lg bg-surface-overlay text-fg-secondary hover:text-fg-primary disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                  className={`px-3 py-1.5 text-sm rounded-lg bg-surface-overlay text-fg-secondary hover:text-fg-primary disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring${bulkAction === "reject" ? " opacity-50" : ""}`}
                 >
                   批量拒绝（{selectedIds.size}）
                 </button>

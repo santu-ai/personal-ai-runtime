@@ -40,7 +40,9 @@ describe("MemoryListItem", () => {
     expect(screen.getByRole("button", { name: /拒绝/ })).toBeVisible();
   });
 
-  it("holds confirm and reject while that row is ratifying", () => {
+  it("keeps confirm enabled and busy while that row is ratifying", () => {
+    const onRatify = vi.fn();
+    const onReject = vi.fn();
     renderWithRouter(
       <ul>
         <MemoryListItem
@@ -49,6 +51,42 @@ describe("MemoryListItem", () => {
             content: "喜欢早起跑步",
             origin: "claim",
             claim_status: "proposed",
+          }}
+          ratifying
+          onRatify={onRatify}
+          onReject={onReject}
+          onEdit={noop}
+          onDelete={noop}
+          onContinueChat={noop}
+          onShowProvenance={noop}
+        />
+      </ul>,
+    );
+    const confirm = screen.getByRole("button", { name: "确认" });
+    confirm.focus();
+    expect(confirm).toBeEnabled();
+    expect(confirm).toHaveAttribute("aria-busy", "true");
+    expect(confirm).toHaveClass("opacity-50");
+    expect(confirm).toHaveFocus();
+    const reject = screen.getByRole("button", { name: "拒绝" });
+    expect(reject).toBeEnabled();
+    expect(reject).not.toHaveAttribute("aria-busy");
+    fireEvent.click(reject);
+    expect(onReject).not.toHaveBeenCalled();
+    fireEvent.click(confirm);
+    expect(onRatify).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps restore enabled while that row is ratifying", () => {
+    renderWithRouter(
+      <ul>
+        <MemoryListItem
+          memory={{
+            id: "m2",
+            content: "从不喝咖啡",
+            origin: "claim",
+            claim_status: "rejected",
+            reject_reason: "记错了",
           }}
           ratifying
           onRatify={noop}
@@ -60,10 +98,11 @@ describe("MemoryListItem", () => {
         />
       </ul>,
     );
-    const confirm = screen.getByRole("button", { name: "确认" });
-    expect(confirm).toBeDisabled();
-    expect(confirm).toHaveAttribute("aria-busy", "true");
-    expect(screen.getByRole("button", { name: "拒绝" })).toBeDisabled();
+    const restore = screen.getByRole("button", { name: "恢复" });
+    restore.focus();
+    expect(restore).toBeEnabled();
+    expect(restore).toHaveAttribute("aria-busy", "true");
+    expect(restore).toHaveFocus();
   });
 
   it("shows reject reason and restore for rejected claims", () => {
