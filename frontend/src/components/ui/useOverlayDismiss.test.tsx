@@ -101,6 +101,20 @@ function BackdropPanel({
   );
 }
 
+function TimerClose() {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(true);
+  useOverlayDismiss(open, panelRef, () => setOpen(false));
+  if (!open) return null;
+  return (
+    <div ref={panelRef} role="dialog" aria-label="面板" tabIndex={-1}>
+      <button type="button" onClick={() => window.setTimeout(() => setOpen(false), 0)}>
+        稍后关闭
+      </button>
+    </div>
+  );
+}
+
 function RetryAfterOpen() {
   const panelRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(true);
@@ -257,6 +271,32 @@ describe("useOverlayDismiss", () => {
     fireEvent.keyDown(outside, { key: "Tab", shiftKey: true });
     expect(close).toHaveFocus();
     expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  it("returns focus in the same turn a timer closes the panel", async () => {
+    const opener = document.createElement("button");
+    opener.type = "button";
+    opener.textContent = "打开";
+    document.body.appendChild(opener);
+    opener.focus();
+    render(<TimerClose />);
+    const dialog = screen.getByRole("dialog", { name: "面板" });
+    await waitFor(() => expect(dialog).toHaveFocus());
+
+    let focusWhenRemoved: Element | null = null;
+    const observer = new MutationObserver(() => {
+      if (screen.queryByRole("dialog", { name: "面板" })) return;
+      focusWhenRemoved ??= document.activeElement;
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    fireEvent.click(screen.getByRole("button", { name: "稍后关闭" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "面板" })).not.toBeInTheDocument(),
+    );
+    expect(focusWhenRemoved).toBe(opener);
+    expect(opener).toHaveFocus();
+    observer.disconnect();
+    opener.remove();
   });
 
   it("does not dismiss while an input method is composing", async () => {

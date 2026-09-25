@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 
 type InitialFocus = "panel" | "field";
 
@@ -86,6 +86,7 @@ function moveTab(panel: HTMLElement, shiftKey: boolean) {
 
 /**
  * 浮层打开时记住打开前的控件。Esc 关闭。关闭后把焦点还回去。
+ * 还焦点发生在布局阶段，和卸下面板同一轮，不先落到页面空白。
  * 输入法还在组字时按 Esc 不关闭，也不拦住这一下，让输入法自己收掉组字。
  * 面板里已经有焦点（失败「重试」或调用方自己放进去的）时不再抢走。
  * Tab 与 Shift+Tab 留在面板里，不会走到后面的页面。
@@ -104,7 +105,7 @@ export function useOverlayDismiss<T extends HTMLElement>(
   onDismissRef.current = onDismiss;
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return;
     const panel = panelRef.current;
     const active = document.activeElement;
