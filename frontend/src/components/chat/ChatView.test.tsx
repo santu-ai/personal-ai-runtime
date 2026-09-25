@@ -318,6 +318,118 @@ describe("ChatView", () => {
     expect(composer).toBeDisabled();
   });
 
+  it("keeps Tab inside the confirmation card and leaves it on Escape without resolving", async () => {
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({
+          type: "confirmation_required",
+          tool_name: "write_file",
+          tool_args: { path: "/tmp/x", content: "data" },
+          approval_id: "ap-tab",
+          tool_call_id: "tc-tab",
+        });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+
+    renderChatView();
+    fireEvent.change(screen.getByPlaceholderText(/输入消息/), {
+      target: { value: "create a file" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    const confirm = await screen.findByRole("button", { name: "确认写入" });
+    const cancel = screen.getByRole("button", { name: "取消" });
+    const writeSummary = screen.getByText("查看写入内容");
+    const argsSummary = screen.getByText("查看详细参数");
+    const context = screen.getByRole("button", { name: "上下文" });
+    expect(confirm).toHaveFocus();
+
+    fireEvent.keyDown(confirm, { key: "Tab" });
+    expect(cancel).toHaveFocus();
+    fireEvent.keyDown(cancel, { key: "Tab" });
+    expect(writeSummary).toHaveFocus();
+    fireEvent.keyDown(writeSummary, { key: "Tab" });
+    expect(argsSummary).toHaveFocus();
+    fireEvent.keyDown(argsSummary, { key: "Tab" });
+    expect(confirm).toHaveFocus();
+    expect(context).not.toHaveFocus();
+
+    fireEvent.keyDown(confirm, { key: "Tab", shiftKey: true });
+    expect(argsSummary).toHaveFocus();
+
+    context.focus();
+    fireEvent.keyDown(context, { key: "Tab" });
+    expect(context).toHaveFocus();
+    expect(confirm).not.toHaveFocus();
+
+    confirm.focus();
+    (document.activeElement as HTMLElement).blur();
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(writeSummary).toHaveFocus();
+
+    confirm.focus();
+    fireEvent.keyDown(confirm, { key: "Escape" });
+    expect(context).toHaveFocus();
+    expect(resolveApproval).not.toHaveBeenCalled();
+    expect(confirm).toBeInTheDocument();
+
+    fireEvent.click(context);
+    const collapse = await screen.findByRole("button", { name: "收起" });
+    confirm.focus();
+    fireEvent.keyDown(confirm, { key: "Escape" });
+    expect(collapse).toHaveFocus();
+    expect(resolveApproval).not.toHaveBeenCalled();
+  });
+
+  it("skips a disabled ask_user send button while cycling Tab", async () => {
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({
+          type: "confirmation_required",
+          tool_name: "ask_user",
+          tool_args: { question: "简报要覆盖最近几天？" },
+          approval_id: "ap-ask-tab",
+          tool_call_id: "tc-ask-tab",
+        });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+
+    renderChatView();
+    fireEvent.change(screen.getByPlaceholderText(/输入消息/), {
+      target: { value: "做一份简报" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    const answer = await screen.findByLabelText("你的回答");
+    const sendAnswer = screen.getByRole("button", { name: "发送回答" });
+    const cancel = screen.getByRole("button", { name: "取消" });
+    const argsSummary = screen.getByText("查看详细参数");
+    expect(answer).toHaveFocus();
+    expect(sendAnswer).toBeDisabled();
+
+    fireEvent.keyDown(answer, { key: "Escape", isComposing: true });
+    expect(answer).toHaveFocus();
+
+    fireEvent.keyDown(answer, { key: "Tab" });
+    expect(cancel).toHaveFocus();
+    fireEvent.keyDown(cancel, { key: "Tab" });
+    expect(argsSummary).toHaveFocus();
+    fireEvent.keyDown(argsSummary, { key: "Tab", shiftKey: true });
+    expect(cancel).toHaveFocus();
+
+    fireEvent.change(answer, { target: { value: "最近三天" } });
+    answer.focus();
+    fireEvent.keyDown(answer, { key: "Tab" });
+    expect(sendAnswer).toHaveFocus();
+    expect(sendAnswer).toBeEnabled();
+    fireEvent.keyDown(sendAnswer, { key: "Tab" });
+    expect(cancel).toHaveFocus();
+  });
+
   it("scrolls the transcript when a confirmation appears while following the latest turn", async () => {
     let emit: ((event: Record<string, unknown>) => void) | undefined;
     vi.mocked(sendMessage).mockImplementation(
