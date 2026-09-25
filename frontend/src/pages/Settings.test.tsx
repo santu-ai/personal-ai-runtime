@@ -14,7 +14,7 @@ import {
   updateLlmSettings,
   updatePromptConfig,
 } from "../api/client";
-import { listMcpRegistry } from "../api/connectors";
+import { installMcpConnector, listMcpRegistry } from "../api/connectors";
 import {
   getTelegramGatewayStatus,
   pollTelegramGateway,
@@ -148,9 +148,13 @@ vi.mock("../api/settings", () => ({
   pollTelegramGateway: vi.fn(),
 }));
 
+const { addError } = vi.hoisted(() => ({
+  addError: vi.fn(),
+}));
+
 vi.mock("../stores/errorStore", () => ({
-  useErrorStore: (selector: (s: { addError: () => void }) => unknown) =>
-    selector({ addError: vi.fn() }),
+  useErrorStore: (selector: (s: { addError: typeof addError }) => unknown) =>
+    selector({ addError }),
 }));
 
 const telegramStatus: TelegramGatewayStatus = {
@@ -990,5 +994,162 @@ describe("SettingsPage", () => {
     expect(test).toBeEnabled();
     expect(test).toHaveFocus();
     expect(screen.getByText("IMAP 失败")).toBeInTheDocument();
+  });
+
+  function mcpServer(name: string, installed = false) {
+    return {
+      name,
+      description: `${name} 说明`,
+      category: "search",
+      env_vars: {},
+      installed,
+    };
+  }
+
+  function mcpInstallButton(name: string) {
+    const node = document.querySelector<HTMLButtonElement>(`button[data-mcp-install="${name}"]`);
+    if (!node) throw new Error(`missing MCP install ${name}`);
+    return node;
+  }
+
+  it("does not install an MCP server twice and keeps focus on 安装", async () => {
+    vi.mocked(listMcpRegistry).mockResolvedValue([mcpServer("brave"), mcpServer("tavily")]);
+    let release: (row: { ok: boolean; message: string }) => void = () => {};
+    vi.mocked(installMcpConnector).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+    renderWithRouter(<SettingsPage />);
+    await expandSection("MCP 市场");
+    expect(await screen.findByText("brave")).toBeInTheDocument();
+    const install = mcpInstallButton("brave");
+    const other = mcpInstallButton("tavily");
+    install.focus();
+    fireEvent.click(install);
+    fireEvent.click(install);
+    fireEvent.click(other);
+    await waitFor(() => expect(install).toHaveAttribute("aria-busy", "true"));
+    expect(install).toBeEnabled();
+    expect(install).toHaveFocus();
+    expect(install).toHaveTextContent("安装中…");
+    expect(other).toBeEnabled();
+    expect(other).not.toHaveAttribute("aria-busy");
+    expect(installMcpConnector).toHaveBeenCalledTimes(1);
+    expect(installMcpConnector).toHaveBeenCalledWith("brave");
+    expect(alertSpy).not.toHaveBeenCalled();
+
+    await act(async () => {
+      release({ ok: true, message: "installed" });
+    });
+    expect(await screen.findByTestId("mcp-install-notice")).toHaveTextContent(
+      '"brave" 已安装。重启后端后生效。',
+    );
+    expect(install).toBeDisabled();
+    expect(install).toHaveTextContent("已安装");
+    await waitFor(() => expect(other).toHaveFocus());
+    expect(alertSpy).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+
+    vi.mocked(installMcpConnector).mockResolvedValueOnce({ ok: true, message: "installed" });
+    fireEvent.click(other);
+    await waitFor(() => expect(installMcpConnector).toHaveBeenCalledTimes(2));
+    expect(installMcpConnector).toHaveBeenLastCalledWith("tavily");
+  });
+
+  it("moves MCP install focus to the previous 安装 when nothing follows", async () => {
+    vi.mocked(listMcpRegistry).mockResolvedValue([
+      mcpServer("brave", true),
+      mcpServer("tavily"),
+      mcpServer("context7"),
+    ]);
+    vi.mocked(installMcpConnector).mockResolvedValue({ ok: true, message: "installed" });
+    renderWithRouter(<SettingsPage />);
+    await expandSection("MCP 市场");
+    const installed = await screen.findByRole("button", { name: "已安装" });
+    expect(installed).toBeDisabled();
+    const previous = mcpInstallButton("tavily");
+    const install = mcpInstallButton("context7");
+    install.focus();
+    fireEvent.click(install);
+    fireEvent.click(installed);
+    expect(await screen.findByTestId("mcp-install-notice")).toHaveTextContent(
+      '"context7" 已安装。重启后端后生效。',
+    );
+    expect(previous).toHaveFocus();
+    expect(installMcpConnector).toHaveBeenCalledTimes(1);
+  });
+
+  it("focuses the MCP install notice when no other server can be installed", async () => {
+    vi.mocked(listMcpRegistry).mockResolvedValue([mcpServer("brave")]);
+    vi.mocked(installMcpConnector).mockResolvedValue({ ok: true, message: "installed" });
+    renderWithRouter(<SettingsPage />);
+    await expandSection("MCP 市场");
+    const install = await screen.findByRole("button", { name: "安装" });
+    install.focus();
+    fireEvent.click(install);
+    const notice = await screen.findByTestId("mcp-install-notice");
+    expect(notice).toHaveTextContent('"brave" 已安装。重启后端后生效。');
+    expect(notice).toHaveFocus();
+    expect(mcpInstallButton("brave")).toBeDisabled();
+  });
+
+  it("does not steal focus when MCP install finishes after focus moved", async () => {
+    vi.mocked(listMcpRegistry).mockResolvedValue([mcpServer("brave"), mcpServer("tavily")]);
+    let release: (row: { ok: boolean; message: string }) => void = () => {};
+    vi.mocked(installMcpConnector).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<SettingsPage />);
+    await expandSection("MCP 市场");
+    expect(await screen.findByText("brave")).toBeInTheDocument();
+    const install = mcpInstallButton("brave");
+    const other = mcpInstallButton("tavily");
+    install.focus();
+    fireEvent.click(install);
+    other.focus();
+    await act(async () => {
+      release({ ok: true, message: "installed" });
+    });
+    expect(await screen.findByTestId("mcp-install-notice")).toBeInTheDocument();
+    expect(other).toHaveFocus();
+    expect(install).toHaveTextContent("已安装");
+  });
+
+  it("keeps 安装 focused and uses the toast when MCP install fails", async () => {
+    vi.mocked(listMcpRegistry).mockResolvedValue([mcpServer("brave"), mcpServer("tavily")]);
+    vi.mocked(installMcpConnector).mockResolvedValueOnce({ ok: false, message: "装不上" });
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+    renderWithRouter(<SettingsPage />);
+    await expandSection("MCP 市场");
+    expect(await screen.findByText("brave")).toBeInTheDocument();
+    const install = mcpInstallButton("brave");
+    install.focus();
+    fireEvent.click(install);
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("装不上", "设置"));
+    expect(install).toBeEnabled();
+    expect(install).toHaveFocus();
+    expect(install).toHaveTextContent("安装");
+    expect(install).not.toHaveAttribute("aria-busy");
+    expect(screen.queryByTestId("mcp-install-notice")).not.toBeInTheDocument();
+    expect(alertSpy).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+
+    vi.mocked(installMcpConnector).mockResolvedValueOnce({ ok: false, message: "   " });
+    fireEvent.click(install);
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("安装失败", "设置"));
+    expect(install).toHaveFocus();
+
+    vi.mocked(installMcpConnector).mockRejectedValueOnce(new ApiError("后端拒绝", 500));
+    fireEvent.click(install);
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("后端拒绝", "设置"));
+    expect(install).toBeEnabled();
+    expect(install).toHaveFocus();
+    expect(mcpInstallButton("tavily")).toHaveTextContent("安装");
   });
 });
