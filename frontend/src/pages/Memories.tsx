@@ -769,7 +769,8 @@ export default function MemoriesPage() {
     }
   };
 
-  useEffect(() => {
+  // 清掉选中会禁用批量按钮。放到绘制前，观察 DOM 的那一轮才不会停在已经禁用的按钮上。
+  useLayoutEffect(() => {
     if (bulkAction) return;
     const pending = bulkHandoff.current;
     if (!pending) return;
