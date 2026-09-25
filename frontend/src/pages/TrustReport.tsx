@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -40,6 +40,11 @@ interface RepairHandoff {
   /** 成功后要落到的下一条；失败或这一条还在时仍是刚才这一条。没有可落的按钮则为 null。 */
   targetId: number | null;
 }
+
+/** 绘制前通知。测试在这一条卸下的同一轮读取焦点。 */
+export const trustReportLayoutFocus = {
+  notify: null as null | (() => void),
+};
 
 /** 焦点在页面空白处，或还停在这次点的按钮上，才可以把焦点挪走。 */
 function focusIsIdle(repairId: number): boolean {
@@ -106,7 +111,9 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
     setRetryingIds(new Set(retryingRef.current));
   };
 
-  useEffect(() => {
+  // 这一条离开失败列表后才交焦点。放到绘制前，不把焦点留在页面空白。
+  // 已经移到别的控件上就不再抢。
+  useLayoutEffect(() => {
     const pending = focusAfter.current;
     if (!pending || retryingIds.has(pending.id)) return;
     if (!focusIsIdle(pending.id)) {
@@ -123,6 +130,10 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
     focusDashboardBack();
     focusAfter.current = null;
   }, [retryingIds, repairKey]);
+
+  useLayoutEffect(() => {
+    trustReportLayoutFocus.notify?.();
+  });
 
   const handleRetryRepair = async (repairId: number) => {
     if (retryingRef.current.has(repairId)) return;
