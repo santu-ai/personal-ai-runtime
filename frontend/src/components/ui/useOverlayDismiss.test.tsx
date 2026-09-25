@@ -259,6 +259,21 @@ describe("useOverlayDismiss", () => {
     expect(onDismiss).not.toHaveBeenCalled();
   });
 
+  it("does not dismiss while an input method is composing", async () => {
+    const onDismiss = vi.fn();
+    render(<Panel open onDismiss={onDismiss} withField />);
+    const field = screen.getByRole("textbox", { name: "回答" });
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "面板" })).toHaveFocus());
+    field.focus();
+
+    fireEvent.keyDown(field, { key: "Escape", isComposing: true });
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "面板" })).toBeInTheDocument();
+
+    fireEvent.keyDown(field, { key: "Escape" });
+    expect(onDismiss).toHaveBeenCalledOnce();
+  });
+
   it("ignores the second click of a double-click on the backdrop", () => {
     const onDismiss = vi.fn();
     const onConfirm = vi.fn();
