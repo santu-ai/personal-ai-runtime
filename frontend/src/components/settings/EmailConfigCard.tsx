@@ -144,7 +144,12 @@ export default function EmailConfigCard({ email, onSaved, embedded = false }: Pr
       )}
 
       <div className="mt-4 flex items-center gap-3">
-        <Button onClick={() => void handleSaveEmail()} disabled={savingEmail}>
+        <Button
+          data-email-action="save"
+          onClick={() => void handleSaveEmail()}
+          aria-busy={savingEmail || undefined}
+          className={savingEmail ? "opacity-50" : ""}
+        >
           {savingEmail ? "保存中…" : "保存邮箱配置"}
         </Button>
         <Button

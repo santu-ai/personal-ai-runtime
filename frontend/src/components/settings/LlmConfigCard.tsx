@@ -227,8 +227,11 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
                   <Button
                     variant="ghost"
                     size="sm"
+                    data-llm-action="test"
+                    data-llm-provider={provider.id}
                     onClick={() => void handleTestLlm(provider.id)}
-                    disabled={testingLlm !== null}
+                    aria-busy={testingLlm === provider.id || undefined}
+                    className={testingLlm === provider.id ? "opacity-50" : ""}
                   >
                     {testingLlm === provider.id ? "测试中…" : "测试"}
                   </Button>
@@ -341,7 +344,12 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
         <Button variant="ghost" size="sm" onClick={addProvider}>
           添加 Provider
         </Button>
-        <Button onClick={() => void handleSaveLlm()} disabled={savingLlm}>
+        <Button
+          data-llm-action="save"
+          onClick={() => void handleSaveLlm()}
+          aria-busy={savingLlm || undefined}
+          className={savingLlm ? "opacity-50" : ""}
+        >
           {savingLlm ? "保存中…" : "保存 LLM 配置"}
         </Button>
         {saveNotice ? (
