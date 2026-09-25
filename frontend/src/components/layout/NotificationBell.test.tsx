@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { renderWithRouter } from "../../test-utils";
-import NotificationBell from "./NotificationBell";
+import NotificationBell, { notificationBellLayoutFocus } from "./NotificationBell";
 
 const { listNotifications, markAllNotificationsRead, addError } = vi.hoisted(() => ({
   listNotifications: vi.fn(),
@@ -29,6 +29,18 @@ const sample = {
   created_at: "2026-08-17T10:00:00Z",
 };
 
+/** 按钮卸下的那一轮，绘制前焦点已经在目标上。useEffect 会先停在页面空白。 */
+function captureFocusWhenGone(gone: () => boolean): { read: () => Element | null } {
+  let focusAtLayout: Element | null = null;
+  notificationBellLayoutFocus.notify = () => {
+    if (!gone()) return;
+    focusAtLayout ??= document.activeElement;
+  };
+  return {
+    read: () => focusAtLayout,
+  };
+}
+
 function holdMarkAll() {
   let release: () => void = () => {};
   markAllNotificationsRead.mockImplementation(
@@ -42,6 +54,7 @@ function holdMarkAll() {
 
 describe("NotificationBell", () => {
   beforeEach(() => {
+    notificationBellLayoutFocus.notify = null;
     vi.clearAllMocks();
     listNotifications.mockResolvedValue([sample]);
     markAllNotificationsRead.mockResolvedValue(undefined);
@@ -380,6 +393,49 @@ describe("NotificationBell", () => {
     expect(mark).toHaveFocus();
     expect(mark).not.toHaveAttribute("aria-busy");
     expect(screen.getByRole("button", { name: /待审批/ })).toBeInTheDocument();
+  });
+
+  it("moves focus in the same turn 全部已读 leaves after every row is read", async () => {
+    const release = holdMarkAll();
+    renderWithRouter(<NotificationBell />);
+    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    const mark = await screen.findByRole("button", { name: "全部已读" });
+    mark.focus();
+    fireEvent.click(mark);
+    expect(mark).toHaveAttribute("aria-busy", "true");
+
+    listNotifications.mockResolvedValue([{ ...sample, read: 1 }]);
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: "全部已读" }),
+    );
+    await act(async () => {
+      release();
+    });
+    const first = await screen.findByRole("button", { name: /待审批/ });
+    await waitFor(() => expect(first).toHaveFocus());
+    expect(screen.queryByRole("button", { name: "全部已读" })).not.toBeInTheDocument();
+    expect(focusWhenGone.read()).toBe(first);
+  });
+
+  it("focuses the panel in the same turn 全部已读 leaves no notifications", async () => {
+    const release = holdMarkAll();
+    renderWithRouter(<NotificationBell />);
+    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    const mark = await screen.findByRole("button", { name: "全部已读" });
+    mark.focus();
+    fireEvent.click(mark);
+
+    listNotifications.mockResolvedValue([]);
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: "全部已读" }),
+    );
+    await act(async () => {
+      release();
+    });
+    const panel = await screen.findByRole("dialog", { name: "最近通知" });
+    await waitFor(() => expect(panel).toHaveFocus());
+    expect(screen.getByText("暂无通知")).toBeInTheDocument();
+    expect(focusWhenGone.read()).toBe(panel);
   });
 
   it("moves focus to the first notification after every row is read", async () => {
