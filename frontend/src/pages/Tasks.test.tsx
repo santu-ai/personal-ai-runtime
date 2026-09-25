@@ -231,6 +231,19 @@ function hideTaskList() {
   });
 }
 
+function withReview(work: WorkItem, status: "accepted" | "changes_requested"): WorkItem {
+  const bundle = work.delivery_bundle;
+  if (!bundle?.current) return work;
+  return {
+    ...work,
+    delivery_bundle: {
+      ...bundle,
+      current_review_status: status,
+      current: { ...bundle.current, review_status: status },
+    },
+  };
+}
+
 function trackTask(seed: WorkItem, bucket: "task" | "background") {
   const box = { item: seed };
   vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
@@ -3096,6 +3109,178 @@ describe("TasksPage", () => {
       reason: "来源齐全",
       idempotency_key: key,
     });
+  });
+
+  it("moves focus to the open task in the same turn 验收 leaves after accept", async () => {
+    const box = trackTask(briefTask, "task");
+    let release: () => void = () => {};
+    vi.mocked(acceptWorkDelivery).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            box.item = withReview(box.item, "accepted");
+            resolve({
+              replayed: false,
+              work_id: "brief_1",
+              decision: {},
+              bundle: box.item.delivery_bundle!,
+            });
+          };
+        }),
+    );
+    renderTasks("/tasks/brief_1");
+    const accept = await screen.findByRole("button", { name: "验收" });
+    accept.focus();
+    fireEvent.click(accept);
+    const dialog = await screen.findByRole("dialog", { name: "验收交付" });
+    const confirm = within(dialog).getByRole("button", { name: "确认验收" });
+    confirm.focus();
+    fireEvent.click(confirm);
+    await within(dialog).findByRole("button", { name: "验收中..." });
+
+    let focusWhenGone: Element | null = null;
+    const observer = new MutationObserver(() => {
+      if (screen.queryByRole("button", { name: "验收" })) return;
+      focusWhenGone ??= document.activeElement;
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    await act(async () => {
+      release();
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "验收" })).not.toBeInTheDocument(),
+    );
+    observer.disconnect();
+    expect(screen.queryByRole("button", { name: "返工" })).not.toBeInTheDocument();
+    expect(focusWhenGone).toBe(currentTaskLink());
+    expect(currentTaskLink()).toHaveFocus();
+  });
+
+  it("focuses 返回列表 when the open task link is hidden after 验收 leaves", async () => {
+    const box = trackTask(briefTask, "task");
+    let release: () => void = () => {};
+    vi.mocked(acceptWorkDelivery).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            box.item = withReview(box.item, "accepted");
+            resolve({
+              replayed: false,
+              work_id: "brief_1",
+              decision: {},
+              bundle: box.item.delivery_bundle!,
+            });
+          };
+        }),
+    );
+    const hidden = hideTaskList();
+    try {
+      renderTasks("/tasks/brief_1");
+      fireEvent.click(await screen.findByRole("button", { name: "验收" }));
+      fireEvent.click(await screen.findByRole("button", { name: "确认验收" }));
+      await act(async () => {
+        release();
+      });
+      await waitFor(() => expect(screen.getByRole("link", { name: "返回列表" })).toHaveFocus());
+      expect(currentTaskLink()).not.toHaveFocus();
+    } finally {
+      hidden.mockRestore();
+    }
+  });
+
+  it("keeps focus on 验收 until the delivery refreshes, and does not steal it after it moved", async () => {
+    let item = briefTask;
+    let hangDetail = false;
+    let releaseDetail: (() => void) | null = null;
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [item];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          if (!hangDetail) {
+            resolve(item);
+            return;
+          }
+          releaseDetail = () => resolve(item);
+        }),
+    );
+    vi.mocked(acceptWorkDelivery).mockResolvedValue({
+      replayed: false,
+      work_id: "brief_1",
+      decision: {},
+      bundle: briefTask.delivery_bundle!,
+    });
+    renderTasks("/tasks/brief_1");
+    const opener = await screen.findByRole("button", { name: "验收" });
+    opener.focus();
+    fireEvent.click(opener);
+    hangDetail = true;
+    fireEvent.click(await screen.findByRole("button", { name: "确认验收" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "验收交付" })).not.toBeInTheDocument(),
+    );
+    const accept = screen.getByRole("button", { name: "验收" });
+    expect(accept).toHaveFocus();
+    const create = screen.getByRole("button", { name: "新建简报" });
+    create.focus();
+
+    item = withReview(item, "accepted");
+    expect(releaseDetail).not.toBeNull();
+    await act(async () => {
+      releaseDetail?.();
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "验收" })).not.toBeInTheDocument(),
+    );
+    expect(create).toHaveFocus();
+    expect(currentTaskLink()).not.toHaveFocus();
+  });
+
+  it("moves focus to the open task in the same turn 返工 leaves after rework", async () => {
+    const box = trackTask(briefTask, "task");
+    let release: () => void = () => {};
+    vi.mocked(reworkWorkDelivery).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            box.item = withReview(box.item, "changes_requested");
+            resolve({
+              replayed: false,
+              work_id: "brief_1",
+              decision: {},
+              bundle: box.item.delivery_bundle!,
+            });
+          };
+        }),
+    );
+    renderTasks("/tasks/brief_1");
+    fireEvent.click(await screen.findByRole("button", { name: "返工" }));
+    const dialog = await screen.findByRole("dialog", { name: "请求返工" });
+    fireEvent.change(within(dialog).getByPlaceholderText("例如：补上风险，并给每条结论带来源。"), {
+      target: { value: "补上风险" },
+    });
+    const confirm = within(dialog).getByRole("button", { name: "确认返工" });
+    confirm.focus();
+    fireEvent.click(confirm);
+    await within(dialog).findByRole("button", { name: "返工中..." });
+
+    let focusWhenGone: Element | null = null;
+    const observer = new MutationObserver(() => {
+      if (screen.queryByRole("button", { name: "返工" })) return;
+      focusWhenGone ??= document.activeElement;
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    await act(async () => {
+      release();
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "返工" })).not.toBeInTheDocument(),
+    );
+    observer.disconnect();
+    expect(focusWhenGone).toBe(currentTaskLink());
+    expect(currentTaskLink()).toHaveFocus();
   });
 
   it("keeps the rework reason until rework succeeds and ignores dismiss while submitting", async () => {

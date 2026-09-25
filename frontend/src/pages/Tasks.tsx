@@ -86,6 +86,9 @@ type TaskDirectHandoff = {
   index?: number;
 };
 
+/** 验收或返工已经写成功，等交付刷新后「验收」「返工」卸下再交接焦点。 */
+type ReviewHandoff = { taskId: string };
+
 /** 焦点在页面空白处，或还停在已经卸掉的按钮上，才安放。已经在别的控件上就不再抢。 */
 function focusIsIdle(): boolean {
   const active = document.activeElement;
@@ -1057,6 +1060,7 @@ export default function TasksPage() {
   const actionLock = useRef(false);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const focusAfter = useRef<TaskDirectHandoff | null>(null);
+  const reviewHandoff = useRef<ReviewHandoff | null>(null);
   const taskIdRef = useRef(urlTaskId);
   taskIdRef.current = urlTaskId;
   const [dialogBusy, setDialogBusy] = useState(false);
@@ -1501,12 +1505,14 @@ export default function TasksPage() {
 
   const handleAccept = async () => {
     if (!selected || !acceptTarget || !beginDialog()) return;
+    const taskId = selected.id;
     const submitted = acceptLive.current;
     const note = submitted.trim();
     if (!acceptKey.current) acceptKey.current = newIdempotencyKey("accept");
     let handoff: TaskDialogHandoff | null = null;
+    let closed = false;
     try {
-      await acceptWorkDelivery(selected.id, acceptTarget.delivery_id, {
+      await acceptWorkDelivery(taskId, acceptTarget.delivery_id, {
         ...(note ? { reason: note } : {}),
         idempotency_key: acceptKey.current,
       });
@@ -1515,6 +1521,7 @@ export default function TasksPage() {
         setAcceptTarget(null);
         setAcceptNote("");
         acceptLive.current = "";
+        closed = true;
       } else {
         handoff = { kind: "kept", dialog: "accept" };
       }
@@ -1524,6 +1531,9 @@ export default function TasksPage() {
       addError(err instanceof ApiError ? err.message : "验收失败", "任务");
       handoff = { kind: "failed", dialog: "accept" };
     } finally {
+      if (closed && taskIdRef.current === taskId) {
+        reviewHandoff.current = { taskId };
+      }
       dialogHandoff.current = handoff;
       endDialog();
     }
@@ -1611,13 +1621,15 @@ export default function TasksPage() {
 
   const handleRework = async () => {
     if (!selected) return;
+    const taskId = selected.id;
     const current = selected.delivery_bundle?.current;
     const submitted = reworkLive.current;
     const reason = submitted.trim();
     if (!current || !reason || !beginDialog()) return;
     let handoff: TaskDialogHandoff | null = null;
+    let closed = false;
     try {
-      await reworkWorkDelivery(selected.id, current.delivery_id, {
+      await reworkWorkDelivery(taskId, current.delivery_id, {
         reason,
         idempotency_key: newIdempotencyKey("rework"),
       });
@@ -1625,6 +1637,7 @@ export default function TasksPage() {
         setReworkOpen(false);
         setReworkReason("");
         reworkLive.current = "";
+        closed = true;
       } else {
         handoff = { kind: "kept", dialog: "rework" };
       }
@@ -1634,6 +1647,9 @@ export default function TasksPage() {
       addError(err instanceof ApiError ? err.message : "返工失败", "任务");
       handoff = { kind: "failed", dialog: "rework" };
     } finally {
+      if (closed && taskIdRef.current === taskId) {
+        reviewHandoff.current = { taskId };
+      }
       dialogHandoff.current = handoff;
       endDialog();
     }
@@ -1728,6 +1744,21 @@ export default function TasksPage() {
     : [];
   const canCiteDeliverySource = (sourceId: string) =>
     findDeliverySource(citeSources, sourceId) !== undefined;
+
+  // 对话框先关掉，焦点回到「验收」或「返工」。交付刷新后这两个按钮才卸下。
+  // 放到绘制前，不把焦点留在页面空白。已经移到别的控件上就不再抢。
+  useLayoutEffect(() => {
+    const pending = reviewHandoff.current;
+    if (!pending || dialogBusy) return;
+    if (!selected || pending.taskId !== selected.id) {
+      reviewHandoff.current = null;
+      return;
+    }
+    if (selected.delivery_bundle?.current?.review_status === "unreviewed") return;
+    reviewHandoff.current = null;
+    if (!focusIsIdle()) return;
+    placeDirectActionFocus({ taskId: pending.taskId, kind: "complete" });
+  }, [selected, dialogBusy]);
 
   useEffect(() => {
     const pending = focusAfter.current;
