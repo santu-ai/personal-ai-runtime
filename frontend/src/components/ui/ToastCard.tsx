@@ -19,7 +19,11 @@ export default function ToastCard({ tone = "neutral", title, body, onDismiss, on
       data-testid={tone === "danger" ? "error-toast" : "notice-toast"}
     >
       <div
-        className={onClick ? "cursor-pointer pr-6" : "pr-6"}
+        className={
+          onClick
+            ? "cursor-pointer pr-6 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+            : "pr-6"
+        }
         onClick={onClick}
         onKeyDown={
           onClick

@@ -85,6 +85,7 @@ describe("QuickCaptureDialog", () => {
     renderWithRouter(<QuickCaptureDialog />);
     openDialog();
     const field = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    expect(field).toHaveClass("focus-visible:ring-focus-ring");
     await waitFor(() => expect(field).toHaveFocus());
     fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() => expect(screen.queryByText("快速捕获")).not.toBeInTheDocument());

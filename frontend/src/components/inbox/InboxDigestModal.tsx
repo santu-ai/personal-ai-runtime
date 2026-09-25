@@ -1,10 +1,15 @@
 import { useId, useRef } from "react";
 import type { Components } from "react-markdown";
 import Button from "../ui/Button";
+import { MarkdownLink } from "../chat/MessageItem";
 import { useOverlayDismiss } from "../ui/useOverlayDismiss";
 import { LazyMarkdown } from "../chat/LazyMarkdown";
 
-const DIGEST_MARKDOWN_COMPONENTS: Components = {};
+const DIGEST_MARKDOWN_COMPONENTS: Components = {
+  a({ href, children }) {
+    return <MarkdownLink href={href}>{children}</MarkdownLink>;
+  },
+};
 
 interface Props {
   open: boolean;
