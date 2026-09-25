@@ -1258,6 +1258,54 @@ describe("TasksPage", () => {
     expect(row).toHaveFocus();
   });
 
+  it("focuses history retry before paint when the version fails", async () => {
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [briefTask];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(briefTask);
+    vi.mocked(getWorkDelivery).mockRejectedValueOnce(new ApiError("历史版本暂时读不到", 503));
+    renderTasks("/tasks/brief_1");
+
+    const row = await screen.findByRole("button", { name: /v1 · 已要求返工/ });
+    row.focus();
+    const focusWhenShown = captureFocusWhenGone(() => {
+      const button = screen.queryByRole("button", { name: "重试" });
+      return button instanceof HTMLButtonElement && !button.hasAttribute("aria-busy");
+    });
+    fireEvent.click(row);
+    const retry = await screen.findByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).not.toHaveAttribute("aria-busy"));
+    expect(retry).toHaveFocus();
+    expect(focusWhenShown.read()).toBe(retry);
+    expect(focusWhenShown.read()).not.toBe(document.body);
+    expect(focusWhenShown.read()).not.toBe(row);
+  });
+
+  it("does not pull history retry focus when an open dialog already has it", async () => {
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [briefTask];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(briefTask);
+    vi.mocked(getWorkDelivery).mockRejectedValueOnce(new ApiError("历史版本暂时读不到", 503));
+    renderTasks("/tasks/brief_1");
+
+    fireEvent.click(await screen.findByRole("button", { name: /v1 · 已要求返工/ }));
+    const retry = await screen.findByRole("button", { name: "重试" });
+    await waitFor(() => expect(retry).toHaveFocus());
+
+    const focusWhenOpen = captureFocusWhenGone(
+      () => screen.queryByRole("dialog", { name: "新建项目资料简报" }) !== null,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "新建简报" }));
+    const dialog = await screen.findByRole("dialog", { name: "新建项目资料简报" });
+    expect(dialog).toHaveFocus();
+    expect(focusWhenOpen.read()).toBe(dialog);
+    expect(focusWhenOpen.read()).not.toBe(retry);
+    expect(focusWhenOpen.read()).not.toBe(document.body);
+  });
+
   it("keeps keyboard focus on history retry until the reread finishes", async () => {
     let release: ((row: WorkDelivery) => void) | undefined;
     vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {

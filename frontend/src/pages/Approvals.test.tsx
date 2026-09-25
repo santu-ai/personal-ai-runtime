@@ -133,6 +133,9 @@ describe("ApprovalsPage", () => {
 
   it("calls addError when load fails", async () => {
     mockList.mockRejectedValue(new MockApiError("加载失败", 500));
+    const focusWhenShown = captureFocusWhenGone(
+      () => screen.queryByRole("button", { name: "重试" }) !== null,
+    );
     renderWithRouter(<ApprovalsPage />);
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("加载失败");
@@ -142,7 +145,9 @@ describe("ApprovalsPage", () => {
     expect(screen.queryByText("所有高风险操作已处理完毕")).not.toBeInTheDocument();
     const retry = within(alert).getByRole("button", { name: "重试" });
     expect(retry).toHaveClass("focus-visible:ring-focus-ring");
-    await waitFor(() => expect(retry).toHaveFocus());
+    expect(retry).toHaveFocus();
+    expect(focusWhenShown.read()).toBe(retry);
+    expect(focusWhenShown.read()).not.toBe(document.body);
   });
 
   it("uses the page fallback when the load error has no message", async () => {
