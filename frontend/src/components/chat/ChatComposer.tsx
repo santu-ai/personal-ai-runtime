@@ -42,19 +42,21 @@ export default function ChatComposer({
     [value, onChange, inputRef],
   );
 
-  const cancelling = Boolean(onCancel);
-  const actionDisabled = cancelling ? false : Boolean(disabled) || !value.trim();
+  // 生成中不禁用输入框，否则焦点会卸到页面空白处。待确认仍禁用。
+  const generating = Boolean(onCancel);
+  const fieldDisabled = Boolean(disabled) && !generating;
+  const actionDisabled = generating ? false : Boolean(disabled) || !value.trim();
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      if (!cancelling && !disabled) onSend();
+      if (!generating && !disabled) onSend();
     }
   };
 
   return (
     <div className="flex items-end gap-2 rounded-xl border border-border-subtle bg-surface-raised p-2.5 shadow-sm transition-colors focus-within:border-focus-ring focus-within:ring-1 focus-within:ring-focus-ring/30">
-      <VoiceInput onTranscript={handleVoiceTranscript} disabled={disabled} />
+      <VoiceInput onTranscript={handleVoiceTranscript} disabled={fieldDisabled} />
       <textarea
         ref={inputRef}
         data-chat-composer=""
@@ -64,18 +66,20 @@ export default function ChatComposer({
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         rows={1}
-        disabled={disabled}
+        disabled={fieldDisabled}
+        aria-busy={generating || undefined}
         className="min-h-[28px] max-h-[200px] flex-1 resize-none border-none bg-transparent py-1.5 text-sm text-fg-primary outline-none placeholder:text-fg-tertiary"
       />
       <Button
         type="button"
         size="sm"
-        variant={cancelling ? "danger" : "primary"}
-        onClick={cancelling ? onCancel : onSend}
+        variant={generating ? "danger" : "primary"}
+        onClick={generating ? onCancel : onSend}
         disabled={actionDisabled}
-        className="shrink-0"
+        aria-busy={generating || undefined}
+        className={`shrink-0${generating ? " opacity-50" : ""}`}
       >
-        {cancelling ? (
+        {generating ? (
           <>
             <Square size={12} fill="currentColor" />
             取消生成

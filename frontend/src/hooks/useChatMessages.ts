@@ -197,6 +197,7 @@ export function useChatMessages(
   onLoadErrorRef.current = onLoadError;
   const loadAbortRef = useRef<AbortController | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
+  const sendingRef = useRef(false);
   const loadGenRef = useRef(0);
   const conversationIdRef = useRef(conversationId);
   conversationIdRef.current = conversationId;
@@ -271,7 +272,8 @@ export function useChatMessages(
       onError?: (msg: string) => void,
     ) => {
       const trimmed = text.trim();
-      if (!trimmed || isLoading) return false;
+      if (!trimmed || isLoading || sendingRef.current) return false;
+      sendingRef.current = true;
 
       loadAbortRef.current?.abort();
       loadGenRef.current += 1;
@@ -443,6 +445,8 @@ export function useChatMessages(
           ),
         );
         return false;
+      } finally {
+        sendingRef.current = false;
       }
     },
     [isLoading, conversationId, conversations, messages, queryClient],

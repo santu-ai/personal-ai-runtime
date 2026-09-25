@@ -29,15 +29,24 @@ describe("ChatComposer", () => {
     renderComposer({ value: "你好", disabled: true });
     const thinking = screen.getByRole("button", { name: /思考中/ });
     expect(thinking).toBeDisabled();
+    expect(screen.getByPlaceholderText(/输入消息/)).toBeDisabled();
     expect(screen.queryByRole("button", { name: "取消生成" })).not.toBeInTheDocument();
   });
 
-  it("shows an enabled cancel button while generating", () => {
+  it("keeps the field enabled while generating and does not send again", () => {
     const onCancel = vi.fn();
     const onSend = vi.fn();
-    renderComposer({ value: "", disabled: true, onSend, onCancel });
+    renderComposer({ value: "下一句", disabled: true, onSend, onCancel });
+    const field = screen.getByPlaceholderText(/输入消息/);
     const cancel = screen.getByRole("button", { name: "取消生成" });
+    expect(field).toBeEnabled();
+    expect(field).toHaveAttribute("aria-busy", "true");
     expect(cancel).toBeEnabled();
+    expect(cancel).toHaveAttribute("aria-busy", "true");
+    field.focus();
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(onSend).not.toHaveBeenCalled();
+    expect(field).toHaveFocus();
     fireEvent.click(cancel);
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onSend).not.toHaveBeenCalled();
