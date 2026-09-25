@@ -77,9 +77,9 @@ describe("TimelinePage", () => {
       icons: {},
     });
     renderWithRouter(<TimelinePage />);
-    await waitFor(() => {
-      expect(screen.getByText("还没有任何事件")).toBeInTheDocument();
-    });
+    const empty = await screen.findByTestId("timeline-empty");
+    expect(empty).toHaveTextContent("还没有任何事件");
+    expect(empty).toHaveClass("focus-visible:ring-focus-ring");
   });
 
   it("loads more on button click", async () => {
@@ -417,6 +417,7 @@ describe("TimelinePage", () => {
       });
     });
     const end = await screen.findByText("已经是最早的记录");
+    expect(end).toHaveClass("focus-visible:ring-focus-ring");
     await waitFor(() => expect(end).toHaveFocus());
     expect(focusWhenGone.read()).toBe(end);
   });
@@ -561,6 +562,7 @@ describe("TimelinePage", () => {
       });
     });
     const list = await screen.findByTestId("timeline-events");
+    expect(list).toHaveClass("focus-visible:ring-focus-ring");
     await waitFor(() => expect(list).toHaveFocus());
     expect(focusWhenGone.read()).toBe(list);
   });
@@ -592,6 +594,7 @@ describe("TimelinePage", () => {
       });
     });
     const empty = await screen.findByTestId("timeline-empty");
+    expect(empty).toHaveClass("focus-visible:ring-focus-ring");
     await waitFor(() => expect(empty).toHaveFocus());
     expect(focusWhenGone.read()).toBe(empty);
   });
