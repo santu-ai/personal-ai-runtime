@@ -113,6 +113,11 @@ function focusNewGoalButton(): boolean {
   return document.activeElement === button;
 }
 
+function focusOnNewGoal(): boolean {
+  const active = document.activeElement;
+  return active instanceof HTMLElement && active.getAttribute("data-goal-anchor") === "new";
+}
+
 type CreateHandoff =
   { kind: "failed" } | { kind: "draft" } | { kind: "created"; id: string; updatedAt: number };
 
@@ -145,6 +150,8 @@ export default function GoalsPage() {
   const titleRef = useRef("");
   const showCreateRef = useRef(false);
   const createHandoff = useRef<CreateHandoff | null>(null);
+  /** 新的一行还没出现时，焦点先放在「+ 新建」上。用户再移走就不再抢。 */
+  const createParkedOnNew = useRef(false);
   const listUpdatedAtRef = useRef(0);
   const listStamp = Math.max(listUpdatedAt, listErrorUpdatedAt);
   listUpdatedAtRef.current = listStamp;
@@ -255,24 +262,34 @@ export default function GoalsPage() {
     }
   };
 
-  useEffect(() => {
+  // 收起表单会卸下「创建」，新的一行往往还要等列表。放到绘制前：
+  // 这一轮先落到「+ 新建」，不把焦点留在页面空白。空草稿会禁用「创建」，同样这一轮回到名称框。
+  useLayoutEffect(() => {
     if (loading) return;
     const pending = createHandoff.current;
     if (!pending) return;
 
     if (pending.kind === "failed") {
       createHandoff.current = null;
+      createParkedOnNew.current = false;
       if (focusLost()) focusGoalTitle();
       return;
     }
 
-    if (!createFocusIdle()) {
-      createHandoff.current = null;
+    if (pending.kind === "draft") {
+      createParkedOnNew.current = false;
+      if (!createFocusIdle()) {
+        createHandoff.current = null;
+        return;
+      }
+      if (focusGoalTitle()) createHandoff.current = null;
       return;
     }
 
-    if (pending.kind === "draft") {
-      if (focusGoalTitle()) createHandoff.current = null;
+    const idle = createFocusIdle() || (createParkedOnNew.current && focusOnNewGoal());
+    if (!idle) {
+      createHandoff.current = null;
+      createParkedOnNew.current = false;
       return;
     }
 
@@ -281,11 +298,20 @@ export default function GoalsPage() {
       : null;
     if (link) {
       link.focus();
-      if (document.activeElement === link) createHandoff.current = null;
+      if (document.activeElement === link) {
+        createHandoff.current = null;
+        createParkedOnNew.current = false;
+      }
       return;
     }
-    if (listStamp === pending.updatedAt) return;
-    if (focusNewGoalButton()) createHandoff.current = null;
+    if (listStamp === pending.updatedAt) {
+      if (focusNewGoalButton()) createParkedOnNew.current = true;
+      return;
+    }
+    if (focusNewGoalButton()) {
+      createHandoff.current = null;
+      createParkedOnNew.current = false;
+    }
   }, [loading, goals, listStamp, showCreate]);
 
   const handleUpdateStatus = async (goalId: string, status: string): Promise<boolean> => {
@@ -382,7 +408,7 @@ export default function GoalsPage() {
                 size="sm"
                 data-goal-anchor="create"
                 onClick={handleCreateGoal}
-                disabled={!newTitle.trim()}
+                disabled={!newTitle.trim() && !loading}
                 aria-busy={loading || undefined}
                 className={loading ? "opacity-50" : ""}
               >
