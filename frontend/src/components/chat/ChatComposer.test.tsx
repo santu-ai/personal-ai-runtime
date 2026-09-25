@@ -33,6 +33,24 @@ describe("ChatComposer", () => {
     expect(screen.queryByRole("button", { name: "取消生成" })).not.toBeInTheDocument();
   });
 
+  it("keeps the field enabled while a send is still in flight", () => {
+    const onSend = vi.fn();
+    renderComposer({ value: "首页这句", pending: true, onSend });
+    const field = screen.getByPlaceholderText(/输入消息/);
+    const send = screen.getByRole("button", { name: "发送" });
+    expect(field).toBeEnabled();
+    expect(field).toHaveAttribute("aria-busy", "true");
+    expect(send).toBeEnabled();
+    expect(send).toHaveAttribute("aria-busy", "true");
+    expect(send).toHaveAttribute("data-chat-send");
+    field.focus();
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(onSend).not.toHaveBeenCalled();
+    expect(field).toHaveFocus();
+    fireEvent.click(send);
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
   it("keeps the field enabled while generating and does not send again", () => {
     const onCancel = vi.fn();
     const onSend = vi.fn();

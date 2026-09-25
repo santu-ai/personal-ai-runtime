@@ -9,6 +9,8 @@ interface ChatComposerProps {
   onChange: (value: string) => void;
   onSend: () => void;
   onCancel?: () => void;
+  /** 这次发送还没回来。输入框不禁用，避免焦点卸到页面空白处。 */
+  pending?: boolean;
   disabled?: boolean;
   placeholder?: string;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -19,6 +21,7 @@ export default function ChatComposer({
   onChange,
   onSend,
   onCancel,
+  pending = false,
   disabled,
   placeholder = "输入消息... (Enter 发送, Shift+Enter 换行)",
   inputRef,
@@ -42,15 +45,16 @@ export default function ChatComposer({
     [value, onChange, inputRef],
   );
 
-  // 生成中不禁用输入框，否则焦点会卸到页面空白处。待确认仍禁用。
+  // 生成中、或这次发送还没回来时，不禁用输入框，否则焦点会卸到页面空白处。待确认仍禁用。
   const generating = Boolean(onCancel);
-  const fieldDisabled = Boolean(disabled) && !generating;
-  const actionDisabled = generating ? false : Boolean(disabled) || !value.trim();
+  const holding = generating || pending;
+  const fieldDisabled = Boolean(disabled) && !holding;
+  const actionDisabled = holding ? false : Boolean(disabled) || !value.trim();
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      if (!generating && !disabled) onSend();
+      if (!generating && !disabled && !pending) onSend();
     }
   };
 
@@ -67,17 +71,25 @@ export default function ChatComposer({
         placeholder={placeholder}
         rows={1}
         disabled={fieldDisabled}
-        aria-busy={generating || undefined}
+        aria-busy={holding || undefined}
         className="min-h-[28px] max-h-[200px] flex-1 resize-none border-none bg-transparent py-1.5 text-sm text-fg-primary outline-none placeholder:text-fg-tertiary"
       />
       <Button
         type="button"
         size="sm"
         variant={generating ? "danger" : "primary"}
-        onClick={generating ? onCancel : onSend}
+        onClick={() => {
+          if (generating) {
+            onCancel?.();
+            return;
+          }
+          if (pending) return;
+          onSend();
+        }}
         disabled={actionDisabled}
-        aria-busy={generating || undefined}
-        className={`shrink-0${generating ? " opacity-50" : ""}`}
+        data-chat-send=""
+        aria-busy={holding || undefined}
+        className={`shrink-0${holding ? " opacity-50" : ""}`}
       >
         {generating ? (
           <>

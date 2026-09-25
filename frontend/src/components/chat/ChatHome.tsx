@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Brain, Mail, ShieldCheck, Sparkles, Target } from "lucide-react";
 import { useChatStore } from "../../stores/chatStore";
@@ -35,6 +35,31 @@ type InsightMemory = { content: string; category?: string };
 
 const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
 
+type HomeStart = { kind: "send" } | { kind: "nudge"; title: string };
+
+/** 焦点在页面空白处，才把焦点安回去。已经在别的控件上就不再抢。 */
+function focusIsBlank(): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  return false;
+}
+
+function focusOnSendButton(): boolean {
+  const active = document.activeElement;
+  return active instanceof HTMLElement && active.hasAttribute("data-chat-send");
+}
+
+function focusNudge(title: string): void {
+  const escaped =
+    typeof CSS !== "undefined" && typeof CSS.escape === "function"
+      ? CSS.escape(title)
+      : title.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const node = document.querySelector<HTMLButtonElement>(`button[data-home-nudge="${escaped}"]`);
+  if (!node || node.disabled) return;
+  node.focus();
+}
+
 export default function ChatHome() {
   const conversations = useChatStore((s) => s.conversations);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
@@ -53,7 +78,10 @@ export default function ChatHome() {
   const [input, setInput] = useState(() => readComposerDraft(COMPOSER_DRAFT_HOME));
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const mountedRef = useRef(true);
-  const sendingRef = useRef(false);
+  const startLock = useRef(false);
+  const [starting, setStarting] = useState<HomeStart | null>(null);
+  const failFocus = useRef<HomeStart | null>(null);
+  const clearFocus = useRef(false);
   const known = useRef<{
     memories: InsightMemory[] | null;
     goals: WorkItem[] | null;
@@ -121,6 +149,25 @@ export default function ChatHome() {
       mountedRef.current = false;
     };
   }, []);
+
+  useLayoutEffect(() => {
+    if (starting !== null) return;
+    const failed = failFocus.current;
+    const placeInput = clearFocus.current;
+    failFocus.current = null;
+    clearFocus.current = false;
+    if (failed?.kind === "nudge") {
+      if (focusIsBlank()) focusNudge(failed.title);
+      return;
+    }
+    if (failed?.kind === "send") {
+      if (focusIsBlank()) inputRef.current?.focus();
+      return;
+    }
+    if (placeInput && (focusIsBlank() || focusOnSendButton())) {
+      inputRef.current?.focus();
+    }
+  }, [starting]);
 
   useEffect(() => {
     if (approvalsQuery.error && pendingApprovals === undefined) {
@@ -252,9 +299,34 @@ export default function ChatHome() {
     });
   }
 
+  const beginStart = (action: HomeStart) => {
+    startLock.current = true;
+    failFocus.current = null;
+    clearFocus.current = false;
+    setStarting(action);
+  };
+
+  const finishStart = (ok: boolean, action: HomeStart) => {
+    if (!ok) failFocus.current = action;
+    startLock.current = false;
+    if (mountedRef.current) setStarting(null);
+  };
+
   const handleNudge = (nudge: ProactiveNudge) => {
-    if (!nudge.prompt) return;
-    quickChat({ prompt: nudge.prompt, title: nudge.title });
+    const prompt = nudge.prompt;
+    if (!prompt || startLock.current) return;
+    const action: HomeStart = { kind: "nudge", title: nudge.title };
+    beginStart(action);
+    void (async () => {
+      let ok = false;
+      try {
+        ok = (await quickChat({ prompt, title: nudge.title })) === true;
+      } catch {
+        ok = false;
+      } finally {
+        finishStart(ok, action);
+      }
+    })();
   };
 
   const updateInput = (value: string) => {
@@ -263,18 +335,25 @@ export default function ChatHome() {
   };
 
   const handleSend = () => {
-    const text = input.trim();
-    if (!text || sendingRef.current) return;
-    sendingRef.current = true;
+    const raw = input;
+    const text = raw.trim();
+    if (!text || startLock.current) return;
+    const action: HomeStart = { kind: "send" };
+    beginStart(action);
     const title = text.length > 25 ? `讨论「${text.slice(0, 25)}…」` : `讨论「${text}」`;
     void (async () => {
+      let ok = false;
       try {
-        const ok = await quickChat({ prompt: text, title });
+        ok = (await quickChat({ prompt: text, title })) === true;
         if (!ok) return;
+        if (readComposerDraft(COMPOSER_DRAFT_HOME) !== raw) return;
         writeComposerDraft(COMPOSER_DRAFT_HOME, "");
+        clearFocus.current = true;
         if (mountedRef.current) setInput("");
+      } catch {
+        ok = false;
       } finally {
-        sendingRef.current = false;
+        finishStart(ok, action);
       }
     })();
   };
@@ -353,8 +432,18 @@ export default function ChatHome() {
                     ) : (
                       <button
                         type="button"
+                        data-home-nudge={nudge.title}
+                        aria-busy={
+                          starting?.kind === "nudge" && starting.title === nudge.title
+                            ? true
+                            : undefined
+                        }
                         onClick={() => handleNudge(nudge)}
-                        className={actionClass}
+                        className={`${actionClass}${
+                          starting?.kind === "nudge" && starting.title === nudge.title
+                            ? " opacity-50"
+                            : ""
+                        }`}
                       >
                         {nudge.action}
                       </button>
@@ -404,6 +493,7 @@ export default function ChatHome() {
             value={input}
             onChange={updateInput}
             onSend={handleSend}
+            pending={starting?.kind === "send"}
             inputRef={inputRef}
           />
         </div>
