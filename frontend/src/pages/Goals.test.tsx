@@ -1010,6 +1010,71 @@ describe("GoalsPage", () => {
     expect(screen.getByRole("button", { name: "AI 拆解" })).toHaveFocus();
   });
 
+  it("keeps listed suggestions while another decompose is in flight and after it fails", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    vi.mocked(getGoal).mockResolvedValue(sampleGoal);
+    vi.mocked(decomposeGoal).mockResolvedValueOnce({ steps: ["先写测试"] });
+    renderGoals("/goals/g1");
+    fireEvent.click(await screen.findByRole("button", { name: "AI 拆解" }));
+    expect(await screen.findByText("先写测试")).toBeInTheDocument();
+
+    let rejectDecompose: (err: unknown) => void = () => {};
+    vi.mocked(decomposeGoal).mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectDecompose = reject;
+        }),
+    );
+    const again = screen.getByRole("button", { name: "AI 拆解" });
+    again.focus();
+    fireEvent.click(again);
+    fireEvent.click(again);
+    const busy = await screen.findByRole("button", { name: "AI 拆解中..." });
+    expect(busy).toHaveAttribute("aria-busy", "true");
+    expect(busy).not.toBeDisabled();
+    expect(busy).toHaveFocus();
+    expect(screen.getByText("先写测试")).toBeInTheDocument();
+    expect(decomposeGoal).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      rejectDecompose(new ApiError("拆解失败", 500));
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "AI 拆解" })).toHaveFocus());
+    expect(screen.getByText("先写测试")).toBeInTheDocument();
+    const row = screen.getByText("先写测试").parentElement as HTMLElement;
+    expect(within(row).getByRole("button", { name: "添加" })).toBeEnabled();
+    expect(addError).toHaveBeenCalledWith("拆解失败", "目标");
+  });
+
+  it("replaces listed suggestions only after the next decompose succeeds", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    vi.mocked(getGoal).mockResolvedValue(sampleGoal);
+    vi.mocked(decomposeGoal).mockResolvedValueOnce({ steps: ["先写测试"] });
+    renderGoals("/goals/g1");
+    fireEvent.click(await screen.findByRole("button", { name: "AI 拆解" }));
+    expect(await screen.findByText("先写测试")).toBeInTheDocument();
+
+    let release: (value: { steps: string[] }) => void = () => {};
+    vi.mocked(decomposeGoal).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const again = screen.getByRole("button", { name: "AI 拆解" });
+    again.focus();
+    fireEvent.click(again);
+    expect(await screen.findByRole("button", { name: "AI 拆解中..." })).toBeInTheDocument();
+    expect(screen.getByText("先写测试")).toBeInTheDocument();
+
+    await act(async () => {
+      release({ steps: ["改成写文档"] });
+    });
+    expect(await screen.findByText("改成写文档")).toBeInTheDocument();
+    expect(screen.queryByText("先写测试")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "AI 拆解" })).toHaveFocus();
+  });
+
   it("does not pull focus back to AI 拆解 when it already moved", async () => {
     vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
     vi.mocked(getGoal).mockResolvedValue(sampleGoal);

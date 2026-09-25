@@ -211,7 +211,7 @@ export default function GoalDetailPanel({
     const goalId = goal.id;
     decomposeLock.current = true;
     setDecomposing(true);
-    setSuggestedSteps([]);
+    // 再拆一次时，已经列出的建议先留着。失败也不清掉。成功才换成这次的结果。
     try {
       const result = await decomposeGoal(goalId);
       if (goalIdRef.current !== goalId) return;
