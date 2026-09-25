@@ -1248,10 +1248,20 @@ describe("MemoriesPage", () => {
     fireEvent.click(other);
     expect(bulkClaimAction).toHaveBeenCalledTimes(1);
     expect(bulkClaimAction).toHaveBeenCalledWith("ratify", ["p1"]);
+
+    let focusWhenDisabled: Element | null = null;
+    const observer = new MutationObserver(() => {
+      if (!bulk.hasAttribute("disabled")) return;
+      focusWhenDisabled ??= document.activeElement;
+    });
+    observer.observe(bulk, { attributes: true, attributeFilter: ["disabled"] });
     release({ status: "ok", action: "ratify", ok: 1, skipped: [] });
-    await waitFor(() => expect(screen.getByRole("tab", { name: "待确认" })).toHaveFocus());
+    const tab = screen.getByRole("tab", { name: "待确认" });
+    await waitFor(() => expect(tab).toHaveFocus());
+    expect(focusWhenDisabled).toBe(tab);
     expect(bulk).not.toHaveAttribute("aria-busy");
     expect(bulk).toBeDisabled();
+    observer.disconnect();
   });
 
   it("keeps bulk confirm focus when it fails and does not clear the selection", async () => {
@@ -1345,12 +1355,22 @@ describe("MemoriesPage", () => {
     fireEvent.click(bulk);
     await waitFor(() => expect(bulk).toHaveAttribute("aria-busy", "true"));
     expect(bulk).toHaveFocus();
+
+    let focusWhenDisabled: Element | null = null;
+    const observer = new MutationObserver(() => {
+      if (!bulk.hasAttribute("disabled")) return;
+      focusWhenDisabled ??= document.activeElement;
+    });
+    observer.observe(bulk, { attributes: true, attributeFilter: ["disabled"] });
     release({ status: "ok", action: "ratify", ok: 1, skipped: [] });
     const next = within(screen.getByText("第二条").closest("li")!).getByRole("button", {
       name: "确认",
     });
     await waitFor(() => expect(next).toHaveFocus());
+    expect(focusWhenDisabled).toBe(next);
+    expect(bulk).toBeDisabled();
     expect(screen.getByRole("tab", { name: "待确认" })).not.toHaveFocus();
+    observer.disconnect();
   });
 
   it("does not pull bulk confirm focus back when it already moved", async () => {
