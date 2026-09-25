@@ -15,6 +15,10 @@ import ErrorBoundary from "./components/ui/ErrorBoundary";
 import NoticeBanner from "./components/ui/NoticeBanner";
 import ToastCard from "./components/ui/ToastCard";
 import QuickCaptureDialog from "./components/quickcapture/QuickCaptureDialog";
+import {
+  HomeConversationGateProvider,
+  useHomeConversationGate,
+} from "./components/chat/homeConversationGate";
 import { LiveNotificationContext, useNotifications } from "./hooks/useNotifications";
 import { useWsInvalidationBridge } from "./hooks/useWsInvalidationBridge";
 import { useHeldQueryError } from "./components/ui/LoadErrorNotice";
@@ -32,9 +36,17 @@ function focusNewChat(): void {
 }
 
 export default function Layout() {
+  return (
+    <HomeConversationGateProvider>
+      <LayoutFrame />
+    </HomeConversationGateProvider>
+  );
+}
+
+function LayoutFrame() {
   const { conversations, activeConversationId, setActiveConversation } = useChatStore();
   const quickChat = useQuickChat();
-  const openingChatRef = useRef(false);
+  const conversationGate = useHomeConversationGate();
   const [openingChat, setOpeningChat] = useState(false);
   const chatFailFocus = useRef(false);
   const { remove: removeConversationCached } = useConversationCacheActions();
@@ -79,15 +91,19 @@ export default function Layout() {
   }, [location.pathname, activeConversationId, setActiveConversation]);
 
   const handleNewChat = () => {
-    if (openingChatRef.current) return;
-    openingChatRef.current = true;
+    // 和首页「发送」「开始对话」共用一把锁。那边还没创建回来时，这里不再开一份。
+    if (!conversationGate.tryHold()) return;
     chatFailFocus.current = false;
     setOpeningChat(true);
     void (async () => {
-      const ok = (await quickChat()) === true;
-      openingChatRef.current = false;
-      if (!ok) chatFailFocus.current = true;
-      setOpeningChat(false);
+      let ok = false;
+      try {
+        ok = (await quickChat()) === true;
+      } finally {
+        conversationGate.release();
+        if (!ok) chatFailFocus.current = true;
+        setOpeningChat(false);
+      }
     })();
   };
 

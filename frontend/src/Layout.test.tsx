@@ -1,8 +1,9 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import Layout from "./Layout";
+import ChatHome from "./components/chat/ChatHome";
 import { useChatStore } from "./stores/chatStore";
 import { useErrorStore } from "./stores/errorStore";
 
@@ -243,8 +244,9 @@ describe("Layout new chat", () => {
         if (url.includes("/notifications")) return json([]);
         if (url.includes("/system/health")) return json({ auth_required: false });
         if (url.includes("/approvals")) return json([]);
-        if (url.includes("/memory")) return json({ count: 0 });
+        if (url.includes("/memory")) return json({ count: 0, memories: [] });
         if (url.includes("/inbox")) return json([]);
+        if (url.includes("/work-items")) return json([]);
         return json({});
       }),
     );
@@ -327,5 +329,101 @@ describe("Layout new chat", () => {
     await waitFor(() => expect(button).not.toHaveAttribute("aria-busy"));
     expect(nav).toHaveFocus();
     expect(posts).toBe(2);
+  });
+
+  function renderHome() {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/"]}>
+          <LocationProbe />
+          <Routes>
+            <Route element={<Layout />}>
+              <Route index element={<ChatHome />} />
+              <Route path="/chat/:conversationId" element={<span data-testid="opened-chat" />} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  it("does not open another chat from the sidebar while home 发送 is in flight", async () => {
+    renderHome();
+    const box = await screen.findByPlaceholderText(/输入消息/);
+    fireEvent.change(box, { target: { value: "首页这句" } });
+    const send = screen.getByRole("button", { name: "发送" });
+    const newer = screen.getByRole("button", { name: "新对话" });
+    send.focus();
+    fireEvent.click(send);
+    await waitFor(() => expect(send).toHaveAttribute("aria-busy", "true"));
+    expect(send).toBeEnabled();
+    expect(send).toHaveFocus();
+    fireEvent.click(newer);
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(posts).toBe(1);
+    expect(newer).toBeEnabled();
+    expect(newer).not.toHaveAttribute("aria-busy");
+
+    const start = await screen.findByRole("button", { name: "开始对话" });
+    fireEvent.click(start);
+    expect(posts).toBe(1);
+    expect(start).not.toHaveAttribute("aria-busy");
+
+    await act(async () => {
+      releasePost(json({ detail: "创建对话失败" }, 500));
+    });
+    await waitFor(() => expect(send).not.toHaveAttribute("aria-busy"));
+    expect(posts).toBe(1);
+    expect(box).toHaveValue("首页这句");
+
+    newer.focus();
+    fireEvent.click(newer);
+    await waitFor(() => expect(newer).toHaveAttribute("aria-busy", "true"));
+    expect(posts).toBe(2);
+    expect(send).not.toHaveAttribute("aria-busy");
+    await act(async () => {
+      releasePost(json({ detail: "创建对话失败" }, 500));
+    });
+    await waitFor(() => expect(newer).not.toHaveAttribute("aria-busy"));
+  });
+
+  it("does not send from home while 新对话 is in flight", async () => {
+    renderHome();
+    const newer = await screen.findByRole("button", { name: "新对话" });
+    const box = await screen.findByPlaceholderText(/输入消息/);
+    newer.focus();
+    fireEvent.click(newer);
+    await waitFor(() => expect(newer).toHaveAttribute("aria-busy", "true"));
+    fireEvent.change(box, { target: { value: "首页这句" } });
+    const send = screen.getByRole("button", { name: "发送" });
+    send.focus();
+    fireEvent.click(send);
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(posts).toBe(1);
+    expect(send).toBeEnabled();
+    expect(send).not.toHaveAttribute("aria-busy");
+    expect(box).toHaveValue("首页这句");
+    expect(send).toHaveFocus();
+
+    await act(async () => {
+      releasePost(json({ detail: "创建对话失败" }, 500));
+    });
+    await waitFor(() => expect(newer).not.toHaveAttribute("aria-busy"));
+    expect(send).toHaveFocus();
+    expect(box).toHaveValue("首页这句");
+
+    send.focus();
+    fireEvent.click(send);
+    await waitFor(() => expect(send).toHaveAttribute("aria-busy", "true"));
+    expect(posts).toBe(2);
+    expect(newer).not.toHaveAttribute("aria-busy");
+    await act(async () => {
+      releasePost(json({ detail: "创建对话失败" }, 500));
+    });
+    await waitFor(() => expect(send).not.toHaveAttribute("aria-busy"));
+    expect(box).toHaveValue("首页这句");
   });
 });
