@@ -530,9 +530,10 @@ function TriageCard({
         <button
           type="button"
           onClick={onView}
-          disabled={loadingDetail}
           aria-busy={loadingDetail || undefined}
-          className="inline-flex items-center gap-1 text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded disabled:opacity-50"
+          className={`inline-flex items-center gap-1 text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded${
+            loadingDetail ? " opacity-50" : ""
+          }`}
         >
           {loadingDetail ? (
             <span aria-hidden="true" className="inline-flex">
