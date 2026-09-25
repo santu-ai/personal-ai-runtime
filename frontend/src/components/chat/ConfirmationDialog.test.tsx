@@ -85,6 +85,33 @@ describe("ConfirmationDialog", () => {
     expect(onDeny).not.toHaveBeenCalled();
   });
 
+  it("does not send an ask_user answer while an IME composition is confirming", () => {
+    const onConfirm = vi.fn();
+    renderWithRouter(
+      <ConfirmationDialog
+        toolCall={{
+          index: 0,
+          id: "tc-ask",
+          function_name: "ask_user",
+          arguments: JSON.stringify({ question: "简报要覆盖最近几天？" }),
+        }}
+        onConfirm={onConfirm}
+        onDeny={vi.fn()}
+      />,
+    );
+
+    const answer = screen.getByLabelText("你的回答");
+    fireEvent.change(answer, { target: { value: "最近三天" } });
+    fireEvent.keyDown(answer, { key: "Enter", metaKey: true, isComposing: true });
+    fireEvent.keyDown(answer, { key: "Enter", ctrlKey: true, isComposing: true });
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(answer).toHaveValue("最近三天");
+
+    fireEvent.keyDown(answer, { key: "Enter", ctrlKey: true });
+    expect(onConfirm).toHaveBeenCalledOnce();
+    expect(onConfirm).toHaveBeenCalledWith("最近三天");
+  });
+
   it("keeps the ask_user answer while resolve is in flight", () => {
     const onConfirm = vi.fn();
     const onDeny = vi.fn();

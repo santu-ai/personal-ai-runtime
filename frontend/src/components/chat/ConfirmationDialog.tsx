@@ -166,10 +166,11 @@ export default function ConfirmationDialog({
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
                 if (busy) return;
-                if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && answer) {
-                  event.preventDefault();
-                  press(() => onConfirm(answer));
-                }
+                // 和快速捕获一样：组字时的 Ctrl/Cmd+Enter 不把还没上屏的字发出去。
+                if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey) || !answer) return;
+                event.preventDefault();
+                if (event.nativeEvent.isComposing) return;
+                press(() => onConfirm(answer));
               }}
             />
             <div className="flex gap-2">
