@@ -1101,7 +1101,7 @@ export default function MemoriesPage() {
                 data-memory-anchor="capture"
                 onChange={(e) => setNewContent(e.target.value)}
                 placeholder="告诉我一件关于你的事，我会记住..."
-                className="flex-1 bg-surface-raised border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary placeholder:text-fg-tertiary outline-none focus:border-focus-ring"
+                className="flex-1 bg-surface-raised border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary placeholder:text-fg-tertiary focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 onKeyDown={(e) => {
                   if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
                   e.preventDefault();
@@ -1233,7 +1233,7 @@ export default function MemoriesPage() {
                 setRejectReason(e.target.value);
               }}
               maxLength={200}
-              className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary outline-none focus:border-focus-ring disabled:opacity-50"
+              className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
               placeholder="例如：记错了、过时了"
             />
             <div className="flex gap-2 justify-end">
@@ -1292,7 +1292,7 @@ export default function MemoriesPage() {
                     editLive.current = { ...editLive.current, content: e.target.value };
                     setEditContent(e.target.value);
                   }}
-                  className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary outline-none focus:border-focus-ring disabled:opacity-50"
+                  className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
                   placeholder="记忆内容"
                 />
               </div>
@@ -1305,7 +1305,7 @@ export default function MemoriesPage() {
                     editLive.current = { ...editLive.current, category: e.target.value };
                     setEditCategory(e.target.value);
                   }}
-                  className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary outline-none focus:border-focus-ring disabled:opacity-50"
+                  className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
                   placeholder="如 fact, preference, habit"
                 />
               </div>
