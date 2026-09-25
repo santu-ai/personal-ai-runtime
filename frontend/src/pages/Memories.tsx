@@ -463,7 +463,8 @@ export default function MemoriesPage() {
     }
   };
 
-  useEffect(() => {
+  // 清掉内容会禁用「记住」。放到绘制前，观察 DOM 的那一轮才不会停在已经禁用的按钮上。
+  useLayoutEffect(() => {
     if (creating) return;
     const pending = captureHandoff.current;
     if (!pending) return;

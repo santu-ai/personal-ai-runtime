@@ -487,10 +487,19 @@ describe("MemoriesPage", () => {
     expect(pending).toBeEnabled();
     expect(pending).toHaveAttribute("aria-busy", "true");
 
+    let focusWhenDisabled: Element | null = null;
+    const observer = new MutationObserver(() => {
+      if (!remember.hasAttribute("disabled")) return;
+      focusWhenDisabled ??= document.activeElement;
+    });
+    observer.observe(remember, { attributes: true, attributeFilter: ["disabled"] });
     release({ id: "m-new", status: "ok" });
     await waitFor(() => expect(input).toHaveFocus());
+    expect(focusWhenDisabled).toBe(input);
+    expect(remember).toBeDisabled();
     expect(input).toHaveValue("");
     expect(createMemory).toHaveBeenCalledTimes(1);
+    observer.disconnect();
   });
 
   it("keeps text typed during remember and does not pull focus back", async () => {

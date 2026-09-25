@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ApiError } from "../../api/core";
 import {
   checkUrlMonitors,
@@ -131,7 +131,8 @@ export default function MonitorsPanel() {
     void refresh();
   }, [refresh]);
 
-  useEffect(() => {
+  // 清空草稿会禁用添加按钮。放到绘制前，观察 DOM 的那一轮才不会停在已经禁用的按钮上。
+  useLayoutEffect(() => {
     const pending = focusAfter.current;
     if (!pending || actionBusy) return;
     if (

@@ -407,10 +407,19 @@ describe("GoalsPage", () => {
     fireEvent.click(pending);
     expect(createGoalAction).toHaveBeenCalledTimes(1);
 
+    let focusWhenDisabled: Element | null = null;
+    const observer = new MutationObserver(() => {
+      if (!add.hasAttribute("disabled")) return;
+      focusWhenDisabled ??= document.activeElement;
+    });
+    observer.observe(add, { attributes: true, attributeFilter: ["disabled"] });
     release(sampleGoal);
     await waitFor(() => expect(input).toHaveValue(""));
-    await waitFor(() => expect(input).toHaveFocus());
+    expect(focusWhenDisabled).toBe(input);
+    expect(add).toBeDisabled();
+    expect(input).toHaveFocus();
     expect(input).toBeEnabled();
+    observer.disconnect();
   });
 
   it("keeps text typed during an action save and does not pull focus back", async () => {

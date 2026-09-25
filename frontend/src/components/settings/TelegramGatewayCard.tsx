@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   getTelegramGatewayStatus,
   pollTelegramGateway,
@@ -58,7 +58,8 @@ export default function TelegramGatewayCard() {
     };
   }, [attempt]);
 
-  useEffect(() => {
+  // 关掉开关后再结束轮询，会禁用「立即轮询」。放到绘制前，才不会停在已经禁用的按钮上。
+  useLayoutEffect(() => {
     if (busyAction || !focusAfterPoll.current) return;
     focusAfterPoll.current = false;
     const pollButton = document.querySelector<HTMLButtonElement>("[data-telegram-action='poll']");

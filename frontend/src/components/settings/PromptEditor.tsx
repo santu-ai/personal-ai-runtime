@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getPromptConfig, updatePromptConfig } from "../../api/client";
 import { useErrorStore } from "../../stores/errorStore";
@@ -72,7 +72,8 @@ export default function PromptEditor() {
     }
   }, [cfg, hydrated]);
 
-  useEffect(() => {
+  // 重置成功会禁用「重置」。放到绘制前，观察 DOM 的那一轮才不会停在已经禁用的按钮上。
+  useLayoutEffect(() => {
     const handoff = focusAfter.current;
     if (!handoff || busy) return;
     focusAfter.current = null;
