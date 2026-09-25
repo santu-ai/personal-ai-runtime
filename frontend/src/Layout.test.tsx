@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import Layout from "./Layout";
@@ -204,5 +204,128 @@ describe("Layout delete conversation", () => {
     expect(deleteCalls).toBe(2);
     expect(screen.queryByRole("link", { name: "周末计划" })).not.toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent("/");
+  });
+});
+
+describe("Layout new chat", () => {
+  function json(body: unknown, status = 200): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  let posts = 0;
+  let releasePost: (response: Response) => void = () => {};
+
+  beforeEach(() => {
+    posts = 0;
+    releasePost = () => {};
+    localStorage.setItem("onboarding_done", "1");
+    localStorage.removeItem("sidebar_collapsed");
+    useChatStore.setState({
+      conversations: [],
+      activeConversationId: null,
+      pendingPrompt: null,
+    });
+    useErrorStore.setState({ errors: [], backendUnavailable: false });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("/chat/conversations") && init?.method === "POST") {
+          posts += 1;
+          return new Promise<Response>((resolve) => {
+            releasePost = resolve;
+          });
+        }
+        if (url.includes("/chat/conversations")) return json([]);
+        if (url.includes("/notifications")) return json([]);
+        if (url.includes("/system/health")) return json({ auth_required: false });
+        if (url.includes("/approvals")) return json([]);
+        if (url.includes("/memory")) return json({ count: 0 });
+        if (url.includes("/inbox")) return json([]);
+        return json({});
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useErrorStore.setState({ errors: [], backendUnavailable: false });
+  });
+
+  function renderLayout() {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/"]}>
+          <LocationProbe />
+          <Layout />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  it("does not open a second chat while 新对话 is in flight", async () => {
+    renderLayout();
+    const button = await screen.findByRole("button", { name: "新对话" });
+    button.focus();
+    fireEvent.click(button);
+    fireEvent.click(button);
+    await waitFor(() => expect(button).toHaveAttribute("aria-busy", "true"));
+    expect(button).toBeEnabled();
+    expect(button).toHaveFocus();
+    expect(button).toHaveClass("opacity-50");
+    expect(posts).toBe(1);
+
+    const nav = screen.getByRole("link", { name: "概览" });
+    nav.focus();
+    await act(async () => {
+      releasePost(
+        json({
+          id: "c-new",
+          title: null,
+          summary: null,
+          created_at: "2026-09-25T00:00:00Z",
+          updated_at: "2026-09-25T00:00:00Z",
+        }),
+      );
+    });
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-busy"));
+    expect(nav).toHaveFocus();
+    expect(posts).toBe(1);
+    expect(screen.getByTestId("location")).toHaveTextContent("/chat/c-new");
+  });
+
+  it("returns focus to 新对话 when creating the chat fails, and does not steal it", async () => {
+    renderLayout();
+    const button = await screen.findByRole("button", { name: "新对话" });
+    button.focus();
+    fireEvent.click(button);
+    await waitFor(() => expect(button).toHaveAttribute("aria-busy", "true"));
+    (button as HTMLButtonElement).blur();
+    expect(document.activeElement).toBe(document.body);
+    await act(async () => {
+      releasePost(json({ detail: "创建对话失败" }, 500));
+    });
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-busy"));
+    expect(button).toHaveFocus();
+    expect(button).toBeEnabled();
+    expect(posts).toBe(1);
+    expect(await screen.findByText("创建对话失败")).toBeInTheDocument();
+
+    const nav = screen.getByRole("link", { name: "概览" });
+    fireEvent.click(button);
+    await waitFor(() => expect(button).toHaveAttribute("aria-busy", "true"));
+    nav.focus();
+    await act(async () => {
+      releasePost(json({ detail: "创建对话失败" }, 500));
+    });
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-busy"));
+    expect(nav).toHaveFocus();
+    expect(posts).toBe(2);
   });
 });

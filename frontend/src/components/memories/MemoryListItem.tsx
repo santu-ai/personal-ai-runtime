@@ -47,6 +47,8 @@ interface Props {
   onToggleSelect?: (m: MemoryRow) => void;
   /** 这一条正在确认或恢复。按钮不禁用，点到的那个标为忙碌。 */
   ratifying?: boolean;
+  /** 这一条正在打开对话。按钮不禁用，标为忙碌。 */
+  chatting?: boolean;
 }
 
 export default function MemoryListItem({
@@ -60,6 +62,7 @@ export default function MemoryListItem({
   selected,
   onToggleSelect,
   ratifying = false,
+  chatting = false,
 }: Props) {
   const confidence = confidenceLabel(m.confidence);
   const isProposed = m.origin === "claim" && m.claim_status === "proposed";
@@ -171,8 +174,13 @@ export default function MemoryListItem({
             编辑
           </button>
           <button
+            type="button"
+            data-memory-chat={m.id}
+            aria-busy={chatting || undefined}
             onClick={() => onContinueChat(m)}
-            className="text-xs text-fg-secondary hover:text-fg-primary opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+            className={`text-xs text-fg-secondary hover:text-fg-primary focus-visible:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded ${
+              chatting ? "opacity-50" : "opacity-0 group-hover:opacity-100"
+            }`}
           >
             继续聊
           </button>

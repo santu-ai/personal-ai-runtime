@@ -77,6 +77,8 @@ interface SidebarProps {
   activeConversationId: string | null;
   onSelectConversation: (id: string) => void;
   onNewChat: () => void;
+  /** 这次新对话还没创建回来。按钮不禁用，标为忙碌。 */
+  newChatBusy?: boolean;
   onDeleteChat: (id: string) => void;
   /** 列表还没读到时的失败原因。已有会话时忽略，列表留着。 */
   conversationsLoadError?: string | null;
@@ -159,6 +161,7 @@ export default function Sidebar({
   activeConversationId,
   onSelectConversation,
   onNewChat,
+  newChatBusy = false,
   onDeleteChat,
   conversationsLoadError = null,
   conversationsLoadBusy = false,
@@ -265,7 +268,13 @@ export default function Sidebar({
           <>
             <div className="mx-3 border-t border-border-subtle/80" />
             <div className="px-2 pt-3 pb-1">
-              <button type="button" onClick={onNewChat} className="nav-item nav-item-idle mb-1">
+              <button
+                type="button"
+                data-new-chat=""
+                aria-busy={newChatBusy || undefined}
+                onClick={onNewChat}
+                className={`nav-item nav-item-idle mb-1${newChatBusy ? " opacity-50" : ""}`}
+              >
                 <Plus size={16} className="shrink-0" strokeWidth={1.75} />
                 <span>新对话</span>
               </button>
@@ -343,8 +352,10 @@ export default function Sidebar({
           <div className="px-2 py-2">
             <button
               type="button"
+              data-new-chat=""
+              aria-busy={newChatBusy || undefined}
               onClick={onNewChat}
-              className="nav-item nav-item-idle justify-center px-0"
+              className={`nav-item nav-item-idle justify-center px-0${newChatBusy ? " opacity-50" : ""}`}
               title="新对话"
               aria-label="新对话"
             >

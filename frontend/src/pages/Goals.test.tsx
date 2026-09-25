@@ -7,6 +7,7 @@ import GoalDetailPanel from "../components/goals/GoalDetailPanel";
 import {
   ApiError,
   createGoal,
+  createConversation,
   createGoalAction,
   decomposeGoal,
   deleteGoal,
@@ -14,6 +15,7 @@ import {
   listGoals,
   updateGoal,
   updateGoalAction,
+  type Conversation,
   type WorkItem,
 } from "../api/client";
 
@@ -30,6 +32,7 @@ vi.mock("../api/client", () => ({
   createGoalAction: vi.fn(),
   updateGoalAction: vi.fn(),
   decomposeGoal: vi.fn(),
+  createConversation: vi.fn(),
   ApiError: class extends Error {
     status: number;
     constructor(message: string, status: number) {
@@ -44,14 +47,20 @@ vi.mock("../stores/errorStore", () => ({
     selector({ addError }),
 }));
 
-vi.mock("../stores/chatStore", () => ({
-  useChatStore: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector({
-      addConversation: vi.fn(),
-      setActiveConversation: vi.fn(),
-      setPendingPrompt: vi.fn(),
+vi.mock("../stores/chatStore", () => {
+  const state = {
+    conversations: [] as Conversation[],
+    addConversation: vi.fn(),
+    setActiveConversation: vi.fn(),
+    setPendingPrompt: vi.fn(),
+    setConversations: vi.fn(),
+  };
+  return {
+    useChatStore: Object.assign((selector: (s: typeof state) => unknown) => selector(state), {
+      getState: () => state,
     }),
-}));
+  };
+});
 
 const sampleGoal = {
   id: "g1",
@@ -957,6 +966,83 @@ describe("GoalsPage", () => {
     expect(screen.getByRole("button", { name: "全部添加" })).toHaveFocus();
     expect(screen.getByRole("button", { name: "全部添加" })).toBeEnabled();
     expect(createGoalAction).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not open a second chat while 就此目标对话 is in flight", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    vi.mocked(getGoal).mockResolvedValue(sampleGoal);
+    let release: (conv: Conversation) => void = () => {};
+    vi.mocked(createConversation).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderGoals("/goals/g1");
+    const chat = await screen.findByRole("button", { name: "就此目标对话" });
+    const pause = screen.getByRole("button", { name: "暂停" });
+    chat.focus();
+    fireEvent.click(chat);
+    fireEvent.click(chat);
+    await waitFor(() => expect(chat).toHaveAttribute("aria-busy", "true"));
+    expect(chat).toBeEnabled();
+    expect(chat).toHaveFocus();
+    expect(chat).toHaveClass("opacity-50");
+    expect(createConversation).toHaveBeenCalledTimes(1);
+    expect(createConversation).toHaveBeenCalledWith("目标：学习 Rust");
+    pause.focus();
+
+    await act(async () => {
+      release({ id: "c-goal", title: "目标：学习 Rust" } as Conversation);
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "就此目标对话" })).not.toBeInTheDocument(),
+    );
+    expect(createConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps focus on 就此目标对话 when opening the chat fails, and does not steal it", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    vi.mocked(getGoal).mockResolvedValue(sampleGoal);
+    vi.mocked(createConversation).mockRejectedValue(new ApiError("创建对话失败", 500));
+    renderGoals("/goals/g1");
+    const chat = await screen.findByRole("button", { name: "就此目标对话" });
+    chat.focus();
+    fireEvent.click(chat);
+    fireEvent.click(chat);
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("创建对话失败", "对话"));
+    expect(chat).toHaveFocus();
+    expect(chat).toBeEnabled();
+    expect(chat).not.toHaveAttribute("aria-busy");
+    expect(createConversation).toHaveBeenCalledTimes(1);
+
+    let release: (err: unknown) => void = () => {};
+    vi.mocked(createConversation).mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          release = reject;
+        }),
+    );
+    fireEvent.click(chat);
+    await waitFor(() => expect(chat).toHaveAttribute("aria-busy", "true"));
+    (chat as HTMLButtonElement).blur();
+    expect(document.activeElement).toBe(document.body);
+    await act(async () => {
+      release(new ApiError("创建对话失败", 500));
+    });
+    await waitFor(() => expect(chat).not.toHaveAttribute("aria-busy"));
+    expect(chat).toHaveFocus();
+
+    const pause = screen.getByRole("button", { name: "暂停" });
+    fireEvent.click(chat);
+    await waitFor(() => expect(chat).toHaveAttribute("aria-busy", "true"));
+    pause.focus();
+    await act(async () => {
+      release(new ApiError("创建对话失败", 500));
+    });
+    await waitFor(() => expect(chat).not.toHaveAttribute("aria-busy"));
+    expect(pause).toHaveFocus();
+    expect(createConversation).toHaveBeenCalledTimes(3);
   });
 });
 

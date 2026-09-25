@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { createGoal, updateGoal, deleteGoal, ApiError, type WorkItem } from "../api/client";
 import { useErrorStore } from "../stores/errorStore";
@@ -33,6 +33,22 @@ function goalRowSelector(goalId: string): string {
       ? CSS.escape(goalId)
       : goalId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   return `a[data-goal-id="${escaped}"]`;
+}
+
+/** 焦点在页面空白处。已经在别的控件上就不再抢。 */
+function focusIsBlank(): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  return false;
+}
+
+function focusGoalChat(goalId: string): void {
+  const escaped =
+    typeof CSS !== "undefined" && typeof CSS.escape === "function"
+      ? CSS.escape(goalId)
+      : goalId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  document.querySelector<HTMLButtonElement>(`button[data-goal-chat="${escaped}"]`)?.focus();
 }
 
 /** 焦点在页面空白处，或还停在这次新建的名称框或「创建」上。 */
@@ -103,6 +119,9 @@ export default function GoalsPage() {
   const deletingRef = useRef(false);
   const addError = useErrorStore((s) => s.addError);
   const quickChat = useQuickChat();
+  const chatLock = useRef(false);
+  const [chatBusyId, setChatBusyId] = useState<string | null>(null);
+  const chatFailGoalId = useRef<string | null>(null);
 
   const goalNotFound =
     Boolean(urlGoalId) &&
@@ -137,11 +156,30 @@ export default function GoalsPage() {
   }, [detailError, addError]);
 
   const handleStartChatAboutGoal = (goal: WorkItem) => {
-    quickChat({
-      title: `目标：${goal.title}`,
-      prompt: `我想讨论目标「${goal.title}」${goal.description ? `：${goal.description}` : ""}。当前进度 ${Math.round(goalProgressPercent(goal.progress))}%，请帮我分析下一步行动。`,
-    });
+    if (chatLock.current) return;
+    const goalId = goal.id;
+    chatLock.current = true;
+    chatFailGoalId.current = null;
+    setChatBusyId(goalId);
+    void (async () => {
+      const ok =
+        (await quickChat({
+          title: `目标：${goal.title}`,
+          prompt: `我想讨论目标「${goal.title}」${goal.description ? `：${goal.description}` : ""}。当前进度 ${Math.round(goalProgressPercent(goal.progress))}%，请帮我分析下一步行动。`,
+        })) === true;
+      chatLock.current = false;
+      if (!ok) chatFailGoalId.current = goalId;
+      setChatBusyId(null);
+    })();
   };
+
+  useLayoutEffect(() => {
+    if (chatBusyId) return;
+    const goalId = chatFailGoalId.current;
+    if (!goalId) return;
+    chatFailGoalId.current = null;
+    if (focusIsBlank()) focusGoalChat(goalId);
+  }, [chatBusyId]);
 
   const handleCreateGoal = async () => {
     const title = newTitle.trim();
@@ -380,6 +418,7 @@ export default function GoalsPage() {
                 <GoalDetailPanel
                   key={selectedGoal.id}
                   goal={selectedGoal}
+                  chatBusy={chatBusyId === selectedGoal.id}
                   onStartChat={handleStartChatAboutGoal}
                   onUpdateStatus={handleUpdateStatus}
                   onRequestDelete={(g) => setDeleteTarget(g)}

@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -195,6 +195,22 @@ function focusProposedRatifyExcept(ids: readonly string[]): boolean {
   return false;
 }
 
+/** 焦点在页面空白处。已经在别的控件上就不再抢。 */
+function focusIsBlank(): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  return false;
+}
+
+function focusContinueChat(memoryId: string): void {
+  const escaped =
+    typeof CSS !== "undefined" && typeof CSS.escape === "function"
+      ? CSS.escape(memoryId)
+      : memoryId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  document.querySelector<HTMLButtonElement>(`button[data-memory-chat="${escaped}"]`)?.focus();
+}
+
 function focusAnchor(scope: RatifyScope): boolean {
   if (scope === "list" && focusCaptureField()) return true;
   const tab = document.querySelector<HTMLButtonElement>(
@@ -299,6 +315,9 @@ export default function MemoriesPage() {
   const reviewInitialLoading = viewMode === "review" && proposedLoading && !proposedData;
   const addError = useErrorStore((s) => s.addError);
   const quickChat = useQuickChat();
+  const chatLock = useRef(false);
+  const [chattingId, setChattingId] = useState<string | null>(null);
+  const chatFailId = useRef<string | null>(null);
 
   const [newContent, setNewContent] = useState("");
   const [creating, setCreating] = useState(false);
@@ -702,8 +721,30 @@ export default function MemoriesPage() {
   };
 
   const handleContinueChat = (m: MemoryRow) => {
-    quickChat({ title: "记忆讨论", prompt: `基于以下记忆继续讨论：\n${m.content}` });
+    if (chatLock.current) return;
+    const memoryId = m.id;
+    chatLock.current = true;
+    chatFailId.current = null;
+    setChattingId(memoryId);
+    void (async () => {
+      const ok =
+        (await quickChat({
+          title: "记忆讨论",
+          prompt: `基于以下记忆继续讨论：\n${m.content}`,
+        })) === true;
+      chatLock.current = false;
+      if (!ok) chatFailId.current = memoryId;
+      setChattingId(null);
+    })();
   };
+
+  useLayoutEffect(() => {
+    if (chattingId) return;
+    const memoryId = chatFailId.current;
+    if (!memoryId) return;
+    chatFailId.current = null;
+    if (focusIsBlank()) focusContinueChat(memoryId);
+  }, [chattingId]);
 
   useEffect(() => {
     if (viewMode !== "graph" || graphData) return;
@@ -918,6 +959,7 @@ export default function MemoriesPage() {
                     onReject={handleReject}
                     onEdit={handleEdit}
                     onDelete={(row) => setDeleteTarget(row)}
+                    chatting={chattingId === m.id}
                     onContinueChat={handleContinueChat}
                     onShowProvenance={setProvenanceTarget}
                   />
@@ -951,6 +993,7 @@ export default function MemoriesPage() {
                       onReject={handleReject}
                       onEdit={handleEdit}
                       onDelete={(row) => setDeleteTarget(row)}
+                      chatting={chattingId === m.id}
                       onContinueChat={handleContinueChat}
                       onShowProvenance={setProvenanceTarget}
                     />
@@ -1021,6 +1064,7 @@ export default function MemoriesPage() {
                           onReject={handleReject}
                           onEdit={handleEdit}
                           onDelete={setDeleteTarget}
+                          chatting={chattingId === m.id}
                           onContinueChat={handleContinueChat}
                           onShowProvenance={setProvenanceTarget}
                         />

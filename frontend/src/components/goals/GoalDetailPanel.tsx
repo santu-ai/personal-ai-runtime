@@ -17,6 +17,8 @@ const statusLabels: Record<string, string> = {
 
 interface GoalDetailPanelProps {
   goal: WorkItem;
+  /** 这次「就此目标对话」还没创建回来。按钮不禁用，标为忙碌。 */
+  chatBusy?: boolean;
   onStartChat: (goal: WorkItem) => void;
   onUpdateStatus: (goalId: string, status: string) => void | Promise<boolean | void>;
   onRequestDelete: (goal: WorkItem) => void;
@@ -59,6 +61,7 @@ function placeGoalStatusFocus(status: string): void {
 
 export default function GoalDetailPanel({
   goal,
+  chatBusy = false,
   onStartChat,
   onUpdateStatus,
   onRequestDelete,
@@ -297,7 +300,13 @@ export default function GoalDetailPanel({
           <p className="mt-1 text-xs text-fg-tertiary">进度 {progressPct}%</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" data-goal-chat="" onClick={() => onStartChat(goal)}>
+          <Button
+            size="sm"
+            data-goal-chat={goal.id}
+            aria-busy={chatBusy || undefined}
+            className={chatBusy ? "opacity-50" : ""}
+            onClick={() => onStartChat(goal)}
+          >
             就此目标对话
           </Button>
           {goal.status === "active" && (

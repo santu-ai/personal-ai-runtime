@@ -117,6 +117,16 @@ describe("Sidebar", () => {
     expect(screen.queryByText("最近对话")).not.toBeInTheDocument();
   });
 
+  it("keeps 新对话 enabled and busy while a chat is opening", () => {
+    renderSidebar("/", { newChatBusy: true });
+    const button = screen.getByRole("button", { name: "新对话" });
+    button.focus();
+    expect(button).toBeEnabled();
+    expect(button).toHaveAttribute("aria-busy", "true");
+    expect(button).toHaveClass("opacity-50");
+    expect(button).toHaveFocus();
+  });
+
   it("calls onDeleteChat when delete button clicked", () => {
     const onDeleteChat = vi.fn();
     renderSidebar("/", { onDeleteChat });
