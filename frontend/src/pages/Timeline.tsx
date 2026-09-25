@@ -76,6 +76,10 @@ function LoadErrorNotice({
   );
 }
 
+/** 焦点交到不能点的区域时，环与这一页的任务链接相同。单写 outline-none 会把环消掉。 */
+const handoffRing =
+  "rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
+
 const ICON_MAP: Record<string, { Icon: LucideIcon; color: string }> = {
   target: { Icon: Target, color: "text-warning" },
   "check-circle": { Icon: CircleCheck, color: "text-success" },
@@ -302,7 +306,7 @@ export default function TimelinePage() {
             ref={emptyRef}
             tabIndex={-1}
             data-testid="timeline-empty"
-            className="text-center py-16 outline-none"
+            className={`text-center py-16 ${handoffRing}`}
           >
             <Clock size={48} className="mx-auto mb-4 text-fg-disabled" />
             <p className="text-fg-tertiary">还没有任何事件</p>
@@ -315,7 +319,7 @@ export default function TimelinePage() {
             ref={listRef}
             tabIndex={-1}
             data-testid="timeline-events"
-            className="space-y-6 outline-none"
+            className={`space-y-6 ${handoffRing}`}
           >
             {dayKeys.map((day) => (
               <div key={day}>
@@ -410,7 +414,7 @@ export default function TimelinePage() {
           <p
             ref={endRef}
             tabIndex={-1}
-            className="text-center text-fg-disabled text-xs py-6 outline-none"
+            className={`text-center text-fg-disabled text-xs py-6 ${handoffRing}`}
           >
             已经是最早的记录
           </p>
