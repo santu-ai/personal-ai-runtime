@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useErrorStore } from "../stores/errorStore";
 import { useDashboard } from "./useDashboard";
@@ -79,10 +79,27 @@ function Harness() {
       <p data-testid="loading">{String(dash.loading)}</p>
       <p data-testid="error">{dash.error}</p>
       <p data-testid="busy">{String(dash.errorBusy)}</p>
+      <p data-testid="fetching">{String(dash.fetching)}</p>
       <button type="button" onClick={() => dash.refresh()}>
         refresh
       </button>
     </div>
+  );
+}
+
+function RefreshSettleHarness() {
+  const dash = useDashboard();
+  const [state, setState] = useState("idle");
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setState("pending");
+        void dash.refresh().then(() => setState("settled"));
+      }}
+    >
+      {state}
+    </button>
   );
 }
 
@@ -139,6 +156,7 @@ describe("useDashboard full-page failure", () => {
     fireEvent.click(screen.getByRole("button", { name: "refresh" }));
 
     await waitFor(() => expect(screen.getByTestId("busy")).toHaveTextContent("true"));
+    expect(screen.getByTestId("fetching")).toHaveTextContent("true");
     expect(screen.getByTestId("error")).toHaveTextContent("后端连接失败");
     expect(screen.getByTestId("loading")).toHaveTextContent("false");
     expect(useErrorStore.getState().addError).toHaveBeenCalledTimes(toasts);
@@ -147,6 +165,7 @@ describe("useDashboard full-page failure", () => {
     await waitFor(() => expect(screen.getByTestId("error")).toHaveTextContent(""));
     expect(screen.getByTestId("loading")).toHaveTextContent("false");
     expect(screen.getByTestId("busy")).toHaveTextContent("false");
+    expect(screen.getByTestId("fetching")).toHaveTextContent("false");
   });
 
   it("does not blank the page when one read still succeeds", async () => {
@@ -159,6 +178,34 @@ describe("useDashboard full-page failure", () => {
     expect(screen.getByTestId("loading")).toHaveTextContent("false");
     expect(screen.getByTestId("error")).toHaveTextContent("");
     expect(screen.getByTestId("busy")).toHaveTextContent("false");
+  });
+
+  it("resolves refresh only after the dashboard reads settle", async () => {
+    resolveAll();
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retryDelay: 0, gcTime: 0, refetchOnWindowFocus: false },
+      },
+    });
+    function Wrapper({ children }: { children: ReactNode }) {
+      return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    }
+    render(<RefreshSettleHarness />, { wrapper: Wrapper });
+    await waitFor(() => expect(vi.mocked(getDashboard)).toHaveBeenCalled());
+    const calls = vi.mocked(getDashboard).mock.calls.length;
+
+    const release = hangAll();
+    fireEvent.click(screen.getByRole("button", { name: "idle" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "pending" })).toBeInTheDocument(),
+    );
+    expect(vi.mocked(getDashboard).mock.calls.length).toBeGreaterThan(calls);
+    expect(screen.queryByRole("button", { name: "settled" })).not.toBeInTheDocument();
+
+    release();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "settled" })).toBeInTheDocument(),
+    );
   });
 
   it("clears a held failure after the next read succeeds", async () => {
