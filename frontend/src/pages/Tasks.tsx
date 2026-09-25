@@ -92,6 +92,11 @@ type ReviewHandoff = { taskId: string };
 /** 执行或再次运行已经写成功，等状态刷新后按钮卸下再交接焦点。 */
 type StatusHandoff = { taskId: string; kind: "execute" | "rerun" };
 
+/** 绘制前通知。测试在「完成」「取消」「转为任务」卸下按钮的同一轮读取焦点。 */
+export const taskPageLayoutFocus = {
+  notify: null as null | (() => void),
+};
+
 /** 焦点在页面空白处，或还停在已经卸掉的按钮上，才安放。已经在别的控件上就不再抢。 */
 function focusIsIdle(): boolean {
   const active = document.activeElement;
@@ -1796,7 +1801,9 @@ export default function TasksPage() {
     placeTaskLinkFocus();
   }, [selected, dialogBusy, canExecute, canRerunSameBrief]);
 
-  useEffect(() => {
+  // 「完成」「取消」或「转为任务」写成功后，这些按钮才卸下。
+  // 放到绘制前，不把焦点留在页面空白。已经移到别的控件上就不再抢。
+  useLayoutEffect(() => {
     const pending = focusAfter.current;
     if (!pending || actionBusy) return;
     if (!selected || pending.taskId !== selected.id) {
@@ -1815,6 +1822,10 @@ export default function TasksPage() {
     if (!focusIsIdle()) return;
     placeDirectActionFocus(pending);
   }, [selected, actionBusy, canComplete, canCancel, currentDelivery]);
+
+  useLayoutEffect(() => {
+    taskPageLayoutFocus.notify?.();
+  });
 
   useEffect(() => {
     if (!viewingHistory || !historyFull) return;
