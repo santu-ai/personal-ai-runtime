@@ -445,16 +445,14 @@ describe("TasksPage", () => {
     renderTasks("/tasks");
 
     const list = await screen.findByTestId("delivery-metrics-works");
-    expect(within(list).getByRole("link", { name: "项目 A" })).toHaveAttribute(
-      "href",
-      "/tasks/brief%2F1",
-    );
+    const titled = within(list).getByRole("link", { name: "项目 A" });
+    expect(titled).toHaveAttribute("href", "/tasks/brief%2F1");
+    expect(titled).toHaveClass("focus-visible:ring-focus-ring");
     expect(within(list).getByText("没有任务").closest("a")).toBeNull();
     expect(within(list).queryByRole("link", { name: "没有任务" })).not.toBeInTheDocument();
-    expect(within(list).getByRole("link", { name: "项目简报" })).toHaveAttribute(
-      "href",
-      "/tasks/brief_2",
-    );
+    const fallback = within(list).getByRole("link", { name: "项目简报" });
+    expect(fallback).toHaveAttribute("href", "/tasks/brief_2");
+    expect(fallback).toHaveClass("focus-visible:ring-focus-ring");
     expect(screen.getByText("审批 0 · 恢复 0 · 窗口模型成本 $0.5000")).toBeInTheDocument();
   });
 

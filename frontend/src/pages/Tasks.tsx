@@ -961,7 +961,7 @@ function DeliveryMetricsWorks({ items }: { items: DeliveryMetrics["items"] | und
           <li key={`${workId}-${index}`} className="text-xs">
             <Link
               to={`/tasks/${encodeURIComponent(workId)}`}
-              className="text-fg-primary hover:underline"
+              className="rounded-sm text-fg-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             >
               {title}
             </Link>
