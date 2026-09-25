@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { act, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { renderWithRouter, MockApiError } from "../test-utils";
-import ApprovalsPage from "./Approvals";
+import ApprovalsPage, { approvalPageLayoutFocus } from "./Approvals";
 import type { EnrichedApproval } from "../api/client";
 
 const { addError, mockNavigate } = vi.hoisted(() => ({
@@ -48,6 +48,18 @@ const mockApprove = vi.mocked(approveApproval);
 const mockReject = vi.mocked(rejectApproval);
 const mockResolve = vi.mocked(resolveApproval);
 
+/** 最后一张卸下的那一轮，绘制前焦点已经在「刷新」上。useEffect 会先停在页面空白。 */
+function captureFocusWhenGone(gone: () => boolean): { read: () => Element | null } {
+  let focusAtLayout: Element | null = null;
+  approvalPageLayoutFocus.notify = () => {
+    if (!gone()) return;
+    focusAtLayout ??= document.activeElement;
+  };
+  return {
+    read: () => focusAtLayout,
+  };
+}
+
 const sampleApproval: EnrichedApproval = {
   id: "ap-1",
   action: "write_file",
@@ -68,6 +80,7 @@ const chatContinuable: EnrichedApproval = {
 
 describe("ApprovalsPage", () => {
   beforeEach(() => {
+    approvalPageLayoutFocus.notify = null;
     vi.clearAllMocks();
     mockList.mockResolvedValue([]);
   });
@@ -511,14 +524,29 @@ describe("ApprovalsPage", () => {
   });
 
   it("returns focus to refresh when the last approval is rejected", async () => {
+    let release: (value: { id: string; status: string }) => void = () => {};
     mockList.mockResolvedValueOnce([sampleApproval]).mockResolvedValue([]);
-    mockReject.mockResolvedValue({ id: "ap-1", status: "rejected" });
+    mockReject.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
     renderWithRouter(<ApprovalsPage />);
     const reject = await screen.findByRole("button", { name: "拒绝" });
     reject.focus();
     fireEvent.click(reject);
-    await waitFor(() => expect(screen.getByRole("button", { name: "刷新" })).toHaveFocus());
+    expect(reject).toHaveAttribute("aria-busy", "true");
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: "拒绝" }),
+    );
+    await act(async () => {
+      release({ id: "ap-1", status: "rejected" });
+    });
+    const refresh = screen.getByRole("button", { name: "刷新" });
+    await waitFor(() => expect(refresh).toHaveFocus());
     expect(screen.getByText("暂无待审批项")).toBeInTheDocument();
+    expect(focusWhenGone.read()).toBe(refresh);
   });
 
   it("does not pull focus back to a failed approval when focus already moved", async () => {

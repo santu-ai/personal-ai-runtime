@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Check, X, RefreshCw, MessageSquare } from "lucide-react";
 import {
@@ -46,6 +46,11 @@ function parseParams(params?: string): Record<string, unknown> | null {
 type ResolveFocus = "approve" | "reject";
 
 type FocusAfter = { type: "action"; id: string; which: ResolveFocus } | { type: "refresh" };
+
+/** 绘制前通知。测试在最后一张卸下的同一轮读取焦点。 */
+export const approvalPageLayoutFocus = {
+  notify: null as null | (() => void),
+};
 
 function cardRoot(id: string): HTMLElement | null {
   for (const node of document.querySelectorAll<HTMLElement>("[data-approval-card]")) {
@@ -153,7 +158,9 @@ export default function ApprovalsPage() {
     button.focus();
   }, [shownError]);
 
-  useEffect(() => {
+  // 最后一张卸下后才回到「刷新」。放到绘制前，不把焦点留在页面空白。
+  // 失败时按钮还在，焦点仍回到刚才那个。已经移到别的控件上就不再抢。
+  useLayoutEffect(() => {
     const pending = focusAfter.current;
     if (!pending) return;
     if (pending.type === "action") {
@@ -181,6 +188,10 @@ export default function ApprovalsPage() {
     focusAfter.current = null;
     refresh.focus();
   }, [approvals, resolving, isFetching, refreshBusy]);
+
+  useLayoutEffect(() => {
+    approvalPageLayoutFocus.notify?.();
+  });
 
   const beginResolve = (id: string, which: ResolveFocus) => {
     if (resolvingRef.current.has(id)) return false;
