@@ -3064,11 +3064,49 @@ describe("TasksPage", () => {
     await within(dialog).findByRole("button", { name: "创建中..." });
     fireEvent.change(title, { target: { value: "项目 A，再补风险" } });
 
+    const focusWhenSettled = captureFocusWhenGone(
+      () => !within(dialog).queryByRole("button", { name: "创建中..." }),
+    );
     pending.resolve({ ...briefTask, id: "brief_new", title: "项目 A" });
     await waitFor(() => expect(title).toHaveFocus());
+    expect(focusWhenSettled.read()).toBe(title);
+    expect(focusWhenSettled.read()).not.toBe(document.body);
     expect(dialog).toBeInTheDocument();
     expect(title).toHaveValue("项目 A，再补风险");
     expect(createProjectBrief).toHaveBeenCalledTimes(1);
+  });
+
+  it("focuses the title before paint when a kept draft disables create", async () => {
+    const pending = deferred<WorkItem>();
+    vi.mocked(createProjectBrief).mockImplementationOnce(() => pending.promise);
+    renderTasks("/tasks");
+
+    fireEvent.click(screen.getByRole("button", { name: "新建简报" }));
+    const dialog = await screen.findByRole("dialog", { name: "新建项目资料简报" });
+    const title = within(dialog).getByPlaceholderText("项目 A 简报");
+    fireEvent.change(title, { target: { value: "项目 A" } });
+    fireEvent.change(within(dialog).getByPlaceholderText(/整理最近三天的邮件/), {
+      target: { value: "整理邮件" },
+    });
+    const create = within(dialog).getByRole("button", { name: "创建" });
+    create.focus();
+    fireEvent.click(create);
+    await within(dialog).findByRole("button", { name: "创建中..." });
+    fireEvent.change(title, { target: { value: "   " } });
+
+    const focusWhenDisabled = captureFocusWhenGone(() => {
+      const button = within(dialog).queryByRole("button", { name: "创建" });
+      return button instanceof HTMLButtonElement && button.disabled;
+    });
+    await act(async () => {
+      pending.resolve({ ...briefTask, id: "brief_new", title: "项目 A" });
+    });
+    expect(title).toHaveFocus();
+    expect(focusWhenDisabled.read()).toBe(title);
+    expect(focusWhenDisabled.read()).not.toBe(document.body);
+    expect(within(dialog).getByRole("button", { name: "创建" })).toBeDisabled();
+    expect(dialog).toBeInTheDocument();
+    expect(title).toHaveValue("   ");
   });
 
   it("keeps the acceptance note until accept succeeds and ignores dismiss while accepting", async () => {

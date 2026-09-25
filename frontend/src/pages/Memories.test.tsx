@@ -750,8 +750,13 @@ describe("MemoriesPage", () => {
     await within(dialog).findByRole("button", { name: "拒绝中..." });
     fireEvent.change(field, { target: { value: "过时了，再补一句" } });
 
+    const focusWhenSettled = captureFocusWhenGone(
+      () => !within(dialog).queryByRole("button", { name: "拒绝中..." }),
+    );
     release({ status: "ok", claim_status: "rejected" });
     await waitFor(() => expect(field).toHaveFocus());
+    expect(focusWhenSettled.read()).toBe(field);
+    expect(focusWhenSettled.read()).not.toBe(document.body);
     expect(dialog).toBeInTheDocument();
     expect(field).toHaveValue("过时了，再补一句");
     expect(rejectMemory).toHaveBeenCalledTimes(1);
@@ -812,11 +817,52 @@ describe("MemoriesPage", () => {
     await within(dialog).findByRole("button", { name: "保存中..." });
     fireEvent.change(content, { target: { value: "改为夜跑，再补距离" } });
 
+    const focusWhenSettled = captureFocusWhenGone(
+      () => !within(dialog).queryByRole("button", { name: "保存中..." }),
+    );
     release({ status: "ok" });
     await waitFor(() => expect(content).toHaveFocus());
+    expect(focusWhenSettled.read()).toBe(content);
+    expect(focusWhenSettled.read()).not.toBe(document.body);
     expect(dialog).toBeInTheDocument();
     expect(content).toHaveValue("改为夜跑，再补距离");
     expect(updateMemory).toHaveBeenCalledTimes(1);
+  });
+
+  it("focuses the memory content before paint when a kept draft disables save", async () => {
+    let release: (value: { status: string }) => void = () => {};
+    vi.mocked(updateMemory).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    renderWithRouter(<MemoriesPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
+    const dialog = await screen.findByRole("dialog", { name: "编辑记忆" });
+    const content = within(dialog).getByPlaceholderText("记忆内容");
+    fireEvent.change(content, { target: { value: "改为夜跑" } });
+    const save = within(dialog).getByRole("button", { name: "保存" });
+    save.focus();
+    fireEvent.click(save);
+    await within(dialog).findByRole("button", { name: "保存中..." });
+    fireEvent.change(content, { target: { value: "   " } });
+
+    const focusWhenDisabled = captureFocusWhenGone(() => {
+      const button = within(dialog).queryByRole("button", { name: "保存" });
+      return button instanceof HTMLButtonElement && button.disabled;
+    });
+    await act(async () => {
+      release({ status: "ok" });
+    });
+    expect(content).toHaveFocus();
+    expect(focusWhenDisabled.read()).toBe(content);
+    expect(focusWhenDisabled.read()).not.toBe(document.body);
+    expect(within(dialog).getByRole("button", { name: "保存" })).toBeDisabled();
+    expect(dialog).toBeInTheDocument();
+    expect(content).toHaveValue("   ");
+    expect(updateMemory).toHaveBeenCalledWith("m1", { content: "改为夜跑", category: "habit" });
   });
 
   it("keeps the forget dialog open until delete succeeds and ignores Escape while deleting", async () => {

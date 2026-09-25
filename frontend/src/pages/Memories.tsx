@@ -694,7 +694,9 @@ export default function MemoriesPage() {
     }
   };
 
-  useEffect(() => {
+  // 留下的草稿会让确认变成不可用，焦点先被卸到页面空白。
+  // 放到绘制前，不先停在空白上。已经移到别的控件上就不再抢。
+  useLayoutEffect(() => {
     if (rejecting || editing) return;
     const pending = dialogHandoff.current;
     if (!pending) return;
