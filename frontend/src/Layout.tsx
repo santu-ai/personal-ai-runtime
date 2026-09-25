@@ -35,6 +35,35 @@ function focusNewChat(): void {
   document.querySelector<HTMLButtonElement>("button[data-new-chat]")?.focus();
 }
 
+type ChatDeleteHandoff = { id: string; nextId: string | null };
+
+/** 焦点在页面空白处，或还停在刚删掉的那一行上。已经在别的控件上就不再抢。 */
+function chatDeleteFocusIdle(id: string): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  return active.getAttribute("data-conversation-delete") === id;
+}
+
+function focusConversationDelete(id: string): boolean {
+  const escaped =
+    typeof CSS !== "undefined" && typeof CSS.escape === "function"
+      ? CSS.escape(id)
+      : id.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const node = document.querySelector<HTMLButtonElement>(
+    `button[data-conversation-delete="${escaped}"]`,
+  );
+  if (!node || node.disabled) return false;
+  node.focus();
+  return document.activeElement === node;
+}
+
+function neighborId(rows: readonly { id: string }[], id: string): string | null {
+  const index = rows.findIndex((row) => row.id === id);
+  if (index < 0) return null;
+  return rows[index + 1]?.id ?? rows[index - 1]?.id ?? null;
+}
+
 export default function Layout() {
   return (
     <HomeConversationGateProvider>
@@ -73,6 +102,7 @@ function LayoutFrame() {
   } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const deletingRef = useRef(false);
+  const deleteHandoff = useRef<ChatDeleteHandoff | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(
     () => !localStorage.getItem("onboarding_done"),
   );
@@ -122,22 +152,37 @@ function LayoutFrame() {
   const confirmDeleteChat = async () => {
     if (!deleteTarget || deletingRef.current) return;
     const { id } = deleteTarget;
+    const nextId = neighborId(conversationRows, id);
     deletingRef.current = true;
+    deleteHandoff.current = null;
     setDeleting(true);
+    let removed = false;
     try {
       await deleteConversation(id);
       setDeleteTarget(null);
       removeConversationCached(id);
+      removed = true;
       if (activeConversationId === id) {
         navigate("/");
       }
     } catch (e) {
       addError(e instanceof ApiError ? e.message : "删除对话失败", "对话");
     } finally {
+      if (removed) deleteHandoff.current = { id, nextId };
       deletingRef.current = false;
       setDeleting(false);
     }
   };
+
+  useEffect(() => {
+    if (deleting) return;
+    const pending = deleteHandoff.current;
+    if (!pending) return;
+    deleteHandoff.current = null;
+    if (!chatDeleteFocusIdle(pending.id)) return;
+    if (pending.nextId && focusConversationDelete(pending.nextId)) return;
+    focusNewChat();
+  }, [deleting, conversationRows]);
 
   const handleSelectConversation = (id: string) => {
     setActiveConversation(id);

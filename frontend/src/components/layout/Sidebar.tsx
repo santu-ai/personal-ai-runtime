@@ -318,6 +318,7 @@ export default function Sidebar({
                     </Link>
                     <button
                       type="button"
+                      data-conversation-delete={conv.id}
                       onClick={(e) => {
                         e.stopPropagation();
                         onDeleteChat(conv.id);

@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import {
   createMemory,
   deleteMemory,
@@ -211,6 +211,55 @@ function focusContinueChat(memoryId: string): void {
   document.querySelector<HTMLButtonElement>(`button[data-memory-chat="${escaped}"]`)?.focus();
 }
 
+type ForgetHandoff = { id: string; nextId: string | null; anchor: "capture" | "tab" };
+
+function escapeAttr(value: string): string {
+  return typeof CSS !== "undefined" && typeof CSS.escape === "function"
+    ? CSS.escape(value)
+    : value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/** 焦点在页面空白处，或还停在刚忘掉的那一行上。已经在别的控件上就不再抢。 */
+function forgetFocusIdle(id: string): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  return active.getAttribute("data-memory-forget") === id;
+}
+
+function focusForget(id: string): boolean {
+  const node = document.querySelector<HTMLButtonElement>(
+    `button[data-memory-forget="${escapeAttr(id)}"]`,
+  );
+  if (!node || node.disabled) return false;
+  node.focus();
+  return document.activeElement === node;
+}
+
+function neighborMemoryId(rows: readonly { id: string }[], id: string): string | null {
+  const index = rows.findIndex((row) => row.id === id);
+  if (index < 0) return null;
+  return rows[index + 1]?.id ?? rows[index - 1]?.id ?? null;
+}
+
+/** 忘掉已经成功。先从已读到的列表拿掉这一条，确认框关掉时这一行的按钮才不会把焦点拽回去。 */
+function dropMemoryFromGroupedCache(qc: QueryClient, id: string) {
+  qc.setQueriesData({ queryKey: queryKeys.memoriesGrouped }, (current: unknown) => {
+    if (!current || typeof current !== "object" || !("memories" in current)) return current;
+    const row = current as { memories?: MemoryRow[]; total?: number };
+    if (!Array.isArray(row.memories) || !row.memories.some((item) => item.id === id)) {
+      return current;
+    }
+    const memories = row.memories.filter((item) => item.id !== id);
+    const removed = row.memories.length - memories.length;
+    return {
+      ...row,
+      memories,
+      total: Math.max(0, (row.total ?? row.memories.length) - removed),
+    };
+  });
+}
+
 function focusAnchor(scope: RatifyScope): boolean {
   if (scope === "list" && focusCaptureField()) return true;
   const tab = document.querySelector<HTMLButtonElement>(
@@ -326,6 +375,7 @@ export default function MemoriesPage() {
   const [deleteTarget, setDeleteTarget] = useState<MemoryRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const deletingRef = useRef(false);
+  const forgetHandoff = useRef<ForgetHandoff | null>(null);
   const [rejectTarget, setRejectTarget] = useState<MemoryRow | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
@@ -435,19 +485,44 @@ export default function MemoriesPage() {
   const confirmDelete = async () => {
     if (!deleteTarget || deletingRef.current) return;
     const id = deleteTarget.id;
+    const rows =
+      viewMode === "review"
+        ? [...proposedMemories, ...rejectedMemories]
+        : Object.values(grouped).flat();
+    const nextId = neighborMemoryId(rows, id);
+    const anchor: ForgetHandoff["anchor"] = viewMode === "list" ? "capture" : "tab";
     deletingRef.current = true;
+    forgetHandoff.current = null;
     setDeleting(true);
+    let removed = false;
     try {
       await deleteMemory(id);
+      dropMemoryFromGroupedCache(queryClient, id);
       setDeleteTarget(null);
+      removed = true;
       invalidateMemories();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "删除记忆失败", "记忆");
     } finally {
+      if (removed) forgetHandoff.current = { id, nextId, anchor };
       deletingRef.current = false;
       setDeleting(false);
     }
   };
+
+  useEffect(() => {
+    if (deleting) return;
+    const pending = forgetHandoff.current;
+    if (!pending) return;
+    forgetHandoff.current = null;
+    if (!forgetFocusIdle(pending.id)) return;
+    if (pending.nextId && focusForget(pending.nextId)) return;
+    if (pending.anchor === "capture") {
+      focusCaptureField();
+      return;
+    }
+    focusAnchor("proposed");
+  }, [deleting, memories, proposedMemories, rejectedMemories, grouped, viewMode]);
 
   const confirmEdit = async () => {
     if (!editTarget || editingRef.current) return;

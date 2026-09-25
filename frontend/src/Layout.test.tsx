@@ -208,6 +208,161 @@ describe("Layout delete conversation", () => {
   });
 });
 
+describe("Layout delete conversation focus", () => {
+  const first = {
+    id: "c1",
+    title: "周末计划",
+    summary: null,
+    created_at: "2026-09-01T00:00:00Z",
+    updated_at: "2026-09-02T00:00:00Z",
+  };
+  const second = {
+    id: "c2",
+    title: "读书笔记",
+    summary: null,
+    created_at: "2026-09-01T00:00:00Z",
+    updated_at: "2026-09-01T00:00:00Z",
+  };
+
+  function renderLayout(path = "/chat/c1") {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    return render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={[path]}>
+          <Layout />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  beforeEach(() => {
+    localStorage.setItem("onboarding_done", "1");
+    localStorage.removeItem("sidebar_collapsed");
+    useChatStore.setState({
+      conversations: [],
+      activeConversationId: null,
+      pendingPrompt: null,
+    });
+    useErrorStore.setState({ errors: [], backendUnavailable: false });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useErrorStore.setState({ errors: [], backendUnavailable: false });
+  });
+
+  function stubConversations(rows: Array<typeof first>) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (url.includes("/chat/conversations")) {
+          if (method === "DELETE") return new Response(null, { status: 204 });
+          return json(rows);
+        }
+        if (url.includes("/notifications")) return json([]);
+        if (url.includes("/system/health")) return json({ auth_required: false });
+        if (url.includes("/approvals")) return json([]);
+        if (url.includes("/memory")) return json({ count: 0 });
+        if (url.includes("/inbox")) return json([]);
+        return json({});
+      }),
+    );
+  }
+
+  function deleteButton(title: string) {
+    const link = screen.getByRole("link", { name: title });
+    return within(link.parentElement as HTMLElement).getByRole("button", { name: "删除对话" });
+  }
+
+  it("moves focus to the next conversation delete button", async () => {
+    stubConversations([first, second]);
+    renderLayout();
+    await screen.findByRole("link", { name: "读书笔记" });
+    const opener = deleteButton("周末计划");
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: "删除对话" });
+    within(dialog).getByRole("button", { name: "删除" }).focus();
+    fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "删除对话" })).not.toBeInTheDocument(),
+    );
+    expect(deleteButton("读书笔记")).toHaveFocus();
+  });
+
+  it("moves focus to the previous conversation when the last one is deleted", async () => {
+    stubConversations([first, second]);
+    renderLayout("/chat/c2");
+    await screen.findByRole("link", { name: "读书笔记" });
+    fireEvent.click(deleteButton("读书笔记"));
+    const dialog = await screen.findByRole("dialog", { name: "删除对话" });
+    within(dialog).getByRole("button", { name: "删除" }).focus();
+    fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "删除对话" })).not.toBeInTheDocument(),
+    );
+    expect(deleteButton("周末计划")).toHaveFocus();
+  });
+
+  it("moves focus to 新对话 when the only conversation is deleted", async () => {
+    stubConversations([first]);
+    renderLayout();
+    await screen.findByRole("link", { name: "周末计划" });
+    fireEvent.click(deleteButton("周末计划"));
+    const dialog = await screen.findByRole("dialog", { name: "删除对话" });
+    within(dialog).getByRole("button", { name: "删除" }).focus();
+    fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("link", { name: "周末计划" })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole("button", { name: "新对话" })).toHaveFocus();
+  });
+
+  it("does not pull conversation delete focus back when it already moved", async () => {
+    let release: (response: Response) => void = () => {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (url.includes("/chat/conversations")) {
+          if (method === "DELETE") {
+            return new Promise<Response>((resolve) => {
+              release = resolve;
+            });
+          }
+          return json([first, second]);
+        }
+        if (url.includes("/notifications")) return json([]);
+        if (url.includes("/system/health")) return json({ auth_required: false });
+        if (url.includes("/approvals")) return json([]);
+        if (url.includes("/memory")) return json({ count: 0 });
+        if (url.includes("/inbox")) return json([]);
+        return json({});
+      }),
+    );
+    renderLayout();
+    await screen.findByRole("link", { name: "周末计划" });
+    fireEvent.click(deleteButton("周末计划"));
+    const dialog = await screen.findByRole("dialog", { name: "删除对话" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
+    const goals = screen.getByRole("link", { name: "目标" });
+    goals.focus();
+
+    await act(async () => {
+      release(new Response(null, { status: 204 }));
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "删除对话" })).not.toBeInTheDocument(),
+    );
+    expect(goals).toHaveFocus();
+  });
+});
+
 describe("Layout new chat", () => {
   function json(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), {
