@@ -36,9 +36,58 @@ function focusInside(panel: HTMLElement, initialFocus: InitialFocus) {
   panel.focus();
 }
 
+const TABBABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled]):not([type='hidden'])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "[tabindex]:not([tabindex='-1'])",
+].join(", ");
+
+function canTabTo(node: HTMLElement): boolean {
+  if (node.tabIndex < 0) return false;
+  if (node.hasAttribute("disabled")) return false;
+  if (node instanceof HTMLInputElement && node.type === "hidden") return false;
+  if (node.closest("[hidden], [aria-hidden='true']")) return false;
+  return true;
+}
+
+/** 对话框里按顺序可以 Tab 到的控件。禁用、隐藏和 tabindex=-1 跳过。 */
+function tabbableNodes(panel: HTMLElement): HTMLElement[] {
+  const seen = new Set<HTMLElement>();
+  const items: HTMLElement[] = [];
+  for (const node of panel.querySelectorAll<HTMLElement>(TABBABLE_SELECTOR)) {
+    if (seen.has(node)) continue;
+    seen.add(node);
+    if (!canTabTo(node)) continue;
+    items.push(node);
+  }
+  return items;
+}
+
+function moveTab(panel: HTMLElement, shiftKey: boolean) {
+  const items = tabbableNodes(panel);
+  if (items.length === 0) {
+    if (document.activeElement !== panel) panel.focus();
+    return;
+  }
+  const active = document.activeElement;
+  const index = active instanceof HTMLElement ? items.indexOf(active) : -1;
+  const next = shiftKey
+    ? index <= 0
+      ? items[items.length - 1]
+      : items[index - 1]
+    : index < 0 || index >= items.length - 1
+      ? items[0]
+      : items[index + 1];
+  if (document.activeElement !== next) next.focus();
+}
+
 /**
  * 浮层打开时记住打开前的控件。Esc 关闭。关闭后把焦点还回去。
  * 面板里已经有焦点（失败「重试」或调用方自己放进去的）时不再抢走。
+ * Tab 与 Shift+Tab 留在面板里，不会走到后面的页面。
  */
 export function useOverlayDismiss<T extends HTMLElement>(
   open: boolean,
@@ -61,6 +110,13 @@ export function useOverlayDismiss<T extends HTMLElement>(
     if (panel) focusInside(panel, initialFocus);
 
     const onKeyDown = (event: KeyboardEvent) => {
+      const current = panelRef.current;
+      if (event.key === "Tab") {
+        if (!current) return;
+        event.preventDefault();
+        moveTab(current, event.shiftKey);
+        return;
+      }
       if (event.key !== "Escape") return;
       event.preventDefault();
       onDismissRef.current();

@@ -34,6 +34,44 @@ function Panel({
   );
 }
 
+function TrapPanel({ open, onDismiss }: { open: boolean; onDismiss: () => void }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useOverlayDismiss(open, panelRef, onDismiss);
+  if (!open) return null;
+  return (
+    <>
+      <button type="button">外面</button>
+      <div ref={panelRef} role="dialog" aria-label="面板" tabIndex={-1}>
+        <a href="#inside">链到内部</a>
+        <button type="button" disabled>
+          不可用
+        </button>
+        <input type="hidden" />
+        <button type="button" aria-hidden="true">
+          藏起来
+        </button>
+        <span tabIndex={-1}>标题</span>
+        <input aria-label="名称" />
+        <button type="button">关闭</button>
+      </div>
+    </>
+  );
+}
+
+function EmptyPanel({ open }: { open: boolean }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useOverlayDismiss(open, panelRef, () => undefined);
+  if (!open) return null;
+  return (
+    <>
+      <button type="button">外面</button>
+      <div ref={panelRef} role="dialog" aria-label="空面板" tabIndex={-1}>
+        没有控件
+      </div>
+    </>
+  );
+}
+
 function RetryAfterOpen() {
   const panelRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(true);
@@ -154,5 +192,53 @@ describe("useOverlayDismiss", () => {
     view.rerender(<Panel open={false} onDismiss={onDismiss} focusKey="b" />);
     expect(opener).toHaveFocus();
     opener.remove();
+  });
+
+  it("keeps Tab inside the dialog and skips disabled or hidden controls", async () => {
+    const onDismiss = vi.fn();
+    render(<TrapPanel open onDismiss={onDismiss} />);
+    const dialog = screen.getByRole("dialog", { name: "面板" });
+    const outside = screen.getByRole("button", { name: "外面" });
+    const link = screen.getByRole("link", { name: "链到内部" });
+    const field = screen.getByRole("textbox", { name: "名称" });
+    const close = screen.getByRole("button", { name: "关闭" });
+    await waitFor(() => expect(dialog).toHaveFocus());
+
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(link).toHaveFocus();
+    fireEvent.keyDown(link, { key: "Tab" });
+    expect(field).toHaveFocus();
+    fireEvent.keyDown(field, { key: "Tab" });
+    expect(close).toHaveFocus();
+    fireEvent.keyDown(close, { key: "Tab" });
+    expect(link).toHaveFocus();
+    expect(outside).not.toHaveFocus();
+    expect(screen.getByRole("button", { name: "不可用" })).toBeDisabled();
+
+    fireEvent.keyDown(link, { key: "Tab", shiftKey: true });
+    expect(close).toHaveFocus();
+    dialog.focus();
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(close).toHaveFocus();
+
+    outside.focus();
+    fireEvent.keyDown(outside, { key: "Tab" });
+    expect(link).toHaveFocus();
+    outside.focus();
+    fireEvent.keyDown(outside, { key: "Tab", shiftKey: true });
+    expect(close).toHaveFocus();
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  it("keeps Tab on the panel when it has no controls", async () => {
+    render(<EmptyPanel open />);
+    const dialog = screen.getByRole("dialog", { name: "空面板" });
+    const outside = screen.getByRole("button", { name: "外面" });
+    await waitFor(() => expect(dialog).toHaveFocus());
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(dialog).toHaveFocus();
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(dialog).toHaveFocus();
+    expect(outside).not.toHaveFocus();
   });
 });
