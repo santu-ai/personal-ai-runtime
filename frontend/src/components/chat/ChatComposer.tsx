@@ -59,7 +59,7 @@ export default function ChatComposer({
   };
 
   return (
-    <div className="flex items-end gap-2 rounded-xl border border-border-subtle bg-surface-raised p-2.5 shadow-sm transition-colors focus-within:border-focus-ring focus-within:ring-1 focus-within:ring-focus-ring/30">
+    <div className="flex items-end gap-2 rounded-xl border border-border-subtle bg-surface-raised p-2.5 shadow-sm transition-colors focus-within:border-focus-ring">
       <VoiceInput onTranscript={handleVoiceTranscript} disabled={fieldDisabled} />
       <textarea
         ref={inputRef}
@@ -72,7 +72,7 @@ export default function ChatComposer({
         rows={1}
         disabled={fieldDisabled}
         aria-busy={holding || undefined}
-        className="min-h-[28px] max-h-[200px] flex-1 resize-none border-none bg-transparent py-1.5 text-sm text-fg-primary outline-none placeholder:text-fg-tertiary"
+        className="min-h-[28px] max-h-[200px] flex-1 resize-none rounded-sm border-none bg-transparent py-1.5 text-sm text-fg-primary placeholder:text-fg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring"
       />
       <Button
         type="button"

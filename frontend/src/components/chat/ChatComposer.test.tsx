@@ -11,6 +11,13 @@ function renderComposer(props: Partial<ComponentProps<typeof ChatComposer>> = {}
 }
 
 describe("ChatComposer", () => {
+  it("keeps the timeline focus ring on the field", () => {
+    renderComposer();
+    const field = screen.getByPlaceholderText(/输入消息/);
+    expect(field).toHaveClass("focus-visible:ring-2", "focus-visible:ring-focus-ring");
+    expect(field.className.split(/\s+/)).not.toContain("outline-none");
+  });
+
   it("disables send when the input is empty", () => {
     renderComposer();
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();

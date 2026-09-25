@@ -274,6 +274,8 @@ describe("GoalsPage", () => {
     renderGoals();
     fireEvent.click(screen.getAllByText("+ 新建")[0]);
     const input = screen.getByPlaceholderText("目标名称...");
+    expect(input).toHaveClass("focus-visible:ring-focus-ring");
+    expect(input.className.split(/\s+/)).not.toContain("outline-none");
     fireEvent.change(input, { target: { value: "学习" } });
     fireEvent.keyDown(input, { key: "Enter", isComposing: true });
     expect(createGoal).not.toHaveBeenCalled();
