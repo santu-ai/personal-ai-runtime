@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { Zap, MailSearch, Target as TargetIcon, BrainCircuit, Lightbulb } from "lucide-react";
 import { type MemoryRow, type StreamEvent } from "../../api/client";
 import { listWorkItems } from "../../api/workItems";
@@ -358,7 +358,7 @@ export default function ChatView({ conversationId }: Props) {
     root?.querySelector<HTMLElement>("textarea")?.focus();
   }, [resolvingAction, pendingConfirmation]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const approvalId = pendingConfirmation
       ? pendingConfirmation.approvalId || pendingConfirmation.toolCall.id
       : null;
@@ -372,6 +372,8 @@ export default function ChatView({ conversationId }: Props) {
     const confirmButton = root?.querySelector<HTMLElement>("button:not([disabled])");
     const target = answer ?? confirmButton;
     // 欢迎屏那一帧还没有卡片。等卡片挂上再移焦点，避免记成已经移过。
+    // 卡片挂上的同一帧里输入框会被禁用，浏览器会把焦点卸到页面空白处。
+    // 绘制前落到确认或回答，读历史恢复出来的确认才不会停在 body。
     if (!target) return;
     focusedApprovalRef.current = approvalId;
     target.focus();
