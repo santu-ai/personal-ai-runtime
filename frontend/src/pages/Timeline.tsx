@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -40,7 +40,8 @@ function LoadErrorNotice({
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  // 「重试」和卸下的「加载更多」在同一轮绘制前交接，避免先停在页面空白。
+  useLayoutEffect(() => {
     const root = ref.current;
     const button = root?.querySelector("button");
     if (!root || !button || root.contains(document.activeElement)) return;
@@ -101,6 +102,11 @@ function taskPageHref(workId: string | null | undefined): string | undefined {
 }
 
 type TimelineFocus = { type: "initial" | "more"; seen: readonly string[] };
+
+/** 绘制前通知。测试在「加载更多」或首次「重试」卸下的同一轮读取焦点。 */
+export const timelinePageLayoutFocus = {
+  notify: null as null | (() => void),
+};
 
 /** 焦点在页面空白处，或还停在已经卸掉的按钮上，才安放。已经在别的控件上就不再抢。 */
 function focusIsIdle(): boolean {
@@ -228,7 +234,9 @@ export default function TimelinePage() {
     void runFetch("more", () => (isFetchNextPageError ? fetchNextPage() : refetch()));
   };
 
-  useEffect(() => {
+  // 「加载更多」或首次「重试」卸下后才交焦点。放到绘制前，不把焦点留在页面空白。
+  // 已经移到别的控件上就不再抢。失败时这一段交给上面的「重试」。
+  useLayoutEffect(() => {
     const pending = focusAfter.current;
     if (!pending || armed || isFetching || loadingMore) return;
     if (shownInitialError || loadedError) {
@@ -263,6 +271,10 @@ export default function TimelinePage() {
     }
     emptyRef.current?.focus();
   }, [armed, events, hasMore, isFetching, loadedError, loadingMore, shownInitialError]);
+
+  useLayoutEffect(() => {
+    timelinePageLayoutFocus.notify?.();
+  });
 
   return (
     <div className="page-shell">
