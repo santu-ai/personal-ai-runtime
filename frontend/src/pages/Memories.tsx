@@ -119,6 +119,41 @@ function captureFocusIdle(): boolean {
   return anchor === "capture" || anchor === "remember";
 }
 
+type MemoryDraftDialog = "reject" | "edit";
+type MemoryDialogHandoff =
+  { kind: "failed"; dialog: MemoryDraftDialog } | { kind: "kept"; dialog: MemoryDraftDialog };
+
+function focusMemoryDialogBlank(): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  return active.getAttribute("role") === "dialog";
+}
+
+function focusOnMemoryDialog(name: MemoryDraftDialog): boolean {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) return false;
+  return (
+    active.getAttribute("data-memory-dialog") === name ||
+    active.getAttribute("data-memory-dialog-field") === name
+  );
+}
+
+function focusMemoryDialogField(name: MemoryDraftDialog): boolean {
+  const field = document.querySelector<HTMLElement>(`[data-memory-dialog-field="${name}"]`);
+  if (!field) return false;
+  if (field instanceof HTMLInputElement && field.disabled) return false;
+  if (document.activeElement !== field) field.focus();
+  return document.activeElement === field;
+}
+
+function focusMemoryDialogConfirm(name: MemoryDraftDialog): boolean {
+  const button = document.querySelector<HTMLButtonElement>(`[data-memory-dialog="${name}"]`);
+  if (!button || button.disabled) return false;
+  if (document.activeElement !== button) button.focus();
+  return document.activeElement === button;
+}
+
 function focusAnchor(scope: RatifyScope): boolean {
   if (scope === "list" && focusCaptureField()) return true;
   const tab = document.querySelector<HTMLButtonElement>(
@@ -234,11 +269,14 @@ export default function MemoriesPage() {
   const [rejectReason, setRejectReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
   const rejectingRef = useRef(false);
+  const rejectLive = useRef("");
   const [editTarget, setEditTarget] = useState<MemoryRow | null>(null);
   const [editContent, setEditContent] = useState("");
   const [editCategory, setEditCategory] = useState("");
   const [editing, setEditing] = useState(false);
   const editingRef = useRef(false);
+  const editLive = useRef({ content: "", category: "" });
+  const dialogHandoff = useRef<MemoryDialogHandoff | null>(null);
   const [provenanceTarget, setProvenanceTarget] = useState<MemoryRow | null>(null);
   const [graphData, setGraphData] = useState<MemoryGraph | null>(null);
   const [graphLoading, setGraphLoading] = useState(false);
@@ -351,21 +389,34 @@ export default function MemoriesPage() {
   };
 
   const confirmEdit = async () => {
-    if (!editTarget || !editContent.trim() || editingRef.current) return;
+    if (!editTarget || editingRef.current) return;
+    const submitted = { ...editLive.current };
+    const content = submitted.content.trim();
+    if (!content) return;
     const id = editTarget.id;
-    const content = editContent.trim();
-    const category = editCategory;
     editingRef.current = true;
+    dialogHandoff.current = null;
     setEditing(true);
+    let handoff: MemoryDialogHandoff | null = null;
     try {
-      await updateMemory(id, { content, category: category || undefined });
-      setEditTarget(null);
-      setEditContent("");
-      setEditCategory("");
+      await updateMemory(id, { content, category: submitted.category || undefined });
+      if (
+        editLive.current.content === submitted.content &&
+        editLive.current.category === submitted.category
+      ) {
+        editLive.current = { content: "", category: "" };
+        setEditTarget(null);
+        setEditContent("");
+        setEditCategory("");
+      } else {
+        handoff = { kind: "kept", dialog: "edit" };
+      }
       invalidateMemories();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "更新记忆失败", "记忆");
+      handoff = { kind: "failed", dialog: "edit" };
     } finally {
+      dialogHandoff.current = handoff;
       editingRef.current = false;
       setEditing(false);
     }
@@ -463,7 +514,8 @@ export default function MemoriesPage() {
   }, [ratifying, memories, proposedMemories, rejectedMemories, grouped, viewMode]);
 
   const handleReject = (m: MemoryRow) => {
-    if (ratifyingRef.current.has(m.id)) return;
+    if (ratifyingRef.current.has(m.id) || rejectingRef.current) return;
+    rejectLive.current = "";
     setRejectTarget(m);
     setRejectReason("");
   };
@@ -471,21 +523,66 @@ export default function MemoriesPage() {
   const confirmReject = async () => {
     if (!rejectTarget || rejectingRef.current) return;
     const id = rejectTarget.id;
-    const reason = rejectReason.trim();
+    const submitted = rejectLive.current;
+    const reason = submitted.trim();
     rejectingRef.current = true;
+    dialogHandoff.current = null;
     setRejecting(true);
+    let handoff: MemoryDialogHandoff | null = null;
     try {
       await rejectMemory(id, reason);
-      setRejectTarget(null);
-      setRejectReason("");
+      if (rejectLive.current === submitted) {
+        rejectLive.current = "";
+        setRejectTarget(null);
+        setRejectReason("");
+      } else {
+        handoff = { kind: "kept", dialog: "reject" };
+      }
       invalidateMemories();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "拒绝记忆失败", "记忆");
+      handoff = { kind: "failed", dialog: "reject" };
     } finally {
+      dialogHandoff.current = handoff;
       rejectingRef.current = false;
       setRejecting(false);
     }
   };
+
+  useEffect(() => {
+    if (rejecting || editing) return;
+    const pending = dialogHandoff.current;
+    if (!pending) return;
+    if (pending.kind === "kept") {
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        active.getAttribute("data-memory-dialog-field") === pending.dialog
+      ) {
+        dialogHandoff.current = null;
+        return;
+      }
+      if (focusOnMemoryDialog(pending.dialog) || focusMemoryDialogBlank()) {
+        if (focusMemoryDialogField(pending.dialog)) dialogHandoff.current = null;
+        return;
+      }
+      dialogHandoff.current = null;
+      return;
+    }
+    if (focusOnMemoryDialog(pending.dialog)) {
+      dialogHandoff.current = null;
+      return;
+    }
+    if (!focusMemoryDialogBlank()) {
+      dialogHandoff.current = null;
+      return;
+    }
+    if (focusMemoryDialogConfirm(pending.dialog)) {
+      dialogHandoff.current = null;
+      return;
+    }
+    if (focusMemoryDialogField(pending.dialog)) dialogHandoff.current = null;
+  }, [rejecting, editing, rejectTarget, editTarget]);
 
   const toggleSelect = (m: MemoryRow) => {
     setSelectedIds((prev) => {
@@ -532,9 +629,13 @@ export default function MemoriesPage() {
   };
 
   const handleEdit = (m: MemoryRow) => {
+    if (editingRef.current) return;
+    const content = m.content;
+    const category = m.category || "fact";
+    editLive.current = { content, category };
     setEditTarget(m);
-    setEditContent(m.content);
-    setEditCategory(m.category || "fact");
+    setEditContent(content);
+    setEditCategory(category);
   };
 
   const handleContinueChat = (m: MemoryRow) => {
@@ -926,8 +1027,11 @@ export default function MemoriesPage() {
             <p className="text-xs text-fg-tertiary">可选填写原因，便于之后核对误报。</p>
             <input
               value={rejectReason}
-              disabled={rejecting}
-              onChange={(e) => setRejectReason(e.target.value)}
+              data-memory-dialog-field="reject"
+              onChange={(e) => {
+                rejectLive.current = e.target.value;
+                setRejectReason(e.target.value);
+              }}
               maxLength={200}
               className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary outline-none focus:border-focus-ring disabled:opacity-50"
               placeholder="例如：记错了、过时了"
@@ -935,7 +1039,6 @@ export default function MemoriesPage() {
             <div className="flex gap-2 justify-end">
               <button
                 type="button"
-                disabled={rejecting}
                 onClick={() => {
                   if (rejectingRef.current) return;
                   setRejectTarget(null);
@@ -946,10 +1049,10 @@ export default function MemoriesPage() {
               </button>
               <button
                 type="button"
-                disabled={rejecting}
+                data-memory-dialog="reject"
                 aria-busy={rejecting || undefined}
                 onClick={() => void confirmReject()}
-                className="px-3 py-1.5 bg-surface-overlay hover:bg-border-strong rounded-lg text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
+                className={`px-3 py-1.5 bg-surface-overlay hover:bg-border-strong rounded-lg text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50${rejecting ? " opacity-50" : ""}`}
               >
                 {rejecting ? "拒绝中..." : "拒绝"}
               </button>
@@ -984,8 +1087,11 @@ export default function MemoriesPage() {
                 <label className="text-xs text-fg-secondary mb-1 block">内容</label>
                 <input
                   value={editContent}
-                  disabled={editing}
-                  onChange={(e) => setEditContent(e.target.value)}
+                  data-memory-dialog-field="edit"
+                  onChange={(e) => {
+                    editLive.current = { ...editLive.current, content: e.target.value };
+                    setEditContent(e.target.value);
+                  }}
                   className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary outline-none focus:border-focus-ring disabled:opacity-50"
                   placeholder="记忆内容"
                 />
@@ -994,8 +1100,11 @@ export default function MemoriesPage() {
                 <label className="text-xs text-fg-secondary mb-1 block">分类</label>
                 <input
                   value={editCategory}
-                  disabled={editing}
-                  onChange={(e) => setEditCategory(e.target.value)}
+                  data-memory-dialog-field="edit"
+                  onChange={(e) => {
+                    editLive.current = { ...editLive.current, category: e.target.value };
+                    setEditCategory(e.target.value);
+                  }}
                   className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary outline-none focus:border-focus-ring disabled:opacity-50"
                   placeholder="如 fact, preference, habit"
                 />
@@ -1004,7 +1113,6 @@ export default function MemoriesPage() {
             <div className="flex gap-2 justify-end">
               <button
                 type="button"
-                disabled={editing}
                 onClick={() => {
                   if (editingRef.current) return;
                   setEditTarget(null);
@@ -1015,10 +1123,11 @@ export default function MemoriesPage() {
               </button>
               <button
                 type="button"
-                disabled={editing || !editContent.trim()}
+                data-memory-dialog="edit"
+                disabled={!editContent.trim() && !editing}
                 aria-busy={editing || undefined}
                 onClick={() => void confirmEdit()}
-                className="px-3 py-1.5 bg-surface-overlay hover:bg-border-strong rounded-lg text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
+                className={`px-3 py-1.5 bg-surface-overlay hover:bg-border-strong rounded-lg text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50${editing ? " opacity-50" : ""}`}
               >
                 {editing ? "保存中..." : "保存"}
               </button>
