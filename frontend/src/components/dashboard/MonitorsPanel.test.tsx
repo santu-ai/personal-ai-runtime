@@ -186,15 +186,23 @@ describe("MonitorsPanel", () => {
     expect(checkUrlMonitors).not.toHaveBeenCalled();
     expect(createUrlMonitor).not.toHaveBeenCalled();
 
+    let focusWhenDisabled: Element | null = null;
+    const observer = new MutationObserver(() => {
+      if (!add.disabled) return;
+      focusWhenDisabled ??= document.activeElement;
+    });
+    observer.observe(add, { attributes: true, attributeFilter: ["disabled"] });
     await act(async () => {
       release(inboxFilter("if_new", "老板"));
     });
     const created = await screen.findByText("老板");
-    await waitFor(() =>
-      expect(
-        within(created.closest("li") as HTMLElement).getByRole("button", { name: "停用" }),
-      ).toHaveFocus(),
-    );
+    const toggle = within(created.closest("li") as HTMLElement).getByRole("button", {
+      name: "停用",
+    });
+    expect(focusWhenDisabled).toBe(toggle);
+    expect(add).toBeDisabled();
+    expect(toggle).toHaveFocus();
+    observer.disconnect();
     expect(screen.getByPlaceholderText("名称（如：老板）")).toHaveValue("");
     expect(screen.getByPlaceholderText("发件人包含（可空）")).toHaveValue("");
   });
@@ -547,15 +555,23 @@ describe("MonitorsPanel", () => {
     expect(createUrlMonitor).toHaveBeenCalledTimes(2);
     expect(createInboxFilter).not.toHaveBeenCalled();
 
+    let focusWhenDisabled: Element | null = null;
+    const observer = new MutationObserver(() => {
+      if (!add.disabled) return;
+      focusWhenDisabled ??= document.activeElement;
+    });
+    observer.observe(add, { attributes: true, attributeFilter: ["disabled"] });
     await act(async () => {
       release(urlMonitor("um_new", "发布说明"));
     });
     const created = await screen.findByText("发布说明");
-    await waitFor(() =>
-      expect(
-        within(created.closest("li") as HTMLElement).getByRole("button", { name: "停用" }),
-      ).toHaveFocus(),
-    );
+    const toggle = within(created.closest("li") as HTMLElement).getByRole("button", {
+      name: "停用",
+    });
+    expect(focusWhenDisabled).toBe(toggle);
+    expect(add).toBeDisabled();
+    expect(toggle).toHaveFocus();
+    observer.disconnect();
     expect(screen.getByPlaceholderText("名称（如：发布说明）")).toHaveValue("");
     expect(screen.getByPlaceholderText("https://…")).toHaveValue("");
     expect(screen.getByPlaceholderText("检查间隔（分钟，最少 30）")).toHaveValue("60");

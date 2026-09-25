@@ -928,13 +928,21 @@ describe("SettingsPage", () => {
       is_custom_identity: false,
       is_custom_coding_rules: false,
     });
+    let focusWhenDisabled: Element | null = null;
+    const observer = new MutationObserver(() => {
+      if (!reset.disabled) return;
+      focusWhenDisabled ??= document.activeElement;
+    });
+    observer.observe(reset, { attributes: true, attributeFilter: ["disabled"] });
     await act(async () => {
       release({ ok: true });
     });
     await waitFor(() => expect(field).toHaveValue("默认身份"));
+    expect(focusWhenDisabled).toBe(field);
     expect(screen.getByText("已重置为默认")).toBeInTheDocument();
     expect(reset).toBeDisabled();
     expect(field).toHaveFocus();
+    observer.disconnect();
   });
 
   it("does not overwrite a persona edit that arrives before reset returns", async () => {
@@ -1109,12 +1117,20 @@ describe("SettingsPage", () => {
     fireEvent.click(toggle);
     poll.focus();
     expect(poll).toBeEnabled();
+    let focusWhenDisabled: Element | null = null;
+    const observer = new MutationObserver(() => {
+      if (!poll.disabled) return;
+      focusWhenDisabled ??= document.activeElement;
+    });
+    observer.observe(poll, { attributes: true, attributeFilter: ["disabled"] });
     await act(async () => {
       release({ status: "ok", processed: 2 });
     });
     expect(await screen.findByText("轮询完成，处理 2 条消息")).toBeInTheDocument();
-    await waitFor(() => expect(poll).toBeDisabled());
+    expect(focusWhenDisabled).toBe(save);
+    expect(poll).toBeDisabled();
     expect(save).toHaveFocus();
+    observer.disconnect();
   });
 
   it("does not steal focus when telegram polling ends after focus moved", async () => {

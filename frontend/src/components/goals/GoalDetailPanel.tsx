@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { type WorkItem } from "../../api/client";
 import { useErrorStore } from "../../stores/errorStore";
 import { useInvalidateGoals } from "../../hooks/useGoalsQuery";
@@ -569,7 +569,8 @@ function NewActionInput({
     setValue("");
   }, [goalId]);
 
-  useEffect(() => {
+  // 清掉步骤会禁用「添加」。放到绘制前，观察 DOM 的那一轮才不会停在已经禁用的按钮上。
+  useLayoutEffect(() => {
     if (saving) return;
     const pending = handoff.current;
     if (!pending) return;
