@@ -37,6 +37,11 @@ function focusInComposer(composer: HTMLTextAreaElement): boolean {
   return composer.parentElement?.contains(active) ?? false;
 }
 
+/** 绘制前通知。测试在续写失败、卡片还在的同一轮读取焦点。 */
+export const chatViewLayoutFocus = {
+  notify: null as null | (() => void),
+};
+
 export default function ChatView({ conversationId }: Props) {
   const [input, setInput] = useState(() => readComposerDraft(conversationId));
   const [contextOpen, setContextOpen] = useState(false);
@@ -362,31 +367,6 @@ export default function ChatView({ conversationId }: Props) {
     composer.focus();
   }, [isLoading, pendingConfirmation, initialLoad]);
 
-  useEffect(() => {
-    if (resolvingAction) return;
-    const action = focusAfterResolve.current;
-    if (!action) return;
-    focusAfterResolve.current = null;
-    if (!pendingConfirmation) return;
-    const active = document.activeElement;
-    const idle =
-      !active ||
-      active === document.body ||
-      active === document.documentElement ||
-      !(active instanceof HTMLElement) ||
-      !active.isConnected;
-    if (!idle) return;
-    const root = confirmationRef.current;
-    const button = root?.querySelector<HTMLButtonElement>(
-      `button[data-confirm-action="${action}"]`,
-    );
-    if (button && !button.disabled) {
-      button.focus();
-      return;
-    }
-    root?.querySelector<HTMLElement>("textarea")?.focus();
-  }, [resolvingAction, pendingConfirmation]);
-
   useLayoutEffect(() => {
     const approvalId = pendingConfirmation
       ? pendingConfirmation.approvalId || pendingConfirmation.toolCall.id
@@ -407,6 +387,39 @@ export default function ChatView({ conversationId }: Props) {
     focusedApprovalRef.current = approvalId;
     target.focus();
   }, [pendingConfirmation, initialLoad]);
+
+  // 续写失败且这张卡片还在时，焦点已经掉到页面空白，或还停在已经禁用的按钮上，才补回去。
+  // 发送回答变成不可用时，浏览器会先把焦点卸到空白。放到绘制前，不先停在页面空白，也不停在已经禁用的按钮上。
+  // 放在下一张确认的交接之后：新卡片先拿到焦点，这里不再抢。已经移到别的控件上也不再抢。
+  useLayoutEffect(() => {
+    if (resolvingAction) return;
+    const action = focusAfterResolve.current;
+    if (!action) return;
+    focusAfterResolve.current = null;
+    if (!pendingConfirmation) return;
+    const active = document.activeElement;
+    const idle =
+      !active ||
+      active === document.body ||
+      active === document.documentElement ||
+      !(active instanceof HTMLElement) ||
+      !active.isConnected ||
+      (active instanceof HTMLButtonElement && active.disabled);
+    if (!idle) return;
+    const root = confirmationRef.current;
+    const button = root?.querySelector<HTMLButtonElement>(
+      `button[data-confirm-action="${action}"]`,
+    );
+    if (button && !button.disabled) {
+      button.focus();
+      return;
+    }
+    root?.querySelector<HTMLElement>("textarea")?.focus();
+  }, [resolvingAction, pendingConfirmation]);
+
+  useLayoutEffect(() => {
+    chatViewLayoutFocus.notify?.();
+  });
 
   const handleSend = useCallback(async () => {
     const raw = input;

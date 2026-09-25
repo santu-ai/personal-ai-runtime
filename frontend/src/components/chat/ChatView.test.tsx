@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import ChatView from "./ChatView";
+import ChatView, { chatViewLayoutFocus } from "./ChatView";
 import { clearComposerDrafts, writeComposerDraft } from "./composerDraft";
 import {
   ApiError,
@@ -119,6 +119,18 @@ async function flushTranscriptScroll() {
   });
 }
 
+/** 续写失败、卡片还在的那一轮，绘制前焦点已经离开页面空白。useEffect 会先停在 body。 */
+function captureFocusWhenSettled(settled: () => boolean): { read: () => Element | null } {
+  let focusAtLayout: Element | null = null;
+  chatViewLayoutFocus.notify = () => {
+    if (!settled()) return;
+    focusAtLayout ??= document.activeElement;
+  };
+  return {
+    read: () => focusAtLayout,
+  };
+}
+
 function renderChatView() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
@@ -138,6 +150,7 @@ describe("ChatView", () => {
 
   afterEach(() => {
     cleanup();
+    chatViewLayoutFocus.notify = null;
     vi.clearAllMocks();
     // Reset the controllable memories stub between tests so each starts
     // from a clean baseline.
@@ -607,9 +620,16 @@ describe("ChatView", () => {
 
     const elsewhere = screen.getByRole("button", { name: "上下文" });
     elsewhere.focus();
-    release?.({ status: "resume_failed", retryable: true, error: "LLM API error" });
-    await waitFor(() => expect(confirm).not.toHaveAttribute("aria-busy"));
+    const focusWhenFailed = captureFocusWhenSettled(() => {
+      const button = screen.queryByRole("button", { name: "确认写入" });
+      return button instanceof HTMLButtonElement && !button.hasAttribute("aria-busy");
+    });
+    await act(async () => {
+      release?.({ status: "resume_failed", retryable: true, error: "LLM API error" });
+    });
+    expect(confirm).not.toHaveAttribute("aria-busy");
     expect(elsewhere).toHaveFocus();
+    expect(focusWhenFailed.read()).toBe(elsewhere);
     expect(screen.getByRole("button", { name: "确认写入" })).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/输入消息/)).not.toHaveFocus();
   });
@@ -656,9 +676,74 @@ describe("ChatView", () => {
     expect(resolveApproval).toHaveBeenCalledTimes(1);
 
     (document.activeElement as HTMLElement | null)?.blur();
-    release?.(new ApiError("拒绝失败", 500));
-    await waitFor(() => expect(cancel).not.toHaveAttribute("aria-busy"));
+    expect(document.activeElement).toBe(document.body);
+    const focusWhenFailed = captureFocusWhenSettled(() => {
+      const button = screen.queryByRole("button", { name: "取消" });
+      return button instanceof HTMLButtonElement && !button.hasAttribute("aria-busy");
+    });
+    await act(async () => {
+      release?.(new ApiError("拒绝失败", 500));
+    });
+    expect(cancel).not.toHaveAttribute("aria-busy");
     expect(cancel).toHaveFocus();
+    expect(focusWhenFailed.read()).toBe(cancel);
+    expect(focusWhenFailed.read()).not.toBe(document.body);
+    expect(screen.getByPlaceholderText(/输入消息/)).not.toHaveFocus();
+  });
+
+  it("restores the answer field before paint when a failed send disables the button", async () => {
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({
+          type: "confirmation_required",
+          tool_name: "ask_user",
+          tool_args: { question: "简报要覆盖最近几天？" },
+          approval_id: "ap-ask-fail",
+          tool_call_id: "tc-ask-fail",
+        });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+    let release:
+      ((value: { status: string; retryable?: boolean; error?: string }) => void) | undefined;
+    vi.mocked(resolveApproval).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    renderChatView();
+    fireEvent.change(screen.getByPlaceholderText(/输入消息/), {
+      target: { value: "做一份简报" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    const answer = await screen.findByLabelText("你的回答");
+    fireEvent.change(answer, { target: { value: "最近三天" } });
+    const sendAnswer = screen.getByRole("button", { name: "发送回答" });
+    sendAnswer.focus();
+    fireEvent.click(sendAnswer);
+    await waitFor(() => expect(sendAnswer).toHaveAttribute("aria-busy", "true"));
+    expect(sendAnswer).toHaveFocus();
+
+    fireEvent.change(answer, { target: { value: "" } });
+    expect(sendAnswer).toBeEnabled();
+    expect(sendAnswer).toHaveFocus();
+
+    const focusWhenFailed = captureFocusWhenSettled(() => {
+      const button = screen.queryByRole("button", { name: "发送回答" });
+      return button instanceof HTMLButtonElement && !button.hasAttribute("aria-busy");
+    });
+    await act(async () => {
+      release?.({ status: "resume_failed", retryable: true, error: "LLM API error" });
+    });
+
+    expect(sendAnswer).toBeDisabled();
+    expect(answer).toHaveFocus();
+    expect(focusWhenFailed.read()).toBe(answer);
+    expect(focusWhenFailed.read()).not.toBe(document.body);
     expect(screen.getByPlaceholderText(/输入消息/)).not.toHaveFocus();
   });
 
