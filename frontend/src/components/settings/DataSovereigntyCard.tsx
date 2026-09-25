@@ -28,6 +28,7 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importConfirm, setImportConfirm] = useState("");
+  const importConfirmLive = useRef("");
   const [encryptPassword, setEncryptPassword] = useState("");
   const [encryptExporting, setEncryptExporting] = useState(false);
   const [encryptImporting, setEncryptImporting] = useState(false);
@@ -38,6 +39,7 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const destroyingRef = useRef(false);
   const exportLock = useRef(false);
+  const importingRef = useRef(false);
   const encryptImportingRef = useRef(false);
   const passwordLive = useRef("");
   const encryptExportGen = useRef(0);
@@ -53,6 +55,11 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
     encryptExportGen.current += 1;
     setEncryptPassword(value);
     setEncryptExportNotice(null);
+  };
+
+  const editImportConfirm = (value: string) => {
+    importConfirmLive.current = value;
+    setImportConfirm(value);
   };
 
   const handleExport = async () => {
@@ -71,29 +78,48 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
     }
   };
 
-  const handleImport = async (data: Record<string, unknown>, write: boolean) => {
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>, write: boolean) => {
+    const input = e.currentTarget;
+    const file = input.files?.[0];
+    if (importingRef.current) {
+      input.value = "";
+      return;
+    }
+    if (!file) return;
+    if (write && importConfirmLive.current !== "DESTROY_AND_IMPORT") {
+      input.value = "";
+      return;
+    }
+    importingRef.current = true;
     setImporting(true);
     try {
-      await importData(data, !write);
-      if (write) setImportConfirm("");
+      let data: Record<string, unknown>;
+      try {
+        data = JSON.parse(await file.text()) as Record<string, unknown>;
+      } catch {
+        addError("无法解析备份文件", "设置");
+        return;
+      }
+      try {
+        await importData(data, !write);
+      } catch (err) {
+        addError(err instanceof ApiError ? err.message : "导入失败", "设置");
+        return;
+      }
+      if (write) {
+        // 清掉确认句会让文件框不可用。焦点还在文件框上时先落到输入框，避免卸到页面空白处。
+        if (document.activeElement === input) {
+          document
+            .querySelector<HTMLInputElement>('[data-sovereignty-field="import-confirm"]')
+            ?.focus();
+        }
+        editImportConfirm("");
+      }
       reload();
-    } catch (err) {
-      addError(err instanceof ApiError ? err.message : "导入失败", "设置");
     } finally {
+      importingRef.current = false;
       setImporting(false);
-    }
-  };
-
-  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>, write: boolean) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const data = JSON.parse(await file.text()) as Record<string, unknown>;
-      await handleImport(data, write);
-    } catch {
-      addError("无法解析备份文件", "设置");
-    } finally {
-      e.target.value = "";
+      input.value = "";
     }
   };
 
@@ -124,9 +150,10 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
   };
 
   const handleEncryptedImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const input = e.currentTarget;
+    const file = input.files?.[0];
     if (encryptImportingRef.current) {
-      e.target.value = "";
+      input.value = "";
       return;
     }
     const submitted = passwordLive.current;
@@ -142,14 +169,22 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
       const { data, password } = JSON.parse(raw) as { data: string; password?: string };
       await importEncryptedData(data, password || submitted);
       setStatusMessage("加密导入成功");
-      if (passwordLive.current === submitted) editPassword("");
+      if (passwordLive.current === submitted) {
+        // 清掉密码会让文件框不可用。焦点还在文件框上时先落到密码框。
+        if (document.activeElement === input) {
+          document
+            .querySelector<HTMLInputElement>('[data-sovereignty-field="encrypt-password"]')
+            ?.focus();
+        }
+        editPassword("");
+      }
       reload();
     } catch {
       addError("加密导入失败，请检查密码和文件", "设置");
     } finally {
       encryptImportingRef.current = false;
       setEncryptImporting(false);
-      e.target.value = "";
+      input.value = "";
     }
   };
 
@@ -188,7 +223,10 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
             {exportNotice}
           </p>
         ) : null}
-        <label className="inline-block">
+        <label
+          className={`inline-block ${importing ? "opacity-50" : ""}`}
+          aria-busy={importing || undefined}
+        >
           <span className="inline-flex px-4 py-2 text-sm rounded-lg font-medium bg-surface-overlay hover:bg-border-strong text-fg-primary cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring">
             {importing ? "导入中…" : "导入备份（只读）"}
           </span>
@@ -196,22 +234,27 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
             type="file"
             accept=".json"
             className="hidden"
-            onChange={(e) => handleImportFile(e, false)}
-            disabled={importing}
+            data-sovereignty-import="readonly"
+            aria-busy={importing || undefined}
+            onChange={(e) => void handleImportFile(e, false)}
           />
         </label>
       </div>
       <div className="mt-4 flex gap-2 items-center">
         <Input
+          data-sovereignty-field="import-confirm"
           value={importConfirm}
-          onChange={(e) => setImportConfirm(e.target.value)}
+          onChange={(e) => editImportConfirm(e.target.value)}
           placeholder="写入导入请输入 DESTROY_AND_IMPORT"
           className="flex-1 text-xs"
         />
-        <label className="shrink-0">
+        <label
+          className={`shrink-0 ${importing ? "opacity-50" : ""}`}
+          aria-busy={importing || undefined}
+        >
           <span
             className={`inline-flex px-3 py-1.5 text-xs rounded-lg font-medium cursor-pointer transition-colors ${
-              importing || importConfirm !== "DESTROY_AND_IMPORT"
+              importConfirm !== "DESTROY_AND_IMPORT"
                 ? "bg-surface-overlay text-fg-disabled cursor-not-allowed"
                 : "bg-danger hover:bg-danger/90 text-white"
             }`}
@@ -222,8 +265,10 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
             type="file"
             accept=".json"
             className="hidden"
-            disabled={importing || importConfirm !== "DESTROY_AND_IMPORT"}
-            onChange={(e) => handleImportFile(e, true)}
+            data-sovereignty-import="overwrite"
+            disabled={importConfirm !== "DESTROY_AND_IMPORT"}
+            aria-busy={importing || undefined}
+            onChange={(e) => void handleImportFile(e, true)}
           />
         </label>
       </div>
@@ -232,6 +277,7 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
         <h4 className="text-xs font-medium text-fg-secondary mb-2">加密备份（端到端加密）</h4>
         <div className="flex flex-wrap gap-3 items-end">
           <Input
+            data-sovereignty-field="encrypt-password"
             value={encryptPassword}
             onChange={(e) => editPassword(e.target.value)}
             placeholder="输入加密密码"
@@ -251,9 +297,12 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
               {encryptExportNotice}
             </p>
           ) : null}
-          <label className="inline-block">
+          <label
+            className={`inline-block ${encryptImporting ? "opacity-50" : ""}`}
+            aria-busy={encryptImporting || undefined}
+          >
             <span
-              className={`inline-flex px-4 py-2 text-sm rounded-lg font-medium cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${encryptImporting || !encryptPassword ? "bg-surface-overlay text-fg-disabled" : "bg-surface-overlay hover:bg-border-strong text-fg-primary"}`}
+              className={`inline-flex px-4 py-2 text-sm rounded-lg font-medium cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${!encryptPassword && !encryptImporting ? "bg-surface-overlay text-fg-disabled" : "bg-surface-overlay hover:bg-border-strong text-fg-primary"}`}
             >
               {encryptImporting ? "导入中…" : "加密导入"}
             </span>
@@ -262,7 +311,8 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
               accept=".json"
               className="hidden"
               data-sovereignty-import="encrypted"
-              disabled={encryptImporting || !encryptPassword}
+              disabled={!encryptPassword && !encryptImporting}
+              aria-busy={encryptImporting || undefined}
               onChange={(e) => void handleEncryptedImport(e)}
             />
           </label>
@@ -271,7 +321,16 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
       <hr className="mt-4 border-border-subtle" />
       <div className="mt-4">
         <h4 className="text-xs font-medium text-danger mb-2">危险操作</h4>
-        <Button variant="danger" onClick={() => setConfirmDestroy(true)} disabled={destroying}>
+        <Button
+          variant="danger"
+          data-sovereignty-action="destroy"
+          onClick={() => {
+            if (destroyingRef.current) return;
+            setConfirmDestroy(true);
+          }}
+          aria-busy={destroying || undefined}
+          className={destroying ? "opacity-50" : ""}
+        >
           销毁全部数据
         </Button>
         <p className="text-xs text-fg-disabled mt-1">
