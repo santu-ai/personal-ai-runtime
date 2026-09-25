@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
-import InboxPage from "./Inbox";
+import InboxPage, { inboxPageLayoutFocus } from "./Inbox";
 import {
   ApiError,
   getInboxEmailDetail,
@@ -120,7 +120,20 @@ const idleSync = {
 };
 
 describe("InboxPage", () => {
+  /** 未读卡片卸下的那一轮，绘制前焦点已经离开页面空白。useEffect 会先停在 body。 */
+  function captureFocusWhenGone(gone: () => boolean): { read: () => Element | null } {
+    let focusAtLayout: Element | null = null;
+    inboxPageLayoutFocus.notify = () => {
+      if (!gone()) return;
+      focusAtLayout ??= document.activeElement;
+    };
+    return {
+      read: () => focusAtLayout,
+    };
+  }
+
   beforeEach(() => {
+    inboxPageLayoutFocus.notify = null;
     vi.clearAllMocks();
     vi.mocked(listInboxEmails).mockResolvedValue([]);
     vi.mocked(triggerInboxPoll).mockResolvedValue({});
@@ -643,6 +656,7 @@ describe("InboxPage", () => {
     expect(updateInboxEmailStatus).toHaveBeenCalledWith("e1", "read");
     expect(quickChat).not.toHaveBeenCalled();
 
+    const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("请尽快回复"));
     await act(async () => {
       release();
     });
@@ -650,6 +664,7 @@ describe("InboxPage", () => {
     const next = within(nextCard).getByRole("button", { name: "标记已读" });
     await waitFor(() => expect(next).toHaveFocus());
     expect(screen.queryByText("请尽快回复")).not.toBeInTheDocument();
+    expect(focusWhenGone.read()).toBe(next);
     expect(quickChat).not.toHaveBeenCalled();
   });
 
@@ -677,12 +692,16 @@ describe("InboxPage", () => {
     ).getByRole("button", { name: "标记已读" });
     mark.focus();
     fireEvent.click(mark);
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: "标记已读" }),
+    );
     await act(async () => {
       release();
     });
     const row = await screen.findByRole("button", { name: "已读 请尽快回复 boss@corp.com" });
     await waitFor(() => expect(row).toHaveFocus());
     expect(screen.queryByRole("button", { name: "标记已读" })).not.toBeInTheDocument();
+    expect(focusWhenGone.read()).toBe(row);
   });
 
   it("moves focus to 立即轮询 when a marked mail leaves and has no recent row", async () => {
@@ -706,11 +725,16 @@ describe("InboxPage", () => {
     ).getByRole("button", { name: "标记已读" });
     mark.focus();
     fireEvent.click(mark);
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: "标记已读" }),
+    );
     await act(async () => {
       release();
     });
-    await waitFor(() => expect(screen.getByRole("button", { name: "立即轮询" })).toHaveFocus());
+    const poll = screen.getByRole("button", { name: "立即轮询" });
+    await waitFor(() => expect(poll).toHaveFocus());
     expect(screen.queryByRole("button", { name: "标记已读" })).not.toBeInTheDocument();
+    expect(focusWhenGone.read()).toBe(poll);
   });
 
   it("keeps focus on 标记已读 when the write fails", async () => {
@@ -768,11 +792,13 @@ describe("InboxPage", () => {
     mark.focus();
     fireEvent.click(mark);
     poll.focus();
+    const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("请尽快回复"));
     await act(async () => {
       release();
     });
     await waitFor(() => expect(screen.queryByText("请尽快回复")).not.toBeInTheDocument());
     expect(poll).toHaveFocus();
+    expect(focusWhenGone.read()).toBe(poll);
     expect(
       within(triageCard("另一封账单")).getByRole("button", { name: "标记已读" }),
     ).not.toHaveFocus();
@@ -892,6 +918,7 @@ describe("InboxPage", () => {
       triageCard(await screen.findByText("请尽快回复").then((n) => n.textContent!)),
     ).getByRole("button", { name: "让 AI 处理" });
     ai.focus();
+    const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("请尽快回复"));
     fireEvent.click(ai);
     const next = within(
       await screen
@@ -899,6 +926,7 @@ describe("InboxPage", () => {
         .then((node) => node.closest("div.rounded-lg") as HTMLElement),
     ).getByRole("button", { name: "标记已读" });
     await waitFor(() => expect(next).toHaveFocus());
+    expect(focusWhenGone.read()).toBe(next);
     expect(quickChat).toHaveBeenCalledTimes(1);
     expect(screen.queryByText("请尽快回复")).not.toBeInTheDocument();
   });

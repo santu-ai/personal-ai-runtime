@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Mail, RefreshCw } from "lucide-react";
 import {
@@ -50,6 +50,11 @@ type TriageHandoff = {
   id: string;
   nextId: string | null;
   move: boolean;
+};
+
+/** 绘制前通知。测试在未读卡片卸下的同一轮读取焦点。 */
+export const inboxPageLayoutFocus = {
+  notify: null as null | (() => void),
 };
 
 /** 焦点在页面空白处，或还停在已经卸掉的按钮上，才安放。已经在别的控件上就不再抢。 */
@@ -232,7 +237,9 @@ export default function InboxPage() {
     triageHandoffs.current.set(id, { id, nextId, move: true });
   };
 
-  useEffect(() => {
+  // 未读卡片卸下后才交焦点。放到绘制前，不把焦点留在页面空白。
+  // 已经移到别的控件上就不再抢。
+  useLayoutEffect(() => {
     if (triageHandoffs.current.size === 0) return;
     const idle = focusIsIdle();
     let target: TriageHandoff | null = null;
@@ -244,6 +251,10 @@ export default function InboxPage() {
     }
     if (target) placeTriageFocus(target);
   }, [emails, triageBusy]);
+
+  useLayoutEffect(() => {
+    inboxPageLayoutFocus.notify?.();
+  });
 
   useEffect(() => {
     if (error) {
