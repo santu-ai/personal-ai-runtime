@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { renderWithRouter, MockApiError } from "../../test-utils";
-import QuickCaptureDialog from "./QuickCaptureDialog";
+import QuickCaptureDialog, { quickCaptureLayoutFocus } from "./QuickCaptureDialog";
 
 const { addError } = vi.hoisted(() => ({
   addError: vi.fn(),
@@ -33,7 +33,20 @@ function openDialog() {
 }
 
 describe("QuickCaptureDialog", () => {
+  /** 留下草稿的那一轮，绘制前焦点已经在输入框上。useEffect 会先停在页面空白。 */
+  function captureFocusWhenSettled(settled: () => boolean): { read: () => Element | null } {
+    let focusAtLayout: Element | null = null;
+    quickCaptureLayoutFocus.notify = () => {
+      if (!settled()) return;
+      focusAtLayout ??= document.activeElement;
+    };
+    return {
+      read: () => focusAtLayout,
+    };
+  }
+
   beforeEach(() => {
+    quickCaptureLayoutFocus.notify = null;
     vi.clearAllMocks();
   });
 
@@ -309,8 +322,16 @@ describe("QuickCaptureDialog", () => {
     fireEvent.click(save);
     await screen.findByRole("button", { name: "保存中..." });
     save.blur();
-    fail(new MockApiError("保存失败", 500));
-    await waitFor(() => expect(textarea).toHaveFocus());
+    const focusWhenFailed = captureFocusWhenSettled(() => {
+      const button = screen.queryByRole("button", { name: "保存" });
+      return button instanceof HTMLButtonElement && !button.hasAttribute("aria-busy");
+    });
+    await act(async () => {
+      fail(new MockApiError("保存失败", 500));
+    });
+    expect(textarea).toHaveFocus();
+    expect(focusWhenFailed.read()).toBe(textarea);
+    expect(focusWhenFailed.read()).not.toBe(document.body);
     expect(textarea).toHaveValue("会失败");
     expect(textarea).toBeEnabled();
   });
@@ -384,11 +405,51 @@ describe("QuickCaptureDialog", () => {
     const pending = await screen.findByRole("button", { name: "保存中..." });
     expect(pending).toHaveFocus();
     fireEvent.change(textarea, { target: { value: "先记，再补一句" } });
-    release({ id: "mem-1", status: "ok" });
-    await waitFor(() => expect(textarea).toHaveFocus());
+    const focusWhenSettled = captureFocusWhenSettled(
+      () => !screen.queryByRole("button", { name: "保存中..." }),
+    );
+    await act(async () => {
+      release({ id: "mem-1", status: "ok" });
+    });
+    expect(textarea).toHaveFocus();
+    expect(focusWhenSettled.read()).toBe(textarea);
+    expect(focusWhenSettled.read()).not.toBe(document.body);
     expect(textarea).toHaveValue("先记，再补一句");
     expect(screen.queryByRole("button", { name: "已保存" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+  });
+
+  it("focuses the field before paint when a kept draft disables save", async () => {
+    let release: (row: { id: string; status: string }) => void = () => {};
+    mockCreateMemory.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<QuickCaptureDialog />);
+    openDialog();
+    const textarea = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    fireEvent.change(textarea, { target: { value: "先记" } });
+    const save = screen.getByRole("button", { name: "保存" });
+    save.focus();
+    fireEvent.click(save);
+    await screen.findByRole("button", { name: "保存中..." });
+    fireEvent.change(textarea, { target: { value: "   " } });
+
+    const focusWhenDisabled = captureFocusWhenSettled(() => {
+      const button = screen.queryByRole("button", { name: "保存" });
+      return button instanceof HTMLButtonElement && button.disabled;
+    });
+    await act(async () => {
+      release({ id: "mem-1", status: "ok" });
+    });
+    expect(textarea).toHaveFocus();
+    expect(focusWhenDisabled.read()).toBe(textarea);
+    expect(focusWhenDisabled.read()).not.toBe(document.body);
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+    expect(textarea).toHaveValue("   ");
+    expect(screen.getByText("快速捕获")).toBeInTheDocument();
   });
 
   it("closes an unchanged note and returns focus to the opener", async () => {
