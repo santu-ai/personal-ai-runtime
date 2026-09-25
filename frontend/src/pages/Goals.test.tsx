@@ -409,7 +409,7 @@ describe("GoalsPage", () => {
 
     let focusWhenDisabled: Element | null = null;
     const observer = new MutationObserver(() => {
-      if (!add.disabled) return;
+      if (!add.hasAttribute("disabled")) return;
       focusWhenDisabled ??= document.activeElement;
     });
     observer.observe(add, { attributes: true, attributeFilter: ["disabled"] });

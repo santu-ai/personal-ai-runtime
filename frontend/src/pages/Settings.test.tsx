@@ -1119,7 +1119,7 @@ describe("SettingsPage", () => {
     expect(poll).toBeEnabled();
     let focusWhenDisabled: Element | null = null;
     const observer = new MutationObserver(() => {
-      if (!poll.disabled) return;
+      if (!poll.hasAttribute("disabled")) return;
       focusWhenDisabled ??= document.activeElement;
     });
     observer.observe(poll, { attributes: true, attributeFilter: ["disabled"] });

@@ -489,7 +489,7 @@ describe("MemoriesPage", () => {
 
     let focusWhenDisabled: Element | null = null;
     const observer = new MutationObserver(() => {
-      if (!remember.disabled) return;
+      if (!remember.hasAttribute("disabled")) return;
       focusWhenDisabled ??= document.activeElement;
     });
     observer.observe(remember, { attributes: true, attributeFilter: ["disabled"] });
