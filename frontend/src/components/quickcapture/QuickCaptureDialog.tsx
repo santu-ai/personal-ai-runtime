@@ -7,7 +7,7 @@
  * postMessage was sent but nothing in the renderer consumed it (dead code).
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createMemory, ApiError } from "../../api/client";
 import { useErrorStore } from "../../stores/errorStore";
 import { useOverlayDismiss } from "../ui/useOverlayDismiss";
@@ -41,6 +41,11 @@ function focusCaptureField(): boolean {
   if (document.activeElement !== field) field.focus();
   return document.activeElement === field;
 }
+
+/** 绘制前通知。测试在留下草稿、焦点交到输入框的同一轮读取焦点。 */
+export const quickCaptureLayoutFocus = {
+  notify: null as null | (() => void),
+};
 
 export default function QuickCaptureDialog() {
   const [open, setOpen] = useState(false);
@@ -88,7 +93,9 @@ export default function QuickCaptureDialog() {
     };
   }, []);
 
-  useEffect(() => {
+  // 留下的草稿交到输入框。空草稿会禁用「保存」，浏览器先把焦点卸到页面空白。
+  // 放到绘制前，不先停在空白或已经禁用的按钮上。已经移到别的控件上就不再抢。
+  useLayoutEffect(() => {
     if (!open || saving) return;
     const pending = handoff.current;
     if (!pending) return;
@@ -110,6 +117,10 @@ export default function QuickCaptureDialog() {
     }
     if (focusCaptureField()) handoff.current = null;
   }, [open, saving, settle]);
+
+  useLayoutEffect(() => {
+    quickCaptureLayoutFocus.notify?.();
+  });
 
   useEffect(() => {
     const handler = (e: MessageEvent) => {
