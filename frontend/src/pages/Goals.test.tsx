@@ -337,6 +337,153 @@ describe("GoalsPage", () => {
     expect(screen.queryByPlaceholderText("目标名称...")).not.toBeInTheDocument();
   });
 
+  it("parks focus on 新建 when create collapses the form before the new row exists", async () => {
+    let releaseCreate: (goal: WorkItem) => void = () => {};
+    vi.mocked(createGoal).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseCreate = resolve;
+        }),
+    );
+    let releaseList: (rows: WorkItem[]) => void = () => {};
+    let gateList = false;
+    vi.mocked(listGoals).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          if (!gateList) {
+            resolve([sampleGoal]);
+            return;
+          }
+          releaseList = resolve;
+        }),
+    );
+
+    renderGoals();
+    const existing = await screen.findByRole("link", { name: /学习 Rust/ });
+    const opener = screen.getAllByRole("button", { name: "+ 新建" })[0];
+    fireEvent.click(opener);
+    fireEvent.change(screen.getByPlaceholderText("目标名称..."), { target: { value: "学钢琴" } });
+    const create = screen.getByRole("button", { name: "创建" });
+    create.focus();
+    fireEvent.click(create);
+    await screen.findByRole("button", { name: "创建中..." });
+    gateList = true;
+
+    let focusWhenCollapsed: Element | null = null;
+    const collapseObserver = new MutationObserver(() => {
+      if (document.querySelector("[data-goal-anchor='create']")) return;
+      focusWhenCollapsed ??= document.activeElement;
+    });
+    collapseObserver.observe(document.body, { childList: true, subtree: true });
+
+    const created = { ...sampleGoal, id: "g-new", title: "学钢琴" };
+    await act(async () => {
+      releaseCreate(created);
+    });
+    expect(screen.queryByPlaceholderText("目标名称...")).not.toBeInTheDocument();
+    expect(focusWhenCollapsed).toBe(opener);
+    expect(opener).toHaveFocus();
+    expect(screen.queryByRole("link", { name: /学钢琴/ })).not.toBeInTheDocument();
+
+    existing.focus();
+    await act(async () => {
+      releaseList([sampleGoal, created]);
+    });
+    expect(await screen.findByRole("link", { name: /学钢琴/ })).toBeInTheDocument();
+    expect(existing).toHaveFocus();
+    collapseObserver.disconnect();
+  });
+
+  it("moves from 新建 to the new goal in the same turn the row appears", async () => {
+    let releaseCreate: (goal: WorkItem) => void = () => {};
+    vi.mocked(createGoal).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseCreate = resolve;
+        }),
+    );
+    let releaseList: (rows: WorkItem[]) => void = () => {};
+    let gateList = false;
+    vi.mocked(listGoals).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          if (!gateList) {
+            resolve([]);
+            return;
+          }
+          releaseList = resolve;
+        }),
+    );
+
+    renderGoals();
+    const opener = await screen.findByRole("button", { name: "+ 新建" });
+    fireEvent.click(opener);
+    fireEvent.change(screen.getByPlaceholderText("目标名称..."), { target: { value: "学钢琴" } });
+    const create = screen.getByRole("button", { name: "创建" });
+    create.focus();
+    fireEvent.click(create);
+    await screen.findByRole("button", { name: "创建中..." });
+    gateList = true;
+
+    const created = { ...sampleGoal, id: "g-new", title: "学钢琴" };
+    await act(async () => {
+      releaseCreate(created);
+    });
+    expect(opener).toHaveFocus();
+
+    let focusWhenRow: Element | null = null;
+    const rowObserver = new MutationObserver(() => {
+      const link = document.querySelector("a[data-goal-id='g-new']");
+      if (!link) return;
+      focusWhenRow ??= document.activeElement;
+    });
+    rowObserver.observe(document.body, { childList: true, subtree: true });
+    await act(async () => {
+      releaseList([created]);
+    });
+    const row = await screen.findByRole("link", { name: /学钢琴/ });
+    expect(focusWhenRow).toBe(row);
+    expect(row).toHaveFocus();
+    rowObserver.disconnect();
+  });
+
+  it("keeps 创建 enabled while a cleared title is still saving, then leaves the disabled button", async () => {
+    let release: (goal: WorkItem) => void = () => {};
+    vi.mocked(createGoal).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderGoals();
+    fireEvent.click(screen.getAllByRole("button", { name: "+ 新建" })[0]);
+    const input = screen.getByPlaceholderText("目标名称...");
+    fireEvent.change(input, { target: { value: "学钢琴" } });
+    const create = screen.getByRole("button", { name: "创建" });
+    create.focus();
+    fireEvent.click(create);
+    const pending = await screen.findByRole("button", { name: "创建中..." });
+    expect(pending).toBeEnabled();
+    expect(pending).toHaveFocus();
+    fireEvent.change(input, { target: { value: "" } });
+    expect(pending).toBeEnabled();
+    expect(pending).toHaveFocus();
+
+    let focusWhenDisabled: Element | null = null;
+    const observer = new MutationObserver(() => {
+      if (!pending.hasAttribute("disabled")) return;
+      focusWhenDisabled ??= document.activeElement;
+    });
+    observer.observe(pending, { attributes: true, attributeFilter: ["disabled"] });
+    release({ ...sampleGoal, id: "g-new", title: "学钢琴" });
+    await waitFor(() => expect(pending).toBeDisabled());
+    expect(focusWhenDisabled).toBe(input);
+    expect(input).toHaveFocus();
+    expect(input).toHaveValue("");
+    expect(screen.getByPlaceholderText("目标名称...")).toBeInTheDocument();
+    observer.disconnect();
+  });
+
   it("keeps a title typed during create and does not pull focus back", async () => {
     let release: (goal: WorkItem) => void = () => {};
     vi.mocked(createGoal).mockImplementationOnce(
