@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, Suspense } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, Suspense } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useChatStore } from "./stores/chatStore";
 import { useErrorStore } from "./stores/errorStore";
@@ -19,9 +19,24 @@ import { LiveNotificationContext, useNotifications } from "./hooks/useNotificati
 import { useWsInvalidationBridge } from "./hooks/useWsInvalidationBridge";
 import { useHeldQueryError } from "./components/ui/LoadErrorNotice";
 
+/** 焦点在页面空白处。已经在别的控件上就不再抢。 */
+function focusIsBlank(): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  return false;
+}
+
+function focusNewChat(): void {
+  document.querySelector<HTMLButtonElement>("button[data-new-chat]")?.focus();
+}
+
 export default function Layout() {
   const { conversations, activeConversationId, setActiveConversation } = useChatStore();
   const quickChat = useQuickChat();
+  const openingChatRef = useRef(false);
+  const [openingChat, setOpeningChat] = useState(false);
+  const chatFailFocus = useRef(false);
   const { remove: removeConversationCached } = useConversationCacheActions();
 
   // Server-state: conversations + health (auth banner). WS bridge drives other keys.
@@ -63,7 +78,25 @@ export default function Layout() {
     }
   }, [location.pathname, activeConversationId, setActiveConversation]);
 
-  const handleNewChat = () => quickChat();
+  const handleNewChat = () => {
+    if (openingChatRef.current) return;
+    openingChatRef.current = true;
+    chatFailFocus.current = false;
+    setOpeningChat(true);
+    void (async () => {
+      const ok = (await quickChat()) === true;
+      openingChatRef.current = false;
+      if (!ok) chatFailFocus.current = true;
+      setOpeningChat(false);
+    })();
+  };
+
+  useLayoutEffect(() => {
+    if (openingChat) return;
+    if (!chatFailFocus.current) return;
+    chatFailFocus.current = false;
+    if (focusIsBlank()) focusNewChat();
+  }, [openingChat]);
 
   const handleDeleteChat = (id: string) => {
     const conv = conversationRows.find((c) => c.id === id);
@@ -103,6 +136,7 @@ export default function Layout() {
           activeConversationId={activeConversationId}
           onSelectConversation={handleSelectConversation}
           onNewChat={handleNewChat}
+          newChatBusy={openingChat}
           onDeleteChat={handleDeleteChat}
           conversationsLoadError={conversationRows.length > 0 ? null : shownConversationError}
           conversationsLoadBusy={conversationsQuery.isFetching}

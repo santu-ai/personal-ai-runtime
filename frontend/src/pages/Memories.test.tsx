@@ -1,9 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { act, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
 import MemoriesPage from "./Memories";
 import {
   ApiError,
+  createConversation,
+  type Conversation,
   createMemory,
   deleteMemory,
   getMemoryGraph,
@@ -56,14 +58,20 @@ vi.mock("../stores/errorStore", () => ({
     selector({ addError }),
 }));
 
-vi.mock("../stores/chatStore", () => ({
-  useChatStore: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector({
-      addConversation: vi.fn(),
-      setActiveConversation: vi.fn(),
-      setPendingPrompt: vi.fn(),
+vi.mock("../stores/chatStore", () => {
+  const state = {
+    conversations: [] as { id: string }[],
+    addConversation: vi.fn(),
+    setActiveConversation: vi.fn(),
+    setPendingPrompt: vi.fn(),
+    setConversations: vi.fn(),
+  };
+  return {
+    useChatStore: Object.assign((selector: (s: typeof state) => unknown) => selector(state), {
+      getState: () => state,
     }),
-}));
+  };
+});
 
 describe("MemoriesPage", () => {
   beforeEach(() => {
@@ -1273,5 +1281,99 @@ describe("MemoriesPage", () => {
     release({ status: "ok", action: "ratify", ok: 2, skipped: [] });
     await waitFor(() => expect(bulk).not.toHaveAttribute("aria-busy"));
     expect(kept).toHaveFocus();
+  });
+
+  it("does not open a second chat while 继续聊 is in flight", async () => {
+    vi.mocked(listMemoriesGrouped).mockImplementation(async () => ({
+      memories: [
+        { id: "m1", content: "喜欢早起跑步", confidence: 0.9, category: "habit" },
+        { id: "m2", content: "晚上喝茶", confidence: 0.8, category: "habit" },
+      ],
+      total: 2,
+    }));
+    let release: (conv: Conversation) => void = () => {};
+    vi.mocked(createConversation).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<MemoriesPage />);
+    const first = within(
+      (await screen.findByText("喜欢早起跑步")).closest("li") as HTMLElement,
+    ).getByRole("button", { name: "继续聊" });
+    const second = within(screen.getByText("晚上喝茶").closest("li") as HTMLElement).getByRole(
+      "button",
+      { name: "继续聊" },
+    );
+    first.focus();
+    fireEvent.click(first);
+    fireEvent.click(first);
+    fireEvent.click(second);
+    await waitFor(() => expect(first).toHaveAttribute("aria-busy", "true"));
+    expect(first).toBeEnabled();
+    expect(first).toHaveFocus();
+    expect(first).toHaveClass("opacity-50");
+    expect(second).toBeEnabled();
+    expect(second).not.toHaveAttribute("aria-busy");
+    expect(createConversation).toHaveBeenCalledTimes(1);
+    expect(createConversation).toHaveBeenCalledWith("记忆讨论");
+
+    const capture = screen.getByPlaceholderText("告诉我一件关于你的事，我会记住...");
+    capture.focus();
+    await act(async () => {
+      release({ id: "c-mem", title: "记忆讨论" } as Conversation);
+    });
+    await waitFor(() => expect(first).not.toHaveAttribute("aria-busy"));
+    expect(capture).toHaveFocus();
+    expect(createConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns focus to 继续聊 when opening the chat fails, and does not steal it", async () => {
+    vi.mocked(listMemoriesGrouped).mockResolvedValue({
+      memories: [{ id: "m1", content: "喜欢早起跑步", confidence: 0.9, category: "habit" }],
+      total: 1,
+    });
+    vi.mocked(createConversation).mockRejectedValue(new ApiError("创建对话失败", 500));
+    renderWithRouter(<MemoriesPage />);
+    const chat = within(
+      (await screen.findByText("喜欢早起跑步")).closest("li") as HTMLElement,
+    ).getByRole("button", { name: "继续聊" });
+    chat.focus();
+    fireEvent.click(chat);
+    fireEvent.click(chat);
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("创建对话失败", "对话"));
+    expect(chat).toHaveFocus();
+    expect(chat).toBeEnabled();
+    expect(chat).not.toHaveAttribute("aria-busy");
+    expect(createConversation).toHaveBeenCalledTimes(1);
+
+    let release: (err: unknown) => void = () => {};
+    vi.mocked(createConversation).mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          release = reject;
+        }),
+    );
+    fireEvent.click(chat);
+    await waitFor(() => expect(chat).toHaveAttribute("aria-busy", "true"));
+    (chat as HTMLButtonElement).blur();
+    expect(document.activeElement).toBe(document.body);
+    await act(async () => {
+      release(new ApiError("创建对话失败", 500));
+    });
+    await waitFor(() => expect(chat).not.toHaveAttribute("aria-busy"));
+    expect(chat).toHaveFocus();
+
+    const capture = screen.getByPlaceholderText("告诉我一件关于你的事，我会记住...");
+    fireEvent.click(chat);
+    await waitFor(() => expect(chat).toHaveAttribute("aria-busy", "true"));
+    capture.focus();
+    await act(async () => {
+      release(new ApiError("创建对话失败", 500));
+    });
+    await waitFor(() => expect(chat).not.toHaveAttribute("aria-busy"));
+    expect(capture).toHaveFocus();
+    expect(createConversation).toHaveBeenCalledTimes(3);
   });
 });
