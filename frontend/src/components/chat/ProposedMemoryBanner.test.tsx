@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { renderWithRouter } from "../../test-utils";
-import ProposedMemoryBanner from "./ProposedMemoryBanner";
+import ProposedMemoryBanner, { proposedMemoryLayoutFocus } from "./ProposedMemoryBanner";
 import {
   ApiError,
   countMemories,
@@ -36,12 +36,25 @@ const mockList = vi.mocked(listMemoriesGrouped);
 const mockRatify = vi.mocked(ratifyMemory);
 const mockReject = vi.mocked(rejectMemory);
 
+/** 这一条卸下的那一轮，绘制前焦点已经在下一处。useEffect 会先停在页面空白。 */
+function captureFocusWhenGone(gone: () => boolean): { read: () => Element | null } {
+  let focusAtLayout: Element | null = null;
+  proposedMemoryLayoutFocus.notify = () => {
+    if (!gone()) return;
+    focusAtLayout ??= document.activeElement;
+  };
+  return {
+    read: () => focusAtLayout,
+  };
+}
+
 function row(id: string, content: string, createdAt: string) {
   return { id, content, created_at: createdAt };
 }
 
 describe("ProposedMemoryBanner", () => {
   beforeEach(() => {
+    proposedMemoryLayoutFocus.notify = null;
     vi.clearAllMocks();
     addError.mockReset();
     mockCount.mockResolvedValue({ count: 2 });
@@ -188,10 +201,13 @@ describe("ProposedMemoryBanner", () => {
     renderWithRouter(<ProposedMemoryBanner />);
     const [first] = await screen.findAllByRole("button", { name: "确认" });
     first.focus();
+    const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("喜欢早起跑步"));
     fireEvent.click(first);
     await waitFor(() => expect(screen.getByRole("button", { name: "确认" })).toHaveFocus());
     expect(screen.getByText("偏好绿茶")).toBeInTheDocument();
     expect(screen.queryByText("喜欢早起跑步")).not.toBeInTheDocument();
+    expect(focusWhenGone.read()).toBe(screen.getByRole("button", { name: "确认" }));
+    expect(focusWhenGone.read()).not.toBe(document.body);
     expect(mockRatify).toHaveBeenCalledTimes(1);
   });
 
@@ -208,10 +224,13 @@ describe("ProposedMemoryBanner", () => {
     renderWithRouter(<ProposedMemoryBanner />);
     const rejects = await screen.findAllByRole("button", { name: "拒绝" });
     rejects[1].focus();
+    const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("偏好绿茶"));
     fireEvent.click(rejects[1]);
     await waitFor(() => expect(screen.getByRole("button", { name: "拒绝" })).toHaveFocus());
     expect(screen.getByText("喜欢早起跑步")).toBeInTheDocument();
     expect(screen.queryByText("偏好绿茶")).not.toBeInTheDocument();
+    expect(focusWhenGone.read()).toBe(screen.getByRole("button", { name: "拒绝" }));
+    expect(focusWhenGone.read()).not.toBe(document.body);
   });
 
   it("does not pull focus back when it already moved away", async () => {
@@ -256,9 +275,13 @@ describe("ProposedMemoryBanner", () => {
     );
     const confirm = await screen.findByRole("button", { name: "确认" });
     confirm.focus();
+    const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("只剩这一条"));
     fireEvent.click(confirm);
-    await waitFor(() => expect(screen.getByRole("link", { name: "查看全部" })).toHaveFocus());
+    const review = screen.getByRole("link", { name: "查看全部" });
+    await waitFor(() => expect(review).toHaveFocus());
     expect(screen.getByRole("textbox", { name: "输入消息" })).not.toHaveFocus();
+    expect(focusWhenGone.read()).toBe(review);
+    expect(focusWhenGone.read()).not.toBe(document.body);
   });
 
   it("focuses the composer when the banner closes after the last confirm", async () => {
@@ -276,11 +299,17 @@ describe("ProposedMemoryBanner", () => {
       </>,
     );
     const confirm = await screen.findByRole("button", { name: "确认" });
+    const composer = screen.getByRole("textbox", { name: "输入消息" });
     confirm.focus();
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("link", { name: "查看全部" }),
+    );
     fireEvent.click(confirm);
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "输入消息" })).toHaveFocus());
+    await waitFor(() => expect(composer).toHaveFocus());
     expect(screen.queryByText("只剩这一条")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "查看全部" })).not.toBeInTheDocument();
+    expect(focusWhenGone.read()).toBe(composer);
+    expect(focusWhenGone.read()).not.toBe(document.body);
   });
 
   it("does not focus a disabled composer when the banner closes", async () => {
