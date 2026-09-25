@@ -342,14 +342,16 @@ describe("ApprovalsPage", () => {
     renderWithRouter(<ApprovalsPage />);
     const approve = await screen.findByRole("button", { name: "批准" });
     const reject = screen.getByRole("button", { name: "拒绝" });
+    approve.focus();
     fireEvent.click(approve);
-    const pending = await screen.findByRole("button", { name: "批准" });
-    expect(pending).toBeDisabled();
-    expect(pending).toHaveAttribute("aria-busy", "true");
-    expect(reject).toBeDisabled();
-    expect(reject).toHaveAttribute("aria-busy", "true");
-    fireEvent.click(pending);
+    fireEvent.click(approve);
     fireEvent.click(reject);
+    await waitFor(() => expect(approve).toHaveAttribute("aria-busy", "true"));
+    expect(approve).toBeEnabled();
+    expect(approve).toHaveFocus();
+    expect(approve).toHaveClass("opacity-50");
+    expect(reject).toBeEnabled();
+    expect(reject).not.toHaveAttribute("aria-busy");
     expect(mockApprove).toHaveBeenCalledTimes(1);
     expect(mockReject).not.toHaveBeenCalled();
 
@@ -376,17 +378,23 @@ describe("ApprovalsPage", () => {
     mockList.mockResolvedValue([ask]);
     renderWithRouter(<ApprovalsPage />);
     const field = await screen.findByLabelText("你的回答");
-    fireEvent.change(field, { target: { value: "  最近三天  " } });
     const send = screen.getByRole("button", { name: "发送回答" });
+    expect(send).toBeDisabled();
+    fireEvent.change(field, { target: { value: "  最近三天  " } });
+    expect(send).toBeEnabled();
     send.focus();
     fireEvent.click(send);
+    fireEvent.click(send);
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
 
-    const pending = await screen.findByRole("button", { name: "发送回答" });
-    expect(pending).toBeDisabled();
-    expect(pending).toHaveAttribute("aria-busy", "true");
-    expect(field).toBeDisabled();
+    await waitFor(() => expect(send).toHaveAttribute("aria-busy", "true"));
+    expect(send).toBeEnabled();
+    expect(send).toHaveFocus();
+    expect(send).toHaveClass("opacity-50");
+    expect(screen.getByRole("button", { name: "取消" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "取消" })).not.toHaveAttribute("aria-busy");
+    expect(field).toBeEnabled();
     expect(field).toHaveValue("  最近三天  ");
-    fireEvent.click(pending);
     expect(mockResolve).toHaveBeenCalledTimes(1);
     (document.activeElement as HTMLElement | null)?.blur();
 
@@ -406,6 +414,85 @@ describe("ApprovalsPage", () => {
     );
   });
 
+  it("keeps an answer edited during send and does not steal that focus", async () => {
+    const ask: EnrichedApproval = {
+      ...chatContinuable,
+      id: "ap-ask-edit",
+      action: "ask_user",
+      params: JSON.stringify({ question: "简报要覆盖最近几天？" }),
+    };
+    let fail: (err: unknown) => void = () => {};
+    mockResolve.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    mockList.mockResolvedValue([ask]);
+    renderWithRouter(<ApprovalsPage />);
+    const field = await screen.findByLabelText("你的回答");
+    fireEvent.change(field, { target: { value: "最近三天" } });
+    const send = screen.getByRole("button", { name: "发送回答" });
+    send.focus();
+    fireEvent.click(send);
+    field.focus();
+    fireEvent.change(field, { target: { value: "改过了" } });
+    fail(new MockApiError("发送失败", 500));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("发送失败", "审批"));
+    expect(field).toHaveValue("改过了");
+    expect(field).toHaveFocus();
+    expect(send).toBeEnabled();
+    expect(send).not.toHaveAttribute("aria-busy");
+    expect(mockResolve).toHaveBeenCalledWith(
+      "ap-ask-edit",
+      "approve",
+      "ask_user",
+      { question: "简报要覆盖最近几天？" },
+      "conv-9",
+      "tc-9",
+      "最近三天",
+    );
+  });
+
+  it("does not refresh twice and keeps focus on 刷新", async () => {
+    let release: (rows: EnrichedApproval[]) => void = () => {};
+    mockList.mockResolvedValueOnce([sampleApproval]);
+    renderWithRouter(<ApprovalsPage />);
+    await screen.findByRole("button", { name: "批准" });
+    mockList.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const refresh = screen.getByRole("button", { name: "刷新" });
+    refresh.focus();
+    fireEvent.click(refresh);
+    fireEvent.click(refresh);
+    await waitFor(() => expect(refresh).toHaveAttribute("aria-busy", "true"));
+    expect(refresh).toBeEnabled();
+    expect(refresh).toHaveFocus();
+    expect(refresh).toHaveClass("opacity-50");
+    expect(mockList).toHaveBeenCalledTimes(2);
+
+    release([]);
+    await waitFor(() => expect(screen.getByText("暂无待审批项")).toBeInTheDocument());
+    const again = screen.getByRole("button", { name: "刷新" });
+    expect(again).not.toHaveAttribute("aria-busy");
+    expect(again).toHaveFocus();
+    expect(mockList).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not start another read when 刷新 is clicked during the first load", () => {
+    mockList.mockReturnValue(new Promise(() => {}));
+    renderWithRouter(<ApprovalsPage />);
+    const refresh = screen.getByRole("button", { name: "刷新" });
+    fireEvent.click(refresh);
+    expect(mockList).toHaveBeenCalledTimes(1);
+    expect(refresh).toBeEnabled();
+    expect(refresh).not.toHaveAttribute("aria-busy");
+  });
+
   it("moves focus to the next approval after a successful reject", async () => {
     const second: EnrichedApproval = {
       ...sampleApproval,
@@ -416,6 +503,7 @@ describe("ApprovalsPage", () => {
     mockReject.mockResolvedValue({ id: "ap-1", status: "rejected" });
     renderWithRouter(<ApprovalsPage />);
     const rejects = await screen.findAllByRole("button", { name: "拒绝" });
+    rejects[0].focus();
     fireEvent.click(rejects[0]);
     await waitFor(() => expect(screen.getAllByRole("button", { name: "批准" })).toHaveLength(1));
     expect(screen.getByRole("button", { name: "批准" })).toHaveFocus();
@@ -426,7 +514,9 @@ describe("ApprovalsPage", () => {
     mockList.mockResolvedValueOnce([sampleApproval]).mockResolvedValue([]);
     mockReject.mockResolvedValue({ id: "ap-1", status: "rejected" });
     renderWithRouter(<ApprovalsPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "拒绝" }));
+    const reject = await screen.findByRole("button", { name: "拒绝" });
+    reject.focus();
+    fireEvent.click(reject);
     await waitFor(() => expect(screen.getByRole("button", { name: "刷新" })).toHaveFocus());
     expect(screen.getByText("暂无待审批项")).toBeInTheDocument();
   });
