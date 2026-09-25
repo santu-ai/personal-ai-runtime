@@ -45,7 +45,7 @@ function getSuggestionIcon(label: string) {
 interface WelcomeScreenProps {
   recentMemories: MemoryRow[];
   suggestions: string[];
-  onPickPrompt: (prompt: string) => void;
+  onPickPrompt: (prompt: string, source?: EventTarget | null) => void;
 }
 
 export default function WelcomeScreen({
@@ -74,9 +74,10 @@ export default function WelcomeScreen({
                   <button
                     key={m.id}
                     type="button"
-                    onClick={() =>
+                    onClick={(e) =>
                       onPickPrompt(
                         `你记得我${m.category === "preference" ? "喜欢" : m.category === "fact" ? "" : "的"}「${m.content.slice(0, 60)}」，基于这个继续聊聊`,
+                        e.currentTarget,
                       )
                     }
                     className="block w-full text-left text-xs text-fg-secondary hover:text-insight transition-colors truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
@@ -97,7 +98,7 @@ export default function WelcomeScreen({
                 <button
                   key={c.label}
                   type="button"
-                  onClick={() => onPickPrompt(c.prompt)}
+                  onClick={(e) => onPickPrompt(c.prompt, e.currentTarget)}
                   className="flex items-center gap-1 text-xs px-2.5 py-1.5 bg-surface-overlay/60 hover:bg-surface-overlay text-fg-secondary hover:text-fg-primary rounded-full border border-border-subtle hover:border-border-strong transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                   title={c.prompt}
                 >
@@ -115,7 +116,7 @@ export default function WelcomeScreen({
                 <button
                   key={s}
                   type="button"
-                  onClick={() => onPickPrompt(s)}
+                  onClick={(e) => onPickPrompt(s, e.currentTarget)}
                   className="flex items-center gap-1.5 text-xs px-3 py-2 bg-surface-overlay hover:bg-border-strong text-fg-secondary hover:text-fg-primary rounded-full border border-border-subtle hover:border-border-strong transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 >
                   <SIcon size={13} className="text-fg-secondary" />

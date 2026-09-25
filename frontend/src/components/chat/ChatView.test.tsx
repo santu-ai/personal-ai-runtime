@@ -1333,4 +1333,85 @@ describe("ChatView", () => {
     });
     expect(composer()).toHaveValue("先写着");
   });
+
+  it("fills an empty composer from a prompt chip before paint", () => {
+    renderChatView();
+    const field = screen.getByPlaceholderText(/输入消息/) as HTMLTextAreaElement;
+    const chip = screen.getByRole("button", { name: "读写文件" });
+    const prompt = "帮我在桌面创建一个 todo.md，列出今天的任务";
+    const seen = captureFocusWhenSettled(
+      () => document.activeElement === field && field.value === prompt,
+    );
+    chip.focus();
+    fireEvent.click(chip);
+    expect(field).toHaveValue(prompt);
+    expect(field.selectionStart).toBe(prompt.length);
+    expect(seen.read()).toBe(field);
+    expect(field).toHaveFocus();
+  });
+
+  it("replaces a whitespace-only composer when a prompt chip is chosen", () => {
+    renderChatView();
+    const field = screen.getByPlaceholderText(/输入消息/);
+    fireEvent.change(field, { target: { value: "   " } });
+    fireEvent.click(screen.getByRole("button", { name: "读写文件" }));
+    expect(field).toHaveValue("帮我在桌面创建一个 todo.md，列出今天的任务");
+  });
+
+  it("keeps an unsent draft when a prompt chip is chosen and does not steal focus later", async () => {
+    renderChatView();
+    const field = screen.getByPlaceholderText(/输入消息/) as HTMLTextAreaElement;
+    fireEvent.change(field, { target: { value: "先写着" } });
+    const chip = screen.getByRole("button", { name: "读写文件" });
+    const seen = captureFocusWhenSettled(
+      () => document.activeElement === field && field.value === "先写着",
+    );
+    chip.focus();
+    fireEvent.click(chip);
+    expect(field).toHaveValue("先写着");
+    expect(field.selectionStart).toBe("先写着".length);
+    expect(seen.read()).toBe(field);
+    expect(field).toHaveFocus();
+
+    const other = screen.getByRole("button", { name: "搜索网页" });
+    other.focus();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(other).toHaveFocus();
+    expect(field).toHaveValue("先写着");
+  });
+
+  it("does not pull focus off another control when a prompt chip click does not take focus", () => {
+    renderChatView();
+    const field = screen.getByPlaceholderText(/输入消息/);
+    fireEvent.change(field, { target: { value: "先写着" } });
+    const other = screen.getByRole("button", { name: "搜索网页" });
+    other.focus();
+    fireEvent.click(screen.getByRole("button", { name: "读写文件" }));
+    expect(field).toHaveValue("先写着");
+    expect(other).toHaveFocus();
+  });
+
+  it("keeps an in-thread draft when a suggestion chip is chosen", async () => {
+    vi.mocked(getMessages).mockResolvedValue([
+      {
+        id: "u1",
+        conversation_id: "test-conv-1",
+        role: "user",
+        content: "hello",
+        tool_calls: null,
+        tool_call_id: null,
+        created_at: "2026-08-17T00:00:00Z",
+      },
+    ]);
+    renderChatView();
+    const chip = await screen.findByRole("button", { name: "查看今日收件箱摘要" });
+    const field = screen.getByPlaceholderText(/输入消息/) as HTMLTextAreaElement;
+    fireEvent.change(field, { target: { value: "先写着" } });
+    chip.focus();
+    fireEvent.click(chip);
+    expect(field).toHaveValue("先写着");
+    expect(field).toHaveFocus();
+  });
 });

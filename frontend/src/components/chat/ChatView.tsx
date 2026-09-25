@@ -103,6 +103,8 @@ export default function ChatView({ conversationId }: Props) {
   useConfirmFocusContainment(pendingConfirmation != null, confirmationRef);
   const focusedApprovalRef = useRef<string | null>(null);
   const focusAfterResolve = useRef<"confirm" | "deny" | null>(null);
+  const [promptPick, setPromptPick] = useState(0);
+  const promptPickSource = useRef<EventTarget | null>(null);
   const { data: pendingApprovals = [] } = useApprovalsQuery();
 
   useEffect(() => {
@@ -417,6 +419,27 @@ export default function ChatView({ conversationId }: Props) {
     root?.querySelector<HTMLElement>("textarea")?.focus();
   }, [resolvingAction, pendingConfirmation]);
 
+  // 点胶囊的这一轮，绘制前把焦点放进输入框。已经移到别的控件上就不再抢。
+  // 只认刚点的那一颗：焦点停在另一颗胶囊上时，不能当成还在这一颗上。
+  // 不放到定时器里：晚一拍会先停在胶囊上，也会把已经点开的控件抢回去。
+  useLayoutEffect(() => {
+    if (promptPick === 0) return;
+    const field = inputRef.current;
+    if (!field || field.disabled) return;
+    const active = document.activeElement;
+    const source = promptPickSource.current;
+    const onPicked =
+      source instanceof HTMLElement &&
+      active instanceof HTMLElement &&
+      (active === source || source.contains(active));
+    if (!focusIsBlank() && !onPicked) return;
+    field.focus();
+    const end = field.value.length;
+    if (typeof field.setSelectionRange === "function") {
+      field.setSelectionRange(end, end);
+    }
+  }, [promptPick]);
+
   useLayoutEffect(() => {
     chatViewLayoutFocus.notify?.();
   });
@@ -453,11 +476,14 @@ export default function ChatView({ conversationId }: Props) {
   }, [deny, setMessages, addError]);
 
   const handlePickPrompt = useCallback(
-    (prompt: string) => {
-      updateInput(prompt);
-      setTimeout(() => inputRef.current?.focus(), 0);
+    (prompt: string, source?: EventTarget | null) => {
+      const current = inputRef.current?.value ?? input;
+      // 已经写的字留下。还是空的，才放进这句。
+      if (!current.trim()) updateInput(prompt);
+      promptPickSource.current = source ?? null;
+      setPromptPick((tick) => tick + 1);
     },
-    [updateInput],
+    [input, updateInput],
   );
 
   // Mark initial load complete once messages are loaded or user sends a message
@@ -608,7 +634,7 @@ export default function ChatView({ conversationId }: Props) {
                   <button
                     key={s}
                     type="button"
-                    onClick={() => handlePickPrompt(s)}
+                    onClick={(e) => handlePickPrompt(s, e.currentTarget)}
                     className="flex items-center gap-1 rounded-full border border-border-subtle bg-surface-raised px-3 py-1.5 text-xs text-fg-secondary shadow-sm transition-all hover:border-border-strong hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                   >
                     <SIcon size={12} className="text-fg-secondary" />
