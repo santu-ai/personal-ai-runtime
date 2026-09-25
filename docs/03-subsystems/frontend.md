@@ -149,7 +149,7 @@ types.ts       ← 共享 TS 接口
 2. Banner 覆盖层：(a) 后端需认证但未配 token，(b) 后端不可用。
 3. Toast 栈（右下，`bottom-20 right-4`）：WS 实时通知 + `useErrorStore` 错误 toast。
 4. `<main>` 含 `<Suspense>` + `<ErrorBoundary>` 包 `<Outlet />`。
-5. 对话框：删除会话确认、`OnboardingWizard`、`NotificationDetailModal`。
+5. 对话框：删除会话确认、`OnboardingWizard`、`NotificationDetailModal`、`QuickCaptureDialog`（桌面 `Alt+Shift+I` 或 Ctrl/Cmd+Shift+M。打开时焦点在输入框，Esc 关闭并回到刚才的控件。这次写回来之前不会再发一次。输入框和「保存」不禁用，「保存」标为忙碌，焦点留在上面。空内容时「保存」仍不可用。失败时这句话留着，焦点仍在刚才的输入框或按钮。提交过程中又改过的字留下；成功后若还和刚发出的一样，才显示已保存并关掉。已经把焦点移走时不再抢。留下的草稿，焦点还在「保存」上或落在对话框面板、页面空白处时落到输入框）。
 
 Layout 在根处挂三个副作用 hook：`useNotifications()`（唯一持有 WS）、`useWsInvalidationBridge()`、会话/健康查询。仪表盘经 `LiveNotificationContext` 消费实时通知，不再自开第二条 socket。
 
