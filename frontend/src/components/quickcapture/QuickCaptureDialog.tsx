@@ -13,18 +13,67 @@ import { useErrorStore } from "../../stores/errorStore";
 import { useOverlayDismiss } from "../ui/useOverlayDismiss";
 import { Zap } from "lucide-react";
 
+type CaptureHandoff = "failed" | "draft";
+
+/** 焦点掉到页面空白，或落在对话框面板上。 */
+function focusLostOrPanel(): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  return active.getAttribute("role") === "dialog";
+}
+
+function onCaptureControl(): boolean {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return false;
+  const mark = active.getAttribute("data-quick-capture");
+  return mark === "field" || mark === "save";
+}
+
+/** 焦点在输入框、「保存」、对话框面板或页面空白处，才可以把焦点挪到输入框。 */
+function captureFocusIdle(): boolean {
+  return onCaptureControl() || focusLostOrPanel();
+}
+
+function focusCaptureField(): boolean {
+  const field = document.querySelector<HTMLTextAreaElement>("[data-quick-capture='field']");
+  if (!field || field.disabled) return false;
+  if (document.activeElement !== field) field.focus();
+  return document.activeElement === field;
+}
+
 export default function QuickCaptureDialog() {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [settle, setSettle] = useState(0);
   const savingRef = useRef(false);
   const saveGen = useRef(0);
+  const textRef = useRef("");
+  const submittedRef = useRef<string | null>(null);
+  const closeTimer = useRef<number | null>(null);
+  const handoff = useRef<CaptureHandoff | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const addError = useErrorStore((s) => s.addError);
+
+  const clearCloseTimer = () => {
+    if (closeTimer.current !== null) {
+      window.clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+
   const resetCapture = useCallback((nextOpen: boolean) => {
     saveGen.current += 1;
     savingRef.current = false;
+    submittedRef.current = null;
+    handoff.current = null;
+    if (closeTimer.current !== null) {
+      window.clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+    textRef.current = "";
     setSaving(false);
     setSaved(false);
     setOpen(nextOpen);
@@ -32,6 +81,35 @@ export default function QuickCaptureDialog() {
   }, []);
   const dismiss = () => resetCapture(false);
   useOverlayDismiss(open, panelRef, dismiss, { initialFocus: "field" });
+
+  useEffect(() => {
+    return () => {
+      if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!open || saving) return;
+    const pending = handoff.current;
+    if (!pending) return;
+    if (pending === "failed") {
+      if (onCaptureControl()) {
+        handoff.current = null;
+        return;
+      }
+      if (!focusLostOrPanel()) {
+        handoff.current = null;
+        return;
+      }
+      if (focusCaptureField()) handoff.current = null;
+      return;
+    }
+    if (!captureFocusIdle()) {
+      handoff.current = null;
+      return;
+    }
+    if (focusCaptureField()) handoff.current = null;
+  }, [open, saving, settle]);
 
   useEffect(() => {
     const handler = (e: MessageEvent) => {
@@ -56,30 +134,70 @@ export default function QuickCaptureDialog() {
     return () => window.removeEventListener("keydown", onKey);
   }, [resetCapture]);
 
+  const noteDraftKept = () => {
+    savingRef.current = false;
+    submittedRef.current = null;
+    clearCloseTimer();
+    setSaved(false);
+    handoff.current = "draft";
+    setSettle((n) => n + 1);
+  };
+
+  const handleText = (value: string) => {
+    textRef.current = value;
+    setText(value);
+    if (submittedRef.current !== null && value !== submittedRef.current) {
+      noteDraftKept();
+    }
+  };
+
   const handleSave = async () => {
-    const content = text.trim();
+    const content = textRef.current.trim();
     if (!content || savingRef.current) return;
     const gen = saveGen.current;
+    const submitted = textRef.current;
     savingRef.current = true;
+    handoff.current = null;
     setSaving(true);
+    let ok = false;
     try {
       await createMemory({ content, category: "quick_note" });
       if (saveGen.current !== gen) return;
-      setSaved(true);
-      window.setTimeout(() => {
-        if (saveGen.current !== gen) return;
-        setOpen(false);
-        setSaved(false);
-        setText("");
-        savingRef.current = false;
-      }, 900);
+      ok = true;
     } catch (e) {
       if (saveGen.current !== gen) return;
-      savingRef.current = false;
       addError(e instanceof ApiError ? e.message : "快速捕获失败", "记忆");
     } finally {
       if (saveGen.current === gen) setSaving(false);
     }
+    if (saveGen.current !== gen) return;
+    if (!ok) {
+      savingRef.current = false;
+      handoff.current = "failed";
+      setSettle((n) => n + 1);
+      return;
+    }
+    if (textRef.current !== submitted) {
+      noteDraftKept();
+      return;
+    }
+    submittedRef.current = submitted;
+    setSaved(true);
+    clearCloseTimer();
+    closeTimer.current = window.setTimeout(() => {
+      closeTimer.current = null;
+      if (saveGen.current !== gen) return;
+      if (textRef.current !== submitted) {
+        noteDraftKept();
+        return;
+      }
+      submittedRef.current = null;
+      savingRef.current = false;
+      textRef.current = "";
+      setSaved(false);
+      setText("");
+      setOpen(false);
+    }, 900);
   };
 
   const handleKey = (e: React.KeyboardEvent) => {
@@ -90,6 +208,8 @@ export default function QuickCaptureDialog() {
   };
 
   if (!open) return null;
+
+  const saveLocked = saving || saved;
 
   return (
     <div
@@ -116,25 +236,31 @@ export default function QuickCaptureDialog() {
         </div>
         <textarea
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          data-quick-capture="field"
+          onChange={(e) => handleText(e.target.value)}
           onKeyDown={handleKey}
           placeholder="想到什么，立刻记下来..."
           className="w-full bg-transparent text-fg-primary text-sm px-4 py-3 outline-none resize-none h-28 placeholder:text-fg-tertiary"
-          disabled={saving || saved}
         />
         <div className="flex items-center justify-between px-4 py-2 border-t border-border-subtle bg-surface-sunken/50">
           <span className="text-xs text-fg-disabled">保存为 quick_note 记忆</span>
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={dismiss}
               className="px-3 py-1 text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
             >
               取消
             </button>
             <button
-              onClick={handleSave}
-              disabled={!text.trim() || saving || saved}
-              className="px-3 py-1 text-xs bg-surface-overlay hover:bg-border-strong disabled:opacity-40 disabled:cursor-not-allowed rounded text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+              type="button"
+              data-quick-capture="save"
+              onClick={() => void handleSave()}
+              disabled={!text.trim() && !saveLocked}
+              aria-busy={saving || undefined}
+              className={`px-3 py-1 text-xs bg-surface-overlay hover:bg-border-strong disabled:opacity-40 disabled:cursor-not-allowed rounded text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring${
+                saving ? " opacity-50" : ""
+              }`}
             >
               {saving ? "保存中..." : saved ? "已保存" : "保存"}
             </button>

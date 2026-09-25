@@ -181,11 +181,17 @@ describe("QuickCaptureDialog", () => {
     fireEvent.change(textarea, { target: { value: "只记一次" } });
     fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
     fireEvent.keyDown(textarea, { key: "Enter", metaKey: true });
-    await waitFor(() => expect(screen.getByRole("button", { name: "保存中..." })).toBeDisabled());
+    const pending = await screen.findByRole("button", { name: "保存中..." });
+    expect(pending).toBeEnabled();
+    expect(pending).toHaveAttribute("aria-busy", "true");
+    expect(textarea).toBeEnabled();
     expect(mockCreateMemory).toHaveBeenCalledTimes(1);
 
     release({ id: "mem-1", status: "ok" });
-    expect(await screen.findByText("已保存")).toBeInTheDocument();
+    const done = await screen.findByRole("button", { name: "已保存" });
+    expect(done).toBeEnabled();
+    expect(textarea).toBeEnabled();
+    expect(textarea).toHaveValue("只记一次");
     fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
     expect(mockCreateMemory).toHaveBeenCalledTimes(1);
   });
@@ -203,7 +209,10 @@ describe("QuickCaptureDialog", () => {
     const textarea = await screen.findByPlaceholderText("想到什么，立刻记下来...");
     fireEvent.change(textarea, { target: { value: "先取消" } });
     fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
-    await waitFor(() => expect(screen.getByRole("button", { name: "保存中..." })).toBeDisabled());
+    const pending = await screen.findByRole("button", { name: "保存中..." });
+    expect(pending).toBeEnabled();
+    expect(pending).toHaveAttribute("aria-busy", "true");
+    expect(textarea).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     await waitFor(() => expect(screen.queryByText("快速捕获")).not.toBeInTheDocument());
 
@@ -223,5 +232,208 @@ describe("QuickCaptureDialog", () => {
     expect(next).toHaveValue("再记一条");
     expect(await screen.findByText("已保存")).toBeInTheDocument();
     expect(mockCreateMemory).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps focus on save while the note is writing and after it fails", async () => {
+    let fail: (err: unknown) => void = () => {};
+    mockCreateMemory.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    renderWithRouter(<QuickCaptureDialog />);
+    openDialog();
+    const textarea = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    fireEvent.change(textarea, { target: { value: "会失败" } });
+    const save = screen.getByRole("button", { name: "保存" });
+    save.focus();
+    fireEvent.click(save);
+    fireEvent.click(save);
+    const pending = await screen.findByRole("button", { name: "保存中..." });
+    expect(pending).toHaveFocus();
+    expect(pending).toBeEnabled();
+    expect(pending).toHaveAttribute("aria-busy", "true");
+    expect(textarea).toBeEnabled();
+    expect(mockCreateMemory).toHaveBeenCalledTimes(1);
+
+    fail(new MockApiError("保存失败", 500));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("保存失败", "记忆"));
+    const again = screen.getByRole("button", { name: "保存" });
+    expect(textarea).toHaveValue("会失败");
+    expect(textarea).toBeEnabled();
+    expect(again).toBeEnabled();
+    expect(again).toHaveFocus();
+    expect(again).not.toHaveAttribute("aria-busy");
+  });
+
+  it("keeps focus in the field when saving from the keyboard", async () => {
+    let release: (row: { id: string; status: string }) => void = () => {};
+    mockCreateMemory.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<QuickCaptureDialog />);
+    openDialog();
+    const textarea = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    await waitFor(() => expect(textarea).toHaveFocus());
+    fireEvent.change(textarea, { target: { value: "快捷键保存" } });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+    const pending = await screen.findByRole("button", { name: "保存中..." });
+    expect(textarea).toHaveFocus();
+    expect(textarea).toBeEnabled();
+    expect(pending).toBeEnabled();
+    expect(pending).toHaveAttribute("aria-busy", "true");
+    release({ id: "mem-1", status: "ok" });
+    expect(await screen.findByRole("button", { name: "已保存" })).toBeEnabled();
+    expect(textarea).toHaveFocus();
+    expect(textarea).toHaveValue("快捷键保存");
+  });
+
+  it("restores the field when focus was dropped before a failed save returns", async () => {
+    let fail: (err: unknown) => void = () => {};
+    mockCreateMemory.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    renderWithRouter(<QuickCaptureDialog />);
+    openDialog();
+    const textarea = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    fireEvent.change(textarea, { target: { value: "会失败" } });
+    const save = screen.getByRole("button", { name: "保存" });
+    save.focus();
+    fireEvent.click(save);
+    await screen.findByRole("button", { name: "保存中..." });
+    save.blur();
+    fail(new MockApiError("保存失败", 500));
+    await waitFor(() => expect(textarea).toHaveFocus());
+    expect(textarea).toHaveValue("会失败");
+    expect(textarea).toBeEnabled();
+  });
+
+  it("does not pull focus back when a failed save returns after focus moved", async () => {
+    let fail: (err: unknown) => void = () => {};
+    mockCreateMemory.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    renderWithRouter(<QuickCaptureDialog />);
+    openDialog();
+    const textarea = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    fireEvent.change(textarea, { target: { value: "会失败" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await screen.findByRole("button", { name: "保存中..." });
+    const cancel = screen.getByRole("button", { name: "取消" });
+    cancel.focus();
+    fail(new MockApiError("保存失败", 500));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("保存失败", "记忆"));
+    expect(cancel).toHaveFocus();
+    expect(textarea).toHaveValue("会失败");
+  });
+
+  it("keeps a newer draft and does not steal focus when the save finishes", async () => {
+    let release: (row: { id: string; status: string }) => void = () => {};
+    mockCreateMemory.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<QuickCaptureDialog />);
+    openDialog();
+    const textarea = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    fireEvent.change(textarea, { target: { value: "先记" } });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+    await screen.findByRole("button", { name: "保存中..." });
+    fireEvent.change(textarea, { target: { value: "先记，再补一句" } });
+    const cancel = screen.getByRole("button", { name: "取消" });
+    cancel.focus();
+    release({ id: "mem-1", status: "ok" });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "保存中..." })).not.toBeInTheDocument(),
+    );
+    expect(textarea).toHaveValue("先记，再补一句");
+    expect(screen.getByText("快速捕获")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "已保存" })).not.toBeInTheDocument();
+    expect(cancel).toHaveFocus();
+    expect(mockCreateMemory).toHaveBeenCalledTimes(1);
+    expect(mockCreateMemory).toHaveBeenCalledWith({ content: "先记", category: "quick_note" });
+  });
+
+  it("moves focus to the field when a save finishes with a newer draft", async () => {
+    let release: (row: { id: string; status: string }) => void = () => {};
+    mockCreateMemory.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<QuickCaptureDialog />);
+    openDialog();
+    const textarea = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    fireEvent.change(textarea, { target: { value: "先记" } });
+    const save = screen.getByRole("button", { name: "保存" });
+    save.focus();
+    fireEvent.click(save);
+    const pending = await screen.findByRole("button", { name: "保存中..." });
+    expect(pending).toHaveFocus();
+    fireEvent.change(textarea, { target: { value: "先记，再补一句" } });
+    release({ id: "mem-1", status: "ok" });
+    await waitFor(() => expect(textarea).toHaveFocus());
+    expect(textarea).toHaveValue("先记，再补一句");
+    expect(screen.queryByRole("button", { name: "已保存" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+  });
+
+  it("closes an unchanged note and returns focus to the opener", async () => {
+    mockCreateMemory.mockResolvedValue({ id: "mem-1", status: "ok" });
+    const opener = document.createElement("button");
+    opener.type = "button";
+    opener.textContent = "快捷捕获";
+    document.body.appendChild(opener);
+    opener.focus();
+    renderWithRouter(<QuickCaptureDialog />);
+    openDialog();
+    const textarea = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    await waitFor(() => expect(textarea).toHaveFocus());
+    fireEvent.change(textarea, { target: { value: "重要想法" } });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+    const pending = await screen.findByRole("button", { name: "保存中..." });
+    expect(pending).toBeEnabled();
+    expect(textarea).toBeEnabled();
+    expect(textarea).toHaveFocus();
+    const done = await screen.findByRole("button", { name: "已保存" });
+    expect(done).toBeEnabled();
+    expect(textarea).toBeEnabled();
+    await waitFor(() => expect(screen.queryByText("快速捕获")).not.toBeInTheDocument(), {
+      timeout: 2000,
+    });
+    expect(opener).toHaveFocus();
+    opener.remove();
+  });
+
+  it("keeps text typed after the note is saved and does not close", async () => {
+    mockCreateMemory.mockResolvedValue({ id: "mem-1", status: "ok" });
+    renderWithRouter(<QuickCaptureDialog />);
+    openDialog();
+    const textarea = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    fireEvent.change(textarea, { target: { value: "重要想法" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await screen.findByRole("button", { name: "已保存" });
+    fireEvent.change(textarea, { target: { value: "重要想法，再补一句" } });
+    expect(textarea).toHaveValue("重要想法，再补一句");
+    expect(screen.queryByRole("button", { name: "已保存" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    });
+    expect(screen.getByText("快速捕获")).toBeInTheDocument();
+    expect(textarea).toHaveValue("重要想法，再补一句");
   });
 });
