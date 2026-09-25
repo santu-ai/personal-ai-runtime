@@ -879,6 +879,107 @@ describe("ChatView", () => {
     expect(banner.closest(".border-b")?.contains(contextBtn)).toBe(false);
   });
 
+  it("keeps composer focus while generating and does not send again", async () => {
+    let release: (() => void) | undefined;
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, _onEvent, _onError, onDone) => {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        onDone();
+      },
+    );
+
+    renderChatView();
+    const field = screen.getByPlaceholderText(/输入消息/);
+    field.focus();
+    fireEvent.change(field, { target: { value: "写一篇长文" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    const cancel = await screen.findByRole("button", { name: "取消生成" });
+    const composer = screen.getByPlaceholderText(/输入消息/);
+    expect(composer).toBeEnabled();
+    expect(composer).toHaveAttribute("aria-busy", "true");
+    expect(composer).toHaveFocus();
+    expect(cancel).toBeEnabled();
+    expect(cancel).toHaveAttribute("aria-busy", "true");
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(composer, { target: { value: "下一句先留着" } });
+    fireEvent.keyDown(composer, { key: "Enter" });
+    fireEvent.keyDown(composer, { key: "Enter" });
+    expect(composer).toHaveValue("下一句先留着");
+    expect(composer).toHaveFocus();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+
+    const elsewhere = screen.getByRole("button", { name: "上下文" });
+    elsewhere.focus();
+    release?.();
+    await waitFor(() => expect(screen.getByRole("button", { name: "发送" })).toBeEnabled());
+    expect(elsewhere).toHaveFocus();
+    expect(composer).toHaveValue("下一句先留着");
+    expect(composer).not.toHaveAttribute("aria-busy");
+  });
+
+  it("keeps focus on cancel while generating, then returns to the composer", async () => {
+    let release: (() => void) | undefined;
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, _onEvent, _onError, onDone) => {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        onDone();
+      },
+    );
+
+    renderChatView();
+    fireEvent.change(screen.getByPlaceholderText(/输入消息/), {
+      target: { value: "写一篇长文" },
+    });
+    const send = screen.getByRole("button", { name: "发送" });
+    send.focus();
+    fireEvent.click(send);
+
+    const cancel = await screen.findByRole("button", { name: "取消生成" });
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(cancel).toBeEnabled();
+    expect(cancel).toHaveFocus();
+    expect(screen.getByPlaceholderText(/输入消息/)).toBeEnabled();
+
+    release?.();
+    await waitFor(() => expect(screen.getByPlaceholderText(/输入消息/)).toHaveFocus());
+  });
+
+  it("returns focus to the composer when generation fails and focus was dropped", async () => {
+    let fail: ((message: string) => void) | undefined;
+    vi.mocked(sendMessage).mockImplementation(
+      (_convId, _content, _onEvent, onError) =>
+        new Promise((resolve) => {
+          fail = (message: string) => {
+            onError(message);
+            resolve(undefined);
+          };
+        }),
+    );
+
+    renderChatView();
+    const field = screen.getByPlaceholderText(/输入消息/);
+    field.focus();
+    fireEvent.change(field, { target: { value: "写一篇长文" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+
+    const composer = screen.getByPlaceholderText(/输入消息/);
+    expect(await screen.findByRole("button", { name: "取消生成" })).toBeInTheDocument();
+    expect(composer).toHaveFocus();
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+
+    fail?.("生成失败");
+    await waitFor(() => expect(composer).toHaveFocus());
+    expect(composer).toBeEnabled();
+    expect(composer).not.toHaveAttribute("aria-busy");
+  });
+
   it("shows a clickable cancel button while generating", async () => {
     vi.mocked(sendMessage).mockImplementation(
       async (_convId, _content, _onEvent, _onError, onDone, signal) => {

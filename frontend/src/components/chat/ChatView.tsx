@@ -24,6 +24,18 @@ interface Props {
 
 type SendOutcome = "blocked" | "finished" | "retry";
 
+function focusIsBlank(): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  return !(active instanceof HTMLElement) || !active.isConnected;
+}
+
+function focusInComposer(composer: HTMLTextAreaElement): boolean {
+  const active = document.activeElement;
+  if (!(active instanceof Node)) return false;
+  return composer.parentElement?.contains(active) ?? false;
+}
+
 export default function ChatView({ conversationId }: Props) {
   const [input, setInput] = useState(() => readComposerDraft(conversationId));
   const [contextOpen, setContextOpen] = useState(false);
@@ -39,6 +51,8 @@ export default function ChatView({ conversationId }: Props) {
   const scrollRafRef = useRef<number | null>(null);
   const scrollSettleTimerRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const sendLock = useRef(false);
+  const generateFocusHeld = useRef(false);
   const prevMemoryTotalRef = useRef<number | null>(null);
 
   const addError = useErrorStore((s) => s.addError);
@@ -327,11 +341,24 @@ export default function ChatView({ conversationId }: Props) {
     };
   }, [messages, streamingContent, isLoading, scrollToBottom]);
 
-  useEffect(() => {
-    // 待确认卡片在的时候，焦点留给确认或回答，不要落回已经禁用的输入框。
-    if (pendingConfirmation || isLoading) return;
-    inputRef.current?.focus();
-  }, [isLoading, pendingConfirmation]);
+  useLayoutEffect(() => {
+    // 待确认时焦点留给确认或回答，不要落回已经禁用的输入框。
+    if (pendingConfirmation) return;
+    const composer = inputRef.current;
+    if (!composer || composer.disabled) return;
+    if (isLoading) {
+      // 同一轮生成只补一次。欢迎屏换成会话时，输入框卸掉，焦点会先掉到空白处。
+      if (generateFocusHeld.current) return;
+      generateFocusHeld.current = true;
+      if (!focusIsBlank()) return;
+      composer.focus();
+      return;
+    }
+    generateFocusHeld.current = false;
+    // 结束或失败后，焦点还在输入栏，或掉到空白处，才留在输入框。已经移走不再抢。
+    if (!focusIsBlank() && !focusInComposer(composer)) return;
+    composer.focus();
+  }, [isLoading, pendingConfirmation, initialLoad]);
 
   useEffect(() => {
     if (resolvingAction) return;
@@ -382,13 +409,18 @@ export default function ChatView({ conversationId }: Props) {
   const handleSend = useCallback(async () => {
     const raw = input;
     const trimmed = raw.trim();
-    if (!trimmed || isLoading || pendingConfirmation) return;
+    if (!trimmed || isLoading || pendingConfirmation || sendLock.current) return;
+    sendLock.current = true;
     setInput("");
     writeComposerDraft(conversationId, "");
-    const outcome = await dispatchSend(trimmed);
-    if (outcome === "blocked") {
-      setInput(raw);
-      writeComposerDraft(conversationId, raw);
+    try {
+      const outcome = await dispatchSend(trimmed);
+      if (outcome === "blocked") {
+        setInput(raw);
+        writeComposerDraft(conversationId, raw);
+      }
+    } finally {
+      sendLock.current = false;
     }
   }, [input, isLoading, pendingConfirmation, conversationId, dispatchSend]);
 
