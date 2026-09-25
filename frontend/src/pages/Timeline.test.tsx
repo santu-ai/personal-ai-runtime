@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { act, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
-import TimelinePage from "./Timeline";
+import TimelinePage, { timelinePageLayoutFocus } from "./Timeline";
 
 vi.mock("../api/timeline", () => ({
   listTimelineEvents: vi.fn(),
@@ -22,7 +22,20 @@ const makeEvent = (id: string, description: string, ts: string) => ({
 });
 
 describe("TimelinePage", () => {
+  /** 「加载更多」或首次「重试」卸下的那一轮，绘制前焦点已经离开页面空白。useEffect 会先停在 body。 */
+  function captureFocusWhenGone(gone: () => boolean): { read: () => Element | null } {
+    let focusAtLayout: Element | null = null;
+    timelinePageLayoutFocus.notify = () => {
+      if (!gone()) return;
+      focusAtLayout ??= document.activeElement;
+    };
+    return {
+      read: () => focusAtLayout,
+    };
+  }
+
   beforeEach(() => {
+    timelinePageLayoutFocus.notify = null;
     vi.clearAllMocks();
   });
 
@@ -345,23 +358,29 @@ describe("TimelinePage", () => {
     );
     more.focus();
     fireEvent.click(more);
-    release?.({
-      items: [
-        makeEvent("e2", "先到的纯文本", "2026-06-27T09:00:00Z"),
-        {
-          ...makeEvent("e3", "后到的任务", "2026-06-27T08:00:00Z"),
-          work_id: "brief/9",
-        },
-      ],
-      total: 3,
-      page: 2,
-      page_size: 30,
-      has_more: false,
-      icons: {},
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: "加载更多" }),
+    );
+    await act(async () => {
+      release?.({
+        items: [
+          makeEvent("e2", "先到的纯文本", "2026-06-27T09:00:00Z"),
+          {
+            ...makeEvent("e3", "后到的任务", "2026-06-27T08:00:00Z"),
+            work_id: "brief/9",
+          },
+        ],
+        total: 3,
+        page: 2,
+        page_size: 30,
+        has_more: false,
+        icons: {},
+      });
     });
     const link = await screen.findByRole("link", { name: "后到的任务" });
     await waitFor(() => expect(link).toHaveFocus());
     expect(screen.queryByRole("button", { name: "加载更多" })).not.toBeInTheDocument();
+    expect(focusWhenGone.read()).toBe(link);
   });
 
   it("moves focus to the end note when the last page has no task link", async () => {
@@ -384,16 +403,22 @@ describe("TimelinePage", () => {
     );
     more.focus();
     fireEvent.click(more);
-    release?.({
-      items: [makeEvent("e2", "事件二", "2026-06-27T08:00:00Z")],
-      total: 2,
-      page: 2,
-      page_size: 30,
-      has_more: false,
-      icons: {},
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: "加载更多" }),
+    );
+    await act(async () => {
+      release?.({
+        items: [makeEvent("e2", "事件二", "2026-06-27T08:00:00Z")],
+        total: 2,
+        page: 2,
+        page_size: 30,
+        has_more: false,
+        icons: {},
+      });
     });
     const end = await screen.findByText("已经是最早的记录");
     await waitFor(() => expect(end).toHaveFocus());
+    expect(focusWhenGone.read()).toBe(end);
   });
 
   it("does not pull focus back when it already moved off 加载更多", async () => {
@@ -423,21 +448,27 @@ describe("TimelinePage", () => {
     more.focus();
     fireEvent.click(more);
     first.focus();
-    release?.({
-      items: [
-        {
-          ...makeEvent("e2", "事件二", "2026-06-27T08:00:00Z"),
-          work_id: "task-2",
-        },
-      ],
-      total: 2,
-      page: 2,
-      page_size: 30,
-      has_more: false,
-      icons: {},
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: "加载更多" }),
+    );
+    await act(async () => {
+      release?.({
+        items: [
+          {
+            ...makeEvent("e2", "事件二", "2026-06-27T08:00:00Z"),
+            work_id: "task-2",
+          },
+        ],
+        total: 2,
+        page: 2,
+        page_size: 30,
+        has_more: false,
+        icons: {},
+      });
     });
     expect(await screen.findByRole("link", { name: "事件二" })).toBeInTheDocument();
     expect(first).toHaveFocus();
+    expect(focusWhenGone.read()).toBe(first);
   });
 
   it("focuses 重试 when loading more fails", async () => {
@@ -454,9 +485,13 @@ describe("TimelinePage", () => {
     renderWithRouter(<TimelinePage />);
     const more = await screen.findByRole("button", { name: "加载更多" });
     more.focus();
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: "加载更多" }),
+    );
     fireEvent.click(more);
     const retry = await screen.findByRole("button", { name: "重试" });
     await waitFor(() => expect(retry).toHaveFocus());
+    expect(focusWhenGone.read()).toBe(retry);
   });
 
   it("moves focus to the first task link after the first-load retry succeeds", async () => {
@@ -475,22 +510,28 @@ describe("TimelinePage", () => {
     fireEvent.click(retry);
     await waitFor(() => expect(retry).toHaveAttribute("aria-busy", "true"));
     expect(mockList).toHaveBeenCalledTimes(2);
-    release?.({
-      items: [
-        makeEvent("e1", "纯文本", "2026-06-28T09:00:00Z"),
-        {
-          ...makeEvent("e2", "可打开的任务", "2026-06-28T08:00:00Z"),
-          work_id: "task 1",
-        },
-      ],
-      total: 2,
-      page: 1,
-      page_size: 30,
-      has_more: false,
-      icons: {},
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: "重试" }),
+    );
+    await act(async () => {
+      release?.({
+        items: [
+          makeEvent("e1", "纯文本", "2026-06-28T09:00:00Z"),
+          {
+            ...makeEvent("e2", "可打开的任务", "2026-06-28T08:00:00Z"),
+            work_id: "task 1",
+          },
+        ],
+        total: 2,
+        page: 1,
+        page_size: 30,
+        has_more: false,
+        icons: {},
+      });
     });
     const link = await screen.findByRole("link", { name: "可打开的任务" });
     await waitFor(() => expect(link).toHaveFocus());
+    expect(focusWhenGone.read()).toBe(link);
   });
 
   it("moves focus to the event list when a retry finds no task link", async () => {
@@ -506,15 +547,22 @@ describe("TimelinePage", () => {
         }),
     );
     fireEvent.click(retry);
-    release?.({
-      items: [makeEvent("e1", "纯文本", "2026-06-28T08:00:00Z")],
-      total: 1,
-      page: 1,
-      page_size: 30,
-      has_more: false,
-      icons: {},
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: "重试" }),
+    );
+    await act(async () => {
+      release?.({
+        items: [makeEvent("e1", "纯文本", "2026-06-28T08:00:00Z")],
+        total: 1,
+        page: 1,
+        page_size: 30,
+        has_more: false,
+        icons: {},
+      });
     });
-    await waitFor(() => expect(screen.getByTestId("timeline-events")).toHaveFocus());
+    const list = await screen.findByTestId("timeline-events");
+    await waitFor(() => expect(list).toHaveFocus());
+    expect(focusWhenGone.read()).toBe(list);
   });
 
   it("moves focus to the empty timeline after a retry that finds nothing", async () => {
@@ -530,15 +578,22 @@ describe("TimelinePage", () => {
         }),
     );
     fireEvent.click(retry);
-    release?.({
-      items: [],
-      total: 0,
-      page: 1,
-      page_size: 30,
-      has_more: false,
-      icons: {},
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: "重试" }),
+    );
+    await act(async () => {
+      release?.({
+        items: [],
+        total: 0,
+        page: 1,
+        page_size: 30,
+        has_more: false,
+        icons: {},
+      });
     });
-    await waitFor(() => expect(screen.getByTestId("timeline-empty")).toHaveFocus());
+    const empty = await screen.findByTestId("timeline-empty");
+    await waitFor(() => expect(empty).toHaveFocus());
+    expect(focusWhenGone.read()).toBe(empty);
   });
 
   it("does not pull focus back after a first-load retry when focus already moved", async () => {
@@ -559,21 +614,27 @@ describe("TimelinePage", () => {
     );
     fireEvent.click(retry);
     outside.focus();
-    release?.({
-      items: [
-        {
-          ...makeEvent("e1", "可打开的任务", "2026-06-28T08:00:00Z"),
-          work_id: "task-1",
-        },
-      ],
-      total: 1,
-      page: 1,
-      page_size: 30,
-      has_more: false,
-      icons: {},
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: "重试" }),
+    );
+    await act(async () => {
+      release?.({
+        items: [
+          {
+            ...makeEvent("e1", "可打开的任务", "2026-06-28T08:00:00Z"),
+            work_id: "task-1",
+          },
+        ],
+        total: 1,
+        page: 1,
+        page_size: 30,
+        has_more: false,
+        icons: {},
+      });
     });
     expect(await screen.findByRole("link", { name: "可打开的任务" })).toBeInTheDocument();
     expect(outside).toHaveFocus();
+    expect(focusWhenGone.read()).toBe(outside);
     outside.remove();
   });
 });
