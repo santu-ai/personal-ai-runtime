@@ -786,12 +786,12 @@ describe("GoalsPage", () => {
     add.focus();
     fireEvent.click(add);
     fireEvent.click(add);
-    const pending = await within(add.parentElement as HTMLElement).findByRole("button", {
+    const busy = await within(add.parentElement as HTMLElement).findByRole("button", {
       name: "添加中...",
     });
-    expect(pending).toBeEnabled();
-    expect(pending).toHaveAttribute("aria-busy", "true");
-    expect(pending).toHaveFocus();
+    expect(busy).toBeEnabled();
+    expect(busy).toHaveAttribute("aria-busy", "true");
+    expect(busy).toHaveFocus();
     expect(createGoalAction).toHaveBeenCalledTimes(1);
 
     const other = suggestionAdd("再补文档");
