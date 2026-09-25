@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useOverlayDismiss } from "./useOverlayDismiss";
@@ -115,6 +115,33 @@ function TimerClose() {
   );
 }
 
+function RecordPanel({
+  focusKey,
+  onLayout,
+  initialFocus,
+  withField = false,
+}: {
+  focusKey: string;
+  onLayout: (active: Element | null) => void;
+  initialFocus?: "panel" | "field";
+  withField?: boolean;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useOverlayDismiss(true, panelRef, () => undefined, {
+    focusKey,
+    ...(initialFocus ? { initialFocus } : {}),
+  });
+  useLayoutEffect(() => {
+    onLayout(document.activeElement);
+  });
+  return (
+    <div ref={panelRef} role="dialog" aria-label="面板" tabIndex={-1}>
+      {withField ? <input aria-label="回答" /> : null}
+      <button type="button">关闭</button>
+    </div>
+  );
+}
+
 function RetryAfterOpen() {
   const panelRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(true);
@@ -197,6 +224,64 @@ describe("useOverlayDismiss", () => {
     view.rerender(<Panel open={false} onDismiss={onDismiss} initialFocus="field" withField />);
     expect(opener).toHaveFocus();
     opener.remove();
+  });
+
+  it("focuses the next record's panel before paint and leaves a field that already has focus", () => {
+    const first = document.createElement("button");
+    first.type = "button";
+    first.textContent = "第一行";
+    const second = document.createElement("button");
+    second.type = "button";
+    second.textContent = "第二行";
+    document.body.append(first, second);
+    first.focus();
+    let seen: Element | null = null;
+    const view = render(
+      <RecordPanel
+        focusKey="a"
+        initialFocus="field"
+        withField
+        onLayout={(active) => {
+          seen = active;
+        }}
+      />,
+    );
+    const dialog = screen.getByRole("dialog", { name: "面板" });
+    const field = screen.getByRole("textbox", { name: "回答" });
+    expect(seen).toBe(field);
+    expect(field).toHaveFocus();
+
+    const close = screen.getByRole("button", { name: "关闭" });
+    close.focus();
+    view.rerender(
+      <RecordPanel
+        focusKey="b"
+        initialFocus="field"
+        withField
+        onLayout={(active) => {
+          seen = active;
+        }}
+      />,
+    );
+    expect(close).toHaveFocus();
+    expect(seen).toBe(close);
+
+    second.focus();
+    view.rerender(
+      <RecordPanel
+        focusKey="c"
+        initialFocus="field"
+        withField
+        onLayout={(active) => {
+          seen = active;
+        }}
+      />,
+    );
+    expect(seen).toBe(dialog);
+    expect(dialog).toHaveFocus();
+    expect(field).not.toHaveFocus();
+    first.remove();
+    second.remove();
   });
 
   it("returns to the control that opened the next record", async () => {
