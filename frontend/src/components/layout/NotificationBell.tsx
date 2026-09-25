@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Bell } from "lucide-react";
 import {
@@ -17,6 +17,11 @@ import LoadErrorNotice, { queryErrorMessage, useHeldQueryError } from "../ui/Loa
 import { notificationPreview } from "../../utils/notificationUtils";
 
 const NOTIFICATION_LIST_LIMIT = 15;
+
+/** 绘制前通知。测试在「全部已读」卸下的同一轮读取焦点。 */
+export const notificationBellLayoutFocus = {
+  notify: null as null | (() => void),
+};
 
 type MarkAllHandoff = "rows" | "panel";
 
@@ -162,7 +167,9 @@ export default function NotificationBell({ compact = false }: Props) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open]);
 
-  useEffect(() => {
+  // 「全部已读」成功后这一钮才卸下。放到绘制前，不把焦点留在页面空白。
+  // 已经移到别的控件上，或下拉已经关掉时，不再抢。
+  useLayoutEffect(() => {
     const pending = focusAfter.current;
     if (!pending || markingAll) return;
     focusAfter.current = null;
@@ -170,6 +177,10 @@ export default function NotificationBell({ compact = false }: Props) {
     if (pending === "rows" && focusFirstNotification(panelRef.current)) return;
     panelRef.current?.focus();
   }, [markingAll, notifications, open]);
+
+  useLayoutEffect(() => {
+    notificationBellLayoutFocus.notify?.();
+  });
 
   const unread = notifications.filter((n) => !n.read).length;
 
