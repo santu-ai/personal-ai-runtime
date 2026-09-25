@@ -758,6 +758,206 @@ describe("GoalsPage", () => {
     expect(await screen.findByText("先写测试")).toBeInTheDocument();
     expect(remove).toHaveFocus();
   });
+
+  async function showSuggestions(steps: string[]) {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    vi.mocked(getGoal).mockResolvedValue(sampleGoal);
+    vi.mocked(decomposeGoal).mockResolvedValue({ steps });
+    renderGoals("/goals/g1");
+    fireEvent.click(await screen.findByRole("button", { name: "AI 拆解" }));
+    expect(await screen.findByText(steps[0])).toBeInTheDocument();
+  }
+
+  function suggestionAdd(title: string) {
+    const row = screen.getByText(title).parentElement as HTMLElement;
+    return within(row).getByRole("button", { name: /添加/ });
+  }
+
+  it("does not add a suggestion twice and keeps focus on that button", async () => {
+    const pending: Array<(goal: WorkItem) => void> = [];
+    vi.mocked(createGoalAction).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          pending.push(resolve);
+        }),
+    );
+    await showSuggestions(["先写测试", "再补文档"]);
+    const add = suggestionAdd("先写测试");
+    add.focus();
+    fireEvent.click(add);
+    fireEvent.click(add);
+    const pending = await within(add.parentElement as HTMLElement).findByRole("button", {
+      name: "添加中...",
+    });
+    expect(pending).toBeEnabled();
+    expect(pending).toHaveAttribute("aria-busy", "true");
+    expect(pending).toHaveFocus();
+    expect(createGoalAction).toHaveBeenCalledTimes(1);
+
+    const other = suggestionAdd("再补文档");
+    expect(other).toBeEnabled();
+    expect(other).not.toHaveAttribute("aria-busy");
+    fireEvent.click(screen.getByRole("button", { name: "全部添加" }));
+    expect(createGoalAction).toHaveBeenCalledTimes(1);
+
+    other.focus();
+    fireEvent.click(other);
+    await waitFor(() => expect(createGoalAction).toHaveBeenCalledTimes(2));
+    expect(other).toHaveAttribute("aria-busy", "true");
+    expect(other).toHaveFocus();
+    expect(createGoalAction).toHaveBeenNthCalledWith(1, "g1", "先写测试");
+    expect(createGoalAction).toHaveBeenNthCalledWith(2, "g1", "再补文档");
+
+    await act(async () => {
+      pending.forEach((finish) => finish(sampleGoal));
+    });
+  });
+
+  it("moves focus to the next suggestion after one is added, and does not steal it", async () => {
+    let release: (goal: WorkItem) => void = () => {};
+    vi.mocked(createGoalAction).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    await showSuggestions(["先写测试", "再补文档"]);
+    const add = suggestionAdd("先写测试");
+    add.focus();
+    fireEvent.click(add);
+    await screen.findByRole("button", { name: "添加中..." });
+
+    await act(async () => {
+      release(sampleGoal);
+    });
+    await waitFor(() => expect(screen.queryByText("先写测试")).not.toBeInTheDocument());
+    expect(suggestionAdd("再补文档")).toHaveFocus();
+    expect(createGoalAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("moves focus to the previous suggestion when the last one is added", async () => {
+    vi.mocked(createGoalAction).mockResolvedValue(sampleGoal);
+    await showSuggestions(["先写测试", "再补文档"]);
+    const add = suggestionAdd("再补文档");
+    add.focus();
+    fireEvent.click(add);
+    await waitFor(() => expect(screen.queryByText("再补文档")).not.toBeInTheDocument());
+    expect(suggestionAdd("先写测试")).toHaveFocus();
+  });
+
+  it("moves focus to the action field when the only suggestion is added", async () => {
+    vi.mocked(createGoalAction).mockResolvedValue(sampleGoal);
+    await showSuggestions(["先写测试"]);
+    const add = suggestionAdd("先写测试");
+    add.focus();
+    fireEvent.click(add);
+    const input = screen.getByPlaceholderText("添加行动步骤...");
+    await waitFor(() => expect(input).toHaveFocus());
+    expect(screen.queryByText("先写测试")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "全部添加" })).not.toBeInTheDocument();
+  });
+
+  it("does not pull suggestion focus back when it already moved", async () => {
+    let release: (goal: WorkItem) => void = () => {};
+    vi.mocked(createGoalAction).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    await showSuggestions(["先写测试"]);
+    const add = suggestionAdd("先写测试");
+    const remove = screen.getByRole("button", { name: "删除" });
+    add.focus();
+    fireEvent.click(add);
+    remove.focus();
+    await act(async () => {
+      release(sampleGoal);
+    });
+    await waitFor(() => expect(screen.queryByText("先写测试")).not.toBeInTheDocument());
+    expect(remove).toHaveFocus();
+  });
+
+  it("keeps suggestion focus on failure and restores it from a blank page", async () => {
+    let fail: (err: unknown) => void = () => {};
+    vi.mocked(createGoalAction).mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    await showSuggestions(["先写测试"]);
+    const add = suggestionAdd("先写测试");
+    add.focus();
+    fireEvent.click(add);
+    const pending = await screen.findByRole("button", { name: "添加中..." });
+    expect(pending).toHaveFocus();
+    pending.blur();
+    expect(document.activeElement).toBe(document.body);
+
+    await act(async () => {
+      fail(new ApiError("创建行动步骤失败", 500));
+    });
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("创建行动步骤失败", "目标"));
+    expect(screen.getByText("先写测试")).toBeInTheDocument();
+    expect(suggestionAdd("先写测试")).toHaveFocus();
+    expect(suggestionAdd("先写测试")).toBeEnabled();
+    expect(suggestionAdd("先写测试")).not.toHaveAttribute("aria-busy");
+  });
+
+  it("does not add every suggestion twice and keeps focus on 全部添加", async () => {
+    const pending: Array<(goal: WorkItem) => void> = [];
+    vi.mocked(createGoalAction).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          pending.push(resolve);
+        }),
+    );
+    await showSuggestions(["先写测试", "再补文档"]);
+    const all = screen.getByRole("button", { name: "全部添加" });
+    all.focus();
+    fireEvent.click(all);
+    fireEvent.click(all);
+    const busy = await screen.findByRole("button", { name: "全部添加中..." });
+    expect(busy).toBeEnabled();
+    expect(busy).toHaveAttribute("aria-busy", "true");
+    expect(busy).toHaveFocus();
+    expect(suggestionAdd("先写测试")).toHaveAttribute("aria-busy", "true");
+    fireEvent.click(suggestionAdd("先写测试"));
+    fireEvent.click(suggestionAdd("再补文档"));
+    expect(createGoalAction).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pending[0](sampleGoal);
+    });
+    await waitFor(() => expect(createGoalAction).toHaveBeenCalledTimes(2));
+    expect(createGoalAction).toHaveBeenNthCalledWith(2, "g1", "再补文档");
+    expect(screen.getByRole("button", { name: "全部添加中..." })).toHaveFocus();
+
+    await act(async () => {
+      pending[1](sampleGoal);
+    });
+    const input = screen.getByPlaceholderText("添加行动步骤...");
+    await waitFor(() => expect(input).toHaveFocus());
+    expect(screen.queryByRole("button", { name: "全部添加" })).not.toBeInTheDocument();
+    expect(createGoalAction).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps 全部添加 focused when one suggestion fails", async () => {
+    vi.mocked(createGoalAction)
+      .mockResolvedValueOnce(sampleGoal)
+      .mockRejectedValueOnce(new ApiError("创建行动步骤失败", 500));
+    await showSuggestions(["先写测试", "再补文档"]);
+    const all = screen.getByRole("button", { name: "全部添加" });
+    all.focus();
+    fireEvent.click(all);
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("创建行动步骤失败", "目标"));
+    expect(screen.queryByText("先写测试")).not.toBeInTheDocument();
+    expect(screen.getByText("再补文档")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "全部添加" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "全部添加" })).toBeEnabled();
+    expect(createGoalAction).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("GoalDetailPanel drafts", () => {

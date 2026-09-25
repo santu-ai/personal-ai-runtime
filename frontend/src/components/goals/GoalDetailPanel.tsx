@@ -26,6 +26,9 @@ interface GoalDetailPanelProps {
 const statusButtonClass =
   "px-3 py-1.5 text-xs bg-surface-overlay hover:bg-border-strong text-fg-primary rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
 
+type SuggestHandoff =
+  { kind: "one"; title: string; index: number; ok: boolean } | { kind: "all"; ok: boolean };
+
 /** 焦点在页面空白处，或还停在已经卸掉的按钮上，才安放。已经在别的控件上就不再抢。 */
 function focusIsIdle(): boolean {
   const active = document.activeElement;
@@ -68,6 +71,9 @@ export default function GoalDetailPanel({
   const goalIdRef = useRef(goal.id);
   const pendingStepsRef = useRef(new Set<string>());
   const addingAllRef = useRef(false);
+  const [addingSteps, setAddingSteps] = useState<ReadonlySet<string>>(() => new Set());
+  const [addingAll, setAddingAll] = useState(false);
+  const suggestHandoff = useRef<SuggestHandoff | null>(null);
   const statusLock = useRef(false);
   const [statusBusy, setStatusBusy] = useState<string | null>(null);
   const actionLocks = useRef(new Set<string>());
@@ -142,12 +148,15 @@ export default function GoalDetailPanel({
     seenGoalId.current = goal.id;
     pendingStepsRef.current.clear();
     addingAllRef.current = false;
+    suggestHandoff.current = null;
     statusLock.current = false;
     actionLocks.current.clear();
     decomposeLock.current = false;
     focusAfter.current = null;
     setSuggestedSteps([]);
     setDecomposing(false);
+    setAddingSteps(new Set());
+    setAddingAll(false);
     setStatusBusy(null);
     setBusyActions(new Set());
   }, [goal.id]);
@@ -164,6 +173,31 @@ export default function GoalDetailPanel({
     if (!focusIsIdle()) return;
     placeGoalStatusFocus(goal.status);
   }, [goal.id, goal.status, statusBusy]);
+
+  useEffect(() => {
+    const pending = suggestHandoff.current;
+    if (!pending) return;
+    if (pending.kind === "all") {
+      if (addingAll) return;
+    } else if (pendingStepsRef.current.has(pending.title)) {
+      return;
+    }
+    suggestHandoff.current = null;
+    if (!pending.ok) {
+      if (focusIsBlank()) {
+        if (pending.kind === "one") focusSuggestStep(pending.title);
+        else focusSuggestAll();
+      }
+      return;
+    }
+    if (!suggestFocusIdle(pending)) return;
+    if (pending.kind === "one") {
+      placeSuggestFocusAfter(pending.index, goal.id);
+      return;
+    }
+    if (focusActionField(goal.id)) return;
+    document.querySelector<HTMLElement>("button[data-goal-decompose]")?.focus();
+  }, [addingAll, addingSteps, suggestedSteps, goal.id]);
 
   const handleDecomposeGoal = async () => {
     if (decomposeLock.current) return;
@@ -187,32 +221,53 @@ export default function GoalDetailPanel({
     }
   };
 
-  const handleAddSuggestedStep = async (title: string) => {
-    if (pendingStepsRef.current.has(title)) return;
-    pendingStepsRef.current.add(title);
+  const handleAddSuggestedStep = async (title: string, index: number) => {
+    if (addingAllRef.current || pendingStepsRef.current.has(title)) return;
     const goalId = goal.id;
+    pendingStepsRef.current.add(title);
+    setAddingSteps(new Set(pendingStepsRef.current));
+    suggestHandoff.current = null;
+    let ok = false;
     try {
-      const ok = await handleCreateAction(goalId, title);
+      ok = await handleCreateAction(goalId, title);
       if (!ok || goalIdRef.current !== goalId) return;
-      setSuggestedSteps((prev) => prev.filter((s) => s !== title));
+      setSuggestedSteps((prev) => prev.filter((step) => step !== title));
     } finally {
-      if (goalIdRef.current === goalId) pendingStepsRef.current.delete(title);
+      if (goalIdRef.current === goalId) {
+        pendingStepsRef.current.delete(title);
+        setAddingSteps(new Set(pendingStepsRef.current));
+        suggestHandoff.current = { kind: "one", title, index, ok };
+      }
     }
   };
 
   const handleAddAllSuggestedSteps = async () => {
-    if (addingAllRef.current) return;
-    addingAllRef.current = true;
+    if (addingAllRef.current || pendingStepsRef.current.size > 0) return;
     const goalId = goal.id;
+    const steps = suggestedSteps.map((title, index) => ({ title, index }));
+    if (steps.length === 0) return;
+    addingAllRef.current = true;
+    setAddingAll(true);
+    for (const step of steps) pendingStepsRef.current.add(step.title);
+    setAddingSteps(new Set(pendingStepsRef.current));
+    suggestHandoff.current = null;
+    let ok = true;
     try {
-      for (const step of [...suggestedSteps]) {
+      for (const step of steps) {
         if (goalIdRef.current !== goalId) return;
-        const ok = await handleCreateAction(goalId, step);
+        const added = await handleCreateAction(goalId, step.title);
         if (goalIdRef.current !== goalId) return;
-        if (ok) setSuggestedSteps((prev) => prev.filter((s) => s !== step));
+        if (added) setSuggestedSteps((prev) => prev.filter((item) => item !== step.title));
+        else ok = false;
       }
     } finally {
-      if (goalIdRef.current === goalId) addingAllRef.current = false;
+      if (goalIdRef.current === goalId) {
+        for (const step of steps) pendingStepsRef.current.delete(step.title);
+        setAddingSteps(new Set(pendingStepsRef.current));
+        addingAllRef.current = false;
+        setAddingAll(false);
+        suggestHandoff.current = { kind: "all", ok };
+      }
     }
   };
 
@@ -294,6 +349,7 @@ export default function GoalDetailPanel({
           </h3>
           <button
             type="button"
+            data-goal-decompose=""
             onClick={() => void handleDecomposeGoal()}
             aria-busy={decomposing || undefined}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs bg-insight/15 hover:bg-insight/25 text-insight rounded-lg border border-insight/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
@@ -314,25 +370,38 @@ export default function GoalDetailPanel({
                 AI 建议的行动步骤
               </span>
               <button
-                onClick={handleAddAllSuggestedSteps}
-                className="text-xs px-2 py-1 bg-insight/30 hover:bg-insight/40 rounded text-insight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                type="button"
+                data-goal-suggest="all"
+                onClick={() => void handleAddAllSuggestedSteps()}
+                aria-busy={addingAll || undefined}
+                className={`text-xs px-2 py-1 bg-insight/30 hover:bg-insight/40 rounded text-insight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring${
+                  addingAll ? " opacity-50" : ""
+                }`}
               >
-                全部添加
+                {addingAll ? "全部添加中..." : "全部添加"}
               </button>
             </div>
             <div className="space-y-1.5">
-              {suggestedSteps.map((step, idx) => (
-                <div key={idx} className="flex items-center gap-2 text-sm text-fg-primary">
-                  <span className="text-insight">•</span>
-                  <span className="flex-1">{step}</span>
-                  <button
-                    onClick={() => handleAddSuggestedStep(step)}
-                    className="text-xs px-2 py-0.5 bg-surface-overlay hover:bg-border-strong rounded text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-                  >
-                    添加
-                  </button>
-                </div>
-              ))}
+              {suggestedSteps.map((step, idx) => {
+                const adding = addingSteps.has(step);
+                return (
+                  <div key={idx} className="flex items-center gap-2 text-sm text-fg-primary">
+                    <span className="text-insight">•</span>
+                    <span className="flex-1">{step}</span>
+                    <button
+                      type="button"
+                      data-goal-suggest-step={step}
+                      onClick={() => void handleAddSuggestedStep(step, idx)}
+                      aria-busy={adding || undefined}
+                      className={`text-xs px-2 py-0.5 bg-surface-overlay hover:bg-border-strong rounded text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring${
+                        adding ? " opacity-50" : ""
+                      }`}
+                    >
+                      {adding ? "添加中..." : "添加"}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -382,6 +451,53 @@ export default function GoalDetailPanel({
       )}
     </div>
   );
+}
+
+function focusIsBlank(): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  return false;
+}
+
+function suggestFocusIdle(pending: SuggestHandoff): boolean {
+  if (focusIsBlank()) return true;
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) return false;
+  if (pending.kind === "all") return active.getAttribute("data-goal-suggest") === "all";
+  return active.getAttribute("data-goal-suggest-step") === pending.title;
+}
+
+function suggestStepButtons(): HTMLButtonElement[] {
+  return [...document.querySelectorAll<HTMLButtonElement>("button[data-goal-suggest-step]")];
+}
+
+function focusSuggestStep(title: string): boolean {
+  const button = suggestStepButtons().find(
+    (node) => node.getAttribute("data-goal-suggest-step") === title,
+  );
+  if (!button || button.disabled) return false;
+  button.focus();
+  return document.activeElement === button;
+}
+
+function focusSuggestAll(): boolean {
+  const button = document.querySelector<HTMLButtonElement>("button[data-goal-suggest='all']");
+  if (!button || button.disabled) return false;
+  button.focus();
+  return document.activeElement === button;
+}
+
+/** 这一条离开建议后，落到下一条「添加」；没有就落到上一条；都没有就落到输入框。 */
+function placeSuggestFocusAfter(index: number, goalId: string): void {
+  const buttons = suggestStepButtons();
+  const next = buttons[index] ?? buttons[index - 1];
+  if (next) {
+    next.focus();
+    return;
+  }
+  if (focusActionField(goalId)) return;
+  document.querySelector<HTMLElement>("button[data-goal-decompose]")?.focus();
 }
 
 function actionFieldSelector(goalId: string): string {
