@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { act, screen, fireEvent, waitFor } from "@testing-library/react";
 import { renderWithRouter, MockApiError } from "../../test-utils";
@@ -51,6 +52,18 @@ import { getSystemHealth, getLlmProviders, createConversation } from "../../api/
 const mockHealth = vi.mocked(getSystemHealth);
 const mockLlm = vi.mocked(getLlmProviders);
 const mockCreateConv = vi.mocked(createConversation);
+
+function OnboardingHost() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>
+        打开引导
+      </button>
+      {open ? <OnboardingWizard onComplete={() => setOpen(false)} /> : null}
+    </>
+  );
+}
 
 describe("OnboardingWizard", () => {
   beforeEach(() => {
@@ -475,5 +488,157 @@ describe("OnboardingWizard", () => {
     await waitFor(() => expect(first).not.toHaveAttribute("aria-busy"));
     expect(addError).toHaveBeenCalledWith("创建失败", "对话");
     expect(second).toHaveFocus();
+  });
+
+  it("keeps Tab inside the wizard and leaves on Escape", async () => {
+    renderWithRouter(
+      <>
+        <button type="button">外面</button>
+        <OnboardingWizard onComplete={vi.fn()} />
+      </>,
+    );
+    const dialog = screen.getByRole("dialog", { name: "连接后端" });
+    const outside = screen.getByRole("button", { name: "外面" });
+    const check = screen.getByRole("button", { name: "运行检查" });
+    const skip = screen.getByRole("button", { name: "跳过" });
+    const next = screen.getByRole("button", { name: "下一步" });
+    await waitFor(() => expect(dialog).toHaveFocus());
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(check).toHaveFocus();
+    fireEvent.keyDown(check, { key: "Tab" });
+    expect(skip).toHaveFocus();
+    fireEvent.keyDown(skip, { key: "Tab" });
+    expect(next).toHaveFocus();
+    fireEvent.keyDown(next, { key: "Tab" });
+    expect(check).toHaveFocus();
+    expect(outside).not.toHaveFocus();
+
+    fireEvent.keyDown(check, { key: "Tab", shiftKey: true });
+    expect(next).toHaveFocus();
+    dialog.focus();
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(next).toHaveFocus();
+
+    outside.focus();
+    fireEvent.keyDown(outside, { key: "Tab" });
+    expect(check).toHaveFocus();
+    outside.focus();
+    fireEvent.keyDown(outside, { key: "Tab", shiftKey: true });
+    expect(next).toHaveFocus();
+
+    fireEvent.click(screen.getByTestId("onboarding-backdrop"));
+    expect(localStorage.getItem("onboarding_done")).toBeNull();
+    expect(dialog).toBeInTheDocument();
+  });
+
+  it("leaves on Escape and returns focus to the control that opened it", async () => {
+    renderWithRouter(<OnboardingHost />);
+    const opener = screen.getByRole("button", { name: "打开引导" });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = screen.getByRole("dialog", { name: "连接后端" });
+    await waitFor(() => expect(dialog).toHaveFocus());
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(localStorage.getItem("onboarding_done")).toBe("1");
+    expect(opener).toHaveFocus();
+
+    fireEvent.keyDown(opener, { key: "Tab" });
+    expect(opener).toHaveFocus();
+  });
+
+  it("does not leave on Escape while a check is in flight", async () => {
+    const pending = defer<Awaited<ReturnType<typeof getSystemHealth>>>();
+    mockHealth.mockImplementationOnce(() => pending.promise);
+    const onComplete = vi.fn();
+    renderWithRouter(<OnboardingWizard onComplete={onComplete} />);
+    const check = screen.getByRole("button", { name: "运行检查" });
+    check.focus();
+    fireEvent.click(check);
+    await waitFor(() => expect(check).toHaveAttribute("aria-busy", "true"));
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(localStorage.getItem("onboarding_done")).toBeNull();
+    expect(screen.getByRole("dialog", { name: "连接后端" })).toBeInTheDocument();
+    expect(check).toHaveFocus();
+
+    fireEvent.click(screen.getByRole("button", { name: "跳过" }));
+    expect(onComplete).toHaveBeenCalledOnce();
+    expect(localStorage.getItem("onboarding_done")).toBe("1");
+  });
+
+  it("keeps Tab on the starter buttons and does not leave on Escape while launching", async () => {
+    const pending = defer<{
+      id: string;
+      title: string;
+      summary: null;
+      created_at: string;
+      updated_at: string;
+    }>();
+    mockHealth.mockResolvedValue({
+      status: "ok",
+      auth_required: false,
+      startup: { checks: { llm: { configured: true } } },
+    } as Awaited<ReturnType<typeof getSystemHealth>>);
+    const onComplete = vi.fn();
+    renderWithRouter(
+      <>
+        <button type="button">外面</button>
+        <OnboardingWizard onComplete={onComplete} />
+      </>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    const first = await screen.findByRole("button", { name: /帮我规划一个目标/ });
+    const last = screen.getByRole("button", { name: "稍后再说" });
+    const outside = screen.getByRole("button", { name: "外面" });
+    expect(screen.getByRole("dialog", { name: "开始第一次对话" })).toBeInTheDocument();
+    first.focus();
+
+    fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
+    expect(last).toHaveFocus();
+    fireEvent.keyDown(last, { key: "Tab" });
+    expect(first).toHaveFocus();
+    outside.focus();
+    fireEvent.keyDown(outside, { key: "Tab" });
+    expect(first).toHaveFocus();
+
+    mockCreateConv.mockImplementationOnce(() => pending.promise);
+    fireEvent.click(first);
+    await waitFor(() => expect(first).toHaveAttribute("aria-busy", "true"));
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(localStorage.getItem("onboarding_done")).toBeNull();
+    expect(screen.getByRole("dialog", { name: "开始第一次对话" })).toBeInTheDocument();
+    expect(first).toHaveFocus();
+  });
+
+  it("includes the settings button in the Tab cycle", async () => {
+    mockHealth.mockResolvedValue({
+      status: "ok",
+      auth_required: false,
+      startup: { checks: { llm: { configured: false } } },
+    } as Awaited<ReturnType<typeof getSystemHealth>>);
+    mockLlm.mockResolvedValue({ providers: [], default: "" });
+    renderWithRouter(
+      <>
+        <button type="button">外面</button>
+        <OnboardingWizard onComplete={vi.fn()} />
+      </>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    expect(await screen.findByText("配置 AI 大脑")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "运行检查" }));
+    const settings = await screen.findByRole("button", { name: "前往设置页面配置" });
+    const check = screen.getByRole("button", { name: "运行检查" });
+    check.focus();
+    fireEvent.keyDown(check, { key: "Tab" });
+    expect(settings).toHaveFocus();
+    screen.getByRole("button", { name: "外面" }).focus();
+    fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+    expect(screen.getByRole("button", { name: "下一步" })).toHaveFocus();
   });
 });
