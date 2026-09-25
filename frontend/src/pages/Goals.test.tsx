@@ -773,11 +773,16 @@ describe("GoalsPage", () => {
     expect(updateGoal).toHaveBeenCalledTimes(1);
     expect(updateGoal).toHaveBeenCalledWith("g1", { status: "paused" });
 
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: "暂停" }),
+    );
     await act(async () => {
       release({ ...current, status: "paused" });
     });
     const resume = await screen.findByRole("button", { name: "恢复" });
     await waitFor(() => expect(resume).toHaveFocus());
+    expect(focusWhenGone.read()).toBe(resume);
+    expect(focusWhenGone.read()).not.toBe(document.body);
     expect(screen.queryByRole("button", { name: "暂停" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "完成" })).not.toBeInTheDocument();
   });
@@ -807,11 +812,16 @@ describe("GoalsPage", () => {
     expect(updateGoal).toHaveBeenCalledTimes(1);
     expect(updateGoal).toHaveBeenCalledWith("g1", { status: "active" });
 
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: "恢复" }),
+    );
     await act(async () => {
       release({ ...current, status: "active" });
     });
     const pause = await screen.findByRole("button", { name: "暂停" });
     await waitFor(() => expect(pause).toHaveFocus());
+    expect(focusWhenGone.read()).toBe(pause);
+    expect(focusWhenGone.read()).not.toBe(document.body);
     expect(screen.getByRole("button", { name: "完成" })).not.toHaveFocus();
   });
 
@@ -835,12 +845,16 @@ describe("GoalsPage", () => {
     done.focus();
     fireEvent.click(done);
     remove.focus();
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: "完成" }),
+    );
     await act(async () => {
       release({ ...current, status: "completed" });
     });
     expect(await screen.findByRole("button", { name: "就此目标对话" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "完成" })).not.toBeInTheDocument();
     expect(remove).toHaveFocus();
+    expect(focusWhenGone.read()).toBe(remove);
     expect(updateGoal).toHaveBeenCalledTimes(1);
   });
 
@@ -869,11 +883,16 @@ describe("GoalsPage", () => {
     expect(updateGoal).toHaveBeenCalledTimes(1);
     expect(updateGoal).toHaveBeenCalledWith("g1", { status: "completed" });
 
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: "完成" }),
+    );
     await act(async () => {
       release({ ...current, status: "completed" });
     });
     const chat = await screen.findByRole("button", { name: "就此目标对话" });
     await waitFor(() => expect(chat).toHaveFocus());
+    expect(focusWhenGone.read()).toBe(chat);
+    expect(focusWhenGone.read()).not.toBe(document.body);
   });
 
   it("keeps 完成 focused when the status write fails", async () => {
@@ -1081,11 +1100,15 @@ describe("GoalsPage", () => {
     fireEvent.click(add);
     await screen.findByRole("button", { name: "添加中..." });
 
+    const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("先写测试"));
     await act(async () => {
       release(sampleGoal);
     });
     await waitFor(() => expect(screen.queryByText("先写测试")).not.toBeInTheDocument());
-    expect(suggestionAdd("再补文档")).toHaveFocus();
+    const next = suggestionAdd("再补文档");
+    expect(next).toHaveFocus();
+    expect(focusWhenGone.read()).toBe(next);
+    expect(focusWhenGone.read()).not.toBe(document.body);
     expect(createGoalAction).toHaveBeenCalledTimes(1);
   });
 
@@ -1094,19 +1117,26 @@ describe("GoalsPage", () => {
     await showSuggestions(["先写测试", "再补文档"]);
     const add = suggestionAdd("再补文档");
     add.focus();
+    const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("再补文档"));
     fireEvent.click(add);
     await waitFor(() => expect(screen.queryByText("再补文档")).not.toBeInTheDocument());
-    expect(suggestionAdd("先写测试")).toHaveFocus();
+    const previous = suggestionAdd("先写测试");
+    expect(previous).toHaveFocus();
+    expect(focusWhenGone.read()).toBe(previous);
+    expect(focusWhenGone.read()).not.toBe(document.body);
   });
 
   it("moves focus to the action field when the only suggestion is added", async () => {
     vi.mocked(createGoalAction).mockResolvedValue(sampleGoal);
     await showSuggestions(["先写测试"]);
     const add = suggestionAdd("先写测试");
-    add.focus();
-    fireEvent.click(add);
     const input = screen.getByPlaceholderText("添加行动步骤...");
+    add.focus();
+    const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("先写测试"));
+    fireEvent.click(add);
     await waitFor(() => expect(input).toHaveFocus());
+    expect(focusWhenGone.read()).toBe(input);
+    expect(focusWhenGone.read()).not.toBe(document.body);
     expect(screen.queryByText("先写测试")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "全部添加" })).not.toBeInTheDocument();
   });
@@ -1125,11 +1155,13 @@ describe("GoalsPage", () => {
     add.focus();
     fireEvent.click(add);
     remove.focus();
+    const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("先写测试"));
     await act(async () => {
       release(sampleGoal);
     });
     await waitFor(() => expect(screen.queryByText("先写测试")).not.toBeInTheDocument());
     expect(remove).toHaveFocus();
+    expect(focusWhenGone.read()).toBe(remove);
   });
 
   it("keeps suggestion focus on failure and restores it from a blank page", async () => {
@@ -1188,11 +1220,16 @@ describe("GoalsPage", () => {
     expect(createGoalAction).toHaveBeenNthCalledWith(2, "g1", "再补文档");
     expect(screen.getByRole("button", { name: "全部添加中..." })).toHaveFocus();
 
+    const input = screen.getByPlaceholderText("添加行动步骤...");
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: /全部添加/ }),
+    );
     await act(async () => {
       pending[1](sampleGoal);
     });
-    const input = screen.getByPlaceholderText("添加行动步骤...");
     await waitFor(() => expect(input).toHaveFocus());
+    expect(focusWhenGone.read()).toBe(input);
+    expect(focusWhenGone.read()).not.toBe(document.body);
     expect(screen.queryByRole("button", { name: "全部添加" })).not.toBeInTheDocument();
     expect(createGoalAction).toHaveBeenCalledTimes(2);
   });
