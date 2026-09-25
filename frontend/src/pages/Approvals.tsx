@@ -150,7 +150,9 @@ export default function ApprovalsPage() {
     }
   }, [error, addError]);
 
-  useEffect(() => {
+  // 「重试」出现时才拿焦点。放到绘制前，不先停在页面空白。
+  // 只在审批页。仪表盘「返回今日」和浮层初始焦点不在这一段里。
+  useLayoutEffect(() => {
     if (!shownError) return;
     const root = loadErrorRef.current;
     const button = root?.querySelector("button");

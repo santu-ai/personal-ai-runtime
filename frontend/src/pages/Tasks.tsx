@@ -1221,7 +1221,9 @@ export default function TasksPage() {
     };
   }, [urlTaskId, historyId, historyRetry]);
 
-  useEffect(() => {
+  // 历史全文读失败时，「重试」才出现。放到绘制前，不先停在页面空白。
+  // 已经在这一块里就不再抢。只在任务页的历史版，不改共用的读取失败提示。
+  useLayoutEffect(() => {
     if (!historyError || historyLoading) return;
     const root = historyErrorRef.current;
     const button = root?.querySelector("button");
