@@ -36,4 +36,11 @@ describe("ToastCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "关闭" }));
     expect(onDismiss).toHaveBeenCalledOnce();
   });
+
+  it("gives a clickable notice the timeline focus ring", () => {
+    render(<ToastCard tone="insight" title="待审批" body="需要确认" onClick={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /待审批/ })).toHaveClass(
+      "focus-visible:ring-focus-ring",
+    );
+  });
 });

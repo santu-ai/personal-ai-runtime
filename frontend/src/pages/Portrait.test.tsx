@@ -1,6 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { renderWithRouter } from "../test-utils";
+import { queryKeys } from "../hooks/useWsInvalidationBridge";
 import { PortraitPanel } from "./Portrait";
 
 vi.mock("../api/portrait", () => ({
@@ -188,5 +191,26 @@ describe("PortraitPage", () => {
     await waitFor(() => {
       expect(screen.getByText(/包含 3 项洞察/)).toBeInTheDocument();
     });
+  });
+
+  it("gives the refresh retry the timeline focus ring", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+    mockGetPortrait.mockResolvedValue({ profile: {}, habits: [], goals: [] });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <PortraitPanel compact />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText("画像尚未建立")).toBeInTheDocument();
+    mockGetPortrait.mockRejectedValue(new Error("刷新失败"));
+    await client.refetchQueries({ queryKey: queryKeys.portrait });
+    const retry = await screen.findByRole("button", { name: "重试" });
+    expect(retry).toHaveClass("focus-visible:ring-focus-ring");
+    expect(screen.getByText(/刷新失败/)).toBeInTheDocument();
+    expect(screen.queryByTestId("portrait-load-error")).not.toBeInTheDocument();
   });
 });

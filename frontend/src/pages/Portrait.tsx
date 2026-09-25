@@ -97,7 +97,11 @@ export function PortraitPanel({ compact = false }: { compact?: boolean }) {
           <div className="flex items-center gap-2 text-sm text-warning bg-warning/10 border border-warning/30 rounded-lg px-3 py-2">
             <AlertCircle size={14} />
             刷新失败：{error}
-            <button type="button" onClick={() => void refetch()} className="underline ml-auto">
+            <button
+              type="button"
+              onClick={() => void refetch()}
+              className="ml-auto rounded-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+            >
               重试
             </button>
           </div>

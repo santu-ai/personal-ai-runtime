@@ -251,7 +251,7 @@ export default function QuickCaptureDialog() {
           onChange={(e) => handleText(e.target.value)}
           onKeyDown={handleKey}
           placeholder="想到什么，立刻记下来..."
-          className="w-full bg-transparent text-fg-primary text-sm px-4 py-3 outline-none resize-none h-28 placeholder:text-fg-tertiary"
+          className="h-28 w-full resize-none bg-transparent px-4 py-3 text-sm text-fg-primary placeholder:text-fg-tertiary rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring"
         />
         <div className="flex items-center justify-between px-4 py-2 border-t border-border-subtle bg-surface-sunken/50">
           <span className="text-xs text-fg-disabled">保存为 quick_note 记忆</span>

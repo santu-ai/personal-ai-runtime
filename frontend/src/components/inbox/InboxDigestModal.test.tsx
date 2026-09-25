@@ -34,7 +34,9 @@ describe("InboxDigestModal", () => {
     expect(screen.getByRole("heading", { level: 1, name: "收件箱每日摘要" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "重要 (1)" })).toBeInTheDocument();
     expect(screen.getByText(/八月账单/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "billing@example.com" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "billing@example.com" })).toHaveClass(
+      "focus-visible:ring-focus-ring",
+    );
     expect(screen.queryByText(/## 重要/)).not.toBeInTheDocument();
   });
 

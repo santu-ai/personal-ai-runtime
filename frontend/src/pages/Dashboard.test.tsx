@@ -394,7 +394,9 @@ describe("DashboardPage", () => {
 
   it("shows health section when expanded", () => {
     renderDashboard();
-    fireEvent.click(screen.getByText("运行状况"));
+    const health = screen.getByRole("button", { name: /运行状况/ });
+    expect(health).toHaveClass("focus-visible:ring-focus-ring");
+    fireEvent.click(health);
     expect(screen.getAllByText("LLM 成功率")[0]).toBeInTheDocument();
     expect(screen.getAllByText("95.2%")[0]).toBeInTheDocument();
   });
