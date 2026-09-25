@@ -72,6 +72,35 @@ function EmptyPanel({ open }: { open: boolean }) {
   );
 }
 
+function BackdropPanel({
+  open,
+  onDismiss,
+  onConfirm,
+}: {
+  open: boolean;
+  onDismiss: () => void;
+  onConfirm: () => void;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useOverlayDismiss(open, panelRef, onDismiss);
+  if (!open) return null;
+  return (
+    <div role="presentation" onClick={onDismiss}>
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-label="面板"
+        tabIndex={-1}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <button type="button" onClick={onConfirm}>
+          确认
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function RetryAfterOpen() {
   const panelRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(true);
@@ -228,6 +257,19 @@ describe("useOverlayDismiss", () => {
     fireEvent.keyDown(outside, { key: "Tab", shiftKey: true });
     expect(close).toHaveFocus();
     expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  it("ignores the second click of a double-click on the backdrop", () => {
+    const onDismiss = vi.fn();
+    const onConfirm = vi.fn();
+    render(<BackdropPanel open onDismiss={onDismiss} onConfirm={onConfirm} />);
+    const backdrop = screen.getByRole("presentation");
+    fireEvent.click(backdrop, { detail: 2 });
+    expect(onDismiss).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "确认" }), { detail: 2 });
+    expect(onConfirm).toHaveBeenCalledOnce();
+    fireEvent.click(backdrop, { detail: 1 });
+    expect(onDismiss).toHaveBeenCalledOnce();
   });
 
   it("keeps Tab on the panel when it has no controls", async () => {
