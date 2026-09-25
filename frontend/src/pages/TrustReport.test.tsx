@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
-import { TrustReportPanel } from "./TrustReport";
+import { TrustReportPanel, trustReportLayoutFocus } from "./TrustReport";
 
 import { getTrustReport, type TrustReportData } from "../api/trustReport";
 import { retryMemoryIndexRepair } from "../api/telemetry";
@@ -50,8 +50,23 @@ function renderPage() {
   return renderWithRouter(<TrustReportPanel />);
 }
 
+/** 这一条卸下的那一轮，绘制前焦点已经在下一处。useEffect 会先停在页面空白。 */
+function captureFocusWhenGone(gone: () => boolean): { read: () => Element | null } {
+  let focusAtLayout: Element | null = null;
+  trustReportLayoutFocus.notify = () => {
+    if (!gone()) return;
+    focusAtLayout ??= document.activeElement;
+  };
+  return {
+    read: () => focusAtLayout,
+  };
+}
+
 describe("TrustReportPanel", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    trustReportLayoutFocus.notify = null;
+    vi.clearAllMocks();
+  });
 
   it("shows loading state", () => {
     mockGetReport.mockReturnValue(new Promise(() => {}));
@@ -391,11 +406,14 @@ describe("TrustReportPanel", () => {
     });
     renderPage();
     const [first] = await screen.findAllByRole("button", { name: "重试索引" });
+    const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("mem-abc"));
     first.focus();
     fireEvent.click(first);
     await waitFor(() => expect(screen.getByRole("button", { name: "重试索引" })).toHaveFocus());
     expect(screen.getByText("mem-def")).toBeInTheDocument();
     expect(screen.queryByText("mem-abc")).not.toBeInTheDocument();
+    expect(focusWhenGone.read()).toBe(screen.getByRole("button", { name: "重试索引" }));
+    expect(focusWhenGone.read()).not.toBe(document.body);
     expect(mockRetryRepair).toHaveBeenCalledTimes(1);
   });
 
@@ -408,11 +426,14 @@ describe("TrustReportPanel", () => {
     });
     renderPage();
     const buttons = await screen.findAllByRole("button", { name: "重试索引" });
+    const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("mem-def"));
     buttons[1].focus();
     fireEvent.click(buttons[1]);
     await waitFor(() => expect(screen.getByRole("button", { name: "重试索引" })).toHaveFocus());
     expect(screen.getByText("mem-abc")).toBeInTheDocument();
     expect(screen.queryByText("mem-def")).not.toBeInTheDocument();
+    expect(focusWhenGone.read()).toBe(screen.getByRole("button", { name: "重试索引" }));
+    expect(focusWhenGone.read()).not.toBe(document.body);
   });
 
   it("does not pull focus back when it already moved away", async () => {
@@ -462,11 +483,16 @@ describe("TrustReportPanel", () => {
       </>,
     );
     const retry = await screen.findByRole("button", { name: "重试索引" });
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: "重试索引" }),
+    );
     retry.focus();
     fireEvent.click(retry);
     await waitFor(() => expect(screen.getByRole("button", { name: "返回今日" })).toHaveFocus());
     expect(screen.queryByText("记忆索引修复失败")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "重试索引" })).not.toBeInTheDocument();
+    expect(focusWhenGone.read()).toBe(screen.getByRole("button", { name: "返回今日" }));
+    expect(focusWhenGone.read()).not.toBe(document.body);
   });
 
   it("leaves focus on the page when the last row leaves and there is no back button", async () => {
