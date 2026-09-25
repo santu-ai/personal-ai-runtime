@@ -60,6 +60,19 @@ describe("NotificationBell", () => {
     expect(bell).toHaveFocus();
   });
 
+  it("stays open when Escape is pressed while an input method is composing", async () => {
+    renderWithRouter(<NotificationBell />);
+    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    const panel = await screen.findByRole("dialog", { name: "最近通知" });
+    await waitFor(() => expect(panel).toHaveFocus());
+
+    fireEvent.keyDown(window, { key: "Escape", isComposing: true });
+    expect(screen.getByRole("dialog", { name: "最近通知" })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "最近通知" })).not.toBeInTheDocument();
+  });
+
   it("keeps Tab inside the notification panel", async () => {
     const second = { ...sample, id: "n2", title: "另一条", content: "还在" };
     listNotifications.mockResolvedValue([sample, second]);

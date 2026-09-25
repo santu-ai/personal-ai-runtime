@@ -1268,11 +1268,19 @@ describe("SettingsPage", () => {
     await expandSection("MCP 市场");
     const install = await screen.findByRole("button", { name: "安装" });
     install.focus();
+    let focusWhenNoticeAppeared: Element | null = null;
+    const observer = new MutationObserver(() => {
+      if (!screen.queryByTestId("mcp-install-notice")) return;
+      focusWhenNoticeAppeared ??= document.activeElement;
+    });
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true });
     fireEvent.click(install);
     const notice = await screen.findByTestId("mcp-install-notice");
     expect(notice).toHaveTextContent('"brave" 已安装。重启后端后生效。');
+    expect(focusWhenNoticeAppeared).toBe(notice);
     expect(notice).toHaveFocus();
     expect(mcpInstallButton("brave")).toBeDisabled();
+    observer.disconnect();
   });
 
   it("does not steal focus when MCP install finishes after focus moved", async () => {

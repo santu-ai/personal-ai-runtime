@@ -411,10 +411,18 @@ describe("QuickCaptureDialog", () => {
     const done = await screen.findByRole("button", { name: "已保存" });
     expect(done).toBeEnabled();
     expect(textarea).toBeEnabled();
+    let focusWhenClosed: Element | null = null;
+    const observer = new MutationObserver(() => {
+      if (screen.queryByText("快速捕获")) return;
+      focusWhenClosed ??= document.activeElement;
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
     await waitFor(() => expect(screen.queryByText("快速捕获")).not.toBeInTheDocument(), {
       timeout: 2000,
     });
+    expect(focusWhenClosed).toBe(opener);
     expect(opener).toHaveFocus();
+    observer.disconnect();
     opener.remove();
   });
 

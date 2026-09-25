@@ -152,7 +152,8 @@ export default function NotificationBell({ compact = false }: Props) {
         moveTab(current, event.shiftKey);
         return;
       }
-      if (event.key !== "Escape") return;
+      // 组字时的 Esc 交给输入法。拦住的话，这一下会把下拉关掉。
+      if (event.key !== "Escape" || event.isComposing) return;
       event.preventDefault();
       setOpen(false);
       bellRef.current?.focus();
