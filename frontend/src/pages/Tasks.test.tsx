@@ -6,7 +6,7 @@ const { addError } = vi.hoisted(() => ({
 }));
 import { Route, Routes } from "react-router-dom";
 import { renderWithRouter } from "../test-utils";
-import TasksPage from "./Tasks";
+import TasksPage, { taskPageLayoutFocus } from "./Tasks";
 import {
   acceptWorkDelivery,
   adoptSuggestedAction,
@@ -279,8 +279,21 @@ function renderTasks(path: string) {
   );
 }
 
+/** 按钮卸下的那一轮，绘制前焦点已经在目标上。useEffect 会先停在页面空白。 */
+function captureFocusWhenGone(gone: () => boolean): { read: () => Element | null } {
+  let focusAtLayout: Element | null = null;
+  taskPageLayoutFocus.notify = () => {
+    if (!gone()) return;
+    focusAtLayout ??= document.activeElement;
+  };
+  return {
+    read: () => focusAtLayout,
+  };
+}
+
 describe("TasksPage", () => {
   beforeEach(() => {
+    taskPageLayoutFocus.notify = null;
     vi.clearAllMocks();
     vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
       if (workType === "task") return [sampleTask];
@@ -3708,13 +3721,17 @@ describe("TasksPage", () => {
     expect(updateWorkItemStatus).toHaveBeenCalledTimes(1);
     expect(updateWorkItemStatus).toHaveBeenCalledWith("sug_1", "completed");
 
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: "完成" }),
+    );
     await act(async () => {
       release();
     });
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "完成" })).not.toBeInTheDocument(),
     );
-    await waitFor(() => expect(currentTaskLink()).toHaveFocus());
+    expect(focusWhenGone.read()).toBe(currentTaskLink());
+    expect(currentTaskLink()).toHaveFocus();
     expect(currentTaskLink()).toHaveAttribute("data-task-current", "");
   });
 
@@ -3745,10 +3762,15 @@ describe("TasksPage", () => {
       const done = await screen.findByRole("button", { name: "完成" });
       done.focus();
       fireEvent.click(done);
+      const focusWhenGone = captureFocusWhenGone(
+        () => !screen.queryByRole("button", { name: "完成" }),
+      );
       await act(async () => {
         release();
       });
-      await waitFor(() => expect(screen.getByRole("link", { name: "返回列表" })).toHaveFocus());
+      const back = screen.getByRole("link", { name: "返回列表" });
+      await waitFor(() => expect(back).toHaveFocus());
+      expect(focusWhenGone.read()).toBe(back);
       expect(currentTaskLink()).not.toHaveFocus();
     } finally {
       hidden.mockRestore();
@@ -3861,13 +3883,18 @@ describe("TasksPage", () => {
     expect(cancelWorkItem).toHaveBeenCalledTimes(1);
     expect(cancelWorkItem).toHaveBeenCalledWith("job_1");
 
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: "取消" }),
+    );
     await act(async () => {
       release();
     });
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "取消" })).not.toBeInTheDocument(),
     );
-    await waitFor(() => expect(currentTaskLink()).toHaveFocus());
+    expect(screen.queryByRole("button", { name: "执行" })).not.toBeInTheDocument();
+    expect(focusWhenGone.read()).toBe(currentTaskLink());
+    expect(currentTaskLink()).toHaveFocus();
   });
 
   it("keeps 取消 focused when cancelling fails", async () => {
@@ -3963,11 +3990,15 @@ describe("TasksPage", () => {
     expect(screen.queryByRole("dialog", { name: "验收交付" })).not.toBeInTheDocument();
     expect(adoptSuggestedAction).toHaveBeenCalledTimes(1);
 
+    const focusWhenGone = captureFocusWhenGone(
+      () => screen.queryAllByRole("button", { name: "转为任务" }).length < 2,
+    );
     await act(async () => {
       release();
     });
     const link = await screen.findByRole("link", { name: "已转为任务" });
-    await waitFor(() => expect(link).toHaveFocus());
+    expect(focusWhenGone.read()).toBe(link);
+    expect(link).toHaveFocus();
     expect(link).toHaveAttribute("href", "/tasks/todo_1");
     expect(screen.getByRole("button", { name: "转为任务" })).toBeInTheDocument();
     expect(adoptSuggestedAction).toHaveBeenCalledTimes(1);
