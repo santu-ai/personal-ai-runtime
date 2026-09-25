@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, screen, fireEvent, waitFor } from "@testing-library/react";
 import { renderWithRouter, MockApiError } from "../../test-utils";
 import OnboardingWizard from "./OnboardingWizard";
 
@@ -175,5 +175,305 @@ describe("OnboardingWizard", () => {
     fireEvent.click(screen.getByText("跳过"));
     expect(localStorage.getItem("onboarding_done")).toBe("1");
     expect(onComplete).toHaveBeenCalledOnce();
+  });
+
+  function defer<T>() {
+    let release: (value: T) => void = () => {};
+    const promise = new Promise<T>((resolve) => {
+      release = resolve;
+    });
+    return { promise, release: (value: T) => release(value) };
+  }
+
+  it("does not check twice and keeps focus on 运行检查", async () => {
+    const pending = defer<Awaited<ReturnType<typeof getSystemHealth>>>();
+    mockHealth.mockImplementationOnce(() => pending.promise);
+    renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
+    const check = screen.getByRole("button", { name: "运行检查" });
+    const next = screen.getByRole("button", { name: "下一步" });
+    check.focus();
+    fireEvent.click(check);
+    fireEvent.click(check);
+    fireEvent.click(next);
+    await waitFor(() => expect(check).toHaveAttribute("aria-busy", "true"));
+    expect(mockHealth).toHaveBeenCalledTimes(1);
+    expect(check).toHaveTextContent("检查中…");
+    expect(check).toBeEnabled();
+    expect(check).toHaveFocus();
+    expect(next).toBeEnabled();
+    expect(next).not.toHaveAttribute("aria-busy");
+    expect(screen.queryByRole("button", { name: "检查中…" })).toBe(check);
+
+    await act(async () => {
+      pending.release({
+        status: "ok",
+        auth_required: false,
+        startup: { checks: { llm: { configured: false } } },
+      } as Awaited<ReturnType<typeof getSystemHealth>>);
+    });
+    expect(await screen.findByText("后端运行正常")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "运行检查" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "运行检查" })).not.toHaveAttribute("aria-busy");
+    expect(screen.getByText("连接后端")).toBeInTheDocument();
+  });
+
+  it("keeps focus on 运行检查 when the health check fails", async () => {
+    mockHealth.mockRejectedValue(new MockApiError("无法连接", 503));
+    renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
+    const check = screen.getByRole("button", { name: "运行检查" });
+    check.focus();
+    fireEvent.click(check);
+    await waitFor(() => expect(screen.getByText("无法连接")).toBeInTheDocument());
+    expect(check).toBeEnabled();
+    expect(check).toHaveFocus();
+    expect(check).not.toHaveAttribute("aria-busy");
+  });
+
+  it("does not advance twice and keeps focus on 下一步", async () => {
+    const pending = defer<Awaited<ReturnType<typeof getSystemHealth>>>();
+    mockHealth.mockImplementationOnce(() => pending.promise);
+    renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
+    const next = screen.getByRole("button", { name: "下一步" });
+    const check = screen.getByRole("button", { name: "运行检查" });
+    next.focus();
+    fireEvent.click(next);
+    fireEvent.click(next);
+    fireEvent.click(check);
+    const busy = await screen.findByRole("button", { name: "检查中…" });
+    expect(mockHealth).toHaveBeenCalledTimes(1);
+    expect(busy).toBeEnabled();
+    expect(busy).toHaveFocus();
+    expect(busy).toHaveAttribute("aria-busy", "true");
+    expect(check).toBeEnabled();
+    expect(check).not.toHaveAttribute("aria-busy");
+
+    await act(async () => {
+      pending.release({
+        status: "ok",
+        auth_required: false,
+        startup: { checks: { llm: { configured: false } } },
+      } as Awaited<ReturnType<typeof getSystemHealth>>);
+    });
+    expect(await screen.findByText("配置 AI 大脑")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下一步" })).toHaveFocus();
+  });
+
+  it("keeps focus on 下一步 when the health check fails", async () => {
+    mockHealth.mockRejectedValue(new MockApiError("无法连接", 503));
+    renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
+    const next = screen.getByRole("button", { name: "下一步" });
+    next.focus();
+    fireEvent.click(next);
+    await waitFor(() => expect(screen.getByText("无法连接")).toBeInTheDocument());
+    expect(screen.getByText("连接后端")).toBeInTheDocument();
+    expect(next).toBeEnabled();
+    expect(next).toHaveFocus();
+    expect(next).not.toHaveAttribute("aria-busy");
+  });
+
+  it("restores 下一步 when focus fell away during a failed check", async () => {
+    let fail: (err: unknown) => void = () => {};
+    mockHealth.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
+    const next = screen.getByRole("button", { name: "下一步" });
+    next.focus();
+    fireEvent.click(next);
+    await screen.findByRole("button", { name: "检查中…" });
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+    await act(async () => {
+      fail(new MockApiError("无法连接", 503));
+    });
+    expect(await screen.findByText("无法连接")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下一步" })).toHaveFocus();
+    expect(screen.getByText("连接后端")).toBeInTheDocument();
+  });
+
+  it("does not steal focus after 下一步 returns", async () => {
+    const pending = defer<Awaited<ReturnType<typeof getSystemHealth>>>();
+    mockHealth.mockImplementationOnce(() => pending.promise);
+    renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
+    const next = screen.getByRole("button", { name: "下一步" });
+    const skip = screen.getByRole("button", { name: "跳过" });
+    next.focus();
+    fireEvent.click(next);
+    skip.focus();
+    await act(async () => {
+      pending.release({
+        status: "ok",
+        auth_required: false,
+        startup: { checks: { llm: { configured: false } } },
+      } as Awaited<ReturnType<typeof getSystemHealth>>);
+    });
+    expect(await screen.findByText("配置 AI 大脑")).toBeInTheDocument();
+    expect(skip).toHaveFocus();
+  });
+
+  it("moves focus to the first starter when 下一步 finds LLM already configured", async () => {
+    mockHealth.mockResolvedValue({
+      status: "ok",
+      auth_required: false,
+      startup: { checks: { llm: { configured: true } } },
+    } as Awaited<ReturnType<typeof getSystemHealth>>);
+    renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
+    const next = screen.getByRole("button", { name: "下一步" });
+    next.focus();
+    fireEvent.click(next);
+    const starter = await screen.findByRole("button", { name: /帮我规划一个目标/ });
+    expect(screen.getByText("开始第一次对话")).toBeInTheDocument();
+    expect(mockHealth).toHaveBeenCalledTimes(1);
+    expect(mockLlm).not.toHaveBeenCalled();
+    expect(starter).toHaveFocus();
+  });
+
+  it("does not steal focus when 下一步 skips to the starters", async () => {
+    const pending = defer<Awaited<ReturnType<typeof getSystemHealth>>>();
+    mockHealth.mockImplementationOnce(() => pending.promise);
+    renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
+    const next = screen.getByRole("button", { name: "下一步" });
+    const skip = screen.getByRole("button", { name: "跳过" });
+    next.focus();
+    fireEvent.click(next);
+    skip.focus();
+    await act(async () => {
+      pending.release({
+        status: "ok",
+        auth_required: false,
+        startup: { checks: { llm: { configured: true } } },
+      } as Awaited<ReturnType<typeof getSystemHealth>>);
+    });
+    expect(await screen.findByText("开始第一次对话")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "稍后再说" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: /帮我规划一个目标/ })).not.toHaveFocus();
+  });
+
+  it("moves focus to the first starter after the LLM check succeeds", async () => {
+    mockHealth.mockResolvedValue({
+      status: "ok",
+      auth_required: false,
+      startup: { checks: { llm: { configured: false } } },
+    } as Awaited<ReturnType<typeof getSystemHealth>>);
+    mockLlm.mockResolvedValue({ providers: [{ name: "deepseek" }], default: "deepseek" });
+    renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    expect(await screen.findByText("配置 AI 大脑")).toBeInTheDocument();
+    const next = screen.getByRole("button", { name: "下一步" });
+    next.focus();
+    fireEvent.click(next);
+    const starter = await screen.findByRole("button", { name: /帮我规划一个目标/ });
+    expect(starter).toHaveFocus();
+  });
+
+  it("keeps focus on 下一步 when the LLM check fails", async () => {
+    mockHealth.mockResolvedValue({
+      status: "ok",
+      auth_required: false,
+      startup: { checks: { llm: { configured: false } } },
+    } as Awaited<ReturnType<typeof getSystemHealth>>);
+    mockLlm.mockResolvedValue({ providers: [], default: "" });
+    renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    expect(await screen.findByText("配置 AI 大脑")).toBeInTheDocument();
+    const next = screen.getByRole("button", { name: "下一步" });
+    next.focus();
+    fireEvent.click(next);
+    expect(await screen.findByText("前往设置页面配置")).toBeInTheDocument();
+    expect(next).toBeEnabled();
+    expect(next).toHaveFocus();
+    expect(next).not.toHaveAttribute("aria-busy");
+  });
+
+  async function openStarters() {
+    mockHealth.mockResolvedValue({
+      status: "ok",
+      auth_required: false,
+      startup: { checks: { llm: { configured: true } } },
+    } as Awaited<ReturnType<typeof getSystemHealth>>);
+    renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "运行检查" }));
+    expect(await screen.findByText("后端运行正常")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    expect(await screen.findByText("开始第一次对话")).toBeInTheDocument();
+  }
+
+  it("does not launch twice and keeps focus on the starter", async () => {
+    const pending = defer<{
+      id: string;
+      title: string;
+      summary: null;
+      created_at: string;
+      updated_at: string;
+    }>();
+    mockCreateConv.mockImplementationOnce(() => pending.promise);
+    await openStarters();
+    const first = screen.getByRole("button", { name: /帮我规划一个目标/ });
+    const second = screen.getByRole("button", { name: /总结我的收件箱/ });
+    first.focus();
+    fireEvent.click(first);
+    fireEvent.click(first);
+    fireEvent.click(second);
+    await waitFor(() => expect(first).toHaveAttribute("aria-busy", "true"));
+    expect(mockCreateConv).toHaveBeenCalledTimes(1);
+    expect(mockCreateConv).toHaveBeenCalledWith("目标规划");
+    expect(first).toBeEnabled();
+    expect(first).toHaveFocus();
+    expect(second).toBeEnabled();
+    expect(second).not.toHaveAttribute("aria-busy");
+    expect(screen.getByText("正在开启对话…")).toBeInTheDocument();
+
+    await act(async () => {
+      pending.release({
+        id: "conv-new",
+        title: "目标规划",
+        summary: null,
+        created_at: "2026-06-28T10:00:00Z",
+        updated_at: "2026-06-28T10:00:00Z",
+      });
+    });
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/chat/conv-new"));
+    expect(first).not.toHaveAttribute("aria-busy");
+    expect(first).toHaveFocus();
+  });
+
+  it("keeps focus on the starter when creating a conversation fails", async () => {
+    mockCreateConv.mockRejectedValue(new MockApiError("创建失败", 500));
+    await openStarters();
+    const first = screen.getByRole("button", { name: /自由聊几句/ });
+    first.focus();
+    fireEvent.click(first);
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("创建失败", "对话"));
+    expect(screen.getByText("开始第一次对话")).toBeInTheDocument();
+    expect(first).toBeEnabled();
+    expect(first).toHaveFocus();
+    expect(first).not.toHaveAttribute("aria-busy");
+    expect(screen.queryByText("正在开启对话…")).not.toBeInTheDocument();
+  });
+
+  it("does not steal focus when a starter launch fails", async () => {
+    let fail: (err: unknown) => void = () => {};
+    mockCreateConv.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    await openStarters();
+    const first = screen.getByRole("button", { name: /帮我规划一个目标/ });
+    const second = screen.getByRole("button", { name: /总结我的收件箱/ });
+    first.focus();
+    fireEvent.click(first);
+    await waitFor(() => expect(first).toHaveAttribute("aria-busy", "true"));
+    second.focus();
+    await act(async () => {
+      fail(new MockApiError("创建失败", 500));
+    });
+    await waitFor(() => expect(first).not.toHaveAttribute("aria-busy"));
+    expect(addError).toHaveBeenCalledWith("创建失败", "对话");
+    expect(second).toHaveFocus();
   });
 });
