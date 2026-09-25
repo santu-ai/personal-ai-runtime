@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import Layout from "./Layout";
+import Layout, { layoutDeleteLayoutFocus } from "./Layout";
 import ChatHome from "./components/chat/ChatHome";
 import { useChatStore } from "./stores/chatStore";
 import { useErrorStore } from "./stores/errorStore";
@@ -237,7 +237,20 @@ describe("Layout delete conversation focus", () => {
     );
   }
 
+  /** 确认框卸下的那一轮，绘制前焦点已经在下一行上。useEffect 会先停在页面空白。 */
+  function captureFocusWhenGone(gone: () => boolean): { read: () => Element | null } {
+    let focusAtLayout: Element | null = null;
+    layoutDeleteLayoutFocus.notify = () => {
+      if (!gone()) return;
+      focusAtLayout ??= document.activeElement;
+    };
+    return {
+      read: () => focusAtLayout,
+    };
+  }
+
   beforeEach(() => {
+    layoutDeleteLayoutFocus.notify = null;
     localStorage.setItem("onboarding_done", "1");
     localStorage.removeItem("sidebar_collapsed");
     useChatStore.setState({
@@ -287,11 +300,16 @@ describe("Layout delete conversation focus", () => {
     fireEvent.click(opener);
     const dialog = await screen.findByRole("dialog", { name: "删除对话" });
     within(dialog).getByRole("button", { name: "删除" }).focus();
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("dialog", { name: "删除对话" }),
+    );
     fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
     await waitFor(() =>
       expect(screen.queryByRole("dialog", { name: "删除对话" })).not.toBeInTheDocument(),
     );
-    expect(deleteButton("读书笔记")).toHaveFocus();
+    const next = deleteButton("读书笔记");
+    expect(next).toHaveFocus();
+    expect(focusWhenGone.read()).toBe(next);
   });
 
   it("moves focus to the previous conversation when the last one is deleted", async () => {

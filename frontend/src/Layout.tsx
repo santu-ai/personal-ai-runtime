@@ -35,6 +35,11 @@ function focusNewChat(): void {
   document.querySelector<HTMLButtonElement>("button[data-new-chat]")?.focus();
 }
 
+/** 绘制前通知。测试在删除确认框卸下的同一轮读取焦点。 */
+export const layoutDeleteLayoutFocus = {
+  notify: null as null | (() => void),
+};
+
 type ChatDeleteHandoff = { id: string; nextId: string | null };
 
 /** 焦点在页面空白处，或还停在刚删掉的那一行上。已经在别的控件上就不再抢。 */
@@ -174,7 +179,8 @@ function LayoutFrame() {
     }
   };
 
-  useEffect(() => {
+  // 确认框卸下的同一轮就把焦点交到下一行。放到绘制前，不把焦点留在页面空白。
+  useLayoutEffect(() => {
     if (deleting) return;
     const pending = deleteHandoff.current;
     if (!pending) return;
@@ -183,6 +189,10 @@ function LayoutFrame() {
     if (pending.nextId && focusConversationDelete(pending.nextId)) return;
     focusNewChat();
   }, [deleting, conversationRows]);
+
+  useLayoutEffect(() => {
+    layoutDeleteLayoutFocus.notify?.();
+  });
 
   const handleSelectConversation = (id: string) => {
     setActiveConversation(id);

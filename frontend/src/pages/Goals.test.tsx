@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen, fireEvent, waitFor, within, act } from "@testing-library/react";
 import { Route, Routes } from "react-router-dom";
 import { renderWithRouter } from "../test-utils";
-import GoalsPage from "./Goals";
+import GoalsPage, { goalPageLayoutFocus } from "./Goals";
 import GoalDetailPanel from "../components/goals/GoalDetailPanel";
 import {
   ApiError,
@@ -95,7 +95,20 @@ function renderGoals(path = "/goals") {
 }
 
 describe("GoalsPage", () => {
+  /** 确认框卸下的那一轮，绘制前焦点已经在下一行上。useEffect 会先停在页面空白。 */
+  function captureFocusWhenGone(gone: () => boolean): { read: () => Element | null } {
+    let focusAtLayout: Element | null = null;
+    goalPageLayoutFocus.notify = () => {
+      if (!gone()) return;
+      focusAtLayout ??= document.activeElement;
+    };
+    return {
+      read: () => focusAtLayout,
+    };
+  }
+
   beforeEach(() => {
+    goalPageLayoutFocus.notify = null;
     vi.clearAllMocks();
     vi.mocked(listGoals).mockResolvedValue([]);
     vi.mocked(getGoal).mockResolvedValue(sampleGoal);
@@ -664,11 +677,16 @@ describe("GoalsPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "删除" }));
     const dialog = await screen.findByRole("dialog", { name: "删除目标" });
     within(dialog).getByRole("button", { name: "删除" }).focus();
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("dialog", { name: "删除目标" }),
+    );
     fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
     await waitFor(() =>
       expect(screen.queryByRole("dialog", { name: "删除目标" })).not.toBeInTheDocument(),
     );
-    expect(screen.getByRole("link", { name: /写文档/ })).toHaveFocus();
+    const link = screen.getByRole("link", { name: /写文档/ });
+    expect(link).toHaveFocus();
+    expect(focusWhenGone.read()).toBe(link);
   });
 
   it("moves focus to the previous goal when the last one is deleted", async () => {

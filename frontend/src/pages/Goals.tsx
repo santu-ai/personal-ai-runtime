@@ -123,6 +123,11 @@ type CreateHandoff =
 
 type GoalDeleteHandoff = { id: string; nextId: string | null };
 
+/** 绘制前通知。测试在删除确认框卸下的同一轮读取焦点。 */
+export const goalPageLayoutFocus = {
+  notify: null as null | (() => void),
+};
+
 export default function GoalsPage() {
   const { goalId: urlGoalId } = useParams();
   const navigate = useNavigate();
@@ -352,7 +357,8 @@ export default function GoalsPage() {
     }
   };
 
-  useEffect(() => {
+  // 确认框卸下的同一轮就把焦点交到下一行。放到绘制前，不把焦点留在页面空白。
+  useLayoutEffect(() => {
     if (deleting) return;
     const pending = deleteHandoff.current;
     if (!pending) return;
@@ -361,6 +367,10 @@ export default function GoalsPage() {
     if (pending.nextId && focusGoalLink(pending.nextId)) return;
     focusNewGoalButton();
   }, [deleting, goals, urlGoalId]);
+
+  useLayoutEffect(() => {
+    goalPageLayoutFocus.notify?.();
+  });
 
   const detailOpen = Boolean(urlGoalId);
   const showSplit = goals.length > 0 || detailOpen;
