@@ -95,15 +95,62 @@ describe("ConfirmationDialog", () => {
       arguments: JSON.stringify({ question: "简报要覆盖最近几天？" }),
     };
     const { rerender } = renderWithRouter(
-      <ConfirmationDialog toolCall={tool} busy={false} onConfirm={onConfirm} onDeny={onDeny} />,
+      <ConfirmationDialog
+        toolCall={tool}
+        busyAction={null}
+        onConfirm={onConfirm}
+        onDeny={onDeny}
+      />,
     );
     const answer = screen.getByLabelText("你的回答");
     fireEvent.change(answer, { target: { value: "最近三天" } });
-    rerender(<ConfirmationDialog toolCall={tool} busy onConfirm={onConfirm} onDeny={onDeny} />);
-    expect(answer).toHaveValue("最近三天");
     const send = screen.getByRole("button", { name: "发送回答" });
-    expect(send).toBeDisabled();
+    send.focus();
+    rerender(
+      <ConfirmationDialog
+        toolCall={tool}
+        busyAction="confirm"
+        onConfirm={onConfirm}
+        onDeny={onDeny}
+      />,
+    );
+    expect(answer).toHaveValue("最近三天");
+    expect(answer).toBeEnabled();
+    expect(send).toBeEnabled();
+    expect(send).toHaveAttribute("aria-busy", "true");
+    expect(send).toHaveFocus();
+    expect(screen.getByRole("button", { name: "取消" })).not.toHaveAttribute("aria-busy");
+    fireEvent.click(send);
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
     fireEvent.keyDown(answer, { key: "Enter", ctrlKey: true });
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(onDeny).not.toHaveBeenCalled();
+  });
+
+  it("keeps the confirm button enabled and ignores cancel while that resolve is in flight", () => {
+    const onConfirm = vi.fn();
+    const onDeny = vi.fn();
+    const { rerender } = renderWithRouter(
+      <ConfirmationDialog toolCall={toolCall} onConfirm={onConfirm} onDeny={onDeny} />,
+    );
+    const confirm = screen.getByRole("button", { name: "确认写入" });
+    const cancel = screen.getByRole("button", { name: "取消" });
+    confirm.focus();
+    rerender(
+      <ConfirmationDialog
+        toolCall={toolCall}
+        busyAction="confirm"
+        onConfirm={onConfirm}
+        onDeny={onDeny}
+      />,
+    );
+    expect(confirm).toBeEnabled();
+    expect(confirm).toHaveAttribute("aria-busy", "true");
+    expect(confirm).toHaveFocus();
+    expect(cancel).toBeEnabled();
+    expect(cancel).not.toHaveAttribute("aria-busy");
+    fireEvent.click(confirm);
+    fireEvent.click(cancel);
     expect(onConfirm).not.toHaveBeenCalled();
     expect(onDeny).not.toHaveBeenCalled();
   });

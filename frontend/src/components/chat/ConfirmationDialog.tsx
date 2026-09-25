@@ -8,12 +8,14 @@ import { getRiskLevelFromPolicy } from "../../utils/riskMeta";
 import { toolLabel } from "../../utils/toolLabels";
 import type { ToolCall } from "./types";
 
+type ResolveAction = "confirm" | "deny";
+
 interface Props {
   toolCall: ToolCall;
   onConfirm: (answer?: string) => void;
   onDeny: () => void;
-  /** 续写还没回来时按住按钮，回答框留着。 */
-  busy?: boolean;
+  /** 这次续写还没回来时，点到的那一个。按钮和回答框都不禁用。 */
+  busyAction?: ResolveAction | null;
 }
 
 const ANSWER_MAX = 8000;
@@ -115,7 +117,12 @@ function suggestionFor(
   };
 }
 
-export default function ConfirmationDialog({ toolCall, onConfirm, onDeny, busy = false }: Props) {
+export default function ConfirmationDialog({
+  toolCall,
+  onConfirm,
+  onDeny,
+  busyAction = null,
+}: Props) {
   const { data: policy } = useCapabilityPolicyQuery();
   const isAskUser = toolCall.function_name === "ask_user";
   const riskLevel = isAskUser ? "low" : getRiskLevelFromPolicy(toolCall.function_name, policy);
@@ -125,6 +132,12 @@ export default function ConfirmationDialog({ toolCall, onConfirm, onDeny, busy =
   const context = typeof args.context === "string" ? args.context : "";
   const [draft, setDraft] = useState("");
   const answer = draft.trim();
+  const busy = busyAction !== null;
+
+  const press = (run: () => void) => {
+    if (busy) return;
+    run();
+  };
 
   return (
     <RiskCard
@@ -155,15 +168,29 @@ export default function ConfirmationDialog({ toolCall, onConfirm, onDeny, busy =
                 if (busy) return;
                 if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && answer) {
                   event.preventDefault();
-                  onConfirm(answer);
+                  press(() => onConfirm(answer));
                 }
               }}
             />
             <div className="flex gap-2">
-              <Button size="sm" disabled={busy || !answer} onClick={() => onConfirm(answer)}>
+              <Button
+                size="sm"
+                data-confirm-action="confirm"
+                disabled={!answer && busyAction !== "confirm"}
+                aria-busy={busyAction === "confirm" || undefined}
+                className={busyAction === "confirm" ? "opacity-50" : ""}
+                onClick={() => press(() => onConfirm(answer))}
+              >
                 发送回答
               </Button>
-              <Button size="sm" variant="secondary" disabled={busy} onClick={onDeny}>
+              <Button
+                size="sm"
+                variant="secondary"
+                data-confirm-action="deny"
+                aria-busy={busyAction === "deny" || undefined}
+                className={busyAction === "deny" ? "opacity-50" : ""}
+                onClick={() => press(onDeny)}
+              >
                 取消
               </Button>
             </div>
@@ -174,10 +201,23 @@ export default function ConfirmationDialog({ toolCall, onConfirm, onDeny, busy =
               {suggestion?.hint ?? "确认后将执行工具并继续当前对话"}
             </p>
             <div className="flex gap-2">
-              <Button size="sm" disabled={busy} onClick={() => onConfirm()}>
+              <Button
+                size="sm"
+                data-confirm-action="confirm"
+                aria-busy={busyAction === "confirm" || undefined}
+                className={busyAction === "confirm" ? "opacity-50" : ""}
+                onClick={() => press(onConfirm)}
+              >
                 {suggestion?.confirm ?? "确认执行"}
               </Button>
-              <Button size="sm" variant="secondary" disabled={busy} onClick={onDeny}>
+              <Button
+                size="sm"
+                variant="secondary"
+                data-confirm-action="deny"
+                aria-busy={busyAction === "deny" || undefined}
+                className={busyAction === "deny" ? "opacity-50" : ""}
+                onClick={() => press(onDeny)}
+              >
                 取消
               </Button>
             </div>

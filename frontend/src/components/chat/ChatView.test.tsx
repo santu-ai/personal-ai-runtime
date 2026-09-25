@@ -421,17 +421,132 @@ describe("ChatView", () => {
     expect(answer).toHaveFocus();
     fireEvent.change(answer, { target: { value: "最近三天" } });
     const sendAnswer = screen.getByRole("button", { name: "发送回答" });
+    const cancel = screen.getByRole("button", { name: "取消" });
+    sendAnswer.focus();
     fireEvent.click(sendAnswer);
     fireEvent.click(sendAnswer);
+    fireEvent.click(cancel);
 
     await waitFor(() => expect(resolveApproval).toHaveBeenCalledTimes(1));
     expect(answer).toHaveValue("最近三天");
-    expect(sendAnswer).toBeDisabled();
+    expect(answer).toBeEnabled();
+    expect(sendAnswer).toBeEnabled();
+    expect(sendAnswer).toHaveAttribute("aria-busy", "true");
+    expect(sendAnswer).toHaveFocus();
+    expect(cancel).not.toHaveAttribute("aria-busy");
 
     release?.({ status: "resume_failed", retryable: true, error: "LLM API error" });
 
-    await waitFor(() => expect(sendAnswer).toBeEnabled());
+    await waitFor(() => expect(sendAnswer).not.toHaveAttribute("aria-busy"));
+    expect(sendAnswer).toHaveFocus();
     expect(answer).toHaveValue("最近三天");
+    expect(screen.getByPlaceholderText(/输入消息/)).not.toHaveFocus();
+  });
+
+  it("does not confirm twice and keeps focus on the busy button", async () => {
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({
+          type: "confirmation_required",
+          tool_name: "write_file",
+          tool_args: { path: "/tmp/x", content: "data" },
+          approval_id: "ap-busy",
+          tool_call_id: "tc-busy",
+        });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+    let release:
+      ((value: { status: string; error?: string; retryable?: boolean }) => void) | undefined;
+    vi.mocked(resolveApproval).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    renderChatView();
+    fireEvent.change(screen.getByPlaceholderText(/输入消息/), {
+      target: { value: "create a file" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    const confirm = await screen.findByRole("button", { name: "确认写入" });
+    const cancel = screen.getByRole("button", { name: "取消" });
+    confirm.focus();
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    fireEvent.click(cancel);
+
+    await waitFor(() => expect(confirm).toHaveAttribute("aria-busy", "true"));
+    expect(confirm).toBeEnabled();
+    expect(confirm).toHaveFocus();
+    expect(cancel).not.toHaveAttribute("aria-busy");
+    expect(resolveApproval).toHaveBeenCalledTimes(1);
+    expect(resolveApproval).toHaveBeenCalledWith(
+      "ap-busy",
+      "approve",
+      "write_file",
+      { path: "/tmp/x", content: "data" },
+      "test-conv-1",
+      "tc-busy",
+    );
+
+    const elsewhere = screen.getByRole("button", { name: "上下文" });
+    elsewhere.focus();
+    release?.({ status: "resume_failed", retryable: true, error: "LLM API error" });
+    await waitFor(() => expect(confirm).not.toHaveAttribute("aria-busy"));
+    expect(elsewhere).toHaveFocus();
+    expect(screen.getByRole("button", { name: "确认写入" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/输入消息/)).not.toHaveFocus();
+  });
+
+  it("returns focus to cancel when deny fails and focus was dropped", async () => {
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({
+          type: "confirmation_required",
+          tool_name: "write_file",
+          tool_args: { path: "/tmp/x", content: "data" },
+          approval_id: "ap-deny",
+          tool_call_id: "tc-deny",
+        });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+    let release: ((error: Error) => void) | undefined;
+    vi.mocked(resolveApproval).mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          release = reject;
+        }),
+    );
+
+    renderChatView();
+    fireEvent.change(screen.getByPlaceholderText(/输入消息/), {
+      target: { value: "create a file" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    const cancel = await screen.findByRole("button", { name: "取消" });
+    const confirm = screen.getByRole("button", { name: "确认写入" });
+    cancel.focus();
+    fireEvent.click(cancel);
+    fireEvent.click(cancel);
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(cancel).toHaveAttribute("aria-busy", "true"));
+    expect(cancel).toBeEnabled();
+    expect(cancel).toHaveFocus();
+    expect(confirm).not.toHaveAttribute("aria-busy");
+    expect(resolveApproval).toHaveBeenCalledTimes(1);
+
+    (document.activeElement as HTMLElement | null)?.blur();
+    release?.(new ApiError("拒绝失败", 500));
+    await waitFor(() => expect(cancel).not.toHaveAttribute("aria-busy"));
+    expect(cancel).toHaveFocus();
     expect(screen.getByPlaceholderText(/输入消息/)).not.toHaveFocus();
   });
 

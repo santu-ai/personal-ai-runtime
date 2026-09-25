@@ -16,6 +16,8 @@ interface PendingConfirmation {
 
 type SetMessages = React.Dispatch<React.SetStateAction<DisplayMessage[]>>;
 
+type ResolveAction = "confirm" | "deny";
+
 type ResolveResult = {
   status?: string;
   result?: string;
@@ -103,27 +105,27 @@ function applyResolveToMessages(
 
 export function useApprovalFlow(conversationId: string) {
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
-  const [resolving, setResolving] = useState(false);
+  const [resolvingAction, setResolvingAction] = useState<ResolveAction | null>(null);
   const inflightApprovalsRef = useRef<Set<string>>(new Set());
-  const resolvingRef = useRef(false);
+  const resolvingRef = useRef<ResolveAction | null>(null);
 
   useEffect(() => {
     inflightApprovalsRef.current = new Set();
-    resolvingRef.current = false;
-    setResolving(false);
+    resolvingRef.current = null;
+    setResolvingAction(null);
     setPendingConfirmation(null);
   }, [conversationId]);
 
-  const beginResolve = () => {
+  const beginResolve = (action: ResolveAction) => {
     if (resolvingRef.current) return false;
-    resolvingRef.current = true;
-    setResolving(true);
+    resolvingRef.current = action;
+    setResolvingAction(action);
     return true;
   };
 
   const endResolve = () => {
-    resolvingRef.current = false;
-    setResolving(false);
+    resolvingRef.current = null;
+    setResolvingAction(null);
   };
 
   const confirm = useCallback(
@@ -132,7 +134,7 @@ export function useApprovalFlow(conversationId: string) {
       onError?: (msg: string, source: string) => void,
       answer?: string,
     ) => {
-      if (!pendingConfirmation || !beginResolve()) return;
+      if (!pendingConfirmation || !beginResolve("confirm")) return;
       const pc = pendingConfirmation;
 
       try {
@@ -199,7 +201,7 @@ export function useApprovalFlow(conversationId: string) {
 
   const deny = useCallback(
     async (setMessages: SetMessages, onError?: (msg: string, source: string) => void) => {
-      if (!pendingConfirmation || !beginResolve()) return;
+      if (!pendingConfirmation || !beginResolve("deny")) return;
       const pc = pendingConfirmation;
 
       try {
@@ -270,5 +272,12 @@ export function useApprovalFlow(conversationId: string) {
     [],
   );
 
-  return { pendingConfirmation, resolving, setPendingConfirmation, setFromEvent, confirm, deny };
+  return {
+    pendingConfirmation,
+    resolvingAction,
+    setPendingConfirmation,
+    setFromEvent,
+    confirm,
+    deny,
+  };
 }
