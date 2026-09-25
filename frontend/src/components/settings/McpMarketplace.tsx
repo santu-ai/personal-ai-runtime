@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { installMcpConnector } from "../../api/connectors";
 import { useErrorStore } from "../../stores/errorStore";
 import { useMcpRegistryQuery } from "../../hooks/useSettingsQuery";
@@ -65,7 +65,8 @@ export default function McpMarketplace() {
     }
   }, [error, addError]);
 
-  useEffect(() => {
+  // 这一行写成「已安装」的同一轮就挪走焦点。放到绘制之后，观察 DOM 的那一轮还停在已经禁用的按钮上。
+  useLayoutEffect(() => {
     const name = focusAfter.current;
     if (!name || installing) return;
     focusAfter.current = null;
