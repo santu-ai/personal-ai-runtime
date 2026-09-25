@@ -15,6 +15,7 @@ import {
 } from "../../api/monitors";
 import { useErrorStore } from "../../stores/errorStore";
 import Button from "../ui/Button";
+import Dialog from "../ui/Dialog";
 import { Input } from "../ui/Input";
 import EmptyState from "../ui/EmptyState";
 import LoadErrorNotice, { queryErrorMessage } from "../ui/LoadErrorNotice";
@@ -27,10 +28,11 @@ type MonitorHandoff =
   | { kind: "delete-inbox"; nextId: string | null; token: string }
   | { kind: "delete-url"; nextId: string | null; token: string };
 
-/** 焦点在页面空白处，或还停在这次操作的按钮上，才可以把焦点挪走。 */
+/** 焦点在页面空白处、已经卸下的控件上，或还停在这次操作的按钮上，才可以把焦点挪走。 */
 function focusIsIdle(token: string): boolean {
   const active = document.activeElement;
   if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
   if (active instanceof HTMLButtonElement) {
     if (active.disabled) return true;
     if (active.getAttribute("data-monitor-token") === token) return true;
@@ -80,6 +82,9 @@ function neighborId(rows: readonly { id: string }[], id: string): string | null 
   return rows[index + 1]?.id ?? rows[index - 1]?.id ?? null;
 }
 
+type PendingDelete =
+  { kind: "inbox"; id: string; name: string } | { kind: "url"; id: string; name: string };
+
 export default function MonitorsPanel() {
   const addError = useErrorStore((s) => s.addError);
   const [filters, setFilters] = useState<InboxFilter[]>([]);
@@ -100,6 +105,7 @@ export default function MonitorsPanel() {
   const [urlValue, setUrlValue] = useState("");
   const [urlInterval, setUrlInterval] = useState("60");
   const [checkHint, setCheckHint] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<PendingDelete | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -189,15 +195,29 @@ export default function MonitorsPanel() {
     }
   };
 
-  const handleDeleteInbox = async (id: string) => {
-    const token = `delete-inbox:${id}`;
+  const requestDelete = (target: PendingDelete) => {
+    if (actionLock.current || deleteTarget) return;
+    setDeleteTarget(target);
+  };
+
+  const handleConfirmDelete = async () => {
+    const target = deleteTarget;
+    if (!target || actionLock.current) return;
+    const token = target.kind === "inbox" ? `delete-inbox:${target.id}` : `delete-url:${target.id}`;
     if (!start(token)) return;
-    const nextId = neighborId(filters, id);
+    const nextId = neighborId(target.kind === "inbox" ? filters : urlMonitors, target.id);
     let handoff: MonitorHandoff | null = null;
     try {
-      await deleteInboxFilter(id);
+      if (target.kind === "inbox") await deleteInboxFilter(target.id);
+      else await deleteUrlMonitor(target.id);
       const listed = await refresh();
-      if (listed) handoff = { kind: "delete-inbox", nextId, token };
+      if (listed) {
+        handoff =
+          target.kind === "inbox"
+            ? { kind: "delete-inbox", nextId, token }
+            : { kind: "delete-url", nextId, token };
+      }
+      setDeleteTarget(null);
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "删除失败", "监控");
     } finally {
@@ -241,22 +261,6 @@ export default function MonitorsPanel() {
       addError(err instanceof ApiError ? err.message : "更新失败", "监控");
     } finally {
       finish(null);
-    }
-  };
-
-  const handleDeleteUrl = async (id: string) => {
-    const token = `delete-url:${id}`;
-    if (!start(token)) return;
-    const nextId = neighborId(urlMonitors, id);
-    let handoff: MonitorHandoff | null = null;
-    try {
-      await deleteUrlMonitor(id);
-      const listed = await refresh();
-      if (listed) handoff = { kind: "delete-url", nextId, token };
-    } catch (err) {
-      addError(err instanceof ApiError ? err.message : "删除失败", "监控");
-    } finally {
-      finish(handoff);
     }
   };
 
@@ -369,12 +373,10 @@ export default function MonitorsPanel() {
                   <Button
                     size="sm"
                     variant="subtle"
-                    aria-busy={actionBusy === `delete-inbox:${row.id}` || undefined}
-                    className={busyClass(`delete-inbox:${row.id}`)}
                     data-monitor-token={`delete-inbox:${row.id}`}
                     data-monitor-action="delete-inbox"
                     data-monitor-id={row.id}
-                    onClick={() => void handleDeleteInbox(row.id)}
+                    onClick={() => requestDelete({ kind: "inbox", id: row.id, name: row.name })}
                   >
                     删除
                   </Button>
@@ -472,12 +474,10 @@ export default function MonitorsPanel() {
                   <Button
                     size="sm"
                     variant="subtle"
-                    aria-busy={actionBusy === `delete-url:${row.id}` || undefined}
-                    className={busyClass(`delete-url:${row.id}`)}
                     data-monitor-token={`delete-url:${row.id}`}
                     data-monitor-action="delete-url"
                     data-monitor-id={row.id}
-                    onClick={() => void handleDeleteUrl(row.id)}
+                    onClick={() => requestDelete({ kind: "url", id: row.id, name: row.name })}
                   >
                     删除
                   </Button>
@@ -487,6 +487,24 @@ export default function MonitorsPanel() {
           </ul>
         )}
       </section>
+
+      <Dialog
+        open={deleteTarget !== null}
+        title={deleteTarget?.kind === "url" ? "删除网页监控" : "删除收件箱过滤器"}
+        description={
+          deleteTarget
+            ? `确定删除${deleteTarget.kind === "url" ? "网页监控" : "收件箱过滤器"}「${deleteTarget.name}」？此操作不可撤销。`
+            : undefined
+        }
+        confirmLabel={deleteTarget && actionBusy ? "删除中..." : "删除"}
+        variant="danger"
+        confirmBusy={Boolean(deleteTarget && actionBusy)}
+        onConfirm={() => void handleConfirmDelete()}
+        onCancel={() => {
+          if (actionLock.current) return;
+          setDeleteTarget(null);
+        }}
+      />
     </div>
   );
 }
