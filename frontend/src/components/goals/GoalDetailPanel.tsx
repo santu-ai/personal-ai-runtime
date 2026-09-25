@@ -164,7 +164,9 @@ export default function GoalDetailPanel({
     setBusyActions(new Set());
   }, [goal.id]);
 
-  useEffect(() => {
+  // 「暂停」「完成」或「恢复」卸下的同一轮就把焦点交出去。放到绘制前，不把焦点留在页面空白。
+  // 已经移到别的控件上就不再抢。
+  useLayoutEffect(() => {
     const pending = focusAfter.current;
     if (!pending || statusBusy) return;
     if (pending.goalId !== goal.id) {
@@ -177,7 +179,9 @@ export default function GoalDetailPanel({
     placeGoalStatusFocus(goal.status);
   }, [goal.id, goal.status, statusBusy]);
 
-  useEffect(() => {
+  // 这一条离开建议，或「全部添加」卸下的同一轮就把焦点交出去。放到绘制前，不把焦点留在页面空白。
+  // 已经移到别的控件上就不再抢。
+  useLayoutEffect(() => {
     const pending = suggestHandoff.current;
     if (!pending) return;
     if (pending.kind === "all") {
