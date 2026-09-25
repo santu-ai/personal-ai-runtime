@@ -1,4 +1,13 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ApiError,
@@ -285,6 +294,9 @@ function findingKindLabel(kind: string | undefined): string {
   return kind;
 }
 
+/** 正在读的来源 id。同一封还在读时，这一来源上的按钮标为忙碌，但不禁用。 */
+const OpeningMailSourceContext = createContext<string | null>(null);
+
 function SourceIdChips({
   ids,
   onCite,
@@ -298,6 +310,7 @@ function SourceIdChips({
   /** Ids that return false stay plain text. Omitted means every id is a button. */
   linkable?: (sourceId: string) => boolean;
 }) {
+  const openingId = useContext(OpeningMailSourceContext);
   const clean = (ids ?? []).map((id) => id.trim()).filter(Boolean);
   if (clean.length === 0) return null;
   return (
@@ -308,23 +321,27 @@ function SourceIdChips({
           : "ml-2 inline-flex flex-wrap gap-1 align-middle"
       }
     >
-      {clean.map((sourceId, index) => (
-        <span key={`${sourceId}-${index}`}>
-          {inline && index > 0 ? "、" : null}
-          {linkable && !linkable(sourceId) ? (
-            sourceId
-          ) : (
-            <button
-              type="button"
-              className="rounded-full border border-border-subtle bg-surface-overlay px-2 py-0.5 font-mono text-xs text-insight hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-              onClick={() => onCite(sourceId)}
-              aria-label={`来源 ${sourceId}`}
-            >
-              {sourceId}
-            </button>
-          )}
-        </span>
-      ))}
+      {clean.map((sourceId, index) => {
+        const busy = openingId === sourceId;
+        return (
+          <span key={`${sourceId}-${index}`}>
+            {inline && index > 0 ? "、" : null}
+            {linkable && !linkable(sourceId) ? (
+              sourceId
+            ) : (
+              <button
+                type="button"
+                className={`rounded-full border border-border-subtle bg-surface-overlay px-2 py-0.5 font-mono text-xs text-insight hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring${busy ? " opacity-50" : ""}`}
+                onClick={() => onCite(sourceId)}
+                aria-label={`来源 ${sourceId}`}
+                aria-busy={busy || undefined}
+              >
+                {sourceId}
+              </button>
+            )}
+          </span>
+        );
+      })}
     </span>
   );
 }
@@ -362,6 +379,7 @@ function DeliverySources({
   activeSourceId: string | null;
   onOpenEmail: (sourceId: string) => void;
 }) {
+  const openingId = useContext(OpeningMailSourceContext);
   if (sources.length === 0) return null;
   return (
     <div>
@@ -370,6 +388,7 @@ function DeliverySources({
         {sources.map((src, index) => {
           const messageId = emailMessageId(src);
           const active = activeSourceId === src.id;
+          const busy = openingId === src.id;
           const body = (
             <>
               <span className="font-mono text-xs text-fg-tertiary mr-2">{src.id}</span>
@@ -388,8 +407,9 @@ function DeliverySources({
               {messageId ? (
                 <button
                   type="button"
-                  className="text-left text-insight hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+                  className={`text-left text-insight hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded${busy ? " opacity-50" : ""}`}
                   aria-label={`打开邮件 ${src.title.trim() || src.id}`}
+                  aria-busy={busy || undefined}
                   onClick={() => onOpenEmail(src.id)}
                 >
                   {body}
@@ -1091,6 +1111,7 @@ export default function TasksPage() {
   const [citeError, setCiteError] = useState<unknown>(null);
   const [citeLoadingId, setCiteLoadingId] = useState<string | null>(null);
   const citeRequest = useRef(0);
+  const citeInflight = useRef<string | null>(null);
   const citeBusy = Boolean(citeMessageId && citeLoadingId === citeMessageId);
   // 重试会把这次错误清掉。原因留在交付区，避免来源按钮改成「加载中...」。
   const shownCiteError = useHeldQueryError(
@@ -1201,6 +1222,7 @@ export default function TasksPage() {
     setCiteError(null);
     setCiteLoadingId(null);
     citeRequest.current += 1;
+    citeInflight.current = null;
   }, [urlTaskId, historyId]);
 
   useEffect(() => {
@@ -1552,13 +1574,17 @@ export default function TasksPage() {
     const messageId = matched ? emailMessageId(matched) : null;
     if (!messageId) {
       citeRequest.current += 1;
+      citeInflight.current = null;
       setCiteSourceId(null);
       setCiteMessageId(null);
       setCiteError(null);
       setCiteLoadingId(null);
       return;
     }
+    // 同一封还在读时再点不另发。来源按钮保持可聚焦，避免焦点卸到页面空白处。
+    if (citeInflight.current === messageId) return;
     const requestId = ++citeRequest.current;
+    citeInflight.current = messageId;
     setCiteSourceId(targetId);
     setCiteMessageId(messageId);
     setCiteLoadingId(messageId);
@@ -1575,7 +1601,10 @@ export default function TasksPage() {
       setCiteError(err);
       addError(queryErrorMessage(err, "加载邮件详情失败"), "任务");
     } finally {
-      if (citeRequest.current === requestId) setCiteLoadingId(null);
+      if (citeRequest.current === requestId) {
+        setCiteLoadingId(null);
+        citeInflight.current = null;
+      }
     }
   };
 
@@ -2036,178 +2065,184 @@ export default function TasksPage() {
                       <RerunFailureReason reason={failureReason} />
                     ) : null}
                     {shownDelivery ? (
-                      <section className="space-y-3 rounded-xl border border-border-subtle p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <h3
-                              ref={deliveryTitleRef}
-                              tabIndex={-1}
-                              className="rounded-sm text-sm font-medium text-fg-primary outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-                            >
-                              交付 v{shownDelivery.version}
-                              {viewingHistory ? "（历史版本）" : ""}
-                            </h3>
-                            <p className="text-xs text-fg-tertiary mt-1">
-                              {reviewLabel(shownDelivery.review_status)}
-                              {shownDelivery.qualified ? "" : " · 非完整合格简报"}
-                            </p>
-                            <DeliveryModelCost delivery={shownDelivery} />
-                            {deliveryReworkReason(shownDelivery) ? (
-                              <p
-                                className="text-sm text-fg-secondary mt-1 whitespace-pre-wrap break-words"
-                                data-testid="rework-reason"
+                      <OpeningMailSourceContext.Provider
+                        value={citeLoadingId ? citeSourceId : null}
+                      >
+                        <section className="space-y-3 rounded-xl border border-border-subtle p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <h3
+                                ref={deliveryTitleRef}
+                                tabIndex={-1}
+                                className="rounded-sm text-sm font-medium text-fg-primary outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                               >
-                                <span className="text-fg-tertiary">返工理由：</span>
-                                {deliveryReworkReason(shownDelivery)}
+                                交付 v{shownDelivery.version}
+                                {viewingHistory ? "（历史版本）" : ""}
+                              </h3>
+                              <p className="text-xs text-fg-tertiary mt-1">
+                                {reviewLabel(shownDelivery.review_status)}
+                                {shownDelivery.qualified ? "" : " · 非完整合格简报"}
                               </p>
-                            ) : null}
-                            {deliveryAcceptReason(shownDelivery) ? (
-                              <p
-                                className="text-sm text-fg-secondary mt-1 whitespace-pre-wrap break-words"
-                                data-testid="accept-reason"
-                              >
-                                <span className="text-fg-tertiary">验收说明：</span>
-                                {deliveryAcceptReason(shownDelivery)}
-                              </p>
-                            ) : null}
+                              <DeliveryModelCost delivery={shownDelivery} />
+                              {deliveryReworkReason(shownDelivery) ? (
+                                <p
+                                  className="text-sm text-fg-secondary mt-1 whitespace-pre-wrap break-words"
+                                  data-testid="rework-reason"
+                                >
+                                  <span className="text-fg-tertiary">返工理由：</span>
+                                  {deliveryReworkReason(shownDelivery)}
+                                </p>
+                              ) : null}
+                              {deliveryAcceptReason(shownDelivery) ? (
+                                <p
+                                  className="text-sm text-fg-secondary mt-1 whitespace-pre-wrap break-words"
+                                  data-testid="accept-reason"
+                                >
+                                  <span className="text-fg-tertiary">验收说明：</span>
+                                  {deliveryAcceptReason(shownDelivery)}
+                                </p>
+                              ) : null}
+                            </div>
+                            {!viewingHistory && shownDelivery.review_status === "unreviewed" && (
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() =>
+                                    openActionDialog(() => setAcceptTarget(shownDelivery))
+                                  }
+                                  disabled={busy}
+                                >
+                                  验收
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="subtle"
+                                  onClick={() => openActionDialog(() => setReworkOpen(true))}
+                                  disabled={busy}
+                                >
+                                  返工
+                                </Button>
+                              </div>
+                            )}
                           </div>
-                          {!viewingHistory && shownDelivery.review_status === "unreviewed" && (
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                onClick={() =>
-                                  openActionDialog(() => setAcceptTarget(shownDelivery))
-                                }
-                                disabled={busy}
-                              >
-                                验收
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="subtle"
-                                onClick={() => openActionDialog(() => setReworkOpen(true))}
-                                disabled={busy}
-                              >
-                                返工
-                              </Button>
+                          <DeliveryChecks delivery={shownDelivery} />
+                          <DeliveryVersionDiff
+                            delivery={shownDelivery}
+                            onCite={(sourceId) => void openCitedSource(sourceId, citeSources)}
+                            canCite={canCiteDeliverySource}
+                          />
+                          <p className="text-sm text-fg-secondary whitespace-pre-wrap">
+                            {shownDelivery.summary}
+                          </p>
+                          <pre
+                            className="text-sm text-fg-primary whitespace-pre-wrap break-words bg-surface-sunken rounded-lg p-3"
+                            data-testid="delivery-body"
+                          >
+                            <DeliveryBodyText
+                              content={deliveryBodyText(shownDelivery.content)}
+                              sources={shownDelivery.sources}
+                              onCite={(sourceId) =>
+                                void openCitedSource(sourceId, shownDelivery.sources)
+                              }
+                            />
+                          </pre>
+                          {shownDelivery.limitations.length > 0 && (
+                            <div>
+                              <h4 className="text-xs font-medium text-fg-tertiary mb-1">
+                                限制与不足
+                              </h4>
+                              <ul className="text-sm text-warning space-y-1">
+                                {shownDelivery.limitations.map((item) => (
+                                  <li key={item}>{item}</li>
+                                ))}
+                              </ul>
                             </div>
                           )}
-                        </div>
-                        <DeliveryChecks delivery={shownDelivery} />
-                        <DeliveryVersionDiff
-                          delivery={shownDelivery}
-                          onCite={(sourceId) => void openCitedSource(sourceId, citeSources)}
-                          canCite={canCiteDeliverySource}
-                        />
-                        <p className="text-sm text-fg-secondary whitespace-pre-wrap">
-                          {shownDelivery.summary}
-                        </p>
-                        <pre
-                          className="text-sm text-fg-primary whitespace-pre-wrap break-words bg-surface-sunken rounded-lg p-3"
-                          data-testid="delivery-body"
-                        >
-                          <DeliveryBodyText
-                            content={deliveryBodyText(shownDelivery.content)}
-                            sources={shownDelivery.sources}
+                          <DeliveryFindings
+                            delivery={shownDelivery}
                             onCite={(sourceId) =>
                               void openCitedSource(sourceId, shownDelivery.sources)
                             }
                           />
-                        </pre>
-                        {shownDelivery.limitations.length > 0 && (
-                          <div>
-                            <h4 className="text-xs font-medium text-fg-tertiary mb-1">
-                              限制与不足
-                            </h4>
-                            <ul className="text-sm text-warning space-y-1">
-                              {shownDelivery.limitations.map((item) => (
-                                <li key={item}>{item}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        <DeliveryFindings
-                          delivery={shownDelivery}
-                          onCite={(sourceId) =>
-                            void openCitedSource(sourceId, shownDelivery.sources)
-                          }
-                        />
-                        <DeliverySources
-                          sources={shownDelivery.sources}
-                          activeSourceId={activeSourceId}
-                          onOpenEmail={(sourceId) =>
-                            void openCitedSource(sourceId, shownDelivery.sources)
-                          }
-                        />
-                        {shownCiteError ? (
-                          <LoadErrorNotice
-                            message={shownCiteError}
-                            busy={citeBusy}
-                            onRetry={() => {
-                              if (!citeSourceId || citeBusy) return;
-                              void openCitedSource(citeSourceId, citeSources);
-                            }}
-                            testId="task-mail-load-error"
+                          <DeliverySources
+                            sources={shownDelivery.sources}
+                            activeSourceId={activeSourceId}
+                            onOpenEmail={(sourceId) =>
+                              void openCitedSource(sourceId, shownDelivery.sources)
+                            }
                           />
-                        ) : null}
-                        {shownDelivery.suggested_actions.length > 0 && (
-                          <div>
-                            <h4 className="text-xs font-medium text-fg-tertiary mb-1">建议待办</h4>
-                            <ul className="text-sm text-fg-secondary space-y-2">
-                              {shownDelivery.suggested_actions.map((action, index) => {
-                                const adoptedHref = action.adopted_work_id
-                                  ? adoptedTaskHref(action.adopted_work_id)
-                                  : undefined;
-                                return (
-                                  <li
-                                    key={`${action.title}-${index}`}
-                                    className="flex items-start justify-between gap-3"
-                                  >
-                                    <span>
-                                      {action.title}
-                                      {action.reason ? ` — ${action.reason}` : ""}
-                                      <SourceIdChips
-                                        ids={action.source_ids}
-                                        onCite={(sourceId) =>
-                                          void openCitedSource(sourceId, shownDelivery.sources)
-                                        }
-                                      />
-                                    </span>
-                                    {!viewingHistory && action.adopted_work_id ? (
-                                      adoptedHref ? (
-                                        <Link
-                                          to={adoptedHref}
-                                          data-task-adopted={index}
-                                          className={adoptedLinkClass}
+                          {shownCiteError ? (
+                            <LoadErrorNotice
+                              message={shownCiteError}
+                              busy={citeBusy}
+                              onRetry={() => {
+                                if (!citeSourceId || citeBusy) return;
+                                void openCitedSource(citeSourceId, citeSources);
+                              }}
+                              testId="task-mail-load-error"
+                            />
+                          ) : null}
+                          {shownDelivery.suggested_actions.length > 0 && (
+                            <div>
+                              <h4 className="text-xs font-medium text-fg-tertiary mb-1">
+                                建议待办
+                              </h4>
+                              <ul className="text-sm text-fg-secondary space-y-2">
+                                {shownDelivery.suggested_actions.map((action, index) => {
+                                  const adoptedHref = action.adopted_work_id
+                                    ? adoptedTaskHref(action.adopted_work_id)
+                                    : undefined;
+                                  return (
+                                    <li
+                                      key={`${action.title}-${index}`}
+                                      className="flex items-start justify-between gap-3"
+                                    >
+                                      <span>
+                                        {action.title}
+                                        {action.reason ? ` — ${action.reason}` : ""}
+                                        <SourceIdChips
+                                          ids={action.source_ids}
+                                          onCite={(sourceId) =>
+                                            void openCitedSource(sourceId, shownDelivery.sources)
+                                          }
+                                        />
+                                      </span>
+                                      {!viewingHistory && action.adopted_work_id ? (
+                                        adoptedHref ? (
+                                          <Link
+                                            to={adoptedHref}
+                                            data-task-adopted={index}
+                                            className={adoptedLinkClass}
+                                          >
+                                            已转为任务
+                                          </Link>
+                                        ) : (
+                                          <span className="shrink-0 px-3 py-1.5 text-xs text-fg-secondary">
+                                            已转为任务
+                                          </span>
+                                        )
+                                      ) : !viewingHistory ? (
+                                        <Button
+                                          size="sm"
+                                          variant="secondary"
+                                          data-task-adopt={index}
+                                          aria-busy={actionBusy === `adopt:${index}` || undefined}
+                                          className={
+                                            actionBusy === `adopt:${index}` ? "opacity-50" : ""
+                                          }
+                                          onClick={() => void handleAdopt(shownDelivery, index)}
                                         >
-                                          已转为任务
-                                        </Link>
-                                      ) : (
-                                        <span className="shrink-0 px-3 py-1.5 text-xs text-fg-secondary">
-                                          已转为任务
-                                        </span>
-                                      )
-                                    ) : !viewingHistory ? (
-                                      <Button
-                                        size="sm"
-                                        variant="secondary"
-                                        data-task-adopt={index}
-                                        aria-busy={actionBusy === `adopt:${index}` || undefined}
-                                        className={
-                                          actionBusy === `adopt:${index}` ? "opacity-50" : ""
-                                        }
-                                        onClick={() => void handleAdopt(shownDelivery, index)}
-                                      >
-                                        转为任务
-                                      </Button>
-                                    ) : null}
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          </div>
-                        )}
-                      </section>
+                                          转为任务
+                                        </Button>
+                                      ) : null}
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            </div>
+                          )}
+                        </section>
+                      </OpeningMailSourceContext.Provider>
                     ) : viewingHistory ? null : isProjectBrief(selected) ? (
                       <div className="space-y-2">
                         <p className="text-sm text-fg-tertiary">

@@ -2373,6 +2373,9 @@ describe("TasksPage", () => {
       expect(addError).toHaveBeenCalledWith("邮件暂时读不到", "任务");
       expect(screen.getByText("有进度风险")).toBeInTheDocument();
       expect(within(emailRow).getByRole("button", { name: "打开邮件 延期邮件" })).toBeEnabled();
+      expect(
+        within(emailRow).getByRole("button", { name: "打开邮件 延期邮件" }),
+      ).not.toHaveAttribute("aria-busy");
       expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
       expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
       expect(screen.queryByText("延期邮件全文")).not.toBeInTheDocument();
@@ -2404,10 +2407,167 @@ describe("TasksPage", () => {
       expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
       expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
       expect(within(emailRow).getByRole("button", { name: "打开邮件 延期邮件" })).toBeEnabled();
+      expect(within(emailRow).getByRole("button", { name: "打开邮件 延期邮件" })).toHaveAttribute(
+        "aria-busy",
+        "true",
+      );
+      expect(within(emailRow).getByRole("button", { name: "打开邮件 延期邮件" })).toHaveClass(
+        "opacity-50",
+      );
 
       release?.(openedMail("m1", "延期邮件全文"));
       expect(await screen.findByText("延期邮件全文")).toBeInTheDocument();
       expect(screen.queryByTestId("task-mail-load-error")).not.toBeInTheDocument();
+    });
+  });
+
+  it("does not open the same cited mail twice and keeps focus until the dialog", async () => {
+    const cited: WorkDelivery = {
+      ...currentDelivery,
+      findings: [{ text: "排期推迟", kind: "risk", source_ids: ["email:m1", "email:m10"] }],
+      sources: [
+        { id: "email:m1", type: "email", title: "延期邮件" },
+        { id: "email:m10", type: "email", title: "另一封" },
+      ],
+    };
+    const task: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        ...briefTask.delivery_bundle!,
+        current: cited,
+        deliveries: [historySummary, { ...currentSummary, ...cited }],
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [task];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(task);
+    let release: ((row: ReturnType<typeof openedMail>) => void) | undefined;
+    vi.mocked(getInboxEmailDetail).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const previousScroll = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = () => {};
+    try {
+      renderTasks("/tasks/brief_1");
+      const emailRow = await screen.findByTestId("delivery-source-email:m1");
+      const otherRow = screen.getByTestId("delivery-source-email:m10");
+      const open = within(emailRow).getByRole("button", { name: "打开邮件 延期邮件" });
+      const other = within(otherRow).getByRole("button", { name: "打开邮件 另一封" });
+      const chip = within(screen.getByTestId("delivery-findings")).getByRole("button", {
+        name: "来源 email:m1",
+      });
+      open.focus();
+      fireEvent.click(open);
+      fireEvent.click(open);
+      chip.focus();
+      fireEvent.click(chip);
+      await waitFor(() => expect(open).toHaveAttribute("aria-busy", "true"));
+      expect(open).toBeEnabled();
+      expect(chip).toBeEnabled();
+      expect(chip).toHaveFocus();
+      expect(open).not.toHaveFocus();
+      expect(open).toHaveClass("opacity-50");
+      expect(open).not.toHaveTextContent("加载中");
+      expect(chip).toHaveAttribute("aria-busy", "true");
+      expect(chip).toHaveClass("opacity-50");
+      expect(other).not.toHaveAttribute("aria-busy");
+      expect(getInboxEmailDetail).toHaveBeenCalledTimes(1);
+      expect(getInboxEmailDetail).toHaveBeenCalledWith("m1");
+
+      release?.(openedMail("m1", "延期邮件全文"));
+      const dialog = await screen.findByRole("dialog", { name: "延期邮件全文" });
+      await waitFor(() => expect(dialog).toHaveFocus());
+      expect(open).not.toHaveAttribute("aria-busy");
+      expect(chip).not.toHaveAttribute("aria-busy");
+      fireEvent.keyDown(window, { key: "Escape" });
+      await waitFor(() => expect(chip).toHaveFocus());
+      expect(open).not.toHaveFocus();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+      open.focus();
+      fireEvent.click(open);
+      await waitFor(() => expect(getInboxEmailDetail).toHaveBeenCalledTimes(2));
+      expect(open).toHaveAttribute("aria-busy", "true");
+      expect(open).toHaveFocus();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = previousScroll;
+    }
+  });
+
+  it("does not pull focus back to the cited mail button before the dialog opens", async () => {
+    let release: ((row: ReturnType<typeof openedMail>) => void) | undefined;
+    vi.mocked(getInboxEmailDetail).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    await withMailBrief(async () => {
+      const emailRow = await screen.findByTestId("delivery-source-email:m1");
+      const otherRow = screen.getByTestId("delivery-source-email:m10");
+      const open = within(emailRow).getByRole("button", { name: "打开邮件 延期邮件" });
+      const other = within(otherRow).getByRole("button", { name: "打开邮件 另一封" });
+      open.focus();
+      fireEvent.click(open);
+      await waitFor(() => expect(open).toHaveAttribute("aria-busy", "true"));
+      other.focus();
+      expect(open).not.toHaveFocus();
+      expect(other).toHaveFocus();
+
+      release?.(openedMail("m1", "延期邮件全文"));
+      const dialog = await screen.findByRole("dialog", { name: "延期邮件全文" });
+      await waitFor(() => expect(dialog).toHaveFocus());
+      expect(open).not.toHaveFocus();
+      fireEvent.keyDown(window, { key: "Escape" });
+      await waitFor(() => expect(other).toHaveFocus());
+      expect(open).not.toHaveFocus();
+      expect(getInboxEmailDetail).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("lets another cited mail open while the first read is still in flight", async () => {
+    const releaseFor = new Map<string, (row: ReturnType<typeof openedMail>) => void>();
+    vi.mocked(getInboxEmailDetail).mockImplementation(
+      (id: string) =>
+        new Promise((resolve) => {
+          releaseFor.set(id, resolve);
+        }),
+    );
+    await withMailBrief(async () => {
+      const firstRow = await screen.findByTestId("delivery-source-email:m1");
+      const secondRow = screen.getByTestId("delivery-source-email:m10");
+      const first = within(firstRow).getByRole("button", { name: "打开邮件 延期邮件" });
+      const second = within(secondRow).getByRole("button", { name: "打开邮件 另一封" });
+      first.focus();
+      fireEvent.click(first);
+      await waitFor(() => expect(first).toHaveAttribute("aria-busy", "true"));
+      second.focus();
+      fireEvent.click(second);
+      await waitFor(() => expect(second).toHaveAttribute("aria-busy", "true"));
+      expect(second).toBeEnabled();
+      expect(second).toHaveFocus();
+      expect(first).not.toHaveAttribute("aria-busy");
+      expect(getInboxEmailDetail).toHaveBeenCalledTimes(2);
+      expect(getInboxEmailDetail).toHaveBeenNthCalledWith(1, "m1");
+      expect(getInboxEmailDetail).toHaveBeenNthCalledWith(2, "m10");
+
+      releaseFor.get("m1")?.(openedMail("m1", "延期邮件全文"));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(screen.queryByRole("dialog", { name: "延期邮件全文" })).not.toBeInTheDocument();
+      expect(second).toHaveFocus();
+
+      releaseFor.get("m10")?.(openedMail("m10", "另一封全文"));
+      const dialog = await screen.findByRole("dialog", { name: "另一封全文" });
+      await waitFor(() => expect(dialog).toHaveFocus());
+      expect(first).not.toHaveAttribute("aria-busy");
+      expect(second).not.toHaveAttribute("aria-busy");
     });
   });
 
@@ -2429,6 +2589,13 @@ describe("TasksPage", () => {
       expect(screen.queryByText("邮件暂时读不到")).not.toBeInTheDocument();
       expect(screen.getByText("有进度风险")).toBeInTheDocument();
       expect(within(first).getByRole("button", { name: "打开邮件 延期邮件" })).toBeEnabled();
+      expect(within(first).getByRole("button", { name: "打开邮件 延期邮件" })).not.toHaveAttribute(
+        "aria-busy",
+      );
+      expect(within(second).getByRole("button", { name: "打开邮件 另一封" })).toHaveAttribute(
+        "aria-busy",
+        "true",
+      );
     });
   });
 
