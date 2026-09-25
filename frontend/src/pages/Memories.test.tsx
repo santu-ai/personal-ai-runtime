@@ -545,16 +545,21 @@ describe("MemoriesPage", () => {
     const dialog = await screen.findByRole("dialog", { name: "拒绝这条记忆？" });
     const field = within(dialog).getByPlaceholderText("例如：记错了、过时了");
     fireEvent.change(field, { target: { value: "  过时了  " } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "拒绝" }));
+    const reject = within(dialog).getByRole("button", { name: "拒绝" });
+    reject.focus();
+    fireEvent.click(reject);
     fireEvent.click(within(dialog).getByRole("button", { name: "拒绝中..." }));
     fireEvent.keyDown(window, { key: "Escape" });
     fireEvent.click(dialog.parentElement as HTMLElement);
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
 
     const pending = await within(dialog).findByRole("button", { name: "拒绝中..." });
-    expect(pending).toBeDisabled();
+    expect(pending).toBeEnabled();
+    expect(pending).toHaveFocus();
     expect(pending).toHaveAttribute("aria-busy", "true");
     expect(field).toHaveValue("  过时了  ");
-    expect(field).toBeDisabled();
+    expect(field).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: "取消" })).toBeEnabled();
     expect(rejectMemory).toHaveBeenCalledTimes(1);
     expect(rejectMemory).toHaveBeenCalledWith("p1", "过时了");
     expect(dialog).toBeInTheDocument();
@@ -564,6 +569,7 @@ describe("MemoriesPage", () => {
     expect(dialog).toBeInTheDocument();
     expect(field).toHaveValue("  过时了  ");
     expect(field).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: "拒绝" })).toHaveFocus();
 
     vi.mocked(rejectMemory).mockResolvedValueOnce({ status: "ok", claim_status: "rejected" });
     fireEvent.click(within(dialog).getByRole("button", { name: "拒绝" }));
@@ -589,17 +595,23 @@ describe("MemoriesPage", () => {
     const category = within(dialog).getByPlaceholderText("如 fact, preference, habit");
     fireEvent.change(content, { target: { value: "  改为夜跑  " } });
     fireEvent.change(category, { target: { value: "habit" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+    const save = within(dialog).getByRole("button", { name: "保存" });
+    save.focus();
+    fireEvent.click(save);
     fireEvent.click(within(dialog).getByRole("button", { name: "保存中..." }));
     fireEvent.keyDown(window, { key: "Escape" });
     fireEvent.click(dialog.parentElement as HTMLElement);
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
 
     const pending = await within(dialog).findByRole("button", { name: "保存中..." });
-    expect(pending).toBeDisabled();
+    expect(pending).toBeEnabled();
+    expect(pending).toHaveFocus();
     expect(pending).toHaveAttribute("aria-busy", "true");
     expect(content).toHaveValue("  改为夜跑  ");
     expect(category).toHaveValue("habit");
-    expect(content).toBeDisabled();
+    expect(content).toBeEnabled();
+    expect(category).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: "取消" })).toBeEnabled();
     expect(updateMemory).toHaveBeenCalledTimes(1);
     expect(updateMemory).toHaveBeenCalledWith("m1", { content: "改为夜跑", category: "habit" });
     expect(dialog).toBeInTheDocument();
@@ -610,6 +622,7 @@ describe("MemoriesPage", () => {
     expect(content).toHaveValue("  改为夜跑  ");
     expect(category).toHaveValue("habit");
     expect(content).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: "保存" })).toHaveFocus();
 
     vi.mocked(updateMemory).mockResolvedValueOnce({ status: "ok" });
     fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
@@ -617,6 +630,163 @@ describe("MemoriesPage", () => {
       expect(screen.queryByRole("dialog", { name: "编辑记忆" })).not.toBeInTheDocument(),
     );
     expect(updateMemory).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a reject reason typed during the request and does not pull focus back", async () => {
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "proposed") {
+        return {
+          memories: [
+            {
+              id: "p1",
+              content: "待确认的习惯",
+              origin: "claim",
+              claim_status: "proposed",
+              confidence: 0.7,
+            },
+          ],
+          total: 1,
+        };
+      }
+      return { memories: [], total: 0 };
+    });
+    let release: (value: { status: string; claim_status: string }) => void = () => {};
+    vi.mocked(rejectMemory).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
+    const open = await screen.findByRole("button", { name: "拒绝" });
+    fireEvent.click(open);
+    const dialog = await screen.findByRole("dialog", { name: "拒绝这条记忆？" });
+    const field = within(dialog).getByPlaceholderText("例如：记错了、过时了");
+    fireEvent.change(field, { target: { value: "过时了" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "拒绝" }));
+    await within(dialog).findByRole("button", { name: "拒绝中..." });
+    field.focus();
+    fireEvent.change(field, { target: { value: "过时了，再补一句" } });
+    open.focus();
+
+    release({ status: "ok", claim_status: "rejected" });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "拒绝中..." })).not.toBeInTheDocument(),
+    );
+    expect(dialog).toBeInTheDocument();
+    expect(field).toHaveValue("过时了，再补一句");
+    expect(open).toHaveFocus();
+    expect(rejectMemory).toHaveBeenCalledTimes(1);
+    expect(rejectMemory).toHaveBeenCalledWith("p1", "过时了");
+  });
+
+  it("moves focus to the reject reason when the draft changed and focus is still on the button", async () => {
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "proposed") {
+        return {
+          memories: [
+            {
+              id: "p1",
+              content: "待确认的习惯",
+              origin: "claim",
+              claim_status: "proposed",
+              confidence: 0.7,
+            },
+          ],
+          total: 1,
+        };
+      }
+      return { memories: [], total: 0 };
+    });
+    let release: (value: { status: string; claim_status: string }) => void = () => {};
+    vi.mocked(rejectMemory).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
+    fireEvent.click(await screen.findByRole("button", { name: "拒绝" }));
+    const dialog = await screen.findByRole("dialog", { name: "拒绝这条记忆？" });
+    const field = within(dialog).getByPlaceholderText("例如：记错了、过时了");
+    fireEvent.change(field, { target: { value: "过时了" } });
+    const reject = within(dialog).getByRole("button", { name: "拒绝" });
+    reject.focus();
+    fireEvent.click(reject);
+    await within(dialog).findByRole("button", { name: "拒绝中..." });
+    fireEvent.change(field, { target: { value: "过时了，再补一句" } });
+
+    release({ status: "ok", claim_status: "rejected" });
+    await waitFor(() => expect(field).toHaveFocus());
+    expect(dialog).toBeInTheDocument();
+    expect(field).toHaveValue("过时了，再补一句");
+    expect(rejectMemory).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an edit typed during save and does not pull focus back", async () => {
+    let release: (value: { status: string }) => void = () => {};
+    vi.mocked(updateMemory).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    renderWithRouter(<MemoriesPage />);
+    const open = await screen.findByRole("button", { name: "编辑" });
+    fireEvent.click(open);
+    const dialog = await screen.findByRole("dialog", { name: "编辑记忆" });
+    const content = within(dialog).getByPlaceholderText("记忆内容");
+    const category = within(dialog).getByPlaceholderText("如 fact, preference, habit");
+    fireEvent.change(content, { target: { value: "改为夜跑" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+    await within(dialog).findByRole("button", { name: "保存中..." });
+    content.focus();
+    fireEvent.change(content, { target: { value: "改为夜跑，再补距离" } });
+    fireEvent.change(category, { target: { value: "preference" } });
+    open.focus();
+
+    release({ status: "ok" });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "保存中..." })).not.toBeInTheDocument(),
+    );
+    expect(dialog).toBeInTheDocument();
+    expect(content).toHaveValue("改为夜跑，再补距离");
+    expect(category).toHaveValue("preference");
+    expect(open).toHaveFocus();
+    expect(updateMemory).toHaveBeenCalledTimes(1);
+    expect(updateMemory).toHaveBeenCalledWith("m1", { content: "改为夜跑", category: "habit" });
+  });
+
+  it("moves focus to the memory content when the edit changed and focus is still on save", async () => {
+    let release: (value: { status: string }) => void = () => {};
+    vi.mocked(updateMemory).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    renderWithRouter(<MemoriesPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
+    const dialog = await screen.findByRole("dialog", { name: "编辑记忆" });
+    const content = within(dialog).getByPlaceholderText("记忆内容");
+    fireEvent.change(content, { target: { value: "改为夜跑" } });
+    const save = within(dialog).getByRole("button", { name: "保存" });
+    save.focus();
+    fireEvent.click(save);
+    await within(dialog).findByRole("button", { name: "保存中..." });
+    fireEvent.change(content, { target: { value: "改为夜跑，再补距离" } });
+
+    release({ status: "ok" });
+    await waitFor(() => expect(content).toHaveFocus());
+    expect(dialog).toBeInTheDocument();
+    expect(content).toHaveValue("改为夜跑，再补距离");
+    expect(updateMemory).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the forget dialog open until delete succeeds and ignores Escape while deleting", async () => {
