@@ -17,6 +17,7 @@ import { timeAgo, isStagnant } from "../../utils/timeUtils";
 import ProposedMemoryBanner from "./ProposedMemoryBanner";
 import ChatComposer from "./ChatComposer";
 import { COMPOSER_DRAFT_HOME, readComposerDraft, writeComposerDraft } from "./composerDraft";
+import { useHomeConversationGate } from "./homeConversationGate";
 import LoadErrorNotice, { queryErrorMessage, useHeldQueryError } from "../ui/LoadErrorNotice";
 import { STATUS_TONE } from "../ui/statusTone";
 
@@ -78,7 +79,7 @@ export default function ChatHome() {
   const [input, setInput] = useState(() => readComposerDraft(COMPOSER_DRAFT_HOME));
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const mountedRef = useRef(true);
-  const startLock = useRef(false);
+  const conversationGate = useHomeConversationGate();
   const [starting, setStarting] = useState<HomeStart | null>(null);
   const failFocus = useRef<HomeStart | null>(null);
   const clearFocus = useRef(false);
@@ -299,24 +300,26 @@ export default function ChatHome() {
     });
   }
 
-  const beginStart = (action: HomeStart) => {
-    startLock.current = true;
+  const beginStart = (action: HomeStart): boolean => {
+    // 和侧栏「新对话」共用一把锁。那边还没创建回来时，这里不再开一份。
+    if (!conversationGate.tryHold()) return false;
     failFocus.current = null;
     clearFocus.current = false;
     setStarting(action);
+    return true;
   };
 
   const finishStart = (ok: boolean, action: HomeStart) => {
     if (!ok) failFocus.current = action;
-    startLock.current = false;
+    conversationGate.release();
     if (mountedRef.current) setStarting(null);
   };
 
   const handleNudge = (nudge: ProactiveNudge) => {
     const prompt = nudge.prompt;
-    if (!prompt || startLock.current) return;
+    if (!prompt) return;
     const action: HomeStart = { kind: "nudge", title: nudge.title };
-    beginStart(action);
+    if (!beginStart(action)) return;
     void (async () => {
       let ok = false;
       try {
@@ -337,9 +340,9 @@ export default function ChatHome() {
   const handleSend = () => {
     const raw = input;
     const text = raw.trim();
-    if (!text || startLock.current) return;
+    if (!text) return;
     const action: HomeStart = { kind: "send" };
-    beginStart(action);
+    if (!beginStart(action)) return;
     const title = text.length > 25 ? `讨论「${text.slice(0, 25)}…」` : `讨论「${text}」`;
     void (async () => {
       let ok = false;
