@@ -20,8 +20,18 @@ export default function TelegramGatewayCard() {
   const [attempt, setAttempt] = useState(0);
   const [enabled, setEnabled] = useState(false);
   const [autoReply, setAutoReply] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [busyAction, setBusyAction] = useState<"save" | "poll" | null>(null);
   const [message, setMessage] = useState("");
+  const busyRef = useRef(false);
+  const saveGen = useRef(0);
+  const enabledRef = useRef(false);
+  const focusAfterPoll = useRef(false);
+  enabledRef.current = enabled;
+
+  const touch = () => {
+    saveGen.current += 1;
+    setMessage("");
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -48,22 +58,45 @@ export default function TelegramGatewayCard() {
     };
   }, [attempt]);
 
+  useEffect(() => {
+    if (busyAction || !focusAfterPoll.current) return;
+    focusAfterPoll.current = false;
+    const pollButton = document.querySelector<HTMLButtonElement>("[data-telegram-action='poll']");
+    if (pollButton && !pollButton.disabled) return;
+    const active = document.activeElement;
+    const idle =
+      !active ||
+      active === document.body ||
+      active === document.documentElement ||
+      active === pollButton ||
+      !(active instanceof HTMLElement) ||
+      !active.isConnected;
+    if (!idle) return;
+    document.querySelector<HTMLElement>("[data-telegram-action='save']")?.focus();
+  }, [busyAction, enabled]);
+
   const save = async () => {
-    setBusy(true);
+    if (busyRef.current) return;
+    const gen = saveGen.current;
+    busyRef.current = true;
+    setBusyAction("save");
     setMessage("");
     try {
       const next = await updateTelegramGateway(enabled, autoReply);
       setStatus(next);
-      setMessage("已保存");
+      if (saveGen.current === gen) setMessage("已保存");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "保存失败");
     } finally {
-      setBusy(false);
+      busyRef.current = false;
+      setBusyAction(null);
     }
   };
 
   const poll = async () => {
-    setBusy(true);
+    if (busyRef.current || !enabledRef.current) return;
+    busyRef.current = true;
+    setBusyAction("poll");
     try {
       const result = await pollTelegramGateway();
       setMessage(
@@ -72,10 +105,13 @@ export default function TelegramGatewayCard() {
           : result.error || "轮询失败",
       );
       setStatus(await getTelegramGatewayStatus());
+      if (!enabledRef.current) focusAfterPoll.current = true;
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "轮询失败");
+      if (!enabledRef.current) focusAfterPoll.current = true;
     } finally {
-      setBusy(false);
+      busyRef.current = false;
+      setBusyAction(null);
     }
   };
 
@@ -112,14 +148,24 @@ export default function TelegramGatewayCard() {
         </p>
       )}
       <label className="flex items-center gap-2 text-sm text-fg-secondary">
-        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => {
+            setEnabled(e.target.checked);
+            touch();
+          }}
+        />
         启用每分钟本地轮询
       </label>
       <label className="flex items-center gap-2 text-sm text-fg-secondary">
         <input
           type="checkbox"
           checked={autoReply}
-          onChange={(e) => setAutoReply(e.target.checked)}
+          onChange={(e) => {
+            setAutoReply(e.target.checked);
+            touch();
+          }}
         />
         启用当前 Chat ID 的一次性自动回复授权
       </label>
@@ -133,11 +179,23 @@ export default function TelegramGatewayCard() {
         </p>
       )}
       <div className="flex items-center gap-2">
-        <Button onClick={() => void save()} disabled={busy}>
-          保存
+        <Button
+          data-telegram-action="save"
+          onClick={() => void save()}
+          aria-busy={busyAction === "save" || undefined}
+          className={busyAction === "save" ? "opacity-50" : ""}
+        >
+          {busyAction === "save" ? "保存中…" : "保存"}
         </Button>
-        <Button variant="secondary" onClick={() => void poll()} disabled={busy || !enabled}>
-          立即轮询
+        <Button
+          variant="secondary"
+          data-telegram-action="poll"
+          onClick={() => void poll()}
+          disabled={!enabled && busyAction !== "poll"}
+          aria-busy={busyAction === "poll" || undefined}
+          className={busyAction === "poll" ? "opacity-50" : ""}
+        >
+          {busyAction === "poll" ? "轮询中…" : "立即轮询"}
         </Button>
         {message && <span className="text-xs text-fg-tertiary">{message}</span>}
       </div>

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { screen, waitFor, fireEvent, within, act } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
 import SettingsPage from "./Settings";
 import {
@@ -8,12 +8,19 @@ import {
   getLlmSettings,
   getMcpStatus,
   getPromptConfig,
+  testEmailConnection,
   testLlmConnection,
   updateEmailSettings,
   updateLlmSettings,
+  updatePromptConfig,
 } from "../api/client";
 import { listMcpRegistry } from "../api/connectors";
-import { getTelegramGatewayStatus, type TelegramGatewayStatus } from "../api/settings";
+import {
+  getTelegramGatewayStatus,
+  pollTelegramGateway,
+  updateTelegramGateway,
+  type TelegramGatewayStatus,
+} from "../api/settings";
 
 vi.mock("../api/client", () => ({
   getSystemHealth: vi.fn().mockResolvedValue({
@@ -616,5 +623,372 @@ describe("SettingsPage", () => {
     await waitFor(() => expect(save).toBeEnabled());
     expect(screen.queryByTestId("email-save-notice")).not.toBeInTheDocument();
     expect(screen.getByDisplayValue("test@gmail.com")).toBeInTheDocument();
+  });
+
+  function promptControl(field: "identity" | "coding_rules", action: "save" | "reset") {
+    const region = screen.getByRole("region", { name: "系统人设" });
+    const node = region.querySelector<HTMLButtonElement>(
+      `[data-prompt-field="${field}"][data-prompt-action="${action}"]`,
+    );
+    if (!node) throw new Error(`missing prompt ${field} ${action}`);
+    return node;
+  }
+
+  it("does not save the persona twice and keeps focus on 保存", async () => {
+    let release: (row: { ok: boolean }) => void = () => {};
+    vi.mocked(updatePromptConfig).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<SettingsPage />);
+    await expandSection("系统人设");
+    const field = await screen.findByPlaceholderText("定义 AI 的身份、性格、行为准则...");
+    expect(field).toHaveValue("test identity");
+    const save = promptControl("identity", "save");
+    const other = promptControl("coding_rules", "save");
+    save.focus();
+    fireEvent.click(save);
+    fireEvent.click(save);
+    fireEvent.click(other);
+    await waitFor(() => expect(save).toHaveAttribute("aria-busy", "true"));
+    expect(save).toBeEnabled();
+    expect(save).toHaveFocus();
+    expect(save).toHaveTextContent("保存中…");
+    expect(other).not.toHaveAttribute("aria-busy");
+    expect(updatePromptConfig).toHaveBeenCalledTimes(1);
+    expect(updatePromptConfig).toHaveBeenCalledWith({ identity: "test identity" });
+
+    await act(async () => {
+      release({ ok: true });
+    });
+    expect(await screen.findByText("已保存")).toBeInTheDocument();
+    expect(save).toHaveFocus();
+    expect(save).not.toHaveAttribute("aria-busy");
+  });
+
+  it("keeps a persona edit typed during save and skips 已保存", async () => {
+    let release: (row: { ok: boolean }) => void = () => {};
+    vi.mocked(updatePromptConfig).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<SettingsPage />);
+    await expandSection("系统人设");
+    const field = await screen.findByPlaceholderText("定义 AI 的身份、性格、行为准则...");
+    const save = promptControl("identity", "save");
+    save.focus();
+    fireEvent.click(save);
+    field.focus();
+    fireEvent.change(field, { target: { value: "还在改" } });
+    await act(async () => {
+      release({ ok: true });
+    });
+    await waitFor(() => expect(save).not.toHaveAttribute("aria-busy"));
+    expect(screen.queryByText("已保存")).not.toBeInTheDocument();
+    expect(field).toHaveValue("还在改");
+    expect(field).toHaveFocus();
+  });
+
+  it("keeps 保存 focused when persona save fails", async () => {
+    vi.mocked(updatePromptConfig).mockRejectedValueOnce(new ApiError("写不进去", 500));
+    renderWithRouter(<SettingsPage />);
+    await expandSection("系统人设");
+    await screen.findByPlaceholderText("定义 AI 的身份、性格、行为准则...");
+    const save = promptControl("identity", "save");
+    save.focus();
+    fireEvent.click(save);
+    expect(await screen.findByText("保存失败")).toBeInTheDocument();
+    expect(save).toBeEnabled();
+    expect(save).toHaveFocus();
+    expect(save).not.toHaveAttribute("aria-busy");
+  });
+
+  it("does not reset the persona twice and then focuses that field", async () => {
+    vi.mocked(getPromptConfig).mockResolvedValue({
+      identity: "自定义身份",
+      coding_rules: "test rules",
+      is_custom_identity: true,
+      is_custom_coding_rules: false,
+    });
+    let release: (row: { ok: boolean }) => void = () => {};
+    vi.mocked(updatePromptConfig).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<SettingsPage />);
+    await expandSection("系统人设");
+    const field = await screen.findByPlaceholderText("定义 AI 的身份、性格、行为准则...");
+    await waitFor(() => expect(field).toHaveValue("自定义身份"));
+    const reset = promptControl("identity", "reset");
+    const save = promptControl("identity", "save");
+    const other = promptControl("coding_rules", "save");
+    reset.focus();
+    fireEvent.click(reset);
+    fireEvent.click(reset);
+    fireEvent.click(save);
+    fireEvent.click(other);
+    await waitFor(() => expect(reset).toHaveAttribute("aria-busy", "true"));
+    expect(reset).toBeEnabled();
+    expect(reset).toHaveFocus();
+    expect(updatePromptConfig).toHaveBeenCalledTimes(1);
+    expect(updatePromptConfig).toHaveBeenCalledWith({ identity: "" });
+
+    vi.mocked(getPromptConfig).mockResolvedValue({
+      identity: "默认身份",
+      coding_rules: "test rules",
+      is_custom_identity: false,
+      is_custom_coding_rules: false,
+    });
+    await act(async () => {
+      release({ ok: true });
+    });
+    await waitFor(() => expect(field).toHaveValue("默认身份"));
+    expect(screen.getByText("已重置为默认")).toBeInTheDocument();
+    expect(reset).toBeDisabled();
+    expect(field).toHaveFocus();
+  });
+
+  it("does not overwrite a persona edit that arrives before reset returns", async () => {
+    vi.mocked(getPromptConfig).mockResolvedValue({
+      identity: "自定义身份",
+      coding_rules: "test rules",
+      is_custom_identity: true,
+      is_custom_coding_rules: false,
+    });
+    let release: (row: { ok: boolean }) => void = () => {};
+    vi.mocked(updatePromptConfig).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<SettingsPage />);
+    await expandSection("系统人设");
+    const field = await screen.findByPlaceholderText("定义 AI 的身份、性格、行为准则...");
+    await waitFor(() => expect(field).toHaveValue("自定义身份"));
+    const reset = promptControl("identity", "reset");
+    reset.focus();
+    fireEvent.click(reset);
+    field.focus();
+    fireEvent.change(field, { target: { value: "先别覆盖" } });
+    vi.mocked(getPromptConfig).mockResolvedValue({
+      identity: "默认身份",
+      coding_rules: "test rules",
+      is_custom_identity: false,
+      is_custom_coding_rules: false,
+    });
+    await act(async () => {
+      release({ ok: true });
+    });
+    await waitFor(() => expect(reset).not.toHaveAttribute("aria-busy"));
+    expect(field).toHaveValue("先别覆盖");
+    expect(screen.queryByText("已重置为默认")).not.toBeInTheDocument();
+    expect(reset).toBeEnabled();
+    expect(field).toHaveFocus();
+  });
+
+  it("does not steal focus after persona reset when it already moved", async () => {
+    vi.mocked(getPromptConfig).mockResolvedValue({
+      identity: "自定义身份",
+      coding_rules: "test rules",
+      is_custom_identity: true,
+      is_custom_coding_rules: false,
+    });
+    let release: (row: { ok: boolean }) => void = () => {};
+    vi.mocked(updatePromptConfig).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<SettingsPage />);
+    await expandSection("系统人设");
+    const field = await screen.findByPlaceholderText("定义 AI 的身份、性格、行为准则...");
+    const other = await screen.findByPlaceholderText("定义 AI 编码时的行为规则...");
+    await waitFor(() => expect(field).toHaveValue("自定义身份"));
+    const reset = promptControl("identity", "reset");
+    reset.focus();
+    fireEvent.click(reset);
+    other.focus();
+    vi.mocked(getPromptConfig).mockResolvedValue({
+      identity: "默认身份",
+      coding_rules: "test rules",
+      is_custom_identity: false,
+      is_custom_coding_rules: false,
+    });
+    await act(async () => {
+      release({ ok: true });
+    });
+    await waitFor(() => expect(field).toHaveValue("默认身份"));
+    expect(other).toHaveFocus();
+  });
+
+  it("does not save telegram twice and keeps focus on 保存", async () => {
+    let release: (row: TelegramGatewayStatus) => void = () => {};
+    vi.mocked(updateTelegramGateway).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<SettingsPage />);
+    await expandSection("Telegram 网关");
+    const save = await screen.findByRole("button", { name: "保存" });
+    const poll = screen.getByRole("button", { name: "立即轮询" });
+    expect(poll).toBeDisabled();
+    save.focus();
+    fireEvent.click(save);
+    fireEvent.click(save);
+    fireEvent.click(poll);
+    await waitFor(() => expect(save).toHaveAttribute("aria-busy", "true"));
+    expect(save).toBeEnabled();
+    expect(save).toHaveFocus();
+    expect(save).toHaveTextContent("保存中…");
+    expect(poll).not.toHaveAttribute("aria-busy");
+    expect(updateTelegramGateway).toHaveBeenCalledTimes(1);
+    expect(pollTelegramGateway).not.toHaveBeenCalled();
+
+    await act(async () => {
+      release({ ...telegramStatus, enabled: false });
+    });
+    expect(await screen.findByText("已保存")).toBeInTheDocument();
+    expect(save).toHaveFocus();
+  });
+
+  it("skips 已保存 when a telegram switch changes before save returns", async () => {
+    let release: (row: TelegramGatewayStatus) => void = () => {};
+    vi.mocked(updateTelegramGateway).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<SettingsPage />);
+    await expandSection("Telegram 网关");
+    const save = await screen.findByRole("button", { name: "保存" });
+    const toggle = screen.getByRole("checkbox", { name: "启用每分钟本地轮询" });
+    save.focus();
+    fireEvent.click(save);
+    toggle.focus();
+    fireEvent.click(toggle);
+    await act(async () => {
+      release({ ...telegramStatus, enabled: false });
+    });
+    await waitFor(() => expect(save).not.toHaveAttribute("aria-busy"));
+    expect(screen.queryByText("已保存")).not.toBeInTheDocument();
+    expect(toggle).toBeChecked();
+    expect(toggle).toHaveFocus();
+  });
+
+  it("keeps telegram 保存 focused when save fails", async () => {
+    vi.mocked(updateTelegramGateway).mockRejectedValueOnce(new ApiError("写不进去", 500));
+    renderWithRouter(<SettingsPage />);
+    await expandSection("Telegram 网关");
+    const save = await screen.findByRole("button", { name: "保存" });
+    save.focus();
+    fireEvent.click(save);
+    expect(await screen.findByText("写不进去")).toBeInTheDocument();
+    expect(save).toBeEnabled();
+    expect(save).toHaveFocus();
+  });
+
+  it("does not poll telegram twice and moves focus to 保存 after the switch is turned off", async () => {
+    let release: (row: { status: string; processed: number }) => void = () => {};
+    vi.mocked(pollTelegramGateway).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<SettingsPage />);
+    await expandSection("Telegram 网关");
+    const toggle = await screen.findByRole("checkbox", { name: "启用每分钟本地轮询" });
+    fireEvent.click(toggle);
+    const poll = screen.getByRole("button", { name: "立即轮询" });
+    const save = screen.getByRole("button", { name: "保存" });
+    expect(poll).toBeEnabled();
+    poll.focus();
+    fireEvent.click(poll);
+    fireEvent.click(poll);
+    fireEvent.click(save);
+    await waitFor(() => expect(poll).toHaveAttribute("aria-busy", "true"));
+    expect(poll).toBeEnabled();
+    expect(poll).toHaveFocus();
+    expect(pollTelegramGateway).toHaveBeenCalledTimes(1);
+    expect(updateTelegramGateway).not.toHaveBeenCalled();
+
+    fireEvent.click(toggle);
+    poll.focus();
+    expect(poll).toBeEnabled();
+    await act(async () => {
+      release({ status: "ok", processed: 2 });
+    });
+    expect(await screen.findByText("轮询完成，处理 2 条消息")).toBeInTheDocument();
+    await waitFor(() => expect(poll).toBeDisabled());
+    expect(save).toHaveFocus();
+  });
+
+  it("does not steal focus when telegram polling ends after focus moved", async () => {
+    let release: (row: { status: string; processed: number }) => void = () => {};
+    vi.mocked(pollTelegramGateway).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<SettingsPage />);
+    await expandSection("Telegram 网关");
+    const toggle = await screen.findByRole("checkbox", { name: "启用每分钟本地轮询" });
+    fireEvent.click(toggle);
+    const poll = screen.getByRole("button", { name: "立即轮询" });
+    poll.focus();
+    fireEvent.click(poll);
+    fireEvent.click(toggle);
+    toggle.focus();
+    await act(async () => {
+      release({ status: "ok", processed: 1 });
+    });
+    expect(await screen.findByText("轮询完成，处理 1 条消息")).toBeInTheDocument();
+    expect(toggle).toHaveFocus();
+  });
+
+  it("does not test the mailbox twice and keeps focus on 测试连接", async () => {
+    let release: (row: {
+      ok: boolean;
+      imap_ok: boolean;
+      smtp_ok: boolean;
+      error?: string | null;
+    }) => void = () => {};
+    vi.mocked(testEmailConnection).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<SettingsPage />);
+    await expandSection("Gmail 邮箱配置");
+    const test = await screen.findByRole("button", { name: "测试连接" });
+    test.focus();
+    fireEvent.click(test);
+    fireEvent.click(test);
+    await waitFor(() => expect(test).toHaveAttribute("aria-busy", "true"));
+    expect(test).toBeEnabled();
+    expect(test).toHaveFocus();
+    expect(test).toHaveTextContent("测试中…");
+    expect(testEmailConnection).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      release({ ok: false, imap_ok: false, smtp_ok: false, error: "连不上" });
+    });
+    await waitFor(() => expect(test).not.toHaveAttribute("aria-busy"));
+    expect(test).toBeEnabled();
+    expect(test).toHaveFocus();
+    expect(screen.getByText("IMAP 失败")).toBeInTheDocument();
   });
 });
