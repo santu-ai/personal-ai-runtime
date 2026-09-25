@@ -4,7 +4,7 @@ import { Eye, EyeOff } from "lucide-react";
 const DEFAULT_MASKED = "••••••••";
 
 export const inputBaseClass =
-  "bg-surface-overlay border border-border-subtle rounded-md px-3 py-2 text-sm text-fg-primary placeholder:text-fg-tertiary outline-none transition-colors focus:border-focus-ring focus:ring-1 focus:ring-focus-ring/40 disabled:opacity-50 disabled:cursor-not-allowed";
+  "bg-surface-overlay border border-border-subtle rounded-md px-3 py-2 text-sm text-fg-primary placeholder:text-fg-tertiary transition-colors focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50 disabled:cursor-not-allowed";
 
 interface PasswordInputProps extends InputHTMLAttributes<HTMLInputElement> {
   /** True when value is a server-side masked placeholder, not the real secret. */
@@ -20,7 +20,7 @@ export function Input({
 }: React.InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }) {
   return (
     <input
-      className={`${inputBaseClass} ${invalid ? "border-danger focus:border-danger focus:ring-danger/30" : ""} ${className}`}
+      className={`${inputBaseClass} ${invalid ? "border-danger focus:border-danger focus-visible:ring-danger" : ""} ${className}`}
       aria-invalid={invalid || undefined}
       {...props}
     />
@@ -34,7 +34,7 @@ export function TextArea({
 }: TextareaHTMLAttributes<HTMLTextAreaElement> & { invalid?: boolean }) {
   return (
     <textarea
-      className={`${inputBaseClass} min-h-20 resize-y ${invalid ? "border-danger focus:border-danger focus:ring-danger/30" : ""} ${className}`}
+      className={`${inputBaseClass} min-h-20 resize-y ${invalid ? "border-danger focus:border-danger focus-visible:ring-danger" : ""} ${className}`}
       aria-invalid={invalid || undefined}
       {...props}
     />
@@ -68,7 +68,7 @@ export function PasswordInput({
         value={inputValue}
         placeholder={inputPlaceholder}
         className={`w-full ${inputBaseClass} pl-3 pr-10 ${
-          invalid ? "border-danger focus:border-danger focus:ring-danger/30" : ""
+          invalid ? "border-danger focus:border-danger focus-visible:ring-danger" : ""
         } ${className}`}
         aria-invalid={invalid || undefined}
         {...props}
