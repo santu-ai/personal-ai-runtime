@@ -342,7 +342,12 @@ export default function GoalDetailPanel({
               恢复
             </button>
           )}
-          <Button size="sm" variant="danger" onClick={() => onRequestDelete(goal)}>
+          <Button
+            size="sm"
+            variant="danger"
+            data-goal-delete={goal.id}
+            onClick={() => onRequestDelete(goal)}
+          >
             删除
           </Button>
         </div>

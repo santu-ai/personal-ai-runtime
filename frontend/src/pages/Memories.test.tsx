@@ -833,6 +833,121 @@ describe("MemoriesPage", () => {
     expect(deleteMemory).toHaveBeenCalledTimes(2);
   });
 
+  it("moves focus to the next forget button after a memory is forgotten", async () => {
+    vi.mocked(listMemoriesGrouped).mockResolvedValue({
+      memories: [
+        {
+          id: "m1",
+          content: "先记",
+          category: "habit",
+          created_at: "2026-09-02T00:00:00Z",
+        },
+        {
+          id: "m2",
+          content: "后记",
+          category: "habit",
+          created_at: "2026-09-01T00:00:00Z",
+        },
+      ],
+      total: 2,
+    });
+    let release: () => void = () => {};
+    vi.mocked(deleteMemory).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ status: "ok" });
+        }),
+    );
+    renderWithRouter(<MemoriesPage />);
+    const row = (await screen.findByText("先记")).closest("li");
+    expect(row).toBeTruthy();
+    const remove = within(row as HTMLElement).getByRole("button", { name: "忘掉" });
+    remove.focus();
+    fireEvent.click(remove);
+    const dialog = await screen.findByRole("dialog", { name: "忘掉这条记忆？" });
+    const confirm = within(dialog).getByRole("button", { name: "忘掉" });
+    confirm.focus();
+    fireEvent.click(confirm);
+
+    await act(async () => {
+      release();
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "忘掉这条记忆？" })).not.toBeInTheDocument(),
+    );
+    const next = screen.getByText("后记").closest("li");
+    expect(within(next as HTMLElement).getByRole("button", { name: "忘掉" })).toHaveFocus();
+  });
+
+  it("moves focus to the previous forget button when the last memory is forgotten", async () => {
+    vi.mocked(listMemoriesGrouped).mockResolvedValue({
+      memories: [
+        {
+          id: "m1",
+          content: "先记",
+          category: "habit",
+          created_at: "2026-09-02T00:00:00Z",
+        },
+        {
+          id: "m2",
+          content: "后记",
+          category: "habit",
+          created_at: "2026-09-01T00:00:00Z",
+        },
+      ],
+      total: 2,
+    });
+    vi.mocked(deleteMemory).mockResolvedValue({ status: "ok" });
+    renderWithRouter(<MemoriesPage />);
+    const row = (await screen.findByText("后记")).closest("li");
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "忘掉" }));
+    const dialog = await screen.findByRole("dialog", { name: "忘掉这条记忆？" });
+    within(dialog).getByRole("button", { name: "忘掉" }).focus();
+    fireEvent.click(within(dialog).getByRole("button", { name: "忘掉" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "忘掉这条记忆？" })).not.toBeInTheDocument(),
+    );
+    const previous = screen.getByText("先记").closest("li");
+    expect(within(previous as HTMLElement).getByRole("button", { name: "忘掉" })).toHaveFocus();
+  });
+
+  it("moves focus to the capture field when the only memory is forgotten", async () => {
+    vi.mocked(deleteMemory).mockResolvedValue({ status: "ok" });
+    renderWithRouter(<MemoriesPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "忘掉" }));
+    const dialog = await screen.findByRole("dialog", { name: "忘掉这条记忆？" });
+    within(dialog).getByRole("button", { name: "忘掉" }).focus();
+    fireEvent.click(within(dialog).getByRole("button", { name: "忘掉" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "忘掉这条记忆？" })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByPlaceholderText("告诉我一件关于你的事，我会记住...")).toHaveFocus();
+  });
+
+  it("does not pull forget focus back when it already moved", async () => {
+    let release: () => void = () => {};
+    vi.mocked(deleteMemory).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ status: "ok" });
+        }),
+    );
+    renderWithRouter(<MemoriesPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "忘掉" }));
+    const dialog = await screen.findByRole("dialog", { name: "忘掉这条记忆？" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "忘掉" }));
+    const input = screen.getByPlaceholderText("告诉我一件关于你的事，我会记住...");
+    input.focus();
+
+    await act(async () => {
+      release();
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "忘掉这条记忆？" })).not.toBeInTheDocument(),
+    );
+    expect(input).toHaveFocus();
+  });
+
   it("does not ratify twice and moves focus to the next proposed row", async () => {
     let proposed = [
       {

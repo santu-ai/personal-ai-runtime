@@ -500,6 +500,77 @@ describe("GoalsPage", () => {
     expect(deleteGoal).toHaveBeenCalledTimes(2);
   });
 
+  it("moves focus to the next goal after delete", async () => {
+    const next = { ...sampleGoal, id: "g2", title: "写文档", progress: 0 };
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal, next]);
+    vi.mocked(deleteGoal).mockResolvedValue(undefined);
+    renderGoals("/goals/g1");
+    fireEvent.click(await screen.findByRole("button", { name: "删除" }));
+    const dialog = await screen.findByRole("dialog", { name: "删除目标" });
+    within(dialog).getByRole("button", { name: "删除" }).focus();
+    fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "删除目标" })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole("link", { name: /写文档/ })).toHaveFocus();
+  });
+
+  it("moves focus to the previous goal when the last one is deleted", async () => {
+    const last = { ...sampleGoal, id: "g2", title: "写文档", progress: 0 };
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal, last]);
+    vi.mocked(getGoal).mockResolvedValue(last);
+    vi.mocked(deleteGoal).mockResolvedValue(undefined);
+    renderGoals("/goals/g2");
+    fireEvent.click(await screen.findByRole("button", { name: "删除" }));
+    const dialog = await screen.findByRole("dialog", { name: "删除目标" });
+    within(dialog).getByRole("button", { name: "删除" }).focus();
+    fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "删除目标" })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole("link", { name: /学习 Rust/ })).toHaveFocus();
+  });
+
+  it("moves focus to 新建 when the only goal is deleted", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    vi.mocked(deleteGoal).mockResolvedValue(undefined);
+    renderGoals("/goals/g1");
+    fireEvent.click(await screen.findByRole("button", { name: "删除" }));
+    const dialog = await screen.findByRole("dialog", { name: "删除目标" });
+    within(dialog).getByRole("button", { name: "删除" }).focus();
+    fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "删除目标" })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole("button", { name: "+ 新建" })).toHaveFocus();
+  });
+
+  it("does not pull goal delete focus back when it already moved", async () => {
+    const next = { ...sampleGoal, id: "g2", title: "写文档", progress: 0 };
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal, next]);
+    let release: () => void = () => {};
+    vi.mocked(deleteGoal).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve(undefined);
+        }),
+    );
+    renderGoals("/goals/g1");
+    fireEvent.click(await screen.findByRole("button", { name: "删除" }));
+    const dialog = await screen.findByRole("dialog", { name: "删除目标" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
+    const create = screen.getByRole("button", { name: "+ 新建" });
+    create.focus();
+
+    await act(async () => {
+      release();
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "删除目标" })).not.toBeInTheDocument(),
+    );
+    expect(create).toHaveFocus();
+  });
+
   it("does not send a second status write, keeps focus, then moves it to 恢复", async () => {
     let current: WorkItem = { ...sampleGoal, status: "active" };
     vi.mocked(listGoals).mockImplementation(async () => [current]);

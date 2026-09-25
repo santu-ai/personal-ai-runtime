@@ -192,6 +192,8 @@ export default function MemoryListItem({
             来源
           </button>
           <button
+            type="button"
+            data-memory-forget={m.id}
             onClick={() => onDelete(m)}
             className="text-xs text-fg-tertiary hover:text-danger opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
           >

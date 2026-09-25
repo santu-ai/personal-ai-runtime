@@ -74,6 +74,38 @@ function focusGoalTitle(): boolean {
   return document.activeElement === input;
 }
 
+function focusGoalLink(goalId: string): boolean {
+  const link = document.querySelector<HTMLElement>(goalRowSelector(goalId));
+  if (!link) return false;
+  link.focus();
+  return document.activeElement === link;
+}
+
+/** 焦点在页面空白处，或还停在刚删掉的详情「删除」上。已经在别的控件上就不再抢。 */
+function goalDeleteFocusIdle(goalId: string): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  return active.getAttribute("data-goal-delete") === goalId;
+}
+
+function goalsInVisualOrder(goals: readonly WorkItem[]): WorkItem[] {
+  const open: WorkItem[] = [];
+  const done: WorkItem[] = [];
+  for (const goal of goals) {
+    if (goal.status === "completed") done.push(goal);
+    else open.push(goal);
+  }
+  return [...open, ...done];
+}
+
+function neighborGoalId(goals: readonly WorkItem[], id: string): string | null {
+  const rows = goalsInVisualOrder(goals);
+  const index = rows.findIndex((row) => row.id === id);
+  if (index < 0) return null;
+  return rows[index + 1]?.id ?? rows[index - 1]?.id ?? null;
+}
+
 function focusNewGoalButton(): boolean {
   const button = document.querySelector<HTMLElement>("[data-goal-anchor='new']");
   if (!button || (button instanceof HTMLButtonElement && button.disabled)) return false;
@@ -83,6 +115,8 @@ function focusNewGoalButton(): boolean {
 
 type CreateHandoff =
   { kind: "failed" } | { kind: "draft" } | { kind: "created"; id: string; updatedAt: number };
+
+type GoalDeleteHandoff = { id: string; nextId: string | null };
 
 export default function GoalsPage() {
   const { goalId: urlGoalId } = useParams();
@@ -117,6 +151,7 @@ export default function GoalsPage() {
   const [deleteTarget, setDeleteTarget] = useState<WorkItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const deletingRef = useRef(false);
+  const deleteHandoff = useRef<GoalDeleteHandoff | null>(null);
   const addError = useErrorStore((s) => s.addError);
   const quickChat = useQuickChat();
   const chatLock = useRef(false);
@@ -268,11 +303,15 @@ export default function GoalsPage() {
   const handleDeleteGoal = async () => {
     if (!deleteTarget || deletingRef.current) return;
     const goalId = deleteTarget.id;
+    const nextId = neighborGoalId(goals, goalId);
     deletingRef.current = true;
+    deleteHandoff.current = null;
     setDeleting(true);
+    let removed = false;
     try {
       await deleteGoal(goalId);
       setDeleteTarget(null);
+      removed = true;
       if (urlGoalId === goalId) {
         navigate("/goals");
       }
@@ -281,10 +320,21 @@ export default function GoalsPage() {
       const msg = err instanceof ApiError ? err.message : "删除目标失败";
       addError(msg, "目标");
     } finally {
+      if (removed) deleteHandoff.current = { id: goalId, nextId };
       deletingRef.current = false;
       setDeleting(false);
     }
   };
+
+  useEffect(() => {
+    if (deleting) return;
+    const pending = deleteHandoff.current;
+    if (!pending) return;
+    deleteHandoff.current = null;
+    if (!goalDeleteFocusIdle(pending.id)) return;
+    if (pending.nextId && focusGoalLink(pending.nextId)) return;
+    focusNewGoalButton();
+  }, [deleting, goals, urlGoalId]);
 
   const detailOpen = Boolean(urlGoalId);
   const showSplit = goals.length > 0 || detailOpen;
