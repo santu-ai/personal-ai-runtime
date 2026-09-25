@@ -21,7 +21,7 @@ import {
   buildTodayBuckets,
   mergeLiveAndServerNotifications,
 } from "../components/dashboard/todayBuckets";
-import { Shield, Radar } from "lucide-react";
+import { Radar, RefreshCw, Shield } from "lucide-react";
 import Button from "../components/ui/Button";
 import PageHeader from "../components/ui/PageHeader";
 import LoadErrorNotice, {
@@ -100,6 +100,19 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 }
 
+/** 焦点在页面空白处，或已经卸下的节点上。 */
+function focusIsBlank(): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  return false;
+}
+
+function focusOnDashboardRefresh(): boolean {
+  const active = document.activeElement;
+  return active instanceof HTMLElement && active.hasAttribute("data-dashboard-refresh");
+}
+
 export default function DashboardPage() {
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -150,9 +163,24 @@ export default function DashboardPage() {
     loading,
     error,
     errorBusy,
+    fetching = false,
     refresh,
     retryNotifications,
   } = useDashboard();
+  const refreshLock = useRef(false);
+  const [refreshBusy, setRefreshBusy] = useState(false);
+  const refreshFocus = useRef(false);
+  const handleRefresh = () => {
+    // 这次读取回来之前不再发一次。已经有读取在进行时再点也不另发。
+    if (refreshLock.current || loading || fetching) return;
+    refreshLock.current = true;
+    refreshFocus.current = true;
+    setRefreshBusy(true);
+    void Promise.allSettled([Promise.resolve(refresh())]).finally(() => {
+      refreshLock.current = false;
+      setRefreshBusy(false);
+    });
+  };
   const liveNotifications = useLiveNotifications();
   const approvalsQuery = useApprovalsQuery();
   const inboxQuery = useInboxQuery();
@@ -260,6 +288,14 @@ export default function DashboardPage() {
         : null;
     (target ?? fallback)?.focus();
   }, [tab]);
+
+  // 刷新结束时，焦点还在按钮上或落在页面空白处就留在「刷新」。已经移走就不再抢。
+  useLayoutEffect(() => {
+    if (refreshBusy || !refreshFocus.current) return;
+    refreshFocus.current = false;
+    if (!focusIsBlank() && !focusOnDashboardRefresh()) return;
+    document.querySelector<HTMLButtonElement>("[data-dashboard-refresh]")?.focus();
+  }, [refreshBusy]);
 
   useEffect(() => {
     if (tab === "today") return;
@@ -385,7 +421,19 @@ export default function DashboardPage() {
           description={getDateString()}
           actions={
             <>
-              <Button variant="secondary" size="sm" onClick={refresh}>
+              <Button
+                variant="secondary"
+                size="sm"
+                data-dashboard-refresh=""
+                aria-busy={refreshBusy || undefined}
+                className={refreshBusy ? "opacity-50" : ""}
+                onClick={handleRefresh}
+              >
+                <RefreshCw
+                  size={14}
+                  className={fetching || refreshBusy ? "animate-spin" : ""}
+                  aria-hidden="true"
+                />
                 刷新
               </Button>
               <Button

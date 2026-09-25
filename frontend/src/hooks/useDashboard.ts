@@ -141,14 +141,16 @@ export function useDashboard() {
     addError(softErrorMsg, "仪表盘");
   }, [softErrorMsg, addError]);
 
-  const refresh = useCallback(() => {
-    cost.refetch();
-    costByModel.refetch();
-    tools.refetch();
-    memory.refetch();
-    health.refetch();
-    notifications.refetch();
-    dashboard.refetch();
+  const refresh = useCallback(async () => {
+    await Promise.all([
+      cost.refetch(),
+      costByModel.refetch(),
+      tools.refetch(),
+      memory.refetch(),
+      health.refetch(),
+      notifications.refetch(),
+      dashboard.refetch(),
+    ]);
   }, [cost, costByModel, tools, memory, health, notifications, dashboard]);
 
   const retryNotifications = useCallback(() => {
@@ -170,6 +172,7 @@ export function useDashboard() {
     loading,
     error: shownFatal ?? "",
     errorBusy,
+    fetching: queries.some((q) => q.isFetching),
     refresh,
     retryNotifications,
   };

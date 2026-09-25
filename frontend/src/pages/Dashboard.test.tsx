@@ -200,6 +200,7 @@ function mockDashboardData(overrides: Partial<ReturnType<typeof useDashboard>> =
     loading: false,
     error: "",
     errorBusy: false,
+    fetching: false,
     refresh: vi.fn(),
     ...overrides,
   });
@@ -458,12 +459,112 @@ describe("DashboardPage", () => {
     expect(screen.getByText("Hello")).toBeInTheDocument();
   });
 
-  it("calls refresh on button click", () => {
-    const mockRefresh = vi.fn();
+  it("calls refresh on button click", async () => {
+    const mockRefresh = vi.fn().mockResolvedValue(undefined);
     mockDashboardData({ refresh: mockRefresh });
     renderDashboard();
-    const refreshButtons = screen.getAllByText("刷新");
-    fireEvent.click(refreshButtons[0]);
+    const refresh = screen.getByRole("button", { name: "刷新" });
+    fireEvent.click(refresh);
+    expect(mockRefresh).toHaveBeenCalledOnce();
+    await waitFor(() => expect(refresh).not.toHaveAttribute("aria-busy"));
+  });
+
+  it("does not refresh twice and keeps focus on 刷新", async () => {
+    let release: () => void = () => {};
+    const mockRefresh = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    mockDashboardData({ refresh: mockRefresh });
+    renderDashboard();
+    const refresh = screen.getByRole("button", { name: "刷新" });
+    refresh.focus();
+    fireEvent.click(refresh);
+    fireEvent.click(refresh);
+    await waitFor(() => expect(refresh).toHaveAttribute("aria-busy", "true"));
+    expect(refresh).toBeEnabled();
+    expect(refresh).toHaveFocus();
+    expect(refresh).toHaveClass("opacity-50");
+    expect(refresh.querySelector("svg")).toHaveClass("animate-spin");
+    expect(mockRefresh).toHaveBeenCalledOnce();
+
+    release();
+    await waitFor(() => expect(refresh).not.toHaveAttribute("aria-busy"));
+    expect(refresh).not.toHaveClass("opacity-50");
+    expect(refresh).toHaveFocus();
+    expect(mockRefresh).toHaveBeenCalledOnce();
+
+    let releaseAgain: () => void = () => {};
+    mockRefresh.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseAgain = resolve;
+        }),
+    );
+    fireEvent.click(refresh);
+    expect(mockRefresh).toHaveBeenCalledTimes(2);
+    releaseAgain();
+    await waitFor(() => expect(refresh).not.toHaveAttribute("aria-busy"));
+    expect(refresh).toHaveFocus();
+  });
+
+  it("does not start another read when 刷新 is clicked during an in-flight read", () => {
+    const mockRefresh = vi.fn();
+    mockDashboardData({ fetching: true, refresh: mockRefresh });
+    renderDashboard();
+    const refresh = screen.getByRole("button", { name: "刷新" });
+    expect(refresh.querySelector("svg")).toHaveClass("animate-spin");
+    fireEvent.click(refresh);
+    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(refresh).toBeEnabled();
+    expect(refresh).not.toHaveAttribute("aria-busy");
+    expect(refresh).not.toHaveClass("opacity-50");
+  });
+
+  it("returns focus to 刷新 when it landed on a blank spot", async () => {
+    let release: () => void = () => {};
+    const mockRefresh = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    mockDashboardData({ refresh: mockRefresh });
+    renderDashboard();
+    const refresh = screen.getByRole("button", { name: "刷新" });
+    refresh.focus();
+    fireEvent.click(refresh);
+    await waitFor(() => expect(refresh).toHaveAttribute("aria-busy", "true"));
+    refresh.blur();
+    expect(refresh).not.toHaveFocus();
+
+    release();
+    await waitFor(() => expect(refresh).toHaveFocus());
+    expect(refresh).not.toHaveAttribute("aria-busy");
+  });
+
+  it("does not pull focus back to 刷新 when focus already moved", async () => {
+    let release: () => void = () => {};
+    const mockRefresh = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    mockDashboardData({ refresh: mockRefresh });
+    renderDashboard();
+    const refresh = screen.getByRole("button", { name: "刷新" });
+    refresh.focus();
+    fireEvent.click(refresh);
+    await waitFor(() => expect(refresh).toHaveAttribute("aria-busy", "true"));
+    const monitors = screen.getByRole("button", { name: "监控" });
+    monitors.focus();
+
+    release();
+    await waitFor(() => expect(refresh).not.toHaveAttribute("aria-busy"));
+    expect(monitors).toHaveFocus();
     expect(mockRefresh).toHaveBeenCalledOnce();
   });
 
