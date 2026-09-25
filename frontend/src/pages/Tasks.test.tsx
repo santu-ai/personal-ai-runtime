@@ -231,6 +231,21 @@ function hideTaskList() {
   });
 }
 
+function asRunning(work: WorkItem): WorkItem {
+  return {
+    ...work,
+    status: "running",
+    execution: work.execution
+      ? { ...work.execution, handler_execution: null }
+      : {
+          steps: [],
+          resume_from: 0,
+          previous_output: {},
+          handler_execution: null,
+        },
+  };
+}
+
 function withReview(work: WorkItem, status: "accepted" | "changes_requested"): WorkItem {
   const bundle = work.delivery_bundle;
   if (!bundle?.current) return work;
@@ -3281,6 +3296,163 @@ describe("TasksPage", () => {
     observer.disconnect();
     expect(focusWhenGone).toBe(currentTaskLink());
     expect(currentTaskLink()).toHaveFocus();
+  });
+
+  it("moves focus to the open task in the same turn 执行 leaves after execute", async () => {
+    const box = trackTask(sampleTask, "task");
+    let release: () => void = () => {};
+    vi.mocked(executeWorkItem).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            box.item = asRunning(box.item);
+            resolve(box.item);
+          };
+        }),
+    );
+    renderTasks("/tasks/task_1");
+    const execute = await screen.findByRole("button", { name: "执行" });
+    execute.focus();
+    fireEvent.click(execute);
+    const dialog = await screen.findByRole("dialog", { name: "确认执行计划" });
+    const confirm = within(dialog).getByRole("button", { name: "确认执行" });
+    confirm.focus();
+    fireEvent.click(confirm);
+    await within(dialog).findByRole("button", { name: "执行中..." });
+
+    let focusWhenGone: Element | null = null;
+    const observer = new MutationObserver(() => {
+      if (screen.queryByRole("button", { name: "执行" })) return;
+      focusWhenGone ??= document.activeElement;
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    await act(async () => {
+      release();
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "执行" })).not.toBeInTheDocument(),
+    );
+    observer.disconnect();
+    expect(screen.queryByRole("button", { name: "重新执行" })).not.toBeInTheDocument();
+    expect(focusWhenGone).toBe(currentTaskLink());
+    expect(currentTaskLink()).toHaveFocus();
+  });
+
+  it("focuses 返回列表 when the open task link is hidden after 执行 leaves", async () => {
+    const box = trackTask(sampleTask, "task");
+    let release: () => void = () => {};
+    vi.mocked(executeWorkItem).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            box.item = asRunning(box.item);
+            resolve(box.item);
+          };
+        }),
+    );
+    const hidden = hideTaskList();
+    try {
+      renderTasks("/tasks/task_1");
+      fireEvent.click(await screen.findByRole("button", { name: "执行" }));
+      fireEvent.click(await screen.findByRole("button", { name: "确认执行" }));
+      await act(async () => {
+        release();
+      });
+      await waitFor(() => expect(screen.getByRole("link", { name: "返回列表" })).toHaveFocus());
+      expect(currentTaskLink()).not.toHaveFocus();
+    } finally {
+      hidden.mockRestore();
+    }
+  });
+
+  it("keeps focus on 执行 until the status refreshes, and does not steal it after it moved", async () => {
+    let item = sampleTask;
+    let hangDetail = false;
+    let releaseDetail: (() => void) | null = null;
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [item];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          if (!hangDetail) {
+            resolve(item);
+            return;
+          }
+          releaseDetail = () => resolve(item);
+        }),
+    );
+    vi.mocked(executeWorkItem).mockResolvedValueOnce(sampleTask);
+    renderTasks("/tasks/task_1");
+    const opener = await screen.findByRole("button", { name: "执行" });
+    opener.focus();
+    fireEvent.click(opener);
+    hangDetail = true;
+    fireEvent.click(await screen.findByRole("button", { name: "确认执行" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "确认执行计划" })).not.toBeInTheDocument(),
+    );
+    const execute = screen.getByRole("button", { name: "执行" });
+    expect(execute).toHaveFocus();
+    const create = screen.getByRole("button", { name: "新建简报" });
+    create.focus();
+
+    item = asRunning(item);
+    expect(releaseDetail).not.toBeNull();
+    await act(async () => {
+      releaseDetail?.();
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "执行" })).not.toBeInTheDocument(),
+    );
+    expect(create).toHaveFocus();
+    expect(currentTaskLink()).not.toHaveFocus();
+  });
+
+  it("moves focus to the open task in the same turn 再次运行 leaves after rerun", async () => {
+    const box = trackTask(briefTask, "task");
+    let release: () => void = () => {};
+    vi.mocked(rerunProjectBrief).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            box.item = asRunning(box.item);
+            resolve({
+              work_id: "brief_1",
+              supersedes_delivery_id: "d2",
+              work: box.item,
+            });
+          };
+        }),
+    );
+    renderTasks("/tasks/brief_1");
+    const rerun = await screen.findByRole("button", { name: "再次运行" });
+    rerun.focus();
+    fireEvent.click(rerun);
+    const dialog = await screen.findByRole("dialog", { name: "再次运行同一份简报" });
+    const confirm = within(dialog).getByRole("button", { name: "确认再次运行" });
+    confirm.focus();
+    fireEvent.click(confirm);
+    await within(dialog).findByRole("button", { name: "再次运行中..." });
+
+    let focusWhenGone: Element | null = null;
+    const observer = new MutationObserver(() => {
+      if (screen.queryByRole("button", { name: "再次运行" })) return;
+      focusWhenGone ??= document.activeElement;
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    await act(async () => {
+      release();
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "再次运行" })).not.toBeInTheDocument(),
+    );
+    observer.disconnect();
+    expect(screen.queryByRole("button", { name: "定时再次运行" })).not.toBeInTheDocument();
+    expect(focusWhenGone).toBe(currentTaskLink());
+    expect(currentTaskLink()).toHaveFocus();
+    expect(screen.getByRole("button", { name: "验收" })).not.toHaveFocus();
   });
 
   it("keeps the rework reason until rework succeeds and ignores dismiss while submitting", async () => {
