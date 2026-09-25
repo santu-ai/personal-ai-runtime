@@ -66,10 +66,12 @@ describe("Dialog", () => {
       />,
     );
     const btn = screen.getByRole("button", { name: "忘掉中..." });
-    expect(btn).toBeDisabled();
+    btn.focus();
+    expect(btn).toBeEnabled();
     expect(btn).toHaveAttribute("aria-busy", "true");
     fireEvent.click(btn);
     expect(onConfirm).not.toHaveBeenCalled();
+    expect(btn).toHaveFocus();
   });
 
   it("ignores Escape, backdrop, and cancel while confirm is busy", () => {
@@ -88,7 +90,7 @@ describe("Dialog", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     fireEvent.click(container.firstChild as HTMLElement);
     const cancel = screen.getByRole("button", { name: "取消" });
-    expect(cancel).toBeDisabled();
+    expect(cancel).toBeEnabled();
     fireEvent.click(cancel);
     fireEvent.click(screen.getByRole("button", { name: "忘掉中..." }));
     expect(onCancel).not.toHaveBeenCalled();

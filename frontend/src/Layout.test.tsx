@@ -179,10 +179,10 @@ describe("Layout delete conversation", () => {
     fireEvent.click(dialog.parentElement as HTMLElement);
 
     const pending = await within(dialog).findByRole("button", { name: "删除中..." });
-    expect(pending).toBeDisabled();
+    expect(pending).toBeEnabled();
     expect(pending).toHaveAttribute("aria-busy", "true");
     const cancel = within(dialog).getByRole("button", { name: "取消" });
-    expect(cancel).toBeDisabled();
+    expect(cancel).toBeEnabled();
     fireEvent.click(cancel);
     expect(deleteCalls).toBe(1);
     expect(screen.getByTestId("location")).toHaveTextContent("/chat/c1");

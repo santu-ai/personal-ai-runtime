@@ -636,7 +636,7 @@ describe("MemoriesPage", () => {
     fireEvent.keyDown(window, { key: "Escape" });
 
     const pending = await within(dialog).findByRole("button", { name: "忘掉中..." });
-    expect(pending).toBeDisabled();
+    expect(pending).toBeEnabled();
     expect(pending).toHaveAttribute("aria-busy", "true");
     expect(deleteMemory).toHaveBeenCalledTimes(1);
     expect(deleteMemory).toHaveBeenCalledWith("m1");
