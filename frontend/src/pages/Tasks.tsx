@@ -89,6 +89,9 @@ type TaskDirectHandoff = {
 /** 验收或返工已经写成功，等交付刷新后「验收」「返工」卸下再交接焦点。 */
 type ReviewHandoff = { taskId: string };
 
+/** 执行或再次运行已经写成功，等状态刷新后按钮卸下再交接焦点。 */
+type StatusHandoff = { taskId: string; kind: "execute" | "rerun" };
+
 /** 焦点在页面空白处，或还停在已经卸掉的按钮上，才安放。已经在别的控件上就不再抢。 */
 function focusIsIdle(): boolean {
   const active = document.activeElement;
@@ -116,12 +119,16 @@ function focusShown(selector: string): boolean {
   return false;
 }
 
+function placeTaskLinkFocus(): void {
+  if (focusShown("[data-task-current]")) return;
+  focusShown("[data-task-back]");
+}
+
 function placeDirectActionFocus(handoff: TaskDirectHandoff): void {
   if (handoff.kind === "adopt" && handoff.index !== undefined) {
     if (focusShown(`[data-task-adopted="${handoff.index}"]`)) return;
   }
-  if (focusShown("[data-task-current]")) return;
-  focusShown("[data-task-back]");
+  placeTaskLinkFocus();
 }
 
 function statusLabel(status: string): string {
@@ -1061,6 +1068,7 @@ export default function TasksPage() {
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const focusAfter = useRef<TaskDirectHandoff | null>(null);
   const reviewHandoff = useRef<ReviewHandoff | null>(null);
+  const statusHandoff = useRef<StatusHandoff | null>(null);
   const taskIdRef = useRef(urlTaskId);
   taskIdRef.current = urlTaskId;
   const [dialogBusy, setDialogBusy] = useState(false);
@@ -1417,15 +1425,21 @@ export default function TasksPage() {
 
   const handleExecute = async () => {
     if (!selected || !beginDialog()) return;
+    const taskId = selected.id;
     let handoff: TaskDialogHandoff | null = null;
+    let closed = false;
     try {
-      await executeWorkItem(selected.id);
+      await executeWorkItem(taskId);
       setConfirmExecute(false);
+      closed = true;
       invalidate();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "启动任务失败", "任务");
       handoff = { kind: "failed", dialog: "execute" };
     } finally {
+      if (closed && taskIdRef.current === taskId) {
+        statusHandoff.current = { taskId, kind: "execute" };
+      }
       dialogHandoff.current = handoff;
       endDialog();
     }
@@ -1433,15 +1447,21 @@ export default function TasksPage() {
 
   const handleRerun = async () => {
     if (!selected || !beginDialog()) return;
+    const taskId = selected.id;
     let handoff: TaskDialogHandoff | null = null;
+    let closed = false;
     try {
-      await rerunProjectBrief(selected.id);
+      await rerunProjectBrief(taskId);
       setConfirmRerun(false);
+      closed = true;
       invalidate();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "再次运行失败", "任务");
       handoff = { kind: "failed", dialog: "rerun" };
     } finally {
+      if (closed && taskIdRef.current === taskId) {
+        statusHandoff.current = { taskId, kind: "rerun" };
+      }
       dialogHandoff.current = handoff;
       endDialog();
     }
@@ -1759,6 +1779,22 @@ export default function TasksPage() {
     if (!focusIsIdle()) return;
     placeDirectActionFocus({ taskId: pending.taskId, kind: "complete" });
   }, [selected, dialogBusy]);
+
+  // 对话框先关掉，焦点回到「执行」「重新执行」或「再次运行」。
+  // 状态刷新后这些按钮才卸下。放到绘制前，不把焦点留在页面空白。
+  useLayoutEffect(() => {
+    const pending = statusHandoff.current;
+    if (!pending || dialogBusy) return;
+    if (!selected || pending.taskId !== selected.id) {
+      statusHandoff.current = null;
+      return;
+    }
+    const stillThere = pending.kind === "execute" ? Boolean(canExecute) : canRerunSameBrief;
+    if (stillThere) return;
+    statusHandoff.current = null;
+    if (!focusIsIdle()) return;
+    placeTaskLinkFocus();
+  }, [selected, dialogBusy, canExecute, canRerunSameBrief]);
 
   useEffect(() => {
     const pending = focusAfter.current;
