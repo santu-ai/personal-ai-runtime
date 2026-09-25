@@ -213,7 +213,7 @@ function focusContinueChat(memoryId: string): void {
 
 type ForgetHandoff = { id: string; nextId: string | null; anchor: "capture" | "tab" };
 
-/** 绘制前通知。测试在忘掉确认框卸下的同一轮读取焦点。 */
+/** 绘制前通知。测试在确认框或这一行卸下的同一轮读取焦点。 */
 export const memoryPageLayoutFocus = {
   notify: null as null | (() => void),
 };
@@ -642,7 +642,9 @@ export default function MemoriesPage() {
     }
   };
 
-  useEffect(() => {
+  // 这一条离开列表后才交焦点。放到绘制前，不把焦点留在页面空白。
+  // 已经移到别的控件上就不再抢。
+  useLayoutEffect(() => {
     const pending = focusAfter.current;
     if (!pending || ratifying.has(pending.actedId)) return;
     if (!focusIsIdle(pending.actedId)) {

@@ -74,7 +74,7 @@ vi.mock("../stores/chatStore", () => {
 });
 
 describe("MemoriesPage", () => {
-  /** 确认框卸下的那一轮，绘制前焦点已经在下一行上。useEffect 会先停在页面空白。 */
+  /** 这一行或确认框卸下的那一轮，绘制前焦点已经在目标上。useEffect 会先停在页面空白。 */
   function captureFocusWhenGone(gone: () => boolean): { read: () => Element | null } {
     let focusAtLayout: Element | null = null;
     memoryPageLayoutFocus.notify = () => {
@@ -1026,11 +1026,16 @@ describe("MemoriesPage", () => {
     expect(screen.queryByRole("dialog", { name: "拒绝这条记忆？" })).not.toBeInTheDocument();
     expect(ratifyMemory).toHaveBeenCalledTimes(1);
 
+    const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("第一条"));
     proposed = [proposed[1]];
-    release({ status: "ok", claim_status: "ratified" });
-    await waitFor(() => expect(screen.getByRole("button", { name: "确认" })).toHaveFocus());
+    await act(async () => {
+      release({ status: "ok", claim_status: "ratified" });
+    });
+    const next = screen.getByRole("button", { name: "确认" });
+    await waitFor(() => expect(next).toHaveFocus());
     expect(screen.getByText("第二条")).toBeInTheDocument();
     expect(screen.queryByText("第一条")).not.toBeInTheDocument();
+    expect(focusWhenGone.read()).toBe(next);
     expect(ratifyMemory).toHaveBeenCalledWith("p1");
   });
 
@@ -1112,10 +1117,16 @@ describe("MemoriesPage", () => {
     fireEvent.click(first);
     await waitFor(() => expect(first).toHaveAttribute("aria-busy", "true"));
     second.focus();
+    const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("第一条"));
     proposed = [proposed[1]];
-    release({ status: "ok", claim_status: "ratified" });
+    await act(async () => {
+      release({ status: "ok", claim_status: "ratified" });
+    });
     await waitFor(() => expect(screen.queryByText("第一条")).not.toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "确认" })).toHaveFocus();
+    const kept = screen.getByRole("button", { name: "确认" });
+    expect(kept).toHaveFocus();
+    expect(focusWhenGone.read()).toBe(kept);
+    expect(focusWhenGone.read()).not.toBe(document.body);
   });
 
   it("returns to the review tab after the last confirm leaves", async () => {
@@ -1139,9 +1150,14 @@ describe("MemoriesPage", () => {
     });
 
     renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
-    fireEvent.click(await screen.findByRole("button", { name: "确认" }));
-    await waitFor(() => expect(screen.getByRole("tab", { name: "待确认" })).toHaveFocus());
+    const confirm = await screen.findByRole("button", { name: "确认" });
+    confirm.focus();
+    const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("只剩这一条"));
+    fireEvent.click(confirm);
+    const tab = screen.getByRole("tab", { name: "待确认" });
+    await waitFor(() => expect(tab).toHaveFocus());
     expect(screen.getByText("没有待确认的记忆。")).toBeInTheDocument();
+    expect(focusWhenGone.read()).toBe(tab);
   });
 
   it("moves focus to the next restore button", async () => {
@@ -1176,9 +1192,11 @@ describe("MemoriesPage", () => {
     renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
     const [first, second] = await screen.findAllByRole("button", { name: "恢复" });
     first.focus();
+    const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("先恢复这条"));
     fireEvent.click(first);
     await waitFor(() => expect(second).toHaveFocus());
     expect(screen.queryByText("先恢复这条")).not.toBeInTheDocument();
+    expect(focusWhenGone.read()).toBe(second);
     expect(ratifyMemory).toHaveBeenCalledTimes(1);
     expect(ratifyMemory).toHaveBeenCalledWith("r1");
   });
@@ -1212,11 +1230,16 @@ describe("MemoriesPage", () => {
     });
 
     renderWithRouter(<MemoriesPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "确认" }));
-    await waitFor(() =>
-      expect(screen.getByPlaceholderText("告诉我一件关于你的事，我会记住...")).toHaveFocus(),
+    const confirm = await screen.findByRole("button", { name: "确认" });
+    confirm.focus();
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("button", { name: "确认" }),
     );
+    fireEvent.click(confirm);
+    const input = screen.getByPlaceholderText("告诉我一件关于你的事，我会记住...");
+    await waitFor(() => expect(input).toHaveFocus());
     expect(screen.queryByRole("button", { name: "确认" })).not.toBeInTheDocument();
+    expect(focusWhenGone.read()).toBe(input);
   });
 
   it("does not send bulk confirm twice", async () => {
