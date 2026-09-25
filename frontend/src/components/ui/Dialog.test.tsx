@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import Dialog from "./Dialog";
@@ -51,6 +52,41 @@ describe("Dialog", () => {
     // Outer presentation layer is the backdrop
     fireEvent.click(container.firstChild as HTMLElement);
     expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it("stays open when the opening double-click lands on the backdrop", () => {
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            删除
+          </button>
+          <Dialog
+            open={open}
+            title="删除对话"
+            onConfirm={vi.fn()}
+            onCancel={() => setOpen(false)}
+          />
+        </>
+      );
+    }
+    const { container } = render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
+    expect(screen.getByRole("dialog", { name: "删除对话" })).toBeInTheDocument();
+    const backdrop = container.querySelector("[role='presentation']");
+    expect(backdrop).toBeInstanceOf(HTMLElement);
+    fireEvent.click(backdrop as HTMLElement, { detail: 2 });
+    expect(screen.getByRole("dialog", { name: "删除对话" })).toBeInTheDocument();
+    fireEvent.click(backdrop as HTMLElement, { detail: 1 });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("still confirms when the confirm button is double-clicked", () => {
+    const onConfirm = vi.fn();
+    render(<Dialog open title="删除" onConfirm={onConfirm} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "确认" }), { detail: 2 });
+    expect(onConfirm).toHaveBeenCalledOnce();
   });
 
   it("marks confirm busy and ignores a second click", () => {

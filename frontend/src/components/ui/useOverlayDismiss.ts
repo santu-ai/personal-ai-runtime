@@ -88,6 +88,7 @@ function moveTab(panel: HTMLElement, shiftKey: boolean) {
  * 浮层打开时记住打开前的控件。Esc 关闭。关闭后把焦点还回去。
  * 面板里已经有焦点（失败「重试」或调用方自己放进去的）时不再抢走。
  * Tab 与 Shift+Tab 留在面板里，不会走到后面的页面。
+ * 打开按钮上的连点，第二下会落在刚盖上来的遮罩上，这一下不关。单独点外面仍关掉。
  */
 export function useOverlayDismiss<T extends HTMLElement>(
   open: boolean,
@@ -121,9 +122,20 @@ export function useOverlayDismiss<T extends HTMLElement>(
       event.preventDefault();
       onDismissRef.current();
     };
+    // 连点的第二下 detail >= 2。它落在遮罩上时不关；面板里的连点照常。
+    const onClick = (event: MouseEvent) => {
+      if (event.detail < 2) return;
+      const current = panelRef.current;
+      if (!current) return;
+      const target = event.target;
+      if (target instanceof Node && current.contains(target)) return;
+      event.stopPropagation();
+    };
     window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("click", onClick, true);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("click", onClick, true);
       const previous = previouslyFocused.current;
       previouslyFocused.current = null;
       if (previous?.isConnected) previous.focus();
