@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError, ratifyMemory, rejectMemory } from "../../api/client";
@@ -26,10 +26,16 @@ function groupedOpts(conversationId?: string) {
   };
 }
 
-/** 焦点在页面空白处，或还停在这次点的按钮上，才可以把焦点挪走。 */
+/** 绘制前通知。测试在这一条卸下的同一轮读取焦点。 */
+export const proposedMemoryLayoutFocus = {
+  notify: null as null | (() => void),
+};
+
+/** 焦点在页面空白处、已经卸下的节点，或还停在这次点的按钮上，才可以把焦点挪走。 */
 function focusIsIdle(id: string, action: BannerAction): boolean {
   const active = document.activeElement;
   if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
   return (
     active instanceof HTMLButtonElement &&
     active.getAttribute("data-proposed-id") === id &&
@@ -103,7 +109,9 @@ export default function ProposedMemoryBanner({ className = "", conversationId }:
     return (cached.memories ?? []).slice(0, PREVIEW_LIMIT).map((row) => row.id);
   };
 
-  useEffect(() => {
+  // 这一条离开横幅后才交焦点。放到绘制前，不把焦点留在页面空白。
+  // 已经移到别的控件上就不再抢。
+  useLayoutEffect(() => {
     const pending = focusAfter.current;
     if (!pending || busy.has(pending.id)) return;
     if (!focusIsIdle(pending.id, pending.action)) {
@@ -117,6 +125,10 @@ export default function ProposedMemoryBanner({ className = "", conversationId }:
     if (pending.targetId && proposedCount > 0) return;
     if (focusReviewLink() || focusComposer()) focusAfter.current = null;
   }, [busy, itemKey, proposedCount]);
+
+  useLayoutEffect(() => {
+    proposedMemoryLayoutFocus.notify?.();
+  });
 
   if (proposedCount <= 0) return null;
 
