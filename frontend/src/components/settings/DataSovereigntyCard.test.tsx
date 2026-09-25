@@ -56,9 +56,9 @@ describe("DataSovereigntyCard", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
 
     const pending = await within(dialog).findByRole("button", { name: "销毁中…" });
-    expect(pending).toBeDisabled();
+    expect(pending).toBeEnabled();
     expect(pending).toHaveAttribute("aria-busy", "true");
-    expect(within(dialog).getByRole("button", { name: "取消" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "取消" })).toBeEnabled();
     expect(destroyAllData).toHaveBeenCalledTimes(1);
     expect(dialog).toBeInTheDocument();
     expect(screen.queryByText("数据已销毁，请重新启动应用")).not.toBeInTheDocument();

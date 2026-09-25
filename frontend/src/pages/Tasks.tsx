@@ -937,6 +937,69 @@ function DeliveryMetricsWorks({ items }: { items: DeliveryMetrics["items"] | und
   );
 }
 
+type TaskDialogName = "create" | "accept" | "rework" | "schedule" | "execute" | "rerun";
+type TaskDraftDialog = "create" | "accept" | "rework" | "schedule";
+type TaskDialogHandoff =
+  { kind: "failed"; dialog: TaskDialogName } | { kind: "kept"; dialog: TaskDraftDialog };
+
+interface BriefDraft {
+  title: string;
+  objective: string;
+  emailEnabled: boolean;
+  emailQuery: string;
+  emailDays: string;
+  filePaths: string;
+}
+
+function sameBrief(left: BriefDraft, right: BriefDraft): boolean {
+  return (
+    left.title === right.title &&
+    left.objective === right.objective &&
+    left.emailEnabled === right.emailEnabled &&
+    left.emailQuery === right.emailQuery &&
+    left.emailDays === right.emailDays &&
+    left.filePaths === right.filePaths
+  );
+}
+
+function focusIsBlank(): boolean {
+  const active = document.activeElement;
+  if (!active || active === document.body || active === document.documentElement) return true;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return true;
+  return active.getAttribute("role") === "dialog";
+}
+
+function focusOnTaskDialog(name: TaskDialogName): boolean {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) return false;
+  return (
+    active.getAttribute("data-dialog-confirm") === name ||
+    active.getAttribute("data-task-dialog-field") === name
+  );
+}
+
+function focusTaskDialogField(name: TaskDraftDialog): boolean {
+  const field = document.querySelector<HTMLElement>(`[data-task-dialog-field="${name}"]`);
+  if (!field) return false;
+  if (
+    (field instanceof HTMLInputElement ||
+      field instanceof HTMLTextAreaElement ||
+      field instanceof HTMLSelectElement) &&
+    field.disabled
+  ) {
+    return false;
+  }
+  if (document.activeElement !== field) field.focus();
+  return document.activeElement === field;
+}
+
+function focusTaskDialogConfirm(name: TaskDialogName): boolean {
+  const button = document.querySelector<HTMLButtonElement>(`[data-dialog-confirm="${name}"]`);
+  if (!button || button.disabled) return false;
+  if (document.activeElement !== button) button.focus();
+  return document.activeElement === button;
+}
+
 function RerunFailureReason({ reason }: { reason: string }) {
   const text = reason.trim();
   if (!text) return null;
@@ -977,6 +1040,18 @@ export default function TasksPage() {
   const taskIdRef = useRef(urlTaskId);
   taskIdRef.current = urlTaskId;
   const [dialogBusy, setDialogBusy] = useState(false);
+  const dialogHandoff = useRef<TaskDialogHandoff | null>(null);
+  const briefLive = useRef<BriefDraft>({
+    title: "",
+    objective: "",
+    emailEnabled: true,
+    emailQuery: "",
+    emailDays: "3",
+    filePaths: "",
+  });
+  const acceptLive = useRef("");
+  const reworkLive = useRef("");
+  const scheduleLive = useRef({ hours: "", minutes: "" });
   const [confirmExecute, setConfirmExecute] = useState(false);
   const [confirmRerun, setConfirmRerun] = useState(false);
   const [confirmSchedule, setConfirmSchedule] = useState(false);
@@ -1175,6 +1250,7 @@ export default function TasksPage() {
 
   const beginDialog = () => {
     if (dialogLock.current || actionLock.current) return false;
+    dialogHandoff.current = null;
     dialogLock.current = true;
     setDialogBusy(true);
     setBusy(true);
@@ -1207,68 +1283,139 @@ export default function TasksPage() {
     setBusy(false);
   };
 
+  useEffect(() => {
+    if (dialogBusy) return;
+    const pending = dialogHandoff.current;
+    if (!pending) return;
+    if (pending.kind === "kept") {
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        active.getAttribute("data-task-dialog-field") === pending.dialog
+      ) {
+        dialogHandoff.current = null;
+        return;
+      }
+      if (focusOnTaskDialog(pending.dialog) || focusIsBlank()) {
+        if (focusTaskDialogField(pending.dialog)) dialogHandoff.current = null;
+        return;
+      }
+      dialogHandoff.current = null;
+      return;
+    }
+    if (focusOnTaskDialog(pending.dialog)) {
+      dialogHandoff.current = null;
+      return;
+    }
+    if (!focusIsBlank()) {
+      dialogHandoff.current = null;
+      return;
+    }
+    if (focusTaskDialogConfirm(pending.dialog)) {
+      dialogHandoff.current = null;
+      return;
+    }
+    if (
+      pending.dialog === "create" ||
+      pending.dialog === "accept" ||
+      pending.dialog === "rework" ||
+      pending.dialog === "schedule"
+    ) {
+      if (focusTaskDialogField(pending.dialog)) dialogHandoff.current = null;
+    }
+  }, [
+    dialogBusy,
+    showCreate,
+    reworkOpen,
+    acceptTarget,
+    confirmExecute,
+    confirmRerun,
+    confirmSchedule,
+  ]);
+
   const dismissDialog = (close: () => void) => {
     if (dialogLock.current) return;
     close();
   };
 
   const handleCreate = async () => {
-    const title = newTitle.trim();
-    const goal = objective.trim();
+    const submitted = { ...briefLive.current };
+    const title = submitted.title.trim();
+    const goal = submitted.objective.trim();
     if (!title || !goal) return;
-    const files = filePaths
+    const files = submitted.filePaths
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean)
       .map((path) => ({ path }));
     const email = {
-      enabled: emailEnabled,
-      query: emailQuery.trim(),
-      days: Math.max(0, Number(emailDays) || 3),
+      enabled: submitted.emailEnabled,
+      query: submitted.emailQuery.trim(),
+      days: Math.max(0, Number(submitted.emailDays) || 3),
     };
     if (!beginDialog()) return;
+    let handoff: TaskDialogHandoff | null = null;
     try {
       const item = await createProjectBrief({
         title,
         objective: goal,
         source_scope: { email, files },
       });
-      setShowCreate(false);
-      setNewTitle("");
-      setObjective("");
-      setEmailQuery("");
-      setFilePaths("");
+      if (sameBrief(briefLive.current, submitted)) {
+        briefLive.current = {
+          ...briefLive.current,
+          title: "",
+          objective: "",
+          emailQuery: "",
+          filePaths: "",
+        };
+        setShowCreate(false);
+        setNewTitle("");
+        setObjective("");
+        setEmailQuery("");
+        setFilePaths("");
+      } else {
+        handoff = { kind: "kept", dialog: "create" };
+      }
       invalidate();
-      navigate(`/tasks/${item.id}`);
+      if (!handoff) navigate(`/tasks/${item.id}`);
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "创建任务失败", "任务");
+      handoff = { kind: "failed", dialog: "create" };
     } finally {
+      dialogHandoff.current = handoff;
       endDialog();
     }
   };
 
   const handleExecute = async () => {
     if (!selected || !beginDialog()) return;
+    let handoff: TaskDialogHandoff | null = null;
     try {
       await executeWorkItem(selected.id);
       setConfirmExecute(false);
       invalidate();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "启动任务失败", "任务");
+      handoff = { kind: "failed", dialog: "execute" };
     } finally {
+      dialogHandoff.current = handoff;
       endDialog();
     }
   };
 
   const handleRerun = async () => {
     if (!selected || !beginDialog()) return;
+    let handoff: TaskDialogHandoff | null = null;
     try {
       await rerunProjectBrief(selected.id);
       setConfirmRerun(false);
       invalidate();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "再次运行失败", "任务");
+      handoff = { kind: "failed", dialog: "rerun" };
     } finally {
+      dialogHandoff.current = handoff;
       endDialog();
     }
   };
@@ -1285,11 +1432,20 @@ export default function TasksPage() {
 
   const handleScheduleRepeat = async () => {
     if (!selected) return;
+    const submitted = { ...scheduleLive.current };
     const delay = scheduleDelay();
     if (!delay || !beginDialog()) return;
+    let handoff: TaskDialogHandoff | null = null;
     try {
       const scheduled = await scheduleBriefRepeat(selected.id, delay);
-      setConfirmSchedule(false);
+      if (
+        scheduleLive.current.hours === submitted.hours &&
+        scheduleLive.current.minutes === submitted.minutes
+      ) {
+        setConfirmSchedule(false);
+      } else {
+        handoff = { kind: "kept", dialog: "schedule" };
+      }
       setScheduledRepeatNote(
         scheduled.fire_at
           ? `已设定，将在 ${scheduled.fire_at} 再次运行这一份任务。`
@@ -1297,7 +1453,9 @@ export default function TasksPage() {
       );
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "设定定时失败", "任务");
+      handoff = { kind: "failed", dialog: "schedule" };
     } finally {
+      dialogHandoff.current = handoff;
       endDialog();
     }
   };
@@ -1320,20 +1478,30 @@ export default function TasksPage() {
 
   const handleAccept = async () => {
     if (!selected || !acceptTarget || !beginDialog()) return;
-    const note = acceptNote.trim();
+    const submitted = acceptLive.current;
+    const note = submitted.trim();
     if (!acceptKey.current) acceptKey.current = newIdempotencyKey("accept");
+    let handoff: TaskDialogHandoff | null = null;
     try {
       await acceptWorkDelivery(selected.id, acceptTarget.delivery_id, {
         ...(note ? { reason: note } : {}),
         idempotency_key: acceptKey.current,
       });
-      setAcceptTarget(null);
-      setAcceptNote("");
+      acceptKey.current = null;
+      if (acceptLive.current === submitted) {
+        setAcceptTarget(null);
+        setAcceptNote("");
+        acceptLive.current = "";
+      } else {
+        handoff = { kind: "kept", dialog: "accept" };
+      }
       invalidate();
       setMetricsRefresh((value) => value + 1);
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "验收失败", "任务");
+      handoff = { kind: "failed", dialog: "accept" };
     } finally {
+      dialogHandoff.current = handoff;
       endDialog();
     }
   };
@@ -1414,20 +1582,29 @@ export default function TasksPage() {
   const handleRework = async () => {
     if (!selected) return;
     const current = selected.delivery_bundle?.current;
-    const reason = reworkReason.trim();
+    const submitted = reworkLive.current;
+    const reason = submitted.trim();
     if (!current || !reason || !beginDialog()) return;
+    let handoff: TaskDialogHandoff | null = null;
     try {
       await reworkWorkDelivery(selected.id, current.delivery_id, {
         reason,
         idempotency_key: newIdempotencyKey("rework"),
       });
-      setReworkOpen(false);
-      setReworkReason("");
+      if (reworkLive.current === submitted) {
+        setReworkOpen(false);
+        setReworkReason("");
+        reworkLive.current = "";
+      } else {
+        handoff = { kind: "kept", dialog: "rework" };
+      }
       invalidate();
       setMetricsRefresh((value) => value + 1);
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "返工失败", "任务");
+      handoff = { kind: "failed", dialog: "rework" };
     } finally {
+      dialogHandoff.current = handoff;
       endDialog();
     }
   };
@@ -2203,8 +2380,8 @@ export default function TasksPage() {
           description={formatPlanConfirmDescription(steps, resumeFrom)}
           confirmLabel={dialogBusy ? "执行中..." : "确认执行"}
           cancelLabel="取消"
-          confirmDisabled={busy}
           confirmBusy={dialogBusy}
+          confirmMarker="execute"
           onConfirm={() => {
             void handleExecute();
           }}
@@ -2217,8 +2394,8 @@ export default function TasksPage() {
           description="将重新执行这份简报，不另建任务，也不记成返工。完成后的新版本会对照当前这一版，显示相对上一版的变化。"
           confirmLabel={dialogBusy ? "再次运行中..." : "确认再次运行"}
           cancelLabel="取消"
-          confirmDisabled={busy}
           confirmBusy={dialogBusy}
+          confirmMarker="rerun"
           onConfirm={() => {
             void handleRerun();
           }}
@@ -2231,8 +2408,9 @@ export default function TasksPage() {
           description="到点后只再次运行这一份任务。不会新开一份简报，也不会为这次触发另建交付。若到点时它已经不能再次运行，提醒只会打开这一份任务。"
           confirmLabel={dialogBusy ? "设定中..." : "确认定时"}
           cancelLabel="取消"
-          confirmDisabled={busy || dialogBusy || scheduleDelay() === null}
+          confirmDisabled={scheduleDelay() === null}
           confirmBusy={dialogBusy}
+          confirmMarker="schedule"
           onConfirm={() => {
             void handleScheduleRepeat();
           }}
@@ -2244,8 +2422,11 @@ export default function TasksPage() {
               <Input
                 inputMode="decimal"
                 value={scheduleHours}
-                disabled={dialogBusy}
-                onChange={(e) => setScheduleHours(e.target.value)}
+                data-task-dialog-field="schedule"
+                onChange={(e) => {
+                  scheduleLive.current = { ...scheduleLive.current, hours: e.target.value };
+                  setScheduleHours(e.target.value);
+                }}
                 placeholder="0"
               />
             </label>
@@ -2254,8 +2435,11 @@ export default function TasksPage() {
               <Input
                 inputMode="decimal"
                 value={scheduleMinutes}
-                disabled={dialogBusy}
-                onChange={(e) => setScheduleMinutes(e.target.value)}
+                data-task-dialog-field="schedule"
+                onChange={(e) => {
+                  scheduleLive.current = { ...scheduleLive.current, minutes: e.target.value };
+                  setScheduleMinutes(e.target.value);
+                }}
                 placeholder="0"
               />
             </label>
@@ -2268,8 +2452,9 @@ export default function TasksPage() {
           description="指定资料范围、时间范围和验收要求。原始需求会保留在任务说明中。"
           confirmLabel={dialogBusy ? "创建中..." : "创建"}
           cancelLabel="取消"
-          confirmDisabled={busy || dialogBusy || !newTitle.trim() || !objective.trim()}
+          confirmDisabled={!newTitle.trim() || !objective.trim()}
           confirmBusy={dialogBusy}
+          confirmMarker="create"
           onConfirm={() => {
             void handleCreate();
           }}
@@ -2280,28 +2465,36 @@ export default function TasksPage() {
               <span className="text-xs text-fg-tertiary">标题</span>
               <Input
                 value={newTitle}
-                disabled={dialogBusy}
-                onChange={(e) => setNewTitle(e.target.value)}
+                data-task-dialog-field="create"
+                onChange={(e) => {
+                  briefLive.current = { ...briefLive.current, title: e.target.value };
+                  setNewTitle(e.target.value);
+                }}
                 placeholder="项目 A 简报"
               />
             </label>
             <label className="block space-y-1">
               <span className="text-xs text-fg-tertiary">目标与验收要求</span>
               <textarea
-                className="w-full min-h-24 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full min-h-24 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm"
                 value={objective}
-                disabled={dialogBusy}
-                onChange={(e) => setObjective(e.target.value)}
+                data-task-dialog-field="create"
+                onChange={(e) => {
+                  briefLive.current = { ...briefLive.current, objective: e.target.value };
+                  setObjective(e.target.value);
+                }}
                 placeholder="整理最近三天的邮件和指定资料，列出变化、风险和建议待办。每条关键结论附来源。"
               />
             </label>
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
-                className="disabled:opacity-50"
                 checked={emailEnabled}
-                disabled={dialogBusy}
-                onChange={(e) => setEmailEnabled(e.target.checked)}
+                data-task-dialog-field="create"
+                onChange={(e) => {
+                  briefLive.current = { ...briefLive.current, emailEnabled: e.target.checked };
+                  setEmailEnabled(e.target.checked);
+                }}
               />
               <span>读取已配置邮箱</span>
             </label>
@@ -2309,14 +2502,20 @@ export default function TasksPage() {
               <div className="grid grid-cols-2 gap-2">
                 <Input
                   value={emailQuery}
-                  disabled={dialogBusy}
-                  onChange={(e) => setEmailQuery(e.target.value)}
+                  data-task-dialog-field="create"
+                  onChange={(e) => {
+                    briefLive.current = { ...briefLive.current, emailQuery: e.target.value };
+                    setEmailQuery(e.target.value);
+                  }}
                   placeholder="关键词（可选）"
                 />
                 <Input
                   value={emailDays}
-                  disabled={dialogBusy}
-                  onChange={(e) => setEmailDays(e.target.value)}
+                  data-task-dialog-field="create"
+                  onChange={(e) => {
+                    briefLive.current = { ...briefLive.current, emailDays: e.target.value };
+                    setEmailDays(e.target.value);
+                  }}
                   placeholder="最近天数"
                 />
               </div>
@@ -2324,10 +2523,13 @@ export default function TasksPage() {
             <label className="block space-y-1">
               <span className="text-xs text-fg-tertiary">资料路径（每行一个）</span>
               <textarea
-                className="w-full min-h-16 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full min-h-16 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm"
                 value={filePaths}
-                disabled={dialogBusy}
-                onChange={(e) => setFilePaths(e.target.value)}
+                data-task-dialog-field="create"
+                onChange={(e) => {
+                  briefLive.current = { ...briefLive.current, filePaths: e.target.value };
+                  setFilePaths(e.target.value);
+                }}
                 placeholder="C:\notes\project-a.md"
               />
             </label>
@@ -2340,18 +2542,21 @@ export default function TasksPage() {
           description="可以留下验收说明。留空则直接验收，说明不会显示。"
           confirmLabel={dialogBusy ? "验收中..." : "确认验收"}
           cancelLabel="取消"
-          confirmDisabled={busy}
           confirmBusy={dialogBusy}
+          confirmMarker="accept"
           onConfirm={() => {
             void handleAccept();
           }}
           onCancel={() => dismissDialog(() => setAcceptTarget(null))}
         >
           <textarea
-            className="w-full min-h-24 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full min-h-24 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm"
             value={acceptNote}
-            disabled={dialogBusy}
-            onChange={(e) => setAcceptNote(e.target.value)}
+            data-task-dialog-field="accept"
+            onChange={(e) => {
+              acceptLive.current = e.target.value;
+              setAcceptNote(e.target.value);
+            }}
             placeholder="例如：结论和来源都齐了。"
           />
         </Dialog>
@@ -2362,18 +2567,22 @@ export default function TasksPage() {
           description="请填写修改意见。旧版交付会保留，新执行使用原要求与本意见。"
           confirmLabel={dialogBusy ? "返工中..." : "确认返工"}
           cancelLabel="取消"
-          confirmDisabled={busy || dialogBusy || !reworkReason.trim()}
+          confirmDisabled={!reworkReason.trim()}
           confirmBusy={dialogBusy}
+          confirmMarker="rework"
           onConfirm={() => {
             void handleRework();
           }}
           onCancel={() => dismissDialog(() => setReworkOpen(false))}
         >
           <textarea
-            className="w-full min-h-24 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full min-h-24 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm"
             value={reworkReason}
-            disabled={dialogBusy}
-            onChange={(e) => setReworkReason(e.target.value)}
+            data-task-dialog-field="rework"
+            onChange={(e) => {
+              reworkLive.current = e.target.value;
+              setReworkReason(e.target.value);
+            }}
             placeholder="例如：补上风险，并给每条结论带来源。"
           />
         </Dialog>

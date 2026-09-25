@@ -9,10 +9,15 @@ interface Props {
   confirmLabel?: string;
   cancelLabel?: string;
   variant?: "danger" | "primary";
-  /** Disable confirm while an async action is in flight (prevents double-submit). */
+  /** Disable confirm when the form is not ready. Ignored while confirmBusy, so focus stays. */
   confirmDisabled?: boolean;
-  /** Confirm is in flight: confirm and cancel stay disabled, Esc and the backdrop do not close. */
+  /**
+   * Confirm is in flight. Confirm and cancel stay enabled so focus is not dropped.
+   * A second confirm, cancel, Esc, and the backdrop do not close or send again.
+   */
   confirmBusy?: boolean;
+  /** Marks the confirm button so the caller can find it after the write returns. */
+  confirmMarker?: string;
   onConfirm: () => void;
   onCancel: () => void;
   children?: ReactNode;
@@ -27,6 +32,7 @@ export default function Dialog({
   variant = "primary",
   confirmDisabled = false,
   confirmBusy = false,
+  confirmMarker,
   onConfirm,
   onCancel,
   children,
@@ -68,22 +74,21 @@ export default function Dialog({
         )}
         {children ? <div className="mt-4">{children}</div> : null}
         <div className="flex justify-end gap-2 mt-5">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            disabled={confirmBusy}
-            onClick={dismiss}
-          >
+          <Button type="button" variant="secondary" size="sm" onClick={dismiss}>
             {cancelLabel}
           </Button>
           <Button
             type="button"
             variant={variant === "danger" ? "danger" : "primary"}
             size="sm"
-            disabled={confirmDisabled || confirmBusy}
+            disabled={confirmDisabled && !confirmBusy}
             aria-busy={confirmBusy || undefined}
-            onClick={onConfirm}
+            className={confirmBusy ? "opacity-50" : ""}
+            data-dialog-confirm={confirmMarker}
+            onClick={() => {
+              if (confirmBusy) return;
+              onConfirm();
+            }}
           >
             {confirmLabel}
           </Button>

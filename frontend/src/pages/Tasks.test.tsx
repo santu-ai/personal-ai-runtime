@@ -2747,16 +2747,19 @@ describe("TasksPage", () => {
     fireEvent.change(query, { target: { value: "账单" } });
     fireEvent.change(days, { target: { value: "9" } });
     fireEvent.change(files, { target: { value: "  C:\\notes\\a.md  " } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "创建" }));
+    const create = within(dialog).getByRole("button", { name: "创建" });
+    create.focus();
+    fireEvent.click(create);
 
     const creating = await within(dialog).findByRole("button", { name: "创建中..." });
-    expect(creating).toBeDisabled();
+    expect(creating).toBeEnabled();
+    expect(creating).toHaveFocus();
     expect(creating).toHaveAttribute("aria-busy", "true");
     fireEvent.click(creating);
     fireEvent.keyDown(window, { key: "Escape" });
     fireEvent.click(dialog.parentElement as HTMLElement);
     const cancel = within(dialog).getByRole("button", { name: "取消" });
-    expect(cancel).toBeDisabled();
+    expect(cancel).toBeEnabled();
     fireEvent.click(cancel);
 
     expect(createProjectBrief).toHaveBeenCalledTimes(1);
@@ -2773,10 +2776,11 @@ describe("TasksPage", () => {
     expect(query).toHaveValue("账单");
     expect(days).toHaveValue("9");
     expect(files).toHaveValue("  C:\\notes\\a.md  ");
-    expect(title).toBeDisabled();
-    expect(objective).toBeDisabled();
+    expect(title).toBeEnabled();
+    expect(objective).toBeEnabled();
     expect(mailbox).toBeChecked();
-    expect(mailbox).toBeDisabled();
+    expect(mailbox).toBeEnabled();
+    expect(creating).toHaveFocus();
     expect(dialog).toBeInTheDocument();
 
     pending.reject(new ApiError("创建任务失败", 500));
@@ -2787,6 +2791,7 @@ describe("TasksPage", () => {
     expect(files).toHaveValue("  C:\\notes\\a.md  ");
     expect(title).toBeEnabled();
     expect(mailbox).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: "创建" })).toHaveFocus();
 
     vi.mocked(createProjectBrief).mockResolvedValueOnce(briefTask);
     fireEvent.click(within(dialog).getByRole("button", { name: "创建" }));
@@ -2794,6 +2799,68 @@ describe("TasksPage", () => {
       expect(screen.queryByRole("dialog", { name: "新建项目资料简报" })).not.toBeInTheDocument(),
     );
     expect(createProjectBrief).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a title typed during create and does not pull focus back", async () => {
+    const pending = deferred<WorkItem>();
+    vi.mocked(createProjectBrief).mockImplementationOnce(() => pending.promise);
+    renderTasks("/tasks");
+
+    fireEvent.click(screen.getByRole("button", { name: "新建简报" }));
+    const dialog = await screen.findByRole("dialog", { name: "新建项目资料简报" });
+    const title = within(dialog).getByPlaceholderText("项目 A 简报");
+    const objective = within(dialog).getByPlaceholderText(/整理最近三天的邮件/);
+    fireEvent.change(title, { target: { value: "项目 A" } });
+    fireEvent.change(objective, { target: { value: "整理邮件" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "创建" }));
+    await within(dialog).findByRole("button", { name: "创建中..." });
+    title.focus();
+    fireEvent.change(title, { target: { value: "项目 A，再补风险" } });
+    const opener = screen.getByRole("button", { name: "新建简报" });
+    opener.focus();
+
+    pending.resolve({ ...briefTask, id: "brief_new", title: "项目 A" });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "创建中..." })).not.toBeInTheDocument(),
+    );
+    expect(dialog).toBeInTheDocument();
+    expect(title).toHaveValue("项目 A，再补风险");
+    expect(objective).toHaveValue("整理邮件");
+    expect(opener).toHaveFocus();
+    expect(createProjectBrief).toHaveBeenCalledTimes(1);
+    expect(createProjectBrief).toHaveBeenCalledWith({
+      title: "项目 A",
+      objective: "整理邮件",
+      source_scope: {
+        email: { enabled: true, query: "", days: 3 },
+        files: [],
+      },
+    });
+  });
+
+  it("returns focus to the title when create succeeds after the draft changed", async () => {
+    const pending = deferred<WorkItem>();
+    vi.mocked(createProjectBrief).mockImplementationOnce(() => pending.promise);
+    renderTasks("/tasks");
+
+    fireEvent.click(screen.getByRole("button", { name: "新建简报" }));
+    const dialog = await screen.findByRole("dialog", { name: "新建项目资料简报" });
+    const title = within(dialog).getByPlaceholderText("项目 A 简报");
+    fireEvent.change(title, { target: { value: "项目 A" } });
+    fireEvent.change(within(dialog).getByPlaceholderText(/整理最近三天的邮件/), {
+      target: { value: "整理邮件" },
+    });
+    const create = within(dialog).getByRole("button", { name: "创建" });
+    create.focus();
+    fireEvent.click(create);
+    await within(dialog).findByRole("button", { name: "创建中..." });
+    fireEvent.change(title, { target: { value: "项目 A，再补风险" } });
+
+    pending.resolve({ ...briefTask, id: "brief_new", title: "项目 A" });
+    await waitFor(() => expect(title).toHaveFocus());
+    expect(dialog).toBeInTheDocument();
+    expect(title).toHaveValue("项目 A，再补风险");
+    expect(createProjectBrief).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the acceptance note until accept succeeds and ignores dismiss while accepting", async () => {
@@ -2806,10 +2873,13 @@ describe("TasksPage", () => {
     const dialog = await screen.findByRole("dialog", { name: "验收交付" });
     const note = within(dialog).getByPlaceholderText("例如：结论和来源都齐了。");
     fireEvent.change(note, { target: { value: "  来源齐全  " } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "确认验收" }));
+    const accept = within(dialog).getByRole("button", { name: "确认验收" });
+    accept.focus();
+    fireEvent.click(accept);
 
     const accepting = await within(dialog).findByRole("button", { name: "验收中..." });
-    expect(accepting).toBeDisabled();
+    expect(accepting).toBeEnabled();
+    expect(accepting).toHaveFocus();
     expect(accepting).toHaveAttribute("aria-busy", "true");
     fireEvent.click(accepting);
     fireEvent.keyDown(window, { key: "Escape" });
@@ -2822,7 +2892,8 @@ describe("TasksPage", () => {
       idempotency_key: expect.any(String),
     });
     expect(note).toHaveValue("  来源齐全  ");
-    expect(note).toBeDisabled();
+    expect(note).toBeEnabled();
+    expect(accepting).toHaveFocus();
     expect(dialog).toBeInTheDocument();
 
     pending.reject(new ApiError("验收失败", 500));
@@ -2830,6 +2901,7 @@ describe("TasksPage", () => {
     expect(dialog).toBeInTheDocument();
     expect(note).toHaveValue("  来源齐全  ");
     expect(note).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: "确认验收" })).toHaveFocus();
 
     const key = vi.mocked(acceptWorkDelivery).mock.calls[0]?.[2]?.idempotency_key;
     vi.mocked(acceptWorkDelivery).mockResolvedValueOnce({
@@ -2859,10 +2931,13 @@ describe("TasksPage", () => {
     const dialog = await screen.findByRole("dialog", { name: "请求返工" });
     const reason = within(dialog).getByPlaceholderText("例如：补上风险，并给每条结论带来源。");
     fireEvent.change(reason, { target: { value: "  补上风险  " } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "确认返工" }));
+    const rework = within(dialog).getByRole("button", { name: "确认返工" });
+    rework.focus();
+    fireEvent.click(rework);
 
     const submitting = await within(dialog).findByRole("button", { name: "返工中..." });
-    expect(submitting).toBeDisabled();
+    expect(submitting).toBeEnabled();
+    expect(submitting).toHaveFocus();
     expect(submitting).toHaveAttribute("aria-busy", "true");
     fireEvent.click(submitting);
     fireEvent.keyDown(window, { key: "Escape" });
@@ -2875,7 +2950,8 @@ describe("TasksPage", () => {
       idempotency_key: expect.any(String),
     });
     expect(reason).toHaveValue("  补上风险  ");
-    expect(reason).toBeDisabled();
+    expect(reason).toBeEnabled();
+    expect(submitting).toHaveFocus();
     expect(dialog).toBeInTheDocument();
 
     pending.reject(new ApiError("返工失败", 500));
@@ -2883,6 +2959,7 @@ describe("TasksPage", () => {
     expect(dialog).toBeInTheDocument();
     expect(reason).toHaveValue("  补上风险  ");
     expect(reason).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: "确认返工" })).toHaveFocus();
 
     vi.mocked(reworkWorkDelivery).mockResolvedValueOnce({
       replayed: false,
@@ -2909,10 +2986,13 @@ describe("TasksPage", () => {
     const minutes = within(dialog).getByLabelText("分钟");
     fireEvent.change(hours, { target: { value: "2" } });
     fireEvent.change(minutes, { target: { value: "15" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "确认定时" }));
+    const confirmSchedule = within(dialog).getByRole("button", { name: "确认定时" });
+    confirmSchedule.focus();
+    fireEvent.click(confirmSchedule);
 
     const setting = await within(dialog).findByRole("button", { name: "设定中..." });
-    expect(setting).toBeDisabled();
+    expect(setting).toBeEnabled();
+    expect(setting).toHaveFocus();
     expect(setting).toHaveAttribute("aria-busy", "true");
     fireEvent.click(setting);
     fireEvent.keyDown(window, { key: "Escape" });
@@ -2923,7 +3003,8 @@ describe("TasksPage", () => {
     expect(scheduleBriefRepeat).toHaveBeenCalledWith("brief_1", { hours: 2, minutes: 15 });
     expect(hours).toHaveValue("2");
     expect(minutes).toHaveValue("15");
-    expect(hours).toBeDisabled();
+    expect(hours).toBeEnabled();
+    expect(setting).toHaveFocus();
     expect(dialog).toBeInTheDocument();
     expect(screen.queryByTestId("scheduled-repeat-note")).not.toBeInTheDocument();
 
@@ -2933,6 +3014,7 @@ describe("TasksPage", () => {
     expect(hours).toHaveValue("2");
     expect(minutes).toHaveValue("15");
     expect(hours).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: "确认定时" })).toHaveFocus();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "确认定时" }));
     expect(await screen.findByTestId("scheduled-repeat-note")).toHaveTextContent(
@@ -2951,10 +3033,13 @@ describe("TasksPage", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "执行" }));
     const dialog = await screen.findByRole("dialog", { name: "确认执行计划" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "确认执行" }));
+    const confirmExecute = within(dialog).getByRole("button", { name: "确认执行" });
+    confirmExecute.focus();
+    fireEvent.click(confirmExecute);
 
     const starting = await within(dialog).findByRole("button", { name: "执行中..." });
-    expect(starting).toBeDisabled();
+    expect(starting).toBeEnabled();
+    expect(starting).toHaveFocus();
     expect(starting).toHaveAttribute("aria-busy", "true");
     fireEvent.click(starting);
     fireEvent.keyDown(window, { key: "Escape" });
@@ -2969,6 +3054,7 @@ describe("TasksPage", () => {
     await waitFor(() => expect(addError).toHaveBeenCalledWith("启动任务失败", "任务"));
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "确认执行" })).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: "确认执行" })).toHaveFocus();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "确认执行" }));
     await waitFor(() =>
@@ -2985,10 +3071,13 @@ describe("TasksPage", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "再次运行" }));
     const dialog = await screen.findByRole("dialog", { name: "再次运行同一份简报" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "确认再次运行" }));
+    const confirmRerun = within(dialog).getByRole("button", { name: "确认再次运行" });
+    confirmRerun.focus();
+    fireEvent.click(confirmRerun);
 
     const starting = await within(dialog).findByRole("button", { name: "再次运行中..." });
-    expect(starting).toBeDisabled();
+    expect(starting).toBeEnabled();
+    expect(starting).toHaveFocus();
     expect(starting).toHaveAttribute("aria-busy", "true");
     fireEvent.click(starting);
     fireEvent.keyDown(window, { key: "Escape" });
@@ -3003,6 +3092,7 @@ describe("TasksPage", () => {
     await waitFor(() => expect(addError).toHaveBeenCalledWith("再次运行失败", "任务"));
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "确认再次运行" })).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: "确认再次运行" })).toHaveFocus();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "确认再次运行" }));
     await waitFor(() =>
