@@ -1295,7 +1295,8 @@ export default function TasksPage() {
   };
 
   const openActionDialog = (open: () => void) => {
-    if (actionLock.current) return;
+    // 这次写还没回来时，后面的按钮不禁用，但也不另开对话框。
+    if (actionLock.current || dialogLock.current) return;
     open();
   };
 
@@ -1964,8 +1965,10 @@ export default function TasksPage() {
                         {canExecute && (
                           <Button
                             size="sm"
+                            data-task-action="execute"
                             onClick={() => openActionDialog(() => setConfirmExecute(true))}
-                            disabled={busy}
+                            aria-busy={busy || undefined}
+                            className={busy ? "opacity-50" : ""}
                           >
                             {rerun ? "重新执行" : "执行"}
                           </Button>
@@ -1973,8 +1976,10 @@ export default function TasksPage() {
                         {canRerunSameBrief && (
                           <Button
                             size="sm"
+                            data-task-action="rerun"
                             onClick={() => openActionDialog(() => setConfirmRerun(true))}
-                            disabled={busy}
+                            aria-busy={busy || undefined}
+                            className={busy ? "opacity-50" : ""}
                           >
                             再次运行
                           </Button>
@@ -1983,8 +1988,10 @@ export default function TasksPage() {
                           <Button
                             size="sm"
                             variant="secondary"
+                            data-task-action="schedule"
                             onClick={() => openActionDialog(() => setConfirmSchedule(true))}
-                            disabled={busy}
+                            aria-busy={busy || undefined}
+                            className={busy ? "opacity-50" : ""}
                           >
                             定时再次运行
                           </Button>
@@ -2107,18 +2114,22 @@ export default function TasksPage() {
                               <div className="flex gap-2">
                                 <Button
                                   size="sm"
+                                  data-task-action="accept"
                                   onClick={() =>
                                     openActionDialog(() => setAcceptTarget(shownDelivery))
                                   }
-                                  disabled={busy}
+                                  aria-busy={busy || undefined}
+                                  className={busy ? "opacity-50" : ""}
                                 >
                                   验收
                                 </Button>
                                 <Button
                                   size="sm"
                                   variant="subtle"
+                                  data-task-action="rework"
                                   onClick={() => openActionDialog(() => setReworkOpen(true))}
-                                  disabled={busy}
+                                  aria-busy={busy || undefined}
+                                  className={busy ? "opacity-50" : ""}
                                 >
                                   返工
                                 </Button>

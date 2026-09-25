@@ -7,6 +7,7 @@ import {
   destroyAllData,
   downloadExport,
   exportEncryptedData,
+  importData,
   importEncryptedData,
 } from "../../api/client";
 import { useErrorStore } from "../../stores/errorStore";
@@ -64,6 +65,14 @@ describe("DataSovereigntyCard", () => {
     const pending = await within(dialog).findByRole("button", { name: "销毁中…" });
     expect(pending).toBeEnabled();
     expect(pending).toHaveAttribute("aria-busy", "true");
+    expect(opener).toBeEnabled();
+    expect(opener).toHaveAttribute("aria-busy", "true");
+    expect(opener).toHaveClass("opacity-50");
+    opener.focus();
+    expect(opener).toHaveFocus();
+    fireEvent.click(opener);
+    expect(destroyAllData).toHaveBeenCalledTimes(1);
+    pending.focus();
     expect(within(dialog).getByRole("button", { name: "取消" })).toBeEnabled();
     expect(destroyAllData).toHaveBeenCalledTimes(1);
     expect(dialog).toBeInTheDocument();
@@ -320,5 +329,164 @@ describe("DataSovereigntyCard", () => {
     expect(await screen.findByText("加密导入成功")).toBeInTheDocument();
     expect(field).toHaveValue("next");
     expect(field).toHaveFocus();
+  });
+
+  function importInput(kind: "readonly" | "overwrite" | "encrypted") {
+    const input = document.querySelector<HTMLInputElement>(
+      `input[data-sovereignty-import="${kind}"]`,
+    );
+    if (!input) throw new Error(`missing ${kind} import input`);
+    return input;
+  }
+
+  it("does not import a backup twice and keeps focus on the file input", async () => {
+    let release: (() => void) | undefined;
+    vi.mocked(importData).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({});
+        }),
+    );
+    renderWithRouter(<DataSovereigntyCard embedded />);
+    const input = importInput("readonly");
+    const overwrite = importInput("overwrite");
+    const file = new File([JSON.stringify({ hello: 1 })], "backup.json", {
+      type: "application/json",
+    });
+    expect(overwrite).toBeDisabled();
+    input.focus();
+    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() => expect(input).toHaveAttribute("aria-busy", "true"));
+    expect(importData).toHaveBeenCalledTimes(1);
+    expect(importData).toHaveBeenCalledWith({ hello: 1 }, true);
+    expect(input).toBeEnabled();
+    expect(input).toHaveFocus();
+    expect(overwrite).toBeDisabled();
+    expect(overwrite).toHaveAttribute("aria-busy", "true");
+
+    await act(async () => {
+      release?.();
+    });
+    await waitFor(() => expect(input).not.toHaveAttribute("aria-busy"));
+    expect(input).toBeEnabled();
+    expect(input).toHaveFocus();
+    expect(overwrite).not.toHaveAttribute("aria-busy");
+  });
+
+  it("keeps focus on the file input when a backup cannot be parsed", async () => {
+    renderWithRouter(<DataSovereigntyCard embedded />);
+    const input = importInput("readonly");
+    input.focus();
+    fireEvent.change(input, {
+      target: { files: [new File(["{"], "backup.json", { type: "application/json" })] },
+    });
+    await waitFor(() =>
+      expect(useErrorStore.getState().errors[0]).toMatchObject({
+        message: "无法解析备份文件",
+        source: "设置",
+      }),
+    );
+    expect(importData).not.toHaveBeenCalled();
+    expect(input).toBeEnabled();
+    expect(input).toHaveFocus();
+    expect(input).not.toHaveAttribute("aria-busy");
+  });
+
+  it("keeps the overwrite file input enabled while importing, then returns focus to the phrase", async () => {
+    let release: (() => void) | undefined;
+    vi.mocked(importData).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({});
+        }),
+    );
+    renderWithRouter(<DataSovereigntyCard embedded />);
+    const phrase = screen.getByPlaceholderText("写入导入请输入 DESTROY_AND_IMPORT");
+    const input = importInput("overwrite");
+    expect(input).toBeDisabled();
+    fireEvent.change(phrase, { target: { value: "DESTROY_AND_IMPORT" } });
+    expect(input).toBeEnabled();
+    const file = new File([JSON.stringify({ hello: 2 })], "backup.json", {
+      type: "application/json",
+    });
+    input.focus();
+    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() => expect(input).toHaveAttribute("aria-busy", "true"));
+    expect(importData).toHaveBeenCalledTimes(1);
+    expect(importData).toHaveBeenCalledWith({ hello: 2 }, false);
+    expect(input).toBeEnabled();
+    expect(input).toHaveFocus();
+
+    await act(async () => {
+      release?.();
+    });
+    await waitFor(() => expect(input).toBeDisabled());
+    expect(phrase).toHaveValue("");
+    expect(phrase).toHaveFocus();
+    expect(input).not.toHaveAttribute("aria-busy");
+  });
+
+  it("does not disable the encrypted file input while importing and keeps focus", async () => {
+    let release: (() => void) | undefined;
+    vi.mocked(importEncryptedData).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({});
+        }),
+    );
+    renderWithRouter(<DataSovereigntyCard embedded />);
+    const field = screen.getByPlaceholderText("输入加密密码");
+    const input = importInput("encrypted");
+    expect(input).toBeDisabled();
+    fireEvent.change(field, { target: { value: "secret" } });
+    expect(input).toBeEnabled();
+    const file = new File([JSON.stringify({ data: "blob" })], "backup.json", {
+      type: "application/json",
+    });
+    input.focus();
+    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() => expect(input).toHaveAttribute("aria-busy", "true"));
+    expect(importEncryptedData).toHaveBeenCalledTimes(1);
+    expect(input).toBeEnabled();
+    expect(input).toHaveFocus();
+    expect(field).toHaveValue("secret");
+
+    await act(async () => {
+      release?.();
+    });
+    expect(await screen.findByText("加密导入成功")).toBeInTheDocument();
+    expect(field).toHaveValue("");
+    expect(field).toHaveFocus();
+    expect(input).toBeDisabled();
+    expect(input).not.toHaveAttribute("aria-busy");
+  });
+
+  it("keeps focus on the encrypted file input when import fails", async () => {
+    vi.mocked(importEncryptedData).mockRejectedValueOnce(new Error("bad"));
+    renderWithRouter(<DataSovereigntyCard embedded />);
+    const field = screen.getByPlaceholderText("输入加密密码");
+    fireEvent.change(field, { target: { value: "secret" } });
+    const input = importInput("encrypted");
+    input.focus();
+    fireEvent.change(input, {
+      target: {
+        files: [
+          new File([JSON.stringify({ data: "blob" })], "backup.json", { type: "application/json" }),
+        ],
+      },
+    });
+    await waitFor(() =>
+      expect(useErrorStore.getState().errors[0]).toMatchObject({
+        message: "加密导入失败，请检查密码和文件",
+        source: "设置",
+      }),
+    );
+    expect(field).toHaveValue("secret");
+    expect(input).toBeEnabled();
+    expect(input).toHaveFocus();
+    expect(input).not.toHaveAttribute("aria-busy");
   });
 });
