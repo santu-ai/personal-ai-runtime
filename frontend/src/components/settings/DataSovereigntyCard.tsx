@@ -33,21 +33,40 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
   const [encryptImporting, setEncryptImporting] = useState(false);
   const [confirmDestroy, setConfirmDestroy] = useState(false);
   const [destroying, setDestroying] = useState(false);
-  const destroyingRef = useRef(false);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const [encryptExportNotice, setEncryptExportNotice] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const destroyingRef = useRef(false);
+  const exportLock = useRef(false);
+  const encryptImportingRef = useRef(false);
+  const passwordLive = useRef("");
+  const encryptExportGen = useRef(0);
 
   const reload = () => {
     invalidateSettings();
     onAfterImport?.();
   };
 
+  const editPassword = (value: string) => {
+    if (passwordLive.current === value) return;
+    passwordLive.current = value;
+    encryptExportGen.current += 1;
+    setEncryptPassword(value);
+    setEncryptExportNotice(null);
+  };
+
   const handleExport = async () => {
+    if (exportLock.current) return;
+    exportLock.current = true;
     setExporting(true);
+    setExportNotice(null);
     try {
       await downloadExport();
+      setExportNotice("已导出");
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "导出失败", "设置");
     } finally {
+      exportLock.current = false;
       setExporting(false);
     }
   };
@@ -79,13 +98,15 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
   };
 
   const handleEncryptedExport = async () => {
-    if (!encryptPassword) {
-      addError("请输入加密密码", "设置");
-      return;
-    }
+    if (exportLock.current) return;
+    const password = passwordLive.current;
+    if (!password) return;
+    const gen = encryptExportGen.current;
+    exportLock.current = true;
     setEncryptExporting(true);
+    setEncryptExportNotice(null);
     try {
-      const result = await exportEncryptedData(encryptPassword);
+      const result = await exportEncryptedData(password);
       const blob = new Blob([JSON.stringify(result, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -93,31 +114,41 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
       a.download = `personal-ai-encrypted-backup-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
+      if (encryptExportGen.current === gen) setEncryptExportNotice("已导出");
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "加密导出失败", "设置");
     } finally {
+      exportLock.current = false;
       setEncryptExporting(false);
     }
   };
 
   const handleEncryptedImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !encryptPassword) {
+    if (encryptImportingRef.current) {
+      e.target.value = "";
+      return;
+    }
+    const submitted = passwordLive.current;
+    if (!file || !submitted) {
       addError("请选择文件并输入密码", "设置");
       return;
     }
+    encryptImportingRef.current = true;
     setEncryptImporting(true);
+    setStatusMessage(null);
     try {
       const raw = await file.text();
-      const { data, password } = JSON.parse(raw);
-      await importEncryptedData(data, password || encryptPassword);
+      const { data, password } = JSON.parse(raw) as { data: string; password?: string };
+      await importEncryptedData(data, password || submitted);
       setStatusMessage("加密导入成功");
+      if (passwordLive.current === submitted) editPassword("");
       reload();
     } catch {
       addError("加密导入失败，请检查密码和文件", "设置");
     } finally {
+      encryptImportingRef.current = false;
       setEncryptImporting(false);
-      setEncryptPassword("");
       e.target.value = "";
     }
   };
@@ -144,9 +175,19 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
       <p className="text-sm text-fg-tertiary mb-4">导出完整个人数据快照，或从备份文件导入。</p>
       {statusMessage && <p className="text-xs text-success mb-3">{statusMessage}</p>}
       <div className="flex flex-wrap gap-3 items-center">
-        <Button onClick={handleExport} disabled={exporting}>
+        <Button
+          data-sovereignty-action="export"
+          onClick={() => void handleExport()}
+          aria-busy={exporting || undefined}
+          className={exporting ? "opacity-50" : ""}
+        >
           {exporting ? "导出中…" : "导出全部数据"}
         </Button>
+        {exportNotice ? (
+          <p className="text-xs text-success" role="status" data-testid="export-notice">
+            {exportNotice}
+          </p>
+        ) : null}
         <label className="inline-block">
           <span className="inline-flex px-4 py-2 text-sm rounded-lg font-medium bg-surface-overlay hover:bg-border-strong text-fg-primary cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring">
             {importing ? "导入中…" : "导入备份（只读）"}
@@ -192,13 +233,24 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
         <div className="flex flex-wrap gap-3 items-end">
           <Input
             value={encryptPassword}
-            onChange={(e) => setEncryptPassword(e.target.value)}
+            onChange={(e) => editPassword(e.target.value)}
             placeholder="输入加密密码"
             className="flex-1 text-xs"
           />
-          <Button onClick={handleEncryptedExport} disabled={encryptExporting || !encryptPassword}>
+          <Button
+            data-sovereignty-action="encrypt-export"
+            onClick={() => void handleEncryptedExport()}
+            disabled={!encryptPassword && !encryptExporting}
+            aria-busy={encryptExporting || undefined}
+            className={encryptExporting ? "opacity-50" : ""}
+          >
             {encryptExporting ? "加密导出中…" : "加密导出"}
           </Button>
+          {encryptExportNotice ? (
+            <p className="text-xs text-success" role="status" data-testid="encrypt-export-notice">
+              {encryptExportNotice}
+            </p>
+          ) : null}
           <label className="inline-block">
             <span
               className={`inline-flex px-4 py-2 text-sm rounded-lg font-medium cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${encryptImporting || !encryptPassword ? "bg-surface-overlay text-fg-disabled" : "bg-surface-overlay hover:bg-border-strong text-fg-primary"}`}
@@ -209,8 +261,9 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
               type="file"
               accept=".json"
               className="hidden"
+              data-sovereignty-import="encrypted"
               disabled={encryptImporting || !encryptPassword}
-              onChange={handleEncryptedImport}
+              onChange={(e) => void handleEncryptedImport(e)}
             />
           </label>
         </div>

@@ -1,8 +1,14 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { renderWithRouter } from "../../test-utils";
 import DataSovereigntyCard from "./DataSovereigntyCard";
-import { ApiError, destroyAllData } from "../../api/client";
+import {
+  ApiError,
+  destroyAllData,
+  downloadExport,
+  exportEncryptedData,
+  importEncryptedData,
+} from "../../api/client";
 import { useErrorStore } from "../../stores/errorStore";
 
 vi.mock("../../hooks/useSettingsQuery", () => ({
@@ -93,5 +99,226 @@ describe("DataSovereigntyCard", () => {
     await waitFor(() => expect(dialog).not.toBeInTheDocument());
     expect(destroyAllData).not.toHaveBeenCalled();
     expect(opener).toHaveFocus();
+  });
+
+  it("does not export twice and keeps focus on 导出全部数据", async () => {
+    let release: (() => void) | undefined;
+    vi.mocked(downloadExport).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<DataSovereigntyCard embedded />);
+    const save = screen.getByRole("button", { name: "导出全部数据" });
+    const other = screen.getByRole("button", { name: "加密导出" });
+    save.focus();
+    fireEvent.click(save);
+    fireEvent.click(save);
+    await waitFor(() => expect(save).toHaveAttribute("aria-busy", "true"));
+    expect(downloadExport).toHaveBeenCalledTimes(1);
+    expect(save).toHaveTextContent("导出中…");
+    expect(save).toBeEnabled();
+    expect(save).toHaveFocus();
+    expect(other).toBeDisabled();
+    expect(other).not.toHaveAttribute("aria-busy");
+
+    await act(async () => {
+      release?.();
+    });
+    expect(await screen.findByTestId("export-notice")).toHaveTextContent("已导出");
+    expect(save).toHaveFocus();
+    expect(save).not.toHaveAttribute("aria-busy");
+  });
+
+  it("keeps focus on 导出全部数据 when export fails", async () => {
+    vi.mocked(downloadExport).mockRejectedValueOnce(new ApiError("导出失败", 500));
+    renderWithRouter(<DataSovereigntyCard embedded />);
+    const save = screen.getByRole("button", { name: "导出全部数据" });
+    save.focus();
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(useErrorStore.getState().errors[0]).toMatchObject({
+        message: "导出失败",
+        source: "设置",
+      }),
+    );
+    expect(screen.queryByTestId("export-notice")).not.toBeInTheDocument();
+    expect(save).toBeEnabled();
+    expect(save).toHaveFocus();
+    expect(save).not.toHaveAttribute("aria-busy");
+  });
+
+  it("does not steal focus after 导出全部数据 returns", async () => {
+    let release: (() => void) | undefined;
+    vi.mocked(downloadExport).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<DataSovereigntyCard embedded />);
+    const save = screen.getByRole("button", { name: "导出全部数据" });
+    const field = screen.getByPlaceholderText("输入加密密码");
+    save.focus();
+    fireEvent.click(save);
+    field.focus();
+    await act(async () => {
+      release?.();
+    });
+    await waitFor(() => expect(save).not.toHaveAttribute("aria-busy"));
+    expect(screen.getByTestId("export-notice")).toHaveTextContent("已导出");
+    expect(field).toHaveFocus();
+  });
+
+  it("does not encrypt-export twice and keeps focus on 加密导出", async () => {
+    let release: ((row: { format: string; data: string }) => void) | undefined;
+    vi.mocked(exportEncryptedData).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<DataSovereigntyCard embedded />);
+    const field = screen.getByPlaceholderText("输入加密密码");
+    const save = screen.getByRole("button", { name: "加密导出" });
+    const other = screen.getByRole("button", { name: "导出全部数据" });
+    expect(save).toBeDisabled();
+    fireEvent.change(field, { target: { value: "secret" } });
+    expect(save).toBeEnabled();
+    save.focus();
+    fireEvent.click(save);
+    fireEvent.click(save);
+    fireEvent.click(other);
+    await waitFor(() => expect(save).toHaveAttribute("aria-busy", "true"));
+    expect(exportEncryptedData).toHaveBeenCalledTimes(1);
+    expect(exportEncryptedData).toHaveBeenCalledWith("secret");
+    expect(downloadExport).not.toHaveBeenCalled();
+    expect(save).toHaveTextContent("加密导出中…");
+    expect(save).toBeEnabled();
+    expect(save).toHaveFocus();
+    expect(other).toBeEnabled();
+    expect(other).not.toHaveAttribute("aria-busy");
+
+    field.focus();
+    fireEvent.change(field, { target: { value: "" } });
+    expect(save).toBeEnabled();
+    expect(save).toHaveAttribute("aria-busy", "true");
+
+    await act(async () => {
+      release?.({ format: "enc", data: "abc" });
+    });
+    await waitFor(() => expect(save).not.toHaveAttribute("aria-busy"));
+    expect(screen.queryByTestId("encrypt-export-notice")).not.toBeInTheDocument();
+    expect(field).toHaveValue("");
+    expect(field).toHaveFocus();
+    expect(save).toBeDisabled();
+  });
+
+  it("writes 已导出 beside 加密导出 and keeps the password", async () => {
+    vi.mocked(exportEncryptedData).mockResolvedValueOnce({ format: "enc", data: "abc" });
+    renderWithRouter(<DataSovereigntyCard embedded />);
+    const field = screen.getByPlaceholderText("输入加密密码");
+    fireEvent.change(field, { target: { value: "secret" } });
+    const save = screen.getByRole("button", { name: "加密导出" });
+    save.focus();
+    fireEvent.click(save);
+    expect(await screen.findByTestId("encrypt-export-notice")).toHaveTextContent("已导出");
+    expect(save).toHaveFocus();
+    expect(save).toBeEnabled();
+    expect(field).toHaveValue("secret");
+  });
+
+  it("keeps the password and focus on 加密导出 when encrypted export fails", async () => {
+    vi.mocked(exportEncryptedData).mockRejectedValueOnce(new ApiError("加密导出失败", 500));
+    renderWithRouter(<DataSovereigntyCard embedded />);
+    const field = screen.getByPlaceholderText("输入加密密码");
+    fireEvent.change(field, { target: { value: "secret" } });
+    const save = screen.getByRole("button", { name: "加密导出" });
+    save.focus();
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(useErrorStore.getState().errors[0]).toMatchObject({
+        message: "加密导出失败",
+        source: "设置",
+      }),
+    );
+    expect(screen.queryByTestId("encrypt-export-notice")).not.toBeInTheDocument();
+    expect(field).toHaveValue("secret");
+    expect(save).toBeEnabled();
+    expect(save).toHaveFocus();
+    expect(save).not.toHaveAttribute("aria-busy");
+  });
+
+  function encryptedImportInput() {
+    const input = document.querySelector<HTMLInputElement>(
+      'input[data-sovereignty-import="encrypted"]',
+    );
+    if (!input) throw new Error("missing encrypted import input");
+    return input;
+  }
+
+  it("clears an unchanged password after encrypted import succeeds", async () => {
+    vi.mocked(importEncryptedData).mockResolvedValueOnce({});
+    renderWithRouter(<DataSovereigntyCard embedded />);
+    const field = screen.getByPlaceholderText("输入加密密码");
+    fireEvent.change(field, { target: { value: "secret" } });
+    const file = new File([JSON.stringify({ data: "blob", password: "secret" })], "backup.json", {
+      type: "application/json",
+    });
+    fireEvent.change(encryptedImportInput(), { target: { files: [file] } });
+    expect(await screen.findByText("加密导入成功")).toBeInTheDocument();
+    expect(importEncryptedData).toHaveBeenCalledWith("blob", "secret");
+    expect(field).toHaveValue("");
+  });
+
+  it("keeps the password when encrypted import fails", async () => {
+    vi.mocked(importEncryptedData).mockRejectedValueOnce(new Error("bad"));
+    renderWithRouter(<DataSovereigntyCard embedded />);
+    const field = screen.getByPlaceholderText("输入加密密码");
+    fireEvent.change(field, { target: { value: "secret" } });
+    const file = new File([JSON.stringify({ data: "blob", password: "secret" })], "backup.json", {
+      type: "application/json",
+    });
+    fireEvent.change(encryptedImportInput(), { target: { files: [file] } });
+    await waitFor(() =>
+      expect(useErrorStore.getState().errors[0]).toMatchObject({
+        message: "加密导入失败，请检查密码和文件",
+        source: "设置",
+      }),
+    );
+    expect(importEncryptedData).toHaveBeenCalledTimes(1);
+    expect(importEncryptedData).toHaveBeenCalledWith("blob", "secret");
+    expect(field).toHaveValue("secret");
+    expect(screen.queryByText("加密导入成功")).not.toBeInTheDocument();
+  });
+
+  it("does not import an encrypted backup twice and keeps a password typed during import", async () => {
+    let release: ((row: Record<string, unknown>) => void) | undefined;
+    vi.mocked(importEncryptedData).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<DataSovereigntyCard embedded />);
+    const field = screen.getByPlaceholderText("输入加密密码");
+    fireEvent.change(field, { target: { value: "secret" } });
+    const file = new File([JSON.stringify({ data: "blob" })], "backup.json", {
+      type: "application/json",
+    });
+    const input = encryptedImportInput();
+    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() => expect(importEncryptedData).toHaveBeenCalledTimes(1));
+    expect(importEncryptedData).toHaveBeenCalledWith("blob", "secret");
+    field.focus();
+    fireEvent.change(field, { target: { value: "next" } });
+    await act(async () => {
+      release?.({});
+    });
+    expect(await screen.findByText("加密导入成功")).toBeInTheDocument();
+    expect(field).toHaveValue("next");
+    expect(field).toHaveFocus();
   });
 });
