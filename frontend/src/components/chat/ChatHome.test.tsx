@@ -353,4 +353,139 @@ describe("ChatHome", () => {
     renderWithRouter(<ChatHome />);
     expect(await screen.findByPlaceholderText(/输入消息/)).toHaveValue("");
   });
+
+  it("keeps the composer usable while a home chat is being created", async () => {
+    renderWithRouter(<ChatHome />);
+    const box = await screen.findByPlaceholderText(/输入消息/);
+    fireEvent.change(box, { target: { value: "首页这句" } });
+    let release: ((ok: boolean) => void) | undefined;
+    quickChat.mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const send = screen.getByRole("button", { name: "发送" });
+    const start = await screen.findByRole("button", { name: "开始对话" });
+    send.focus();
+    fireEvent.click(send);
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(quickChat).toHaveBeenCalledTimes(1);
+    expect(send).toHaveAttribute("aria-busy", "true");
+    expect(box).toHaveAttribute("aria-busy", "true");
+    expect(send).toBeEnabled();
+    expect(box).toBeEnabled();
+    expect(send).toHaveFocus();
+    fireEvent.click(start);
+    expect(quickChat).toHaveBeenCalledTimes(1);
+    expect(start).not.toHaveAttribute("aria-busy");
+
+    fireEvent.change(box, { target: { value: "改过的字" } });
+    send.blur();
+    expect(document.activeElement).toBe(document.body);
+    await act(async () => {
+      release?.(true);
+    });
+    expect(box).toHaveValue("改过的字");
+    expect(send).not.toHaveAttribute("aria-busy");
+    expect(document.activeElement).toBe(document.body);
+    expect(box).not.toHaveFocus();
+  });
+
+  it("returns focus to the composer when a failed create leaves it blank", async () => {
+    renderWithRouter(<ChatHome />);
+    const box = await screen.findByPlaceholderText(/输入消息/);
+    fireEvent.change(box, { target: { value: "首页这句" } });
+    let release: ((ok: boolean) => void) | undefined;
+    quickChat.mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const send = screen.getByRole("button", { name: "发送" });
+    send.focus();
+    fireEvent.click(send);
+    send.blur();
+    expect(document.activeElement).toBe(document.body);
+    await act(async () => {
+      release?.(false);
+    });
+    expect(box).toHaveValue("首页这句");
+    expect(box).toHaveFocus();
+    expect(send).not.toHaveAttribute("aria-busy");
+  });
+
+  it("does not start another chat from a nudge while one is opening", async () => {
+    renderWithRouter(<ChatHome />);
+    const start = await screen.findByRole("button", { name: "开始对话" });
+    const box = screen.getByPlaceholderText(/输入消息/);
+    fireEvent.change(box, { target: { value: "另一句" } });
+    let release: ((ok: boolean) => void) | undefined;
+    quickChat.mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const send = screen.getByRole("button", { name: "发送" });
+    start.focus();
+    fireEvent.click(start);
+    expect(start).toHaveAttribute("aria-busy", "true");
+    expect(start).toBeEnabled();
+    expect(start).toHaveFocus();
+    fireEvent.click(start);
+    fireEvent.click(send);
+    expect(quickChat).toHaveBeenCalledTimes(1);
+    expect(quickChat).toHaveBeenCalledWith(expect.objectContaining({ title: "建立记忆" }));
+    expect(send).not.toHaveAttribute("aria-busy");
+
+    screen.getByRole("link", { name: /上次对话/ }).focus();
+    await act(async () => {
+      release?.(false);
+    });
+    expect(start).not.toHaveFocus();
+    expect(box).toHaveValue("另一句");
+
+    start.focus();
+    fireEvent.click(start);
+    start.blur();
+    await act(async () => {
+      release?.(false);
+    });
+    expect(start).toHaveFocus();
+    expect(quickChat).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns the composer focus after a successful create only when it was left on send", async () => {
+    renderWithRouter(<ChatHome />);
+    const box = await screen.findByPlaceholderText(/输入消息/);
+    fireEvent.change(box, { target: { value: "首页这句" } });
+    let release: ((ok: boolean) => void) | undefined;
+    quickChat.mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const send = screen.getByRole("button", { name: "发送" });
+    const link = screen.getByRole("link", { name: /上次对话/ });
+    send.focus();
+    fireEvent.click(send);
+    link.focus();
+    await act(async () => {
+      release?.(true);
+    });
+    expect(box).toHaveValue("");
+    expect(link).toHaveFocus();
+
+    fireEvent.change(box, { target: { value: "再发一句" } });
+    send.focus();
+    fireEvent.click(send);
+    await act(async () => {
+      release?.(true);
+    });
+    expect(box).toHaveValue("");
+    expect(box).toHaveFocus();
+  });
 });
