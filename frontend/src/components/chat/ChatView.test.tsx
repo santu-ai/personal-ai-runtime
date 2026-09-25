@@ -923,6 +923,17 @@ describe("ChatView", () => {
 
   it("keeps focus on cancel while generating, then returns to the composer", async () => {
     let release: (() => void) | undefined;
+    vi.mocked(getMessages).mockResolvedValue([
+      {
+        id: "u1",
+        conversation_id: "test-conv-1",
+        role: "user",
+        content: "hello",
+        tool_calls: null,
+        tool_call_id: null,
+        created_at: "2026-08-17T00:00:00Z",
+      },
+    ]);
     vi.mocked(sendMessage).mockImplementation(
       async (_convId, _content, _onEvent, _onError, onDone) => {
         await new Promise<void>((resolve) => {
@@ -933,6 +944,7 @@ describe("ChatView", () => {
     );
 
     renderChatView();
+    expect(await screen.findByText("hello")).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText(/输入消息/), {
       target: { value: "写一篇长文" },
     });
