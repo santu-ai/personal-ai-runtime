@@ -140,14 +140,19 @@ export default function NotificationBell({ compact = false }: Props) {
     }
   }, [open]);
 
-  useEffect(() => {
+  // 下拉打开的同一轮就把焦点放进面板。放到绘制前，不先停在铃上或页面空白。
+  // 失败「重试」仍在绘制之后才拿焦点；已经在面板里时这里不再抢。
+  useLayoutEffect(() => {
     if (!open) return;
     const panel = panelRef.current;
     const active = document.activeElement;
-    // 失败「重试」已经在面板里时不抢走。
     if (panel && !(active instanceof Node && panel.contains(active))) {
       panel.focus();
     }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Tab") {

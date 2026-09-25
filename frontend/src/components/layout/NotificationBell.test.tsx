@@ -61,12 +61,17 @@ describe("NotificationBell", () => {
   });
 
   it("moves focus into the panel and returns it to the bell on Escape", async () => {
+    let focusAtLayout: Element | null = null;
+    notificationBellLayoutFocus.notify = () => {
+      focusAtLayout = document.activeElement;
+    };
     renderWithRouter(<NotificationBell />);
     const bell = screen.getByRole("button", { name: "通知" });
     bell.focus();
     fireEvent.click(bell);
-    const panel = await screen.findByRole("dialog", { name: "最近通知" });
-    await waitFor(() => expect(panel).toHaveFocus());
+    const panel = screen.getByRole("dialog", { name: "最近通知" });
+    expect(focusAtLayout).toBe(panel);
+    expect(panel).toHaveFocus();
 
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "最近通知" })).not.toBeInTheDocument();
@@ -177,6 +182,12 @@ describe("NotificationBell", () => {
 
   it("keeps Tab on the retry button when it is the only control", async () => {
     listNotifications.mockRejectedValue(new Error("通知暂时读不到"));
+    let focusAtLayout: Element | null = null;
+    notificationBellLayoutFocus.notify = () => {
+      const panel = document.querySelector("[aria-label='最近通知']");
+      if (!(panel instanceof HTMLElement)) return;
+      focusAtLayout ??= document.activeElement;
+    };
     renderWithRouter(
       <>
         <button type="button">旁边</button>
@@ -184,6 +195,8 @@ describe("NotificationBell", () => {
       </>,
     );
     fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    const panel = screen.getByRole("dialog", { name: "最近通知" });
+    expect(focusAtLayout).toBe(panel);
     const retry = await screen.findByRole("button", { name: "重试" });
     await waitFor(() => expect(retry).toHaveFocus());
 

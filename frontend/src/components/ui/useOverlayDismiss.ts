@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
+import { useLayoutEffect, useRef, type RefObject } from "react";
 
 type InitialFocus = "panel" | "field";
 
@@ -87,8 +87,11 @@ function moveTab(panel: HTMLElement, shiftKey: boolean) {
 /**
  * 浮层打开时记住打开前的控件。Esc 关闭。关闭后把焦点还回去。
  * 还焦点发生在布局阶段，和卸下面板同一轮，不先落到页面空白。
+ * 换一条记录时，焦点在外面的控件上，也在这一轮进入面板；已经在面板里就不再抢。
+ * 焦点掉到页面空白时仍回到原来的控件。
  * 输入法还在组字时按 Esc 不关闭，也不拦住这一下，让输入法自己收掉组字。
  * 面板里已经有焦点（失败「重试」或调用方自己放进去的）时不再抢走。
+ * 这一段放在打开时的交焦之后：先进入输入框的，换记录的这一段看到焦点已经在面板里就跳过。
  * Tab 与 Shift+Tab 留在面板里，不会走到后面的页面。
  * 打开按钮上的连点，第二下会落在刚盖上来的遮罩上，这一下不关。单独点外面仍关掉。
  */
@@ -145,7 +148,10 @@ export function useOverlayDismiss<T extends HTMLElement>(
     };
   }, [open, panelRef, initialFocus]);
 
-  useEffect(() => {
+  // 换一条记录才进这一段。打开时上面已经交过焦点，这里看到面板里有焦点就跳过，
+  // 避免把刚进入的输入框再换成面板。放到绘制前，不先停在外面的按钮或页面空白。
+  // 失败「重试」仍在绘制之后才拿焦点，这里不会把它提前抢走。
+  useLayoutEffect(() => {
     if (!open || !hasFocusKey) return;
     const panel = panelRef.current;
     if (!panel) return;
