@@ -252,9 +252,19 @@ export default function QuickCaptureDialog() {
           <span id="quick-capture-title" className="text-sm font-medium text-fg-primary">
             快速捕获
           </span>
-          <span className="text-xs text-fg-disabled ml-auto">
-            {saved ? "已保存 ✓" : "⌘/Ctrl + Enter 保存"}
-          </span>
+          {saved ? (
+            <span className="ml-auto">
+              {/* 大约不到一秒就关掉。出现时读出来，等当前这一句说完。不把焦点抢过来。 */}
+              <span className="sr-only" role="status">
+                已保存
+              </span>
+              <span aria-hidden="true" className="text-xs text-fg-disabled">
+                已保存 ✓
+              </span>
+            </span>
+          ) : (
+            <span className="text-xs text-fg-disabled ml-auto">⌘/Ctrl + Enter 保存</span>
+          )}
         </div>
         <textarea
           value={text}
