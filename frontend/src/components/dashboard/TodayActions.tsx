@@ -49,6 +49,26 @@ function decideKindName(item: TodayDecideItem): string {
   return "邮件";
 }
 
+function handledKindName(kind: TodayHandledItem["kind"]): string {
+  if (kind === "morning_brief") return "晨报";
+  if (kind === "inbox_digest") return "摘要";
+  if (kind === "goal_event") return "目标";
+  return "邮件";
+}
+
+/** 平时只画图标。键盘落到这一行时写出名字，图标让开。鼠标悬停仍是图标。 */
+function FocusKindName({ name }: { name: string }) {
+  return (
+    <span
+      data-icon-name=""
+      aria-hidden="true"
+      className="hidden shrink-0 text-fg-tertiary group-focus-visible:inline"
+    >
+      {name}
+    </span>
+  );
+}
+
 function DecideRow({ item }: { item: TodayDecideItem }) {
   const category = item.kind === "email" ? emailCategoryLabel(item.category) : null;
   return (
@@ -63,14 +83,7 @@ function DecideRow({ item }: { item: TodayDecideItem }) {
       ) : (
         <Mail size={14} className={`text-insight ${kindIconClass}`} aria-hidden />
       )}
-      {/* 平时只画图标。键盘落到这一行时写出名字，图标让开。鼠标悬停仍是图标。 */}
-      <span
-        data-icon-name=""
-        aria-hidden="true"
-        className="hidden shrink-0 text-fg-tertiary group-focus-visible:inline"
-      >
-        {decideKindName(item)}
-      </span>
+      <FocusKindName name={decideKindName(item)} />
       <span className={`text-fg-primary ${rowTitleClass}`}>{item.title}</span>
       {category ? <span className="shrink-0 text-fg-tertiary">{category}</span> : null}
     </Link>
@@ -83,7 +96,8 @@ function DoRow({ item }: { item: TodayDoItem }) {
       to={item.href}
       className={`group w-full flex items-center gap-2 text-xs p-2 rounded-lg hover:bg-surface-overlay text-left ${focusRing}`}
     >
-      <Target size={14} className="text-warning shrink-0" />
+      <Target size={14} className={`text-warning ${kindIconClass}`} aria-hidden />
+      <FocusKindName name="目标" />
       <span className={`text-fg-primary ${rowTitleClass}`}>{item.title}</span>
       <span className="text-fg-tertiary shrink-0">
         {item.reason === "deadline" ? "截止将近" : "已停滞"}
@@ -98,7 +112,8 @@ function HandledRow({ item }: { item: TodayHandledItem }) {
       to={item.href}
       className={`group w-full flex items-center gap-2 text-xs p-2 rounded-lg hover:bg-surface-overlay text-left ${focusRing}`}
     >
-      <CheckCircle2 size={14} className="text-success shrink-0" />
+      <CheckCircle2 size={14} className={`text-success ${kindIconClass}`} aria-hidden />
+      <FocusKindName name={handledKindName(item.kind)} />
       <span className={`text-fg-secondary ${rowTitleClass}`}>{item.title}</span>
     </Link>
   );
