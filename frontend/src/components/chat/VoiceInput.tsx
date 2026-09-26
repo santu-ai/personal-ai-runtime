@@ -113,6 +113,8 @@ export default function VoiceInput({ onTranscript, disabled }: VoiceInputProps) 
 
   if (!isSupported) return null;
 
+  const voiceLabel = isListening ? "停止录音" : "语音输入";
+
   return (
     <div className="flex items-center gap-1">
       {interimText && (
@@ -124,14 +126,25 @@ export default function VoiceInput({ onTranscript, disabled }: VoiceInputProps) 
         type="button"
         onClick={isListening ? stopListening : startListening}
         disabled={disabled}
-        className={`p-1.5 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
+        aria-label={voiceLabel}
+        title={voiceLabel}
+        className={`group inline-flex max-w-full items-center justify-center p-1.5 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
           isListening
             ? "bg-danger/15 text-danger hover:bg-danger/25"
             : "text-fg-tertiary hover:text-fg-primary hover:bg-surface-overlay"
         } disabled:opacity-30`}
-        title={isListening ? "停止录音" : "语音输入"}
       >
-        {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+        {isListening ? (
+          <MicOff size={16} className="shrink-0 group-focus-visible:hidden" aria-hidden />
+        ) : (
+          <Mic size={16} className="shrink-0 group-focus-visible:hidden" aria-hidden />
+        )}
+        <span
+          data-voice-name=""
+          className="hidden whitespace-nowrap text-center text-[10px] leading-tight group-focus-visible:block"
+        >
+          {voiceLabel}
+        </span>
       </button>
     </div>
   );
