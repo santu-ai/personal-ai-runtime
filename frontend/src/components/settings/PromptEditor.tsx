@@ -246,7 +246,10 @@ export default function PromptEditor() {
         />
       </div>
       {message && (
-        <p className={`text-xs ${message.includes("失败") ? "text-danger" : "text-success"}`}>
+        <p
+          className={`text-xs ${message.includes("失败") ? "text-danger" : "text-success"}`}
+          role={message.includes("失败") ? "alert" : "status"}
+        >
           {message}
         </p>
       )}

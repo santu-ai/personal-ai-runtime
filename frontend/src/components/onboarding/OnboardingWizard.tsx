@@ -284,7 +284,10 @@ export default function OnboardingWizard({ onComplete }: Props) {
                 {checkBusy === "check" ? "检查中…" : "运行检查"}
               </Button>
               {message && (
-                <p className={`text-xs mt-2 ${messageOk ? "text-success" : "text-danger"}`}>
+                <p
+                  className={`text-xs mt-2 ${messageOk ? "text-success" : "text-danger"}`}
+                  role={messageOk ? "status" : "alert"}
+                >
                   {message}
                 </p>
               )}

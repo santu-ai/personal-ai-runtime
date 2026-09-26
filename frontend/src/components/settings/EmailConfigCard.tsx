@@ -152,7 +152,11 @@ export default function EmailConfigCard({ email, onSaved, embedded = false }: Pr
       </div>
 
       {emailTestResult && (
-        <div className="mt-3 flex gap-2 text-xs">
+        <div
+          className="mt-3 flex gap-2 text-xs"
+          role={emailTestResult.ok ? "status" : undefined}
+          data-testid="email-test-result"
+        >
           <Badge tone={emailTestResult.imap_ok ? "success" : "danger"}>
             IMAP {emailTestResult.imap_ok ? "正常" : "失败"}
           </Badge>

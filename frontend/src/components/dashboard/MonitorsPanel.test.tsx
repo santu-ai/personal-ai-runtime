@@ -637,7 +637,7 @@ describe("MonitorsPanel", () => {
     await act(async () => {
       release({ notified: 2 });
     });
-    expect(await screen.findByText("检查完成：2 处有更新")).toBeInTheDocument();
+    expect(await screen.findByText("检查完成：2 处有更新")).toHaveAttribute("role", "status");
     expect(screen.getByRole("button", { name: "立即检查" })).toHaveFocus();
   });
 

@@ -85,7 +85,7 @@ describe("OnboardingWizard", () => {
     } as Awaited<ReturnType<typeof getSystemHealth>>);
     renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
     fireEvent.click(screen.getByText("运行检查"));
-    await waitFor(() => expect(screen.getByText("后端运行正常")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("后端运行正常")).toHaveAttribute("role", "status"));
     fireEvent.click(screen.getByText("下一步"));
     await waitFor(() => {
       expect(screen.getByText("配置 AI 大脑")).toBeInTheDocument();
@@ -100,7 +100,7 @@ describe("OnboardingWizard", () => {
     } as Awaited<ReturnType<typeof getSystemHealth>>);
     renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
     fireEvent.click(screen.getByText("运行检查"));
-    await waitFor(() => expect(screen.getByText("后端运行正常")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("后端运行正常")).toHaveAttribute("role", "status"));
     fireEvent.click(screen.getByText("下一步"));
     await waitFor(() => {
       expect(screen.getByText("开始第一次对话")).toBeInTheDocument();
@@ -112,7 +112,7 @@ describe("OnboardingWizard", () => {
     renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
     fireEvent.click(screen.getByText("下一步"));
     await waitFor(() => {
-      expect(screen.getByText("无法连接")).toBeInTheDocument();
+      expect(screen.getByText("无法连接")).toHaveAttribute("role", "alert");
       expect(screen.getByText("连接后端")).toBeInTheDocument();
     });
   });
@@ -187,7 +187,7 @@ describe("OnboardingWizard", () => {
     const onComplete = vi.fn();
     renderWithRouter(<OnboardingWizard onComplete={onComplete} />);
     fireEvent.click(screen.getByText("运行检查"));
-    await waitFor(() => expect(screen.getByText("后端运行正常")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("后端运行正常")).toHaveAttribute("role", "status"));
     fireEvent.click(screen.getByText("下一步"));
     await waitFor(() => expect(screen.getByText("帮我规划一个目标")).toBeInTheDocument());
     fireEvent.click(screen.getByText("帮我规划一个目标"));
@@ -208,7 +208,7 @@ describe("OnboardingWizard", () => {
     mockCreateConv.mockRejectedValue(new MockApiError("创建失败", 500));
     renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
     fireEvent.click(screen.getByText("运行检查"));
-    await waitFor(() => expect(screen.getByText("后端运行正常")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("后端运行正常")).toHaveAttribute("role", "status"));
     fireEvent.click(screen.getByText("下一步"));
     await waitFor(() => expect(screen.getByText("自由聊几句")).toBeInTheDocument());
     fireEvent.click(screen.getByText("自由聊几句"));
