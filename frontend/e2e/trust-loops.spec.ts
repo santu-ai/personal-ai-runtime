@@ -450,11 +450,11 @@ test.describe("Trust loops", () => {
     });
     await page.goto("/dashboard", { waitUntil: "networkidle" });
     await expect(page.getByText("需要你决定")).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText("write_file")).toBeVisible();
+    await expect(page.getByText("写入文件")).toBeVisible();
     await expect(page.getByText("早安简报 - 2026-08-31")).toBeVisible();
     const reminder = page.getByRole("heading", { name: "AI 给你的提醒" }).locator("xpath=../..");
     await expect(reminder.getByText("独立提醒")).toBeVisible();
-    await expect(reminder.getByText("write_file")).toHaveCount(0);
+    await expect(reminder.getByText("写入文件")).toHaveCount(0);
     await expect(reminder.getByText("早安简报 - 2026-08-31")).toHaveCount(0);
   });
 });

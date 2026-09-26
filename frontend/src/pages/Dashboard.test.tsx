@@ -435,7 +435,7 @@ describe("DashboardPage", () => {
     } as unknown as ReturnType<typeof useApprovalsQuery>);
     renderDashboard();
     expect(screen.getByText("需要你决定")).toBeInTheDocument();
-    const link = screen.getByRole("link", { name: "write_file" });
+    const link = screen.getByRole("link", { name: "写入文件" });
     expect(link).toHaveAttribute("href", "/approvals");
     expect(link).toHaveClass("focus-visible:ring-focus-ring");
   });
@@ -1121,10 +1121,11 @@ describe("DashboardPage", () => {
       ],
     });
     renderDashboard();
-    expect(screen.getByText("write_file")).toBeInTheDocument();
+    expect(screen.getByText("写入文件")).toBeInTheDocument();
     expect(screen.getByText("早安简报 - 2026-08-31")).toBeInTheDocument();
     expect(screen.getByText("独立提醒")).toBeInTheDocument();
     const reminderSection = screen.getByText("AI 给你的提醒").closest("div")?.parentElement;
+    expect(reminderSection?.textContent).not.toContain("写入文件");
     expect(reminderSection?.textContent).not.toContain("write_file");
     expect(reminderSection?.textContent).not.toContain("早安简报");
   });
@@ -1268,7 +1269,7 @@ describe("DashboardPage", () => {
     } as unknown as ReturnType<typeof useGoalsQuery>);
     renderDashboard();
 
-    expect(screen.getByRole("link", { name: "write_file" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "写入文件" })).toBeInTheDocument();
     const alert = screen.getByTestId("today-do-load-error");
     expect(alert).toHaveTextContent("目标服务不可用");
     expect(screen.queryByText("没有时限内目标")).not.toBeInTheDocument();
