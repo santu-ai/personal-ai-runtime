@@ -4690,7 +4690,7 @@ describe("TasksPage", () => {
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
-  it("does not read 已验收, a schedule note, or 转为任务", async () => {
+  it("does not read a schedule note or 转为任务 after 已验收", async () => {
     const box = trackTask(briefTask, "task");
     vi.mocked(acceptWorkDelivery).mockImplementation(async () => {
       box.item = withReview(box.item, "accepted");
@@ -4704,14 +4704,14 @@ describe("TasksPage", () => {
     renderTasks("/tasks/brief_1");
     fireEvent.click(await screen.findByRole("button", { name: "验收" }));
     fireEvent.click(await screen.findByRole("button", { name: "确认验收" }));
-    await waitFor(() => expect(screen.getAllByText("已验收").length).toBeGreaterThan(0));
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(await screen.findByRole("status")).toHaveTextContent(/^已验收$/);
 
     fireEvent.click(screen.getByRole("button", { name: "定时再次运行" }));
     fireEvent.change(screen.getByLabelText("小时"), { target: { value: "2" } });
     fireEvent.click(screen.getByRole("button", { name: "确认定时" }));
     expect(await screen.findByTestId("scheduled-repeat-note")).toHaveTextContent("再次运行");
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/^已验收$/);
+    expect(screen.queryByRole("status", { name: /再次运行/ })).not.toBeInTheDocument();
 
     vi.mocked(adoptSuggestedAction).mockImplementation(async () => {
       const bundle = box.item.delivery_bundle!;
@@ -4736,7 +4736,8 @@ describe("TasksPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "转为任务" }));
     expect(await screen.findByRole("link", { name: "已转为任务" })).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/^已验收$/);
+    expect(screen.queryByRole("status", { name: "已转为任务" })).not.toBeInTheDocument();
   });
 
   it("drops the last status when another task opens and does not read the one already there", async () => {
@@ -4820,5 +4821,275 @@ describe("TasksPage", () => {
     expect(second).not.toBe(first);
     expect(second).toHaveTextContent(/^已完成$/);
     expect(second).not.toHaveFocus();
+  });
+
+  it("reads 已验收 when 验收 changes the review word and does not take focus", async () => {
+    const box = trackTask(briefTask, "task");
+    let release: () => void = () => {};
+    vi.mocked(acceptWorkDelivery).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            const reviewed = withReview(box.item, "accepted");
+            const current = reviewed.delivery_bundle!.current!;
+            box.item = {
+              ...reviewed,
+              delivery_bundle: {
+                ...reviewed.delivery_bundle!,
+                current: {
+                  ...current,
+                  latest_decision: { decision: "accepted", reason: "结论和来源都齐了" },
+                },
+              },
+            };
+            resolve({
+              replayed: false,
+              work_id: "brief_1",
+              decision: {},
+              bundle: box.item.delivery_bundle!,
+            });
+          };
+        }),
+    );
+    renderTasks("/tasks/brief_1");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "验收" }));
+    const dialog = await screen.findByRole("dialog", { name: "验收交付" });
+    fireEvent.change(within(dialog).getByPlaceholderText("例如：结论和来源都齐了。"), {
+      target: { value: "结论和来源都齐了" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认验收" }));
+    expect(await within(dialog).findByRole("button", { name: "验收中..." })).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    await act(async () => {
+      release();
+    });
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent(/^已验收$/);
+    expect(status).toHaveClass("sr-only");
+    expect(status).not.toHaveFocus();
+    expect(currentTaskLink()).toHaveFocus();
+    expect(screen.getByTestId("accept-reason")).toHaveTextContent("验收说明：结论和来源都齐了");
+    expect(
+      within(screen.getByRole("region", { name: "任务详情" })).getAllByText("已验收", {
+        selector: ":not([role='status'])",
+      }).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("reads 已要求返工 when 返工 changes the review word and does not take focus", async () => {
+    const box = trackTask(briefTask, "task");
+    let release: () => void = () => {};
+    vi.mocked(reworkWorkDelivery).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            box.item = withReview(box.item, "changes_requested");
+            resolve({
+              replayed: false,
+              work_id: "brief_1",
+              decision: {},
+              bundle: box.item.delivery_bundle!,
+            });
+          };
+        }),
+    );
+    renderTasks("/tasks/brief_1");
+    fireEvent.click(await screen.findByRole("button", { name: "返工" }));
+    const dialog = await screen.findByRole("dialog", { name: "请求返工" });
+    fireEvent.change(within(dialog).getByPlaceholderText("例如：补上风险，并给每条结论带来源。"), {
+      target: { value: "补上风险" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认返工" }));
+    expect(await within(dialog).findByRole("button", { name: "返工中..." })).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    await act(async () => {
+      release();
+    });
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent(/^已要求返工$/);
+    expect(status).toHaveClass("sr-only");
+    expect(status).not.toHaveFocus();
+    expect(currentTaskLink()).toHaveFocus();
+  });
+
+  it("reads 无交付 when 验收 saves an unknown review word", async () => {
+    const box = trackTask(briefTask, "task");
+    vi.mocked(acceptWorkDelivery).mockImplementation(async () => {
+      const bundle = box.item.delivery_bundle;
+      const current = bundle?.current;
+      if (!bundle || !current) throw new Error("missing delivery");
+      box.item = {
+        ...box.item,
+        delivery_bundle: {
+          ...bundle,
+          current_review_status: "archived" as typeof bundle.current_review_status,
+          current: {
+            ...current,
+            review_status: "archived" as typeof current.review_status,
+          },
+        },
+      };
+      return {
+        replayed: false,
+        work_id: "brief_1",
+        decision: {},
+        bundle: box.item.delivery_bundle!,
+      };
+    });
+    renderTasks("/tasks/brief_1");
+    fireEvent.click(await screen.findByRole("button", { name: "验收" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认验收" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/^无交付$/);
+    expect(
+      within(screen.getByRole("region", { name: "任务详情" })).getAllByText("无交付", {
+        selector: ":not([role='status'])",
+      }).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("does not read a review word when 验收 or 返工 fails", async () => {
+    trackTask(briefTask, "task");
+    vi.mocked(acceptWorkDelivery).mockRejectedValueOnce(new ApiError("验收失败", 500));
+    renderTasks("/tasks/brief_1");
+    fireEvent.click(await screen.findByRole("button", { name: "验收" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认验收" }));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("验收失败", "任务"));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "验收" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    vi.mocked(reworkWorkDelivery).mockRejectedValueOnce(new ApiError("返工失败", 500));
+    fireEvent.click(screen.getByRole("button", { name: "返工" }));
+    const dialog = await screen.findByRole("dialog", { name: "请求返工" });
+    fireEvent.change(within(dialog).getByPlaceholderText("例如：补上风险，并给每条结论带来源。"), {
+      target: { value: "补上风险" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认返工" }));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("返工失败", "任务"));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "返工" })).toBeInTheDocument();
+  });
+
+  it("does not read when 验收 leaves the same review word", async () => {
+    const box = trackTask(briefTask, "task");
+    vi.mocked(acceptWorkDelivery).mockImplementation(async () => ({
+      replayed: false,
+      work_id: "brief_1",
+      decision: {},
+      bundle: box.item.delivery_bundle!,
+    }));
+    renderTasks("/tasks/brief_1");
+    fireEvent.click(await screen.findByRole("button", { name: "验收" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认验收" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "验收交付" })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole("button", { name: "验收" })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "任务详情" })).getAllByText("待验收").length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("does not read a review word already on the page", async () => {
+    trackTask(withReview(briefTask, "accepted"), "task");
+    renderTasks("/tasks/brief_1");
+    expect(await screen.findByRole("heading", { name: "项目 A 简报" })).toBeInTheDocument();
+    expect(screen.getAllByText("已验收").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("drops the last review word when another task opens and does not read the one already there", async () => {
+    const first = briefTask;
+    const second = withReview(
+      { ...briefTask, id: "brief_2", title: "另一份" },
+      "changes_requested",
+    );
+    const box = { current: first };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [box.current, second];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockImplementation(async (id: string) =>
+      id === "brief_2" ? second : box.current,
+    );
+    vi.mocked(acceptWorkDelivery).mockImplementation(async () => {
+      box.current = withReview(box.current, "accepted");
+      return {
+        replayed: false,
+        work_id: "brief_1",
+        decision: {},
+        bundle: box.current.delivery_bundle!,
+      };
+    });
+    renderTasks("/tasks/brief_1");
+    fireEvent.click(await screen.findByRole("button", { name: "验收" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认验收" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/^已验收$/);
+
+    fireEvent.click(screen.getByRole("link", { name: /另一份/ }));
+    expect(await screen.findByRole("heading", { name: "另一份" })).toBeInTheDocument();
+    expect(screen.getAllByText("已要求返工").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("reads 已验收 again after a refresh clears it and 验收 runs once more", async () => {
+    const box = trackTask(briefTask, "task");
+    vi.mocked(acceptWorkDelivery).mockImplementation(async () => {
+      box.item = withReview(box.item, "accepted");
+      return {
+        replayed: false,
+        work_id: "brief_1",
+        decision: {},
+        bundle: box.item.delivery_bundle!,
+      };
+    });
+    const { client } = renderTasksWithClient("/tasks/brief_1");
+    fireEvent.click(await screen.findByRole("button", { name: "验收" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认验收" }));
+    const first = await screen.findByRole("status");
+    expect(first).toHaveTextContent(/^已验收$/);
+
+    box.item = briefTask;
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: queryKeys.tasks });
+    });
+    const again = await screen.findByRole("button", { name: "验收" });
+    expect(screen.getAllByText("待验收").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    fireEvent.click(again);
+    fireEvent.click(await screen.findByRole("button", { name: "确认验收" }));
+    const second = await screen.findByRole("status");
+    expect(second).not.toBe(first);
+    expect(second).toHaveTextContent(/^已验收$/);
+    expect(second).not.toHaveFocus();
+  });
+
+  it("does not read a review word a refresh changes on its own", async () => {
+    const box = trackTask(briefTask, "task");
+    vi.mocked(acceptWorkDelivery).mockImplementation(async () => {
+      box.item = withReview(box.item, "accepted");
+      return {
+        replayed: false,
+        work_id: "brief_1",
+        decision: {},
+        bundle: box.item.delivery_bundle!,
+      };
+    });
+    const { client } = renderTasksWithClient("/tasks/brief_1");
+    fireEvent.click(await screen.findByRole("button", { name: "验收" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认验收" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/^已验收$/);
+
+    box.item = withReview(box.item, "changes_requested");
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: queryKeys.tasks });
+    });
+    await waitFor(() => expect(screen.getAllByText("已要求返工").length).toBeGreaterThan(0));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });
