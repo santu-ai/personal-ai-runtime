@@ -357,7 +357,7 @@ describe("QuickCaptureDialog", () => {
 
     release({ id: "mem-1", status: "ok" });
     expect(next).toHaveValue("再记一条");
-    expect(await screen.findByText("已保存")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "已保存" })).toBeInTheDocument();
     expect(mockCreateMemory).toHaveBeenCalledTimes(2);
   });
 
