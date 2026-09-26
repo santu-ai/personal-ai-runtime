@@ -64,8 +64,8 @@ import { ListTodo } from "lucide-react";
 const ACTIVE_STATUSES = new Set(["pending", "running", "blocked", "waiting_approval"]);
 const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
 const OUTPUT_PREVIEW = 240;
-const focusRing =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-app";
+/** 与时间线相同的焦点环。返回链接和「已转为任务」看起来像按钮，环也不另留页面底色空隙。 */
+const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
 const backLinkClass = `inline-flex items-center justify-center rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${focusRing}`;
 const backLinkSecondary = `${backLinkClass} border border-border-subtle bg-surface-raised text-fg-primary hover:bg-surface-hover`;
 const backLinkPrimary = `${backLinkClass} bg-insight-strong text-fg-on-accent shadow-sm hover:bg-insight`;

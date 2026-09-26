@@ -18,8 +18,8 @@ import { goalProgressPercent } from "../utils/goalProgress";
 import { timeAgo, isStagnant } from "../utils/timeUtils";
 import GoalDetailPanel from "../components/goals/GoalDetailPanel";
 
-const focusRing =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-app";
+/** 与时间线相同的焦点环。返回链接看起来像按钮，环也不另留页面底色空隙。 */
+const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
 const backLinkClass = `inline-flex items-center justify-center rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${focusRing}`;
 const backLinkSecondary = `${backLinkClass} border border-border-subtle bg-surface-raised text-fg-primary hover:bg-surface-hover`;
 const backLinkPrimary = `${backLinkClass} bg-insight-strong text-fg-on-accent shadow-sm hover:bg-insight`;

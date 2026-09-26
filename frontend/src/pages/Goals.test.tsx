@@ -173,7 +173,12 @@ describe("GoalsPage", () => {
     expect(screen.getByRole("region", { name: "目标列表" })).toHaveClass("hidden", "lg:block");
     const back = screen.getByRole("link", { name: "返回列表" });
     expect(back).toHaveAttribute("href", "/goals");
-    expect(back).toHaveClass("focus-visible:ring-focus-ring");
+    expect(back).toHaveClass(
+      "focus-visible:outline-none",
+      "focus-visible:ring-2",
+      "focus-visible:ring-focus-ring",
+    );
+    expect(back.className).not.toContain("ring-offset");
     expect(back.parentElement).toHaveClass("lg:hidden");
     const row = screen.getByRole("link", { name: /学习 Rust/ });
     expect(row).toHaveTextContent("30%");

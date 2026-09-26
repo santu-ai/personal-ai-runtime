@@ -509,7 +509,12 @@ describe("TasksPage", () => {
     expect(screen.getByRole("region", { name: "任务详情" })).not.toHaveClass("hidden");
     const back = screen.getByRole("link", { name: "返回列表" });
     expect(back).toHaveAttribute("href", "/tasks");
-    expect(back).toHaveClass("focus-visible:ring-focus-ring");
+    expect(back).toHaveClass(
+      "focus-visible:outline-none",
+      "focus-visible:ring-2",
+      "focus-visible:ring-focus-ring",
+    );
+    expect(back.className).not.toContain("ring-offset");
     expect(back.parentElement).toHaveClass("lg:hidden");
     expect(screen.getByRole("link", { name: /整理报告/ })).toHaveAttribute("aria-current", "page");
   });
@@ -1071,7 +1076,12 @@ describe("TasksPage", () => {
 
     const link = await screen.findByRole("link", { name: "已转为任务" });
     expect(link).toHaveAttribute("href", "/tasks/task%2F2");
-    expect(link).toHaveClass("focus-visible:ring-focus-ring");
+    expect(link).toHaveClass(
+      "focus-visible:outline-none",
+      "focus-visible:ring-2",
+      "focus-visible:ring-focus-ring",
+    );
+    expect(link.className).not.toContain("ring-offset");
     const blank = screen.getByText("空白编号").closest("li");
     expect(blank).not.toBeNull();
     expect(
