@@ -62,13 +62,13 @@ describe("MemoryListItem", () => {
         />
       </ul>,
     );
-    const confirm = screen.getByRole("button", { name: "确认" });
+    const confirm = screen.getByRole("button", { name: "确认：喜欢早起跑步" });
     confirm.focus();
     expect(confirm).toBeEnabled();
     expect(confirm).toHaveAttribute("aria-busy", "true");
     expect(confirm).toHaveClass("opacity-50");
     expect(confirm).toHaveFocus();
-    const reject = screen.getByRole("button", { name: "拒绝" });
+    const reject = screen.getByRole("button", { name: "拒绝：喜欢早起跑步" });
     expect(reject).toBeEnabled();
     expect(reject).not.toHaveAttribute("aria-busy");
     fireEvent.click(reject);
@@ -98,7 +98,7 @@ describe("MemoryListItem", () => {
         />
       </ul>,
     );
-    const restore = screen.getByRole("button", { name: "恢复" });
+    const restore = screen.getByRole("button", { name: "恢复：从不喝咖啡" });
     restore.focus();
     expect(restore).toBeEnabled();
     expect(restore).toHaveAttribute("aria-busy", "true");
@@ -116,5 +116,70 @@ describe("MemoryListItem", () => {
     expect(screen.getByText("拒绝原因：记错了")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /恢复/ }));
     expect(onRatify).toHaveBeenCalledOnce();
+  });
+
+  it("names each action with the memory, while the visible label stays short", () => {
+    const content = `  ${"记住这件事".repeat(12)}  `;
+    renderWithRouter(
+      <ul>
+        <MemoryListItem
+          memory={{
+            id: "m-long",
+            content,
+            origin: "claim",
+            claim_status: "proposed",
+          }}
+          selected={false}
+          onToggleSelect={noop}
+          onRatify={noop}
+          onReject={noop}
+          onEdit={noop}
+          onDelete={noop}
+          onContinueChat={noop}
+          onShowProvenance={noop}
+        />
+      </ul>,
+    );
+    const sentence = content.trim();
+    const confirm = screen.getByRole("button", { name: `确认：${sentence}` });
+    expect(confirm).toHaveTextContent("确认");
+    expect(confirm.textContent).not.toContain(sentence);
+    expect(screen.getByRole("button", { name: `拒绝：${sentence}` })).toHaveTextContent("拒绝");
+    expect(screen.getByRole("button", { name: `编辑：${sentence}` })).toHaveTextContent("编辑");
+    expect(screen.getByRole("button", { name: `继续聊：${sentence}` })).toHaveTextContent("继续聊");
+    expect(screen.getByRole("button", { name: `来源：${sentence}` })).toHaveTextContent("来源");
+    expect(screen.getByRole("button", { name: `忘掉：${sentence}` })).toHaveTextContent("忘掉");
+    expect(screen.getByRole("checkbox", { name: `选择：${sentence}` })).toBeInTheDocument();
+    expect(document.querySelector("p")?.textContent).toBe(content);
+  });
+
+  it("keeps the short name when the memory is only whitespace", () => {
+    renderWithRouter(
+      <ul>
+        <MemoryListItem
+          memory={{
+            id: "m-blank",
+            content: "   ",
+            origin: "self_report",
+            claim_status: "ratified",
+          }}
+          selected={false}
+          onToggleSelect={noop}
+          onRatify={noop}
+          onReject={noop}
+          onEdit={noop}
+          onDelete={noop}
+          onContinueChat={noop}
+          onShowProvenance={noop}
+        />
+      </ul>,
+    );
+    expect(screen.getByRole("button", { name: "编辑" })).toHaveTextContent("编辑");
+    expect(screen.getByRole("button", { name: "继续聊" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "来源" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "忘掉" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /：/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "选择" })).toBeInTheDocument();
+    expect(document.querySelector("p")?.textContent).toBe("   ");
   });
 });
