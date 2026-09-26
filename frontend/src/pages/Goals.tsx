@@ -611,7 +611,7 @@ function GoalListItem({ goal, selected }: { goal: WorkItem; selected: boolean })
       to={goalPageHref(goal.id)}
       data-goal-id={goal.id}
       aria-current={selected ? "page" : undefined}
-      className={`block w-full rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
+      className={`group block w-full rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
         selected
           ? "border-insight/40 bg-insight/10"
           : "border-border-subtle bg-surface-raised shadow-sm hover:border-border-strong hover:bg-surface-hover/40"
@@ -631,7 +631,10 @@ function GoalListItem({ goal, selected }: { goal: WorkItem; selected: boolean })
               : ""
           }`}
         />
-        <span className="flex-1 truncate text-sm font-medium text-fg-primary">{goal.title}</span>
+        {/* 平时一行。键盘落到这一行时写出整句。鼠标悬停仍是一行。 */}
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg-primary group-focus-visible:overflow-visible group-focus-visible:whitespace-normal group-focus-visible:text-clip group-focus-visible:break-words">
+          {goal.title}
+        </span>
         <span className="shrink-0 text-[11px] tabular-nums text-fg-tertiary">{progressPct}%</span>
       </div>
       {goal.last_activity_at && (

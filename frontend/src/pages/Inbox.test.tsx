@@ -156,6 +156,57 @@ describe("InboxPage", () => {
     expect(screen.getByText("无新邮件")).toBeInTheDocument();
   });
 
+  it("writes the full subject when a recent row or triage action is focused", async () => {
+    const subject = "请在周五前确认这份还没发出的周报要放进哪个共享目录，以及截止日为什么要改";
+    const sender = "very-long-billing-and-approvals-desk@example-corporation.test";
+    const mail = {
+      id: "e-long",
+      sender,
+      subject,
+      preview: "预览不出现在列表里",
+      received_at: "2026-08-17T01:00:00Z",
+      category: "important" as const,
+      importance: 0.9,
+      reason: "需要确认",
+      notified: 0,
+      digested: 0,
+      status: "pending" as const,
+      created_at: "2026-08-17T01:00:00Z",
+    };
+    vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") =>
+      status === "pending" ? [mail] : [mail],
+    );
+    renderWithRouter(<InboxPage />);
+
+    const recent = await screen.findByRole("button", { name: new RegExp(subject) });
+    expect(recent).toHaveClass("group");
+    const recentLines = recent.querySelectorAll(".truncate");
+    expect(recentLines[0]).toHaveTextContent(subject);
+    expect(recentLines[1]).toHaveTextContent(sender);
+    expect(recentLines[0]).toHaveClass(
+      "truncate",
+      "group-focus-visible:whitespace-normal",
+      "group-focus-visible:overflow-visible",
+    );
+    expect(recentLines[0]?.className).not.toContain("group-hover:");
+    expect(recentLines[1]).toHaveClass("group-focus-visible:max-w-none");
+    expect(recent.querySelector("div")).toHaveClass("group-focus-visible:flex-col");
+
+    const view = screen.getByRole("button", { name: "查看" });
+    const card = view.parentElement?.parentElement;
+    expect(card).toHaveClass("group");
+    const cardSubject = card?.querySelector(".truncate");
+    expect(cardSubject).toHaveTextContent(subject);
+    expect(cardSubject).toHaveClass(
+      "truncate",
+      "group-has-[:focus-visible]:whitespace-normal",
+      "group-has-[:focus-visible]:overflow-visible",
+    );
+    expect(cardSubject?.className).not.toContain("group-hover:");
+    expect(screen.getByRole("button", { name: "标记已读" }).closest(".group")).toBe(card);
+    expect(screen.getByRole("button", { name: "让 AI 处理" }).closest(".group")).toBe(card);
+  });
+
   it("lists synced emails below the digest", async () => {
     vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") => {
       if (status === "pending") return [];

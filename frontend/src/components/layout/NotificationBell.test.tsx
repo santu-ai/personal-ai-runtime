@@ -69,6 +69,20 @@ describe("NotificationBell", () => {
     expect(bell.querySelector("svg")?.parentElement).toHaveClass("group-focus-visible:hidden");
   });
 
+  it("writes the full notification body when the row is keyboard focused", async () => {
+    const content =
+      "这份周报还没发出。需要你确认要把哪一版放进共享目录，以及这次改截止日是因为实验数据还没齐，还是因为审稿意见还没回。";
+    listNotifications.mockResolvedValue([{ ...sample, content }]);
+    renderWithRouter(<NotificationBell />);
+    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    const row = await screen.findByRole("button", { name: /待审批/ });
+    const body = row.querySelector(".line-clamp-2");
+    expect(body).toHaveTextContent(content);
+    expect(body).toHaveClass("line-clamp-2", "group-focus-visible:line-clamp-none");
+    expect(body?.className).not.toContain("group-hover:");
+    expect(row).toHaveClass("group");
+  });
+
   it("moves focus into the panel and returns it to the bell on Escape", async () => {
     let focusAtLayout: Element | null = null;
     notificationBellLayoutFocus.notify = () => {
