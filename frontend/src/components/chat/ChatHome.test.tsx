@@ -228,7 +228,7 @@ describe("ChatHome", () => {
     expect(screen.queryByText(/我还不太了解你/)).not.toBeInTheDocument();
     expect(screen.queryByText("今天没有待决断事项，开始新对话吧")).not.toBeInTheDocument();
 
-    fireEvent.click(within(error).getByRole("button", { name: "重试" }));
+    fireEvent.click(within(error).getByRole("button", { name: /^重试(：|$)/ }));
     expect(await screen.findByText(/我还不太了解你/)).toBeInTheDocument();
     expect(screen.getByText("今天没有待决断事项，开始新对话吧")).toBeInTheDocument();
     expect(screen.queryByTestId("chat-home-load-error")).not.toBeInTheDocument();
@@ -248,7 +248,7 @@ describe("ChatHome", () => {
     });
     renderWithRouter(<ChatHome />);
 
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     expect(screen.getByTestId("chat-home-load-error")).toHaveTextContent("记忆暂时读不到");
     expect(screen.queryByText(/我还不太了解你/)).not.toBeInTheDocument();
     await waitFor(() => expect(retry).toHaveFocus());
@@ -298,7 +298,7 @@ describe("ChatHome", () => {
     const error = screen.getByTestId("chat-home-load-error");
     expect(error).toHaveTextContent("记忆暂时读不到");
     expect(screen.queryByText(/我还不太了解你/)).not.toBeInTheDocument();
-    expect(within(error).getByRole("button", { name: "重试" })).not.toHaveFocus();
+    expect(within(error).getByRole("button", { name: /^重试(：|$)/ })).not.toHaveFocus();
   });
 
   it("does not treat a failed approval read as nothing to decide", async () => {
@@ -312,7 +312,7 @@ describe("ChatHome", () => {
     expect(screen.queryByText(/我还不太了解你/)).not.toBeInTheDocument();
     expect(screen.queryByText("今天没有待决断事项，开始新对话吧")).not.toBeInTheDocument();
 
-    fireEvent.click(within(error).getByRole("button", { name: "重试" }));
+    fireEvent.click(within(error).getByRole("button", { name: /^重试(：|$)/ }));
     expect(approvalsState.refetch).toHaveBeenCalled();
   });
 
@@ -325,7 +325,7 @@ describe("ChatHome", () => {
     expect(screen.queryByText(/我还不太了解你/)).not.toBeInTheDocument();
 
     mockCount.mockResolvedValue({ count: 0 });
-    fireEvent.click(within(error).getByRole("button", { name: "重试" }));
+    fireEvent.click(within(error).getByRole("button", { name: /^重试(：|$)/ }));
     expect(await screen.findByText(/我还不太了解你/)).toBeInTheDocument();
     expect(screen.queryByTestId("chat-home-load-error")).not.toBeInTheDocument();
   });

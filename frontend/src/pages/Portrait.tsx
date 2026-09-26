@@ -13,7 +13,10 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { usePortraitQuery } from "../hooks/usePortraitQuery";
-import LoadErrorNotice, { useHeldQueryError } from "../components/ui/LoadErrorNotice";
+import LoadErrorNotice, {
+  retryControlName,
+  useHeldQueryError,
+} from "../components/ui/LoadErrorNotice";
 
 const CATEGORY_META: Record<string, { label: string; icon: typeof User; description: string }> = {
   preferences: { label: "偏好", icon: Heart, description: "你的喜好与倾向" },
@@ -99,6 +102,7 @@ export function PortraitPanel({ compact = false }: { compact?: boolean }) {
             刷新失败：{error}
             <button
               type="button"
+              aria-label={retryControlName(error)}
               onClick={() => void refetch()}
               className="ml-auto rounded-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             >

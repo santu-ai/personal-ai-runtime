@@ -204,7 +204,7 @@ describe("useOverlayDismiss", () => {
     document.body.appendChild(opener);
     opener.focus();
     render(<RetryAfterOpen />);
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
     fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());

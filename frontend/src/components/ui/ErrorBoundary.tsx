@@ -1,5 +1,6 @@
 import { Component, type ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
+import { retryControlName } from "./LoadErrorNotice";
 
 interface Props {
   children: ReactNode;
@@ -45,6 +46,8 @@ export default class ErrorBoundary extends Component<Props, State> {
             <p className="text-xs text-fg-disabled mb-4">请尝试刷新页面或返回首页</p>
             <div className="flex gap-2 justify-center">
               <button
+                type="button"
+                aria-label={retryControlName(this.state.error?.message || "发生了未知错误")}
                 onClick={this.handleRetry}
                 className="px-4 py-2 bg-surface-overlay hover:bg-border-strong text-white rounded-lg text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               >

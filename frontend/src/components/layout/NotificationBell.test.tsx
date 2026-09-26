@@ -317,7 +317,7 @@ describe("NotificationBell", () => {
     fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
     const panel = screen.getByRole("dialog", { name: "最近通知" });
     expect(focusAtLayout).toBe(panel);
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
 
     fireEvent.keyDown(retry, { key: "Tab" });
@@ -438,7 +438,7 @@ describe("NotificationBell", () => {
     expect(alert).toHaveTextContent("通知暂时读不到");
     expect(addError).toHaveBeenCalledWith("通知暂时读不到", "通知");
     expect(screen.queryByText("暂无通知")).not.toBeInTheDocument();
-    const retry = within(alert).getByRole("button", { name: "重试" });
+    const retry = within(alert).getByRole("button", { name: /^重试(：|$)/ });
     expect(retry).toHaveClass("focus-visible:ring-focus-ring");
     await waitFor(() => expect(retry).toHaveFocus());
   });
@@ -457,7 +457,7 @@ describe("NotificationBell", () => {
     listNotifications.mockRejectedValueOnce(new Error("通知暂时读不到"));
     renderWithRouter(<NotificationBell />);
     fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
 
     listNotifications.mockImplementationOnce(
@@ -468,7 +468,10 @@ describe("NotificationBell", () => {
     );
     fireEvent.click(retry);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "重试" })).toHaveAttribute("aria-busy", "true"),
+      expect(screen.getByRole("button", { name: /^重试(：|$)/ })).toHaveAttribute(
+        "aria-busy",
+        "true",
+      ),
     );
     expect(screen.getByTestId("notifications-load-error")).toHaveTextContent("通知暂时读不到");
     expect(screen.queryByText("暂无通知")).not.toBeInTheDocument();

@@ -90,7 +90,9 @@ describe("InboxEmailDetailModal", () => {
     expect(screen.getByText("请尽快回复")).toBeInTheDocument();
     expect(screen.queryByText("AI 正在生成摘要...")).not.toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
-    await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+    await waitFor(() =>
+      expect(within(alert).getByRole("button", { name: /^重试(：|$)/ })).toHaveFocus(),
+    );
 
     const openMail = mail("e1", "请尽快回复");
     let release: (row: SummaryRow) => void = () => {};
@@ -100,7 +102,7 @@ describe("InboxEmailDetailModal", () => {
           release = resolve;
         }),
     );
-    const retry = within(alert).getByRole("button", { name: "重试" });
+    const retry = within(alert).getByRole("button", { name: /^重试(：|$)/ });
     fireEvent.click(retry);
     await waitFor(() => expect(retry).toHaveAttribute("aria-busy", "true"));
     expect(retry).toHaveFocus();

@@ -42,6 +42,7 @@ import EmptyState from "../components/ui/EmptyState";
 import { Input } from "../components/ui/Input";
 import LoadErrorNotice, {
   queryErrorMessage,
+  retryControlName,
   useHeldQueryError,
 } from "../components/ui/LoadErrorNotice";
 import PageHeader from "../components/ui/PageHeader";
@@ -2497,6 +2498,7 @@ export default function TasksPage() {
                         <Button
                           size="sm"
                           variant="secondary"
+                          aria-label={retryControlName(historyError)}
                           aria-busy={historyLoading || undefined}
                           onClick={() => {
                             if (historyLoading) return;

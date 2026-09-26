@@ -254,7 +254,7 @@ describe("ContextPanel", () => {
     expect(alert).toHaveTextContent("目标暂时读不到");
     expect(addError).toHaveBeenCalledWith("目标暂时读不到", "上下文");
     expect(screen.queryByText("暂无活跃目标")).not.toBeInTheDocument();
-    const retry = within(alert).getByRole("button", { name: "重试" });
+    const retry = within(alert).getByRole("button", { name: /^重试(：|$)/ });
     expect(retry).toHaveClass("focus-visible:ring-focus-ring");
     await waitFor(() => expect(retry).toHaveFocus());
   });
@@ -279,7 +279,7 @@ describe("ContextPanel", () => {
         <ContextPanel open={true} onToggle={vi.fn()} />
       </MemoryRouter>,
     );
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
 
     vi.mocked(listWorkItems).mockImplementationOnce(
@@ -290,7 +290,10 @@ describe("ContextPanel", () => {
     );
     fireEvent.click(retry);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "重试" })).toHaveAttribute("aria-busy", "true"),
+      expect(screen.getByRole("button", { name: /^重试(：|$)/ })).toHaveAttribute(
+        "aria-busy",
+        "true",
+      ),
     );
     expect(screen.getByTestId("context-goals-load-error")).toHaveTextContent("目标暂时读不到");
     expect(screen.queryByText("暂无活跃目标")).not.toBeInTheDocument();

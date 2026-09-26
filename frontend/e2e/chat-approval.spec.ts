@@ -495,7 +495,7 @@ test.describe("Error handling", () => {
 
     await router.install(page);
     await page.goto("/dashboard");
-    await expect(page.getByRole("button", { name: "重试" })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole("button", { name: /^重试(：|$)/ })).toBeVisible({ timeout: 10000 });
   });
 });
 

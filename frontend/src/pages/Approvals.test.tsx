@@ -136,7 +136,7 @@ describe("ApprovalsPage", () => {
   it("calls addError when load fails", async () => {
     mockList.mockRejectedValue(new MockApiError("加载失败", 500));
     const focusWhenShown = captureFocusWhenGone(
-      () => screen.queryByRole("button", { name: "重试" }) !== null,
+      () => screen.queryByRole("button", { name: /^重试(：|$)/ }) !== null,
     );
     renderWithRouter(<ApprovalsPage />);
     const alert = await screen.findByRole("alert");
@@ -145,7 +145,9 @@ describe("ApprovalsPage", () => {
     expect(screen.getByRole("heading", { name: "审批管理" })).toBeInTheDocument();
     expect(screen.queryByText("暂无待审批项")).not.toBeInTheDocument();
     expect(screen.queryByText("所有高风险操作已处理完毕")).not.toBeInTheDocument();
-    const retry = within(alert).getByRole("button", { name: "重试" });
+    const retry = within(alert).getByRole("button", { name: /^重试(：|$)/ });
+    expect(retry).toHaveAttribute("aria-label", "重试：加载失败");
+    expect(retry).toHaveTextContent("重试");
     expect(retry).toHaveClass("focus-visible:ring-focus-ring");
     expect(retry).toHaveFocus();
     expect(focusWhenShown.read()).toBe(retry);
@@ -164,7 +166,7 @@ describe("ApprovalsPage", () => {
     let release: ((rows: EnrichedApproval[]) => void) | undefined;
     mockList.mockRejectedValueOnce(new MockApiError("加载失败", 500));
     renderWithRouter(<ApprovalsPage />);
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
 
     mockList.mockImplementationOnce(
@@ -175,7 +177,10 @@ describe("ApprovalsPage", () => {
     );
     fireEvent.click(retry);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "重试" })).toHaveAttribute("aria-busy", "true"),
+      expect(screen.getByRole("button", { name: /^重试(：|$)/ })).toHaveAttribute(
+        "aria-busy",
+        "true",
+      ),
     );
     expect(screen.getByTestId("approvals-load-error")).toHaveTextContent("加载失败");
     expect(screen.queryByText("加载中…")).not.toBeInTheDocument();

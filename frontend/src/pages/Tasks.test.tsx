@@ -1458,6 +1458,10 @@ describe("TasksPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /v1 · 已要求返工/ }));
     const error = await screen.findByTestId("history-load-error");
     expect(error).toHaveTextContent("历史版本暂时读不到");
+    expect(within(error).getByRole("button", { name: /^重试(：|$)/ })).toHaveAttribute(
+      "aria-label",
+      "重试：历史版本暂时读不到",
+    );
     expect(screen.getByRole("button", { name: /v1 · 已要求返工/ })).toHaveAttribute(
       "aria-current",
       "true",
@@ -1465,7 +1469,7 @@ describe("TasksPage", () => {
     expect(screen.queryByText("完整正文超过预览长度".repeat(20))).not.toBeInTheDocument();
 
     vi.mocked(getWorkDelivery).mockRejectedValueOnce(new Error("still down"));
-    fireEvent.click(within(error).getByRole("button", { name: "重试" }));
+    fireEvent.click(within(error).getByRole("button", { name: /^重试(：|$)/ }));
     await waitFor(() => expect(getWorkDelivery).toHaveBeenCalledTimes(2));
     await waitFor(() => {
       expect(screen.getByTestId("history-load-error")).toHaveTextContent("加载历史版本失败");
@@ -1524,11 +1528,11 @@ describe("TasksPage", () => {
     const row = await screen.findByRole("button", { name: /v1 · 已要求返工/ });
     row.focus();
     const focusWhenShown = captureFocusWhenGone(() => {
-      const button = screen.queryByRole("button", { name: "重试" });
+      const button = screen.queryByRole("button", { name: /^重试(：|$)/ });
       return button instanceof HTMLButtonElement && !button.hasAttribute("aria-busy");
     });
     fireEvent.click(row);
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).not.toHaveAttribute("aria-busy"));
     expect(retry).toHaveFocus();
     expect(focusWhenShown.read()).toBe(retry);
@@ -1546,7 +1550,7 @@ describe("TasksPage", () => {
     renderTasks("/tasks/brief_1");
 
     fireEvent.click(await screen.findByRole("button", { name: /v1 · 已要求返工/ }));
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
 
     const focusWhenOpen = captureFocusWhenGone(
@@ -1578,7 +1582,7 @@ describe("TasksPage", () => {
     renderTasks("/tasks/brief_1");
 
     fireEvent.click(await screen.findByRole("button", { name: /v1 · 已要求返工/ }));
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
     expect(screen.queryByTestId("history-load-status")).not.toBeInTheDocument();
 
@@ -2975,7 +2979,7 @@ describe("TasksPage", () => {
       expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
       expect(screen.queryByText("延期邮件全文")).not.toBeInTheDocument();
       await waitFor(() =>
-        expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus(),
+        expect(within(alert).getByRole("button", { name: /^重试(：|$)/ })).toHaveFocus(),
       );
     });
   });
@@ -2985,7 +2989,7 @@ describe("TasksPage", () => {
     await withMailBrief(async () => {
       const emailRow = await screen.findByTestId("delivery-source-email:m1");
       fireEvent.click(within(emailRow).getByRole("button", { name: "打开邮件 延期邮件" }));
-      const retry = await screen.findByRole("button", { name: "重试" });
+      const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
       await waitFor(() => expect(retry).toHaveFocus());
 
       let release: ((row: ReturnType<typeof openedMail>) => void) | undefined;
@@ -3249,7 +3253,7 @@ describe("TasksPage", () => {
     expect(screen.getByRole("heading", { name: "任务" })).toBeInTheDocument();
     expect(screen.queryByText("暂无任务")).not.toBeInTheDocument();
     expect(screen.queryByText("从项目资料简报开始：交办后可验收或返工。")).not.toBeInTheDocument();
-    const retry = within(alert).getByRole("button", { name: "重试" });
+    const retry = within(alert).getByRole("button", { name: /^重试(：|$)/ });
     expect(retry).toHaveClass("focus-visible:ring-focus-ring");
     await waitFor(() => expect(retry).toHaveFocus());
   });
@@ -3265,7 +3269,7 @@ describe("TasksPage", () => {
   it("keeps the task list retry mounted until the reread finishes", async () => {
     vi.mocked(listWorkItems).mockRejectedValueOnce(new ApiError("加载失败", 500));
     renderTasks("/tasks");
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
 
     const pending: Array<(rows: WorkItem[]) => void> = [];
@@ -3278,7 +3282,10 @@ describe("TasksPage", () => {
     fireEvent.click(retry);
     await waitFor(() => expect(pending.length).toBeGreaterThanOrEqual(2));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "重试" })).toHaveAttribute("aria-busy", "true"),
+      expect(screen.getByRole("button", { name: /^重试(：|$)/ })).toHaveAttribute(
+        "aria-busy",
+        "true",
+      ),
     );
     expect(screen.getByTestId("tasks-load-error")).toHaveTextContent("加载失败");
     expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
@@ -3298,7 +3305,7 @@ describe("TasksPage", () => {
     expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
     expect(screen.queryByText("任务不存在")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /整理报告/ })).toBeInTheDocument();
-    const retry = within(alert).getByRole("button", { name: "重试" });
+    const retry = within(alert).getByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).not.toHaveAttribute("aria-busy", "true"), { timeout: 4000 });
     await waitFor(() => expect(retry).toHaveFocus());
 
@@ -3326,7 +3333,7 @@ describe("TasksPage", () => {
     expect(alert).toHaveTextContent("列表失败");
     expect(within(list).queryByText("暂无其他任务")).not.toBeInTheDocument();
     expect(screen.queryByText("暂无任务")).not.toBeInTheDocument();
-    expect(within(alert).getByRole("button", { name: "重试" })).not.toHaveFocus();
+    expect(within(alert).getByRole("button", { name: /^重试(：|$)/ })).not.toHaveFocus();
   });
 
   it("does not show a metrics error after a successful empty window", async () => {
@@ -3367,7 +3374,7 @@ describe("TasksPage", () => {
     expect(screen.queryByText("近 30 日简报")).not.toBeInTheDocument();
     expect(screen.getByText("暂无任务")).toBeInTheDocument();
     expect(addError).toHaveBeenCalledWith("指标暂时读不到", "任务");
-    const retry = within(alert).getByRole("button", { name: "重试" });
+    const retry = within(alert).getByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
   });
 
@@ -3393,7 +3400,7 @@ describe("TasksPage", () => {
           }),
       );
     renderTasks("/tasks");
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     expect(screen.getByTestId("delivery-metrics-load-error")).toHaveTextContent("指标暂时读不到");
     await waitFor(() => expect(retry).toHaveFocus());
 
@@ -3475,7 +3482,7 @@ describe("TasksPage", () => {
     expect(await screen.findByRole("button", { name: "执行" })).toBeInTheDocument();
     const alert = screen.getByTestId("delivery-metrics-load-error");
     expect(alert).toHaveTextContent("指标暂时读不到");
-    expect(within(alert).getByRole("button", { name: "重试" })).not.toHaveFocus();
+    expect(within(alert).getByRole("button", { name: /^重试(：|$)/ })).not.toHaveFocus();
   });
 
   it("leaves focus on the task list retry when the summary also fails", async () => {
@@ -3487,8 +3494,10 @@ describe("TasksPage", () => {
     expect(metrics).toHaveTextContent("指标暂时读不到");
     expect(list).toHaveTextContent("列表失败");
     expect(screen.queryByText("暂无任务")).not.toBeInTheDocument();
-    await waitFor(() => expect(within(list).getByRole("button", { name: "重试" })).toHaveFocus());
-    expect(within(metrics).getByRole("button", { name: "重试" })).not.toHaveFocus();
+    await waitFor(() =>
+      expect(within(list).getByRole("button", { name: /^重试(：|$)/ })).toHaveFocus(),
+    );
+    expect(within(metrics).getByRole("button", { name: /^重试(：|$)/ })).not.toHaveFocus();
   });
 
   it("keeps the brief draft until create succeeds and ignores dismiss while creating", async () => {

@@ -81,7 +81,7 @@ describe("TrustReportPanel", () => {
     await waitFor(() => expect(screen.getByText("失败")).toBeInTheDocument(), {
       timeout: 3000,
     });
-    const retry = screen.getByRole("button", { name: "重试" });
+    const retry = screen.getByRole("button", { name: /^重试(：|$)/ });
     expect(retry).toHaveClass("focus-visible:ring-focus-ring");
     fireEvent.click(retry);
     await waitFor(() => expect(mockGetReport.mock.calls.length).toBeGreaterThanOrEqual(2));
@@ -101,7 +101,7 @@ describe("TrustReportPanel", () => {
     let release: ((row: TrustReportData) => void) | undefined;
     mockGetReport.mockRejectedValue(new Error("失败"));
     renderPage();
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     mockGetReport.mockImplementation(
       () =>
         new Promise((resolve) => {
