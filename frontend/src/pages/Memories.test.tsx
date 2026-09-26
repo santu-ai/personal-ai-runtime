@@ -655,7 +655,8 @@ describe("MemoriesPage", () => {
     input.focus();
     fireEvent.change(input, { target: { value: "喜欢喝茶" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(await screen.findByRole("button", { name: "记住中..." })).toHaveFocus();
+    expect(await screen.findByRole("button", { name: "记住中..." })).toBeInTheDocument();
+    expect(input).toHaveFocus();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
 
     await act(async () => {
@@ -721,7 +722,9 @@ describe("MemoriesPage", () => {
     await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("tab", { name: "列表" }));
-    expect(await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住...")).toBeInTheDocument();
+    expect(
+      await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住..."),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
@@ -746,7 +749,9 @@ describe("MemoriesPage", () => {
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: "列表" }));
-    expect(await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住...")).toBeInTheDocument();
+    expect(
+      await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住..."),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 

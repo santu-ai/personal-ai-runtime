@@ -789,7 +789,8 @@ describe("GoalsPage", () => {
     input.focus();
     fireEvent.change(input, { target: { value: "写测试" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(await screen.findByRole("button", { name: "添加中..." })).toHaveFocus();
+    expect(await screen.findByRole("button", { name: "添加中..." })).toBeInTheDocument();
+    expect(input).toHaveFocus();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
 
     await act(async () => {
