@@ -44,7 +44,10 @@ test.describe("Extra core flows", () => {
     await page.goto("/approvals");
     await expect(page.getByRole("heading", { name: "确认写入文件" })).toBeVisible({ timeout: 5000 });
     await page.getByRole("button", { name: "批准" }).click();
-    await expect(page.getByText("暂无待审批项")).toBeVisible({ timeout: 5000 });
+    // 读屏那一句也含这几个字。只对可见段落。
+    await expect(
+      page.locator("p:not([role=status])", { hasText: "暂无待审批项" }),
+    ).toBeVisible({ timeout: 5000 });
   });
 
   test("approvals page reject removes pending item", async ({ page }) => {
@@ -85,7 +88,10 @@ test.describe("Extra core flows", () => {
     await page.goto("/approvals");
     await expect(page.getByRole("heading", { name: "确认执行命令" })).toBeVisible({ timeout: 5000 });
     await page.getByRole("button", { name: "拒绝" }).click();
-    await expect(page.getByText("暂无待审批项")).toBeVisible({ timeout: 5000 });
+    // 读屏那一句也含这几个字。只对可见段落。
+    await expect(
+      page.locator("p:not([role=status])", { hasText: "暂无待审批项" }),
+    ).toBeVisible({ timeout: 5000 });
   });
 
   test("notification bell opens detail modal", async ({ page }) => {
