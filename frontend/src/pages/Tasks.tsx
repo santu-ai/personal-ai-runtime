@@ -93,7 +93,13 @@ type TaskDirectHandoff = {
 };
 
 /** 验收或返工已经写成功，等交付刷新后「验收」「返工」卸下再交接焦点。 */
-type ReviewHandoff = { taskId: string };
+type ReviewHandoff = {
+  taskId: string;
+  /** 点下去时详情上的评审。换成别的字才读。 */
+  fromReview: string | null;
+  /** 这一次已经读过的那句，避免同一轮再读。 */
+  spoken?: string;
+};
 
 /** 执行或再次运行已经写成功，等状态刷新后按钮卸下再交接焦点。 */
 type StatusHandoff = {
@@ -104,6 +110,25 @@ type StatusHandoff = {
 };
 
 type SpokenTaskStatus = { id: number; taskId: string; text: string };
+
+/** 详情里评审换成新的字时读这一句。字没换、或这次还没成功，不读。 */
+function publishReviewStatus(
+  pending: ReviewHandoff,
+  taskId: string,
+  review: string | null,
+  seq: { current: number },
+  live: { current: SpokenTaskStatus | null },
+  setSpoken: (value: SpokenTaskStatus) => void,
+): void {
+  if (pending.spoken || (review ?? null) === pending.fromReview) return;
+  const text = (review ? reviewLabel(review) : "").trim();
+  if (!text) return;
+  pending.spoken = text;
+  seq.current += 1;
+  const next = { id: seq.current, taskId, text };
+  live.current = next;
+  setSpoken(next);
+}
 
 /** 详情这一行的状态换成新的字时读这一句。字没换、或这次还没成功，不读。 */
 function publishTaskStatus(
@@ -1143,6 +1168,10 @@ export default function TasksPage() {
   const statusSpokenSeq = useRef(0);
   const spokenLive = useRef<SpokenTaskStatus | null>(null);
   const [spokenStatus, setSpokenStatus] = useState<SpokenTaskStatus | null>(null);
+  // 验收或返工把详情里的评审换成新的字时读这一句。打开时已经写着的不读。
+  const reviewSpokenSeq = useRef(0);
+  const spokenReviewLive = useRef<SpokenTaskStatus | null>(null);
+  const [spokenReview, setSpokenReview] = useState<SpokenTaskStatus | null>(null);
   const taskIdRef = useRef(urlTaskId);
   taskIdRef.current = urlTaskId;
   const [dialogBusy, setDialogBusy] = useState(false);
@@ -1252,6 +1281,8 @@ export default function TasksPage() {
     statusHandoff.current = null;
     spokenLive.current = null;
     setSpokenStatus(null);
+    spokenReviewLive.current = null;
+    setSpokenReview(null);
     setActionBusy(null);
   }, [urlTaskId]);
 
@@ -1610,6 +1641,7 @@ export default function TasksPage() {
   const handleAccept = async () => {
     if (!selected || !acceptTarget || !beginDialog()) return;
     const taskId = selected.id;
+    const fromReview = selected.delivery_bundle?.current_review_status ?? null;
     const submitted = acceptLive.current;
     const note = submitted.trim();
     if (!acceptKey.current) acceptKey.current = newIdempotencyKey("accept");
@@ -1636,7 +1668,7 @@ export default function TasksPage() {
       handoff = { kind: "failed", dialog: "accept" };
     } finally {
       if (closed && taskIdRef.current === taskId) {
-        reviewHandoff.current = { taskId };
+        reviewHandoff.current = { taskId, fromReview };
       }
       dialogHandoff.current = handoff;
       endDialog();
@@ -1727,6 +1759,7 @@ export default function TasksPage() {
   const handleRework = async () => {
     if (!selected) return;
     const taskId = selected.id;
+    const fromReview = selected.delivery_bundle?.current_review_status ?? null;
     const current = selected.delivery_bundle?.current;
     const submitted = reworkLive.current;
     const reason = submitted.trim();
@@ -1753,7 +1786,7 @@ export default function TasksPage() {
       handoff = { kind: "failed", dialog: "rework" };
     } finally {
       if (closed && taskIdRef.current === taskId) {
-        reviewHandoff.current = { taskId };
+        reviewHandoff.current = { taskId, fromReview };
       }
       dialogHandoff.current = handoff;
       endDialog();
@@ -1835,6 +1868,9 @@ export default function TasksPage() {
   const canCancel =
     selected && selected.work_type === "background" && !TERMINAL_STATUSES.has(selected.status);
   const bundle = selected?.delivery_bundle;
+  const reviewVisible = bundle?.current_review_status
+    ? reviewLabel(bundle.current_review_status).trim()
+    : "";
   const currentDelivery = bundle?.current ?? null;
   const canRerunSameBrief = Boolean(
     selected && isProjectBrief(selected) && selected.status === "completed" && currentDelivery,
@@ -1855,6 +1891,7 @@ export default function TasksPage() {
 
   // 对话框先关掉，焦点回到「验收」或「返工」。交付刷新后这两个按钮才卸下。
   // 放到绘制前，不把焦点留在页面空白。已经移到别的控件上就不再抢。
+  // 评审换成新的字时，同一轮读出来。字没换不读。
   useLayoutEffect(() => {
     const pending = reviewHandoff.current;
     if (!pending || dialogBusy) return;
@@ -1862,6 +1899,14 @@ export default function TasksPage() {
       reviewHandoff.current = null;
       return;
     }
+    publishReviewStatus(
+      pending,
+      selected.id,
+      selected.delivery_bundle?.current_review_status ?? null,
+      reviewSpokenSeq,
+      spokenReviewLive,
+      setSpokenReview,
+    );
     if (selected.delivery_bundle?.current?.review_status === "unreviewed") return;
     reviewHandoff.current = null;
     if (!focusIsIdle()) return;
@@ -1935,6 +1980,18 @@ export default function TasksPage() {
     spokenLive.current = null;
     if (spokenStatus) setSpokenStatus(null);
   }, [selected, spokenStatus]);
+
+  // 评审字已经和页面上的不一样，或换了一个任务，就卸下这一句。
+  // 自己刷新改掉的字不另读。刚读出的那一句和页面上相同，留着。
+  useLayoutEffect(() => {
+    const live = spokenReviewLive.current;
+    if (!live) return;
+    const review = selected?.delivery_bundle?.current_review_status;
+    const visible = review ? reviewLabel(review).trim() : "";
+    if (selected && live.taskId === selected.id && visible === live.text) return;
+    spokenReviewLive.current = null;
+    if (spokenReview) setSpokenReview(null);
+  }, [selected, spokenReview]);
 
   useLayoutEffect(() => {
     // 版本行在交付下面。换一版时上面的正文高度会变，视口容易停在版本列表上。
@@ -2146,6 +2203,14 @@ export default function TasksPage() {
                               {" · "}
                               <span>{reviewLabel(bundle.current_review_status)}</span>
                             </>
+                          ) : null}
+                          {spokenReview &&
+                          spokenReview.taskId === selected.id &&
+                          spokenReview.text === reviewVisible ? (
+                            <span key={spokenReview.id} className="sr-only" role="status">
+                              {/* 评审换成新的字时读出来，等当前这一句说完。不把焦点抢过来。 */}
+                              {spokenReview.text}
+                            </span>
                           ) : null}
                           {handler?.dead_letter ? (
                             <span className="text-danger"> · 死信</span>
