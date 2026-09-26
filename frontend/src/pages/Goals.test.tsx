@@ -885,7 +885,7 @@ describe("GoalsPage", () => {
     expect(await screen.findByText("先写测试")).toBeInTheDocument();
     const row = screen.getByText("先写测试").parentElement;
     expect(row).toBeTruthy();
-    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "添加" }));
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "添加：先写测试" }));
     await waitFor(() => expect(addError).toHaveBeenCalledWith("创建行动步骤失败", "目标"));
     expect(screen.getByText("先写测试")).toBeInTheDocument();
   });
@@ -1618,7 +1618,7 @@ describe("GoalsPage", () => {
     expect(screen.getByRole("button", { name: "AI 拆解" })).toHaveFocus();
 
     const row = screen.getByText("先写测试").parentElement as HTMLElement;
-    fireEvent.click(within(row).getByRole("button", { name: "添加" }));
+    fireEvent.click(within(row).getByRole("button", { name: "添加：先写测试" }));
     await waitFor(() => expect(screen.queryByText("先写测试")).not.toBeInTheDocument());
     expect(screen.getByText("再补文档")).toBeInTheDocument();
     expect(screen.getByRole("status")).toBe(replaced);
@@ -1671,7 +1671,7 @@ describe("GoalsPage", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "AI 拆解" })).toHaveFocus());
     expect(screen.getByText("先写测试")).toBeInTheDocument();
     const row = screen.getByText("先写测试").parentElement as HTMLElement;
-    expect(within(row).getByRole("button", { name: "添加" })).toBeEnabled();
+    expect(within(row).getByRole("button", { name: "添加：先写测试" })).toBeEnabled();
     expect(addError).toHaveBeenCalledWith("拆解失败", "目标");
   });
 
@@ -1741,6 +1741,51 @@ describe("GoalsPage", () => {
     return within(row).getByRole("button", { name: /添加/ });
   }
 
+  function suggestionRow(step: string): HTMLElement {
+    const span = [...document.querySelectorAll("span.flex-1")].find(
+      (node) => node.textContent === step,
+    );
+    if (!span?.parentElement) throw new Error(`missing suggestion ${JSON.stringify(step)}`);
+    return span.parentElement as HTMLElement;
+  }
+
+  it("names each suggested add button with that step", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    vi.mocked(getGoal).mockResolvedValue(sampleGoal);
+    vi.mocked(decomposeGoal).mockResolvedValue({
+      steps: ["  前  后  ", "前一段\n后一段", "   ", "先写测试", "先写测试"],
+    });
+    renderGoals("/goals/g1");
+    fireEvent.click(await screen.findByRole("button", { name: "AI 拆解" }));
+    expect(await screen.findByRole("button", { name: "全部添加" })).toBeInTheDocument();
+
+    const spacedRow = suggestionRow("  前  后  ");
+    const spaced = within(spacedRow).getByRole("button");
+    expect(spaced).toHaveAttribute("aria-label", "添加：前  后");
+    expect(spaced).toHaveTextContent("添加");
+    expect(spaced.textContent).not.toContain("前");
+    expect(spacedRow.querySelector("span.flex-1")?.textContent).toBe("  前  后  ");
+
+    const brokenRow = suggestionRow("前一段\n后一段");
+    const broken = within(brokenRow).getByRole("button");
+    expect(broken).toHaveAttribute("aria-label", "添加：前一段\n后一段");
+    expect(broken).toHaveTextContent("添加");
+    expect(broken.textContent).not.toContain("前一段");
+    expect(brokenRow.querySelector("span.flex-1")?.textContent).toBe("前一段\n后一段");
+
+    const blankRow = suggestionRow("   ");
+    const blank = within(blankRow).getByRole("button", { name: "添加" });
+    expect(blank).not.toHaveAttribute("aria-label");
+    expect(blank).toHaveTextContent("添加");
+    expect(blankRow.querySelector("span.flex-1")?.textContent).toBe("   ");
+
+    expect(screen.getAllByRole("button", { name: "添加：先写测试" })).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "全部添加" })).not.toHaveAttribute("aria-label");
+
+    const field = screen.getByPlaceholderText("添加行动步骤...").parentElement as HTMLElement;
+    expect(within(field).getByRole("button", { name: "添加" })).not.toHaveAttribute("aria-label");
+  });
+
   it("does not add a suggestion twice and keeps focus on that button", async () => {
     const pending: Array<(goal: WorkItem) => void> = [];
     vi.mocked(createGoalAction).mockImplementation(
@@ -1755,8 +1800,10 @@ describe("GoalsPage", () => {
     fireEvent.click(add);
     fireEvent.click(add);
     const busy = await within(add.parentElement as HTMLElement).findByRole("button", {
-      name: "添加中...",
+      name: "添加：先写测试",
     });
+    expect(busy).toHaveTextContent("添加中...");
+    expect(busy).toHaveAttribute("aria-label", "添加：先写测试");
     expect(busy).toBeEnabled();
     expect(busy).toHaveAttribute("aria-busy", "true");
     expect(busy).toHaveFocus();
@@ -1793,7 +1840,8 @@ describe("GoalsPage", () => {
     const add = suggestionAdd("先写测试");
     add.focus();
     fireEvent.click(add);
-    await screen.findByRole("button", { name: "添加中..." });
+    const pendingAdd = await screen.findByRole("button", { name: "添加：先写测试" });
+    expect(pendingAdd).toHaveTextContent("添加中...");
 
     const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("先写测试"));
     await act(async () => {
@@ -1871,7 +1919,8 @@ describe("GoalsPage", () => {
     const add = suggestionAdd("先写测试");
     add.focus();
     fireEvent.click(add);
-    const pending = await screen.findByRole("button", { name: "添加中..." });
+    const pending = await screen.findByRole("button", { name: "添加：先写测试" });
+    expect(pending).toHaveTextContent("添加中...");
     expect(pending).toHaveFocus();
     pending.blur();
     expect(document.activeElement).toBe(document.body);
