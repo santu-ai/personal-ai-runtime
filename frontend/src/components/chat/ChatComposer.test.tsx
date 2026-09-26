@@ -58,6 +58,21 @@ describe("ChatComposer", () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
+  it("does not send while an IME composition or process key is confirming", () => {
+    const onSend = vi.fn();
+    renderComposer({ value: "还在组字", onSend });
+    const field = screen.getByPlaceholderText(/输入消息/);
+    field.focus();
+    fireEvent.keyDown(field, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(field, { key: "Enter", keyCode: 229 });
+    fireEvent.keyDown(field, { key: "Process" });
+    expect(onSend).not.toHaveBeenCalled();
+    expect(field).toHaveValue("还在组字");
+
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps the field enabled while generating and does not send again", () => {
     const onCancel = vi.fn();
     const onSend = vi.fn();

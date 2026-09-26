@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
 import { STATUS_TONE, type StatusTone } from "./statusTone";
 
 interface Props {
@@ -40,8 +41,8 @@ export default function ToastCard({
           onClick
             ? (e) => {
                 if (e.key !== "Enter" && e.key !== " ") return;
-                // 组字时这一下不打开。连按也不再开一次。空格不把页面滚走。
-                if (e.nativeEvent.isComposing) return;
+                // 组字或输入法处理键时这一下不打开。连按也不再开一次。空格不把页面滚走。
+                if (isImeKeyboardEvent(e.nativeEvent)) return;
                 e.preventDefault();
                 if (e.repeat) return;
                 onClick();

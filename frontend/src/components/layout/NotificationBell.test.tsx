@@ -85,6 +85,7 @@ describe("NotificationBell", () => {
     await waitFor(() => expect(panel).toHaveFocus());
 
     fireEvent.keyDown(window, { key: "Escape", isComposing: true });
+    fireEvent.keyDown(window, { key: "Escape", keyCode: 229 });
     expect(screen.getByRole("dialog", { name: "最近通知" })).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: "Escape" });

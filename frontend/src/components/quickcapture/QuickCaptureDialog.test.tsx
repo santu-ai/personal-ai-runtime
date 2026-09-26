@@ -105,6 +105,7 @@ describe("QuickCaptureDialog", () => {
     renderWithRouter(<QuickCaptureDialog />);
     fireEvent.keyDown(window, { key: "m", ctrlKey: true, shiftKey: true, isComposing: true });
     fireEvent.keyDown(window, { key: "M", metaKey: true, shiftKey: true, isComposing: true });
+    fireEvent.keyDown(window, { key: "m", ctrlKey: true, shiftKey: true, keyCode: 229 });
     expect(screen.queryByText("快速捕获")).not.toBeInTheDocument();
   });
 
@@ -235,6 +236,7 @@ describe("QuickCaptureDialog", () => {
     fireEvent.change(textarea, { target: { value: "还在组字" } });
     fireEvent.keyDown(textarea, { key: "Enter", metaKey: true, isComposing: true });
     fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true, isComposing: true });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true, keyCode: 229 });
     expect(mockCreateMemory).not.toHaveBeenCalled();
     expect(textarea).toHaveValue("还在组字");
   });

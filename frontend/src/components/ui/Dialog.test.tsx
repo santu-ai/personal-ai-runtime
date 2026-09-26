@@ -206,6 +206,7 @@ describe("Dialog", () => {
     const hours = screen.getByLabelText("小时");
     hours.focus();
     fireEvent.keyDown(hours, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(hours, { key: "Enter", keyCode: 229 });
     fireEvent.keyDown(screen.getByLabelText("说明"), { key: "Enter" });
     fireEvent.keyDown(screen.getByLabelText("邮箱"), { key: "Enter" });
     expect(onConfirm).not.toHaveBeenCalled();

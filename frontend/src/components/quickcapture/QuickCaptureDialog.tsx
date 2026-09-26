@@ -12,6 +12,7 @@ import { createMemory, ApiError } from "../../api/client";
 import { useErrorStore } from "../../stores/errorStore";
 import { useOverlayDismiss } from "../ui/useOverlayDismiss";
 import { Zap } from "lucide-react";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
 
 type CaptureHandoff = "failed" | "draft";
 
@@ -145,7 +146,7 @@ export default function QuickCaptureDialog() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || !e.shiftKey || e.key.toLowerCase() !== "m") return;
-      if (e.repeat || e.isComposing) return;
+      if (e.repeat || isImeKeyboardEvent(e)) return;
       e.preventDefault();
       requestOpen();
     };
@@ -223,7 +224,7 @@ export default function QuickCaptureDialog() {
   const handleKey = (e: React.KeyboardEvent) => {
     if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey)) return;
     e.preventDefault();
-    if (e.nativeEvent.isComposing) return;
+    if (isImeKeyboardEvent(e.nativeEvent)) return;
     void handleSave();
   };
 

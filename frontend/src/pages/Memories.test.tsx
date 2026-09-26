@@ -459,6 +459,7 @@ describe("MemoriesPage", () => {
     expect(input).toHaveClass("focus-visible:ring-focus-ring");
     fireEvent.change(input, { target: { value: "喜欢喝茶" } });
     fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
     expect(createMemory).not.toHaveBeenCalled();
     expect(input).toHaveValue("喜欢喝茶");
   });
@@ -595,6 +596,7 @@ describe("MemoriesPage", () => {
     fireEvent.change(field, { target: { value: "  过时了  " } });
     field.focus();
     fireEvent.keyDown(field, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(field, { key: "Enter", keyCode: 229 });
     expect(rejectMemory).not.toHaveBeenCalled();
 
     fireEvent.keyDown(field, { key: "Enter" });
@@ -633,6 +635,7 @@ describe("MemoriesPage", () => {
     fireEvent.change(category, { target: { value: "preference" } });
     content.focus();
     fireEvent.keyDown(content, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(content, { key: "Enter", keyCode: 229 });
     expect(updateMemory).not.toHaveBeenCalled();
 
     category.focus();

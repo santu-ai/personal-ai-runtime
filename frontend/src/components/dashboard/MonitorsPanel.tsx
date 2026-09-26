@@ -27,6 +27,7 @@ import { Input } from "../ui/Input";
 import EmptyState from "../ui/EmptyState";
 import LoadErrorNotice, { queryErrorMessage } from "../ui/LoadErrorNotice";
 import { Radar } from "lucide-react";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
 import { timeAgo } from "../../utils/timeUtils";
 
 type MonitorHandoff =
@@ -35,10 +36,10 @@ type MonitorHandoff =
   | { kind: "delete-inbox"; nextId: string | null; token: string }
   | { kind: "delete-url"; nextId: string | null; token: string };
 
-/** 组字时的 Enter 交给输入法。还没填够，或这次写还没回来，添加函数自己会停住。 */
+/** 组字或输入法处理键时的 Enter 交给输入法。还没填够，或这次写还没回来，添加函数自己会停住。 */
 function submitOnEnter(submit: () => void) {
   return (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+    if (event.key !== "Enter" || isImeKeyboardEvent(event.nativeEvent)) return;
     event.preventDefault();
     submit();
   };

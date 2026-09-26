@@ -58,7 +58,9 @@ describe("ToastCard", () => {
     render(<ToastCard tone="insight" title="喝水" onClick={onClick} />);
     const region = screen.getByRole("button", { name: /喝水/ });
     expect(fireEvent.keyDown(region, { key: "Enter", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(region, { key: "Enter", keyCode: 229 })).toBe(true);
     expect(fireEvent.keyDown(region, { key: " ", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(region, { key: " ", keyCode: 229 })).toBe(true);
     expect(onClick).not.toHaveBeenCalled();
   });
 

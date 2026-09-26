@@ -140,6 +140,7 @@ describe("MonitorsPanel", () => {
     fireEvent.change(name, { target: { value: "老板" } });
     name.focus();
     fireEvent.keyDown(name, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(name, { key: "Enter", keyCode: 229 });
     fireEvent.keyDown(name, { key: "Enter" });
     expect(createInboxFilter).not.toHaveBeenCalled();
 
@@ -191,6 +192,7 @@ describe("MonitorsPanel", () => {
     fireEvent.change(urlName, { target: { value: "发布说明" } });
     urlName.focus();
     fireEvent.keyDown(urlName, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(urlName, { key: "Enter", keyCode: 229 });
     fireEvent.keyDown(urlName, { key: "Enter" });
     expect(createUrlMonitor).not.toHaveBeenCalled();
 

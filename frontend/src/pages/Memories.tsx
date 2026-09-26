@@ -42,15 +42,16 @@ import MemoryListItem, {
 } from "../components/memories/MemoryListItem";
 import MemoryProvenanceDialog from "../components/memories/MemoryProvenanceDialog";
 import { Brain, ClipboardCheck, List, Network, User } from "lucide-react";
+import { isImeKeyboardEvent } from "../utils/imeKey";
 
 type ViewMode = "list" | "graph" | "portrait" | "review";
 type ReviewOrder = "created_at_desc" | "created_at_asc";
 type RatifyScope = "proposed" | "rejected" | "list";
 
-/** 组字时的 Enter 交给输入法。空内容或这次写还没回来，确认函数自己会停住。 */
+/** 组字或输入法处理键时的 Enter 交给输入法。空内容或这次写还没回来，确认函数自己会停住。 */
 function submitOnEnter(submit: () => void) {
   return (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+    if (event.key !== "Enter" || isImeKeyboardEvent(event.nativeEvent)) return;
     event.preventDefault();
     submit();
   };
@@ -1120,7 +1121,7 @@ export default function MemoriesPage() {
                 placeholder="告诉我一件关于你的事，我会记住..."
                 className="flex-1 bg-surface-raised border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary placeholder:text-fg-tertiary focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 onKeyDown={(e) => {
-                  if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+                  if (e.key !== "Enter" || isImeKeyboardEvent(e.nativeEvent)) return;
                   e.preventDefault();
                   void handleCreate();
                 }}
