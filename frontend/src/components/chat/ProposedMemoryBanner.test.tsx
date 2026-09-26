@@ -96,8 +96,33 @@ describe("ProposedMemoryBanner", () => {
         conversationId: "conv-a",
       }),
     );
-    expect(await screen.findByText(/1 条本对话记忆待确认后才会进入对话/)).toBeInTheDocument();
+    const heading = "1 条本对话记忆待确认后才会进入对话";
+    const line = await screen.findByText(heading);
+    expect(line).toHaveAttribute("title", heading);
+    expect(screen.getByRole("region", { name: heading })).toBeInTheDocument();
     expect(screen.getByText("本对话事实")).toBeInTheDocument();
+  });
+
+  it("writes the whole count when keyboard focus is on 查看全部", async () => {
+    renderWithRouter(<ProposedMemoryBanner />);
+    const heading = "2 条记忆待确认后才会进入对话";
+    const region = await screen.findByRole("region", { name: heading });
+    const line = within(region).getByText(heading);
+    expect(line).toHaveAttribute("title", heading);
+    expect(line).toHaveAttribute("data-proposed-count", "");
+    expect(line).toHaveClass(
+      "truncate",
+      "group-has-[:focus-visible]:overflow-visible",
+      "group-has-[:focus-visible]:whitespace-normal",
+      "group-has-[:focus-visible]:text-clip",
+      "group-has-[:focus-visible]:break-words",
+    );
+    expect(line.className).not.toContain("group-hover:");
+    expect(line.parentElement).toHaveClass("group");
+    const review = within(region).getByRole("link", { name: "查看全部" });
+    expect(line.parentElement).toContainElement(review);
+    const confirm = within(region).getAllByRole("button", { name: "确认" })[0];
+    expect(line.parentElement?.contains(confirm)).toBe(false);
   });
 
   it("writes the whole memory when keyboard focus is on 确认 or 拒绝", async () => {
