@@ -18,5 +18,5 @@
     "forceConsistentCasingInFileNames": true
   },
   "include": ["src"],
-  "exclude": ["src/sw.test.ts", "src/viteConfig.test.ts"]
+  "exclude": ["src/sw.test.ts", "src/viteConfig.test.ts", "src/components/chat/CodeBlock.test.tsx"]
 }
