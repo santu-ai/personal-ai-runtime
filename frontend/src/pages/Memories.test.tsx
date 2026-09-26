@@ -189,6 +189,18 @@ describe("MemoriesPage", () => {
     });
     renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
     const opener = await screen.findByRole("button", { name: "拒绝" });
+    expect(screen.getByRole("combobox", { name: "分类" })).toHaveClass(
+      "focus-visible:ring-focus-ring",
+    );
+    expect(screen.getByRole("combobox", { name: "排序" })).toHaveClass(
+      "focus-visible:ring-focus-ring",
+    );
+    expect(screen.getByRole("checkbox", { name: /全选当前页/ })).toHaveClass(
+      "focus-visible:ring-focus-ring",
+    );
+    expect(screen.getByRole("checkbox", { name: /选择：/ })).toHaveClass(
+      "focus-visible:ring-focus-ring",
+    );
     opener.focus();
     fireEvent.click(opener);
     const field = await screen.findByPlaceholderText("例如：记错了、过时了");

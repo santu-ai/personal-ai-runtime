@@ -77,7 +77,7 @@ export default function MemoryListItem({
             type="checkbox"
             checked={!!selected}
             onChange={() => onToggleSelect(m)}
-            className="rounded border-border-strong"
+            className="rounded border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             aria-label={`选择：${m.content.slice(0, 40)}`}
           />
         </label>

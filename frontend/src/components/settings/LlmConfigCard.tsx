@@ -331,7 +331,7 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
                   type="checkbox"
                   checked={provider.enabled}
                   onChange={(e) => updateProvider(index, { enabled: e.target.checked })}
-                  className="rounded"
+                  className="rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 />
                 启用此 Provider
               </label>

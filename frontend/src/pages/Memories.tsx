@@ -978,7 +978,7 @@ export default function MemoriesPage() {
                 <select
                   value={reviewCategory}
                   onChange={(e) => setReviewCategory(e.target.value)}
-                  className="bg-surface-raised border border-border-subtle rounded px-2 py-1 text-sm text-fg-primary"
+                  className="bg-surface-raised border border-border-subtle rounded px-2 py-1 text-sm text-fg-primary focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 >
                   <option value="">全部</option>
                   {Object.entries(CATEGORY_LABELS).map(([key, meta]) => (
@@ -993,7 +993,7 @@ export default function MemoriesPage() {
                 <select
                   value={reviewOrder}
                   onChange={(e) => setReviewOrder(e.target.value as ReviewOrder)}
-                  className="bg-surface-raised border border-border-subtle rounded px-2 py-1 text-sm text-fg-primary"
+                  className="bg-surface-raised border border-border-subtle rounded px-2 py-1 text-sm text-fg-primary focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 >
                   <option value="created_at_desc">最新优先</option>
                   <option value="created_at_asc">最早优先</option>
@@ -1014,7 +1014,7 @@ export default function MemoriesPage() {
                     type="checkbox"
                     checked={allPageSelected}
                     onChange={toggleSelectAllPage}
-                    className="rounded border-border-strong"
+                    className="rounded border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                   />
                   全选当前页（{proposedMemories.length}）
                 </label>
