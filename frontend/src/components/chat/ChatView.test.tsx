@@ -14,6 +14,7 @@ import {
   sendMessage,
   ratifyMemory,
   type Message,
+  type StreamEvent,
 } from "../../api/client";
 
 vi.mock("../../api/client", () => ({
@@ -139,6 +140,11 @@ function captureFocusWhenSettled(settled: () => boolean): { read: () => Element 
   return {
     read: () => focusAtLayout,
   };
+}
+
+/** role=status 的可访问名称不含正文。读屏读的是这一段文字。 */
+function statusWithText(text: string): HTMLElement | undefined {
+  return screen.queryAllByRole("status").find((node) => node.textContent === text);
 }
 
 function renderChatView() {
@@ -1732,6 +1738,187 @@ describe("ChatView", () => {
     expect(elsewhere).toHaveFocus();
     expect(composer).toHaveValue("下一句先留着");
     expect(composer).not.toHaveAttribute("aria-busy");
+  });
+
+  it("does not read a tool outcome that was already in the loaded transcript", async () => {
+    vi.mocked(getMessages).mockResolvedValue([
+      {
+        id: "u1",
+        conversation_id: "test-conv-1",
+        role: "user",
+        content: "读一下",
+        tool_calls: null,
+        tool_call_id: null,
+        created_at: "2026-08-17T00:00:00Z",
+      },
+      {
+        id: "a1",
+        conversation_id: "test-conv-1",
+        role: "assistant",
+        content: "好",
+        tool_calls: JSON.stringify([
+          {
+            id: "tc-old",
+            function: { name: "read_file", arguments: "{}" },
+          },
+        ]),
+        tool_call_id: null,
+        created_at: "2026-08-17T00:00:01Z",
+      },
+      {
+        id: "t1",
+        conversation_id: "test-conv-1",
+        role: "tool",
+        content: '{"ok":true}',
+        tool_calls: null,
+        tool_call_id: "tc-old",
+        created_at: "2026-08-17T00:00:02Z",
+      },
+    ]);
+    renderChatView();
+    expect(await screen.findByRole("button", { name: /读取文件/ })).toHaveTextContent("完成");
+    expect(statusWithText("「读取文件」完成。")).toBeUndefined();
+  });
+
+  it("reads a tool outcome when the result arrives and leaves focus in the composer", async () => {
+    let emit: ((event: StreamEvent) => void) | undefined;
+    vi.mocked(sendMessage).mockImplementation(async (_convId, _content, onEvent) => {
+      emit = onEvent;
+    });
+
+    renderChatView();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const field = screen.getByRole("textbox", { name: "输入消息" });
+    field.focus();
+    fireEvent.change(field, { target: { value: "读一下这个文件" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      emit?.({
+        type: "tool_call_start",
+        tool_calls: [{ index: 0, id: "tc-live", function_name: "read_file", arguments: "{}" }],
+      });
+    });
+    const composer = screen.getByRole("textbox", { name: "输入消息" });
+    expect(screen.getByRole("button", { name: /读取文件/ })).toHaveTextContent("执行中");
+    expect(statusWithText("「读取文件」完成。")).toBeUndefined();
+    expect(composer).toHaveFocus();
+
+    await act(async () => {
+      emit?.({
+        type: "tool_result",
+        tool_name: "read_file",
+        tool_call_id: "tc-live",
+        content: '{"ok":true,"body":"文件正文不读出来"}',
+      });
+    });
+    const status = statusWithText("「读取文件」完成。");
+    expect(status).toBeTruthy();
+    expect(status).toHaveClass("sr-only");
+    expect(status).not.toHaveTextContent("文件正文");
+    expect(status).not.toHaveFocus();
+    expect(screen.getByRole("button", { name: /读取文件/ })).toHaveTextContent("完成");
+    expect(composer).toHaveFocus();
+  });
+
+  it("reads several tool outcomes in one sentence, and a later step on its own", async () => {
+    let emit: ((event: StreamEvent) => void) | undefined;
+    vi.mocked(sendMessage).mockImplementation(async (_convId, _content, onEvent) => {
+      emit = onEvent;
+    });
+
+    renderChatView();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const field = screen.getByRole("textbox", { name: "输入消息" });
+    fireEvent.change(field, { target: { value: "查一下" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      emit?.({
+        type: "tool_call_start",
+        tool_calls: [
+          { index: 0, id: "tc-1", function_name: "read_file", arguments: "{}" },
+          { index: 1, id: "tc-2", function_name: "web_search", arguments: "{}" },
+        ],
+      });
+      emit?.({
+        type: "tool_result",
+        tool_name: "read_file",
+        tool_call_id: "tc-1",
+        content: '{"ok":true}',
+      });
+      emit?.({
+        type: "tool_result",
+        tool_name: "web_search",
+        tool_call_id: "tc-2",
+        content: '{"error":"nope"}',
+      });
+    });
+    const joined = statusWithText("「读取文件」完成。「搜索网页」失败。");
+    expect(joined).toBeTruthy();
+    expect(joined).toHaveClass("sr-only");
+
+    await act(async () => {
+      emit?.({
+        type: "tool_call_start",
+        tool_calls: [
+          { index: 0, id: "tc-1", function_name: "read_file", arguments: "{}" },
+          { index: 1, id: "tc-2", function_name: "web_search", arguments: "{}" },
+          { index: 2, id: "tc-3", function_name: "check_inbox", arguments: "{}" },
+        ],
+      });
+      emit?.({
+        type: "tool_result",
+        tool_name: "check_inbox",
+        tool_call_id: "tc-3",
+        content: '{"count":1,"emails":[]}',
+      });
+    });
+    expect(statusWithText("「检查收件箱」完成。")).toBeTruthy();
+    expect(statusWithText("「读取文件」完成。「搜索网页」失败。")).toBeUndefined();
+  });
+
+  it("does not read a denied tool result as a failure", async () => {
+    let emit: ((event: StreamEvent) => void) | undefined;
+    vi.mocked(sendMessage).mockImplementation(async (_convId, _content, onEvent) => {
+      emit = onEvent;
+    });
+
+    renderChatView();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const field = screen.getByRole("textbox", { name: "输入消息" });
+    fireEvent.change(field, { target: { value: "写一个文件" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      emit?.({
+        type: "tool_call_start",
+        tool_calls: [{ index: 0, id: "tc-deny", function_name: "write_file", arguments: "{}" }],
+      });
+      emit?.({
+        type: "tool_result",
+        tool_name: "write_file",
+        tool_call_id: "tc-deny",
+        content: '{"status":"denied"}',
+      });
+    });
+    expect(screen.getByRole("button", { name: /写入文件/ })).toHaveTextContent("失败");
+    expect(statusWithText("「写入文件」失败。")).toBeUndefined();
+    expect(screen.getByRole("textbox", { name: "输入消息" })).toHaveFocus();
   });
 
   it("keeps focus on cancel while generating, then returns to the composer", async () => {

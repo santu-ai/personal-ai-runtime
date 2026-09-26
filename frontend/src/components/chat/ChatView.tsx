@@ -20,6 +20,7 @@ import { readComposerDraft, writeComposerDraft } from "./composerDraft";
 import PromptChipFace from "./PromptChipFace";
 import { useConfirmFocusContainment } from "./confirmFocus";
 import { isImeKeyboardEvent } from "../../utils/imeKey";
+import { freshToolOutcomePhrase, settledToolOutcomes } from "./detectToolFailure";
 
 const SUGGESTION_PREVIEW = 50;
 const MEMORY_NOTICE_PREVIEW = 40;
@@ -125,6 +126,13 @@ export default function ChatView({ conversationId }: Props) {
   // 拒绝成功、且没有另给出回复时读这一句。按钮上的忙碌不另读。
   const spokenDenySeq = useRef(0);
   const [spokenDeny, setSpokenDeny] = useState<{ id: number; text: string } | null>(null);
+  // 结果写回来、旁边变成「完成」或「失败」时读这一句。「执行中」不另读。
+  // 打开会话时已经有的不读。用户拒绝不另读。结果正文不另读。
+  const spokenToolSeq = useRef(0);
+  const [spokenTool, setSpokenTool] = useState<{ id: number; text: string } | null>(null);
+  const toolOutcomeSeeded = useRef(false);
+  const seenToolOutcomes = useRef<Set<string>>(new Set());
+  const liveToolOutcomes = useRef<Set<string>>(new Set());
   const [promptPick, setPromptPick] = useState(0);
   const promptPickSource = useRef<EventTarget | null>(null);
   const { data: pendingApprovals = [] } = useApprovalsQuery();
@@ -145,7 +153,40 @@ export default function ChatView({ conversationId }: Props) {
 
   useEffect(() => {
     pendingSentKeyRef.current = null;
+    toolOutcomeSeeded.current = false;
+    seenToolOutcomes.current = new Set();
+    liveToolOutcomes.current = new Set();
+    setSpokenTool(null);
   }, [conversationId]);
+
+  // 历史是在变成就绪的同一轮才写进消息里的，不读。
+  // 就绪之前就已经出现的结果是这次发送，就绪时补读。
+  useEffect(() => {
+    const current = settledToolOutcomes(messages);
+    if (!messagesHydrated) {
+      toolOutcomeSeeded.current = false;
+      for (const row of current) liveToolOutcomes.current.add(row.key);
+      return;
+    }
+    if (!toolOutcomeSeeded.current) {
+      toolOutcomeSeeded.current = true;
+      const announce = current.filter((row) => liveToolOutcomes.current.has(row.key));
+      seenToolOutcomes.current = new Set(current.map((row) => row.key));
+      liveToolOutcomes.current = new Set();
+      if (announce.length === 0) return;
+      spokenToolSeq.current += 1;
+      setSpokenTool({
+        id: spokenToolSeq.current,
+        text: announce.map((row) => row.phrase).join(""),
+      });
+      return;
+    }
+    const phrase = freshToolOutcomePhrase(seenToolOutcomes.current, current);
+    seenToolOutcomes.current = new Set(current.map((row) => row.key));
+    if (!phrase) return;
+    spokenToolSeq.current += 1;
+    setSpokenTool({ id: spokenToolSeq.current, text: phrase });
+  }, [messages, messagesHydrated]);
 
   useEffect(() => {
     setInput(readComposerDraft(conversationId));
@@ -720,6 +761,12 @@ export default function ChatView({ conversationId }: Props) {
                 <p key={spokenDeny.id} className="sr-only" role="status">
                   {/* 出现时读出来，等当前这一句说完。不把焦点抢过来。 */}
                   {spokenDeny.text}
+                </p>
+              ) : null}
+              {spokenTool ? (
+                <p key={spokenTool.id} className="sr-only" role="status">
+                  {/* 出现时读出来，等当前这一句说完。不把焦点抢过来。 */}
+                  {spokenTool.text}
                 </p>
               ) : null}
               {messages.map((msg) => (
