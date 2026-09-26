@@ -226,7 +226,7 @@ describe("SettingsPage", () => {
     for (const select of selects) {
       expect(select).toHaveClass("focus-visible:ring-focus-ring");
     }
-    expect(within(llm).getByRole("checkbox", { name: "启用此 Provider" })).toHaveClass(
+    expect(within(llm).getByRole("checkbox", { name: "启用此 Provider：DeepSeek" })).toHaveClass(
       "focus-visible:ring-focus-ring",
     );
 
@@ -581,7 +581,7 @@ describe("SettingsPage", () => {
   it("shows a successful LLM connection test and clears it after that provider changes", async () => {
     vi.mocked(testLlmConnection).mockResolvedValueOnce({ ok: true, provider: "deepseek" });
     renderWithRouter(<SettingsPage />);
-    const test = await screen.findByRole("button", { name: "测试" });
+    const test = await screen.findByRole("button", { name: "测试：DeepSeek" });
     fireEvent.click(test);
     expect(await screen.findByTestId("llm-test-ok-deepseek")).toHaveTextContent("连接正常");
     expect(screen.getByTestId("llm-test-ok-deepseek")).toHaveAttribute("role", "status");
@@ -599,7 +599,7 @@ describe("SettingsPage", () => {
       error: "超时",
     });
     renderWithRouter(<SettingsPage />);
-    const test = await screen.findByRole("button", { name: "测试" });
+    const test = await screen.findByRole("button", { name: "测试：DeepSeek" });
     test.focus();
     fireEvent.click(test);
     await waitFor(() => expect(addError).toHaveBeenCalledWith("超时", "LLM"));
@@ -669,9 +669,11 @@ describe("SettingsPage", () => {
     expect(deepseek).toBeEnabled();
     expect(deepseek).toHaveFocus();
     expect(deepseek).toHaveTextContent("测试中…");
+    expect(deepseek).toHaveAttribute("aria-label", "测试：DeepSeek");
     expect(other).toBeEnabled();
     expect(other).not.toHaveAttribute("aria-busy");
     expect(other).toHaveTextContent("测试");
+    expect(other).toHaveAttribute("aria-label", "测试：Ollama");
 
     await act(async () => {
       release?.({ ok: true, provider: "deepseek" });
@@ -691,7 +693,7 @@ describe("SettingsPage", () => {
         }),
     );
     renderWithRouter(<SettingsPage />);
-    const test = await screen.findByRole("button", { name: "测试" });
+    const test = await screen.findByRole("button", { name: "测试：DeepSeek" });
     const field = screen.getByDisplayValue("deepseek-chat");
     test.focus();
     fireEvent.click(test);

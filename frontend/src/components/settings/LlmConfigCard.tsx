@@ -35,6 +35,33 @@ function NamedField({
   );
 }
 
+/** 显示名称优先。没有时用 ID。两边的空白去掉，中间的空白和换行留着。 */
+function providerWho(provider: LlmProviderConfig): string {
+  const name = provider.name.trim();
+  if (name) return name;
+  return provider.id.trim();
+}
+
+/** 字面上仍是这一句。读屏把这一家接在后面。两边都是空白时仍只读这一句。 */
+function controlName(label: string, provider: LlmProviderConfig): string | undefined {
+  const who = providerWho(provider);
+  if (!who) return undefined;
+  return `${label}：${who}`;
+}
+
+/** 预设字面上仍是原来的名字。读屏把这一家接在后面。 */
+function presetControlName(
+  visible: string,
+  presetId: string,
+  provider: LlmProviderConfig,
+): string | undefined {
+  const who = providerWho(provider);
+  if (!who) return undefined;
+  const label = visible.trim() || presetId.trim();
+  if (!label) return undefined;
+  return `${label}：${who}`;
+}
+
 function emptyProvider(id = ""): LlmProviderConfig {
   return {
     id,
@@ -235,6 +262,7 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
       <div className="space-y-4">
         {llmForm.map((provider, index) => {
           const status = llm.providers_status.find((s) => s.name === provider.id);
+          const testName = controlName("测试", provider) ?? "测试";
           return (
             <div
               key={`${provider.id}-${index}`}
@@ -257,13 +285,20 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
                     data-llm-action="test"
                     data-llm-provider={provider.id}
                     onClick={() => void handleTestLlm(provider.id)}
+                    aria-label={testName}
                     aria-busy={testingLlm === provider.id || undefined}
                     className={testingLlm === provider.id ? "opacity-50" : ""}
                   >
+                    {/* 「测试中…」仍写在按钮上。读屏名字仍是「测试」和这一家。 */}
                     {testingLlm === provider.id ? "测试中…" : "测试"}
                   </Button>
                   {llmForm.length > 1 && (
-                    <Button variant="ghost" size="sm" onClick={() => removeProvider(index)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label={controlName("删除", provider)}
+                      onClick={() => removeProvider(index)}
+                    >
                       删除
                     </Button>
                   )}
@@ -280,16 +315,20 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
               ) : null}
 
               <div className="flex gap-2 flex-wrap">
-                {Object.keys(llm.presets ?? {}).map((presetId) => (
-                  <button
-                    key={presetId}
-                    type="button"
-                    onClick={() => applyPreset(index, presetId)}
-                    className="px-2 py-1 text-xs rounded bg-surface-overlay hover:bg-border-strong text-fg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-                  >
-                    {llm.presets?.[presetId]?.name ?? presetId}
-                  </button>
-                ))}
+                {Object.keys(llm.presets ?? {}).map((presetId) => {
+                  const presetLabel = llm.presets?.[presetId]?.name ?? presetId;
+                  return (
+                    <button
+                      key={presetId}
+                      type="button"
+                      aria-label={presetControlName(presetLabel, presetId, provider)}
+                      onClick={() => applyPreset(index, presetId)}
+                      className="px-2 py-1 text-xs rounded bg-surface-overlay hover:bg-border-strong text-fg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                    >
+                      {presetLabel}
+                    </button>
+                  );
+                })}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -297,6 +336,7 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
                   {(id) => (
                     <Input
                       id={id}
+                      aria-label={controlName("ID", provider)}
                       value={provider.id}
                       onChange={(e) => updateProvider(index, { id: e.target.value })}
                     />
@@ -306,6 +346,7 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
                   {(id) => (
                     <Input
                       id={id}
+                      aria-label={controlName("显示名称", provider)}
                       value={provider.name}
                       onChange={(e) => updateProvider(index, { name: e.target.value })}
                     />
@@ -315,6 +356,7 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
                   {(id) => (
                     <select
                       id={id}
+                      aria-label={controlName("类型", provider)}
                       value={provider.type}
                       onChange={(e) =>
                         updateProvider(index, {
@@ -333,6 +375,7 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
                   {(id) => (
                     <Input
                       id={id}
+                      aria-label={controlName("模型", provider)}
                       value={provider.model}
                       onChange={(e) => updateProvider(index, { model: e.target.value })}
                       placeholder="deepseek-chat / gpt-4o / qwen2.5:7b"
@@ -343,6 +386,7 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
                   {(id) => (
                     <Input
                       id={id}
+                      aria-label={controlName("Base URL", provider)}
                       value={provider.base_url}
                       onChange={(e) => updateProvider(index, { base_url: e.target.value })}
                       placeholder="https://api.deepseek.com/v1"
@@ -354,6 +398,8 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
                     <>
                       <PasswordInput
                         id={id}
+                        aria-label={controlName("API Key", provider)}
+                        spokenName={providerWho(provider)}
                         value={provider.api_key}
                         isSavedSecret={Boolean(
                           provider.has_api_key && provider.api_key === MASKED_SECRET,
@@ -377,6 +423,7 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
                 <input
                   type="checkbox"
                   checked={provider.enabled}
+                  aria-label={controlName("启用此 Provider", provider)}
                   onChange={(e) => updateProvider(index, { enabled: e.target.checked })}
                   className="rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 />
