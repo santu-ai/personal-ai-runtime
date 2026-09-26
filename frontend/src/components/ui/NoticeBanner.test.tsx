@@ -22,6 +22,36 @@ describe("NoticeBanner", () => {
 });
 
 describe("ToastCard", () => {
+  it("announces when it appears and does not take focus", () => {
+    const { rerender } = render(
+      <ToastCard tone="danger" title="[收件箱] 错误" body="IMAP 超时" onDismiss={vi.fn()} />,
+    );
+    const error = screen.getByRole("alert");
+    expect(error).toHaveAttribute("aria-atomic", "true");
+    expect(error).toHaveTextContent("[收件箱] 错误");
+    expect(error).toHaveTextContent("IMAP 超时");
+    expect(document.activeElement).not.toBe(screen.getByRole("button", { name: "关闭" }));
+
+    rerender(<ToastCard tone="warning" title="即将到期" body="还有一小时" />);
+    expect(screen.getByRole("alert")).toHaveTextContent("即将到期");
+
+    rerender(
+      <ToastCard tone="insight" title="喝水" body="该喝了" onClick={vi.fn()} onDismiss={vi.fn()} />,
+    );
+    const notice = screen.getByRole("status");
+    expect(notice).toHaveAttribute("aria-atomic", "true");
+    expect(notice).toHaveTextContent("喝水");
+    expect(notice).toHaveTextContent("该喝了");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(document.activeElement).not.toBe(screen.getByRole("button", { name: "关闭" }));
+
+    rerender(<ToastCard tone="success" title="已保存" />);
+    expect(screen.getByRole("status")).toHaveTextContent("已保存");
+
+    rerender(<ToastCard title="提示" />);
+    expect(screen.getByRole("status")).toHaveTextContent("提示");
+  });
+
   it("shows an always-visible dismiss control for errors", () => {
     const onDismiss = vi.fn();
     render(
