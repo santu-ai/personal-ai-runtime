@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import { ApiError } from "../../api/core";
 import {
   checkUrlMonitors,
@@ -27,6 +34,15 @@ type MonitorHandoff =
   | { kind: "create-url"; id: string; token: string }
   | { kind: "delete-inbox"; nextId: string | null; token: string }
   | { kind: "delete-url"; nextId: string | null; token: string };
+
+/** 组字时的 Enter 交给输入法。还没填够，或这次写还没回来，添加函数自己会停住。 */
+function submitOnEnter(submit: () => void) {
+  return (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    submit();
+  };
+}
 
 /** 焦点在页面空白处、已经卸下的控件上，或还停在这次操作的按钮上，才可以把焦点挪走。 */
 function focusIsIdle(token: string): boolean {
@@ -313,16 +329,19 @@ export default function MonitorsPanel() {
             value={name}
             data-monitor-anchor="inbox-name"
             onChange={(e) => setName(e.target.value)}
+            onKeyDown={submitOnEnter(() => void handleCreateInbox())}
           />
           <Input
             placeholder="发件人包含（可空）"
             value={sender}
             onChange={(e) => setSender(e.target.value)}
+            onKeyDown={submitOnEnter(() => void handleCreateInbox())}
           />
           <Input
             placeholder="主题包含（可空）"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
+            onKeyDown={submitOnEnter(() => void handleCreateInbox())}
           />
           <Button
             size="sm"
@@ -409,16 +428,19 @@ export default function MonitorsPanel() {
             value={urlName}
             data-monitor-anchor="url-name"
             onChange={(e) => setUrlName(e.target.value)}
+            onKeyDown={submitOnEnter(() => void handleCreateUrl())}
           />
           <Input
             placeholder="https://…"
             value={urlValue}
             onChange={(e) => setUrlValue(e.target.value)}
+            onKeyDown={submitOnEnter(() => void handleCreateUrl())}
           />
           <Input
             placeholder="检查间隔（分钟，最少 30）"
             value={urlInterval}
             onChange={(e) => setUrlInterval(e.target.value)}
+            onKeyDown={submitOnEnter(() => void handleCreateUrl())}
           />
           <Button
             size="sm"
