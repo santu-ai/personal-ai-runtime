@@ -156,6 +156,7 @@ export default function TelegramGatewayCard() {
             setEnabled(e.target.checked);
             touch();
           }}
+          className="rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         />
         启用每分钟本地轮询
       </label>
@@ -167,6 +168,7 @@ export default function TelegramGatewayCard() {
             setAutoReply(e.target.checked);
             touch();
           }}
+          className="rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         />
         启用当前 Chat ID 的一次性自动回复授权
       </label>

@@ -2607,7 +2607,7 @@ export default function TasksPage() {
             <label className="block space-y-1">
               <span className="text-xs text-fg-tertiary">目标与验收要求</span>
               <textarea
-                className="w-full min-h-24 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm"
+                className="w-full min-h-24 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 value={objective}
                 data-task-dialog-field="create"
                 onChange={(e) => {
@@ -2622,6 +2622,7 @@ export default function TasksPage() {
                 type="checkbox"
                 checked={emailEnabled}
                 data-task-dialog-field="create"
+                className="rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 onChange={(e) => {
                   briefLive.current = { ...briefLive.current, emailEnabled: e.target.checked };
                   setEmailEnabled(e.target.checked);
@@ -2654,7 +2655,7 @@ export default function TasksPage() {
             <label className="block space-y-1">
               <span className="text-xs text-fg-tertiary">资料路径（每行一个）</span>
               <textarea
-                className="w-full min-h-16 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm"
+                className="w-full min-h-16 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                 value={filePaths}
                 data-task-dialog-field="create"
                 onChange={(e) => {
@@ -2681,7 +2682,7 @@ export default function TasksPage() {
           onCancel={() => dismissDialog(() => setAcceptTarget(null))}
         >
           <textarea
-            className="w-full min-h-24 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm"
+            className="w-full min-h-24 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             value={acceptNote}
             data-task-dialog-field="accept"
             onChange={(e) => {
@@ -2707,7 +2708,7 @@ export default function TasksPage() {
           onCancel={() => dismissDialog(() => setReworkOpen(false))}
         >
           <textarea
-            className="w-full min-h-24 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm"
+            className="w-full min-h-24 bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             value={reworkReason}
             data-task-dialog-field="rework"
             onChange={(e) => {

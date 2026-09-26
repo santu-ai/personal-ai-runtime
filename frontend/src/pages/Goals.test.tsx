@@ -952,6 +952,8 @@ describe("GoalsPage", () => {
     renderGoals("/goals/g1");
     const box = await screen.findByRole("checkbox", { name: "写测试" });
     const other = screen.getByRole("checkbox", { name: "再看一眼" });
+    expect(box).toHaveClass("focus-visible:ring-focus-ring");
+    expect(other).toHaveClass("focus-visible:ring-focus-ring");
     box.focus();
     fireEvent.click(box);
     fireEvent.click(box);

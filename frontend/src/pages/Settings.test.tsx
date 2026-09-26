@@ -226,6 +226,9 @@ describe("SettingsPage", () => {
     for (const select of selects) {
       expect(select).toHaveClass("focus-visible:ring-focus-ring");
     }
+    expect(within(llm).getByRole("checkbox", { name: "启用此 Provider" })).toHaveClass(
+      "focus-visible:ring-focus-ring",
+    );
 
     await expandSection("Gmail 邮箱配置");
     expect(await screen.findByText("保存邮箱配置")).toBeInTheDocument();
@@ -236,6 +239,12 @@ describe("SettingsPage", () => {
     renderWithRouter(<SettingsPage />);
     await expandSection("Telegram 网关");
     expect(await screen.findByText("启用每分钟本地轮询")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "启用每分钟本地轮询" })).toHaveClass(
+      "focus-visible:ring-focus-ring",
+    );
+    expect(
+      screen.getByRole("checkbox", { name: "启用当前 Chat ID 的一次性自动回复授权" }),
+    ).toHaveClass("focus-visible:ring-focus-ring");
     expect(screen.getByText("Token 已配置 · Chat ID 已配置")).toBeInTheDocument();
     expect(screen.queryByText(/secret/i)).not.toBeInTheDocument();
   });

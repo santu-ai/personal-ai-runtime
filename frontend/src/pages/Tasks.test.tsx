@@ -2151,6 +2151,10 @@ describe("TasksPage", () => {
     const objective = within(dialog).getByPlaceholderText(/整理最近三天的邮件/);
     const days = within(dialog).getByPlaceholderText("最近天数");
     const mailbox = within(dialog).getByRole("checkbox", { name: "读取已配置邮箱" });
+    const paths = within(dialog).getByPlaceholderText("C:\\notes\\project-a.md");
+    expect(objective).toHaveClass("focus-visible:ring-focus-ring");
+    expect(paths).toHaveClass("focus-visible:ring-focus-ring");
+    expect(mailbox).toHaveClass("focus-visible:ring-focus-ring");
     fireEvent.change(title, { target: { value: "项目 A" } });
     title.focus();
     fireEvent.keyDown(title, { key: "Enter", isComposing: true });
@@ -3253,6 +3257,7 @@ describe("TasksPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "验收" }));
     const dialog = await screen.findByRole("dialog", { name: "验收交付" });
     const note = within(dialog).getByPlaceholderText("例如：结论和来源都齐了。");
+    expect(note).toHaveClass("focus-visible:ring-focus-ring");
     fireEvent.change(note, { target: { value: "  来源齐全  " } });
     const accept = within(dialog).getByRole("button", { name: "确认验收" });
     accept.focus();
@@ -3459,7 +3464,9 @@ describe("TasksPage", () => {
     renderTasks("/tasks/brief_1");
     fireEvent.click(await screen.findByRole("button", { name: "返工" }));
     const dialog = await screen.findByRole("dialog", { name: "请求返工" });
-    fireEvent.change(within(dialog).getByPlaceholderText("例如：补上风险，并给每条结论带来源。"), {
+    const reason = within(dialog).getByPlaceholderText("例如：补上风险，并给每条结论带来源。");
+    expect(reason).toHaveClass("focus-visible:ring-focus-ring");
+    fireEvent.change(reason, {
       target: { value: "补上风险" },
     });
     const confirm = within(dialog).getByRole("button", { name: "确认返工" });

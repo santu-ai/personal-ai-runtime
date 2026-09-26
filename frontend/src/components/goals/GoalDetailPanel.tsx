@@ -436,7 +436,7 @@ export default function GoalDetailPanel({
                 aria-label={action.title || "行动步骤"}
                 aria-busy={busyActions.has(action.id) || undefined}
                 onChange={() => void handleToggleAction(goal.id, action.id, action.status)}
-                className={`w-4 h-4 rounded border-border-strong bg-surface-overlay accent-success ${
+                className={`w-4 h-4 rounded border-border-strong bg-surface-overlay accent-success focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
                   busyActions.has(action.id) ? "opacity-50" : ""
                 }`}
               />
