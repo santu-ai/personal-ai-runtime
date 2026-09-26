@@ -405,7 +405,8 @@ describe("DashboardPage", () => {
     renderDashboard();
     fireEvent.click(screen.getByText("运行状况"));
     expect(screen.getAllByText("AI 记住了")[0]).toBeInTheDocument();
-    expect(screen.getAllByText("habit: 30")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("你的习惯: 30")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("work: 25")[0]).toBeInTheDocument();
   });
 
   it("shows tool calls in health section when expanded", () => {
