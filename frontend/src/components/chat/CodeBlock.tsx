@@ -1,5 +1,46 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import {
+  forwardRef,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type HTMLAttributes,
+  type KeyboardEvent,
+  type MouseEvent,
+} from "react";
 import { Check, Copy } from "lucide-react";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
+
+/** 某一行超过这么多个字，横向滚动会把后面藏起来。 */
+const CODE_LINE_CHARS = 80;
+
+function codeLineNeedsReveal(code: string): boolean {
+  return code.split("\n").some((line) => line.length > CODE_LINE_CHARS);
+}
+
+/** 空格和回车不把页面滚走。组字或输入法处理键时这一下不拦住。 */
+function keepCodeKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
+  if (isImeKeyboardEvent(event.nativeEvent)) return;
+  if (event.key === "Enter" || event.key === " ") event.preventDefault();
+}
+
+const CodeSurface = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(function CodeSurface(
+  { className, children, ...rest },
+  ref,
+) {
+  return (
+    <div
+      {...rest}
+      ref={ref}
+      data-code-surface=""
+      className={["overflow-x-auto", className].filter(Boolean).join(" ")}
+    >
+      {children}
+    </div>
+  );
+});
 
 const LazySyntaxBlock = lazy(async () => {
   const [{ PrismAsyncLight }, { oneDark }] = await Promise.all([
@@ -9,7 +50,7 @@ const LazySyntaxBlock = lazy(async () => {
   return {
     default: function SyntaxBlock({ language, code }: { language: string; code: string }) {
       return (
-        <PrismAsyncLight style={oneDark} language={language} PreTag="div">
+        <PrismAsyncLight style={oneDark} language={language} PreTag={CodeSurface}>
           {code}
         </PrismAsyncLight>
       );
@@ -28,7 +69,7 @@ export function CodeBlock({ language, code }: { language: string; code: string }
   }, []);
 
   const handleCopy = useCallback(
-    (e: React.MouseEvent) => {
+    (e: MouseEvent) => {
       e.stopPropagation();
       const write = navigator.clipboard?.writeText?.bind(navigator.clipboard);
       if (!write) return;
@@ -51,6 +92,18 @@ export function CodeBlock({ language, code }: { language: string; code: string }
   );
 
   const copyLabel = copied ? "已复制" : "复制";
+  const reveal = codeLineNeedsReveal(code);
+  const surface = (
+    <Suspense
+      fallback={
+        <pre data-code-surface="" className="bg-surface-sunken overflow-x-auto rounded p-3 text-xs">
+          <code>{code}</code>
+        </pre>
+      }
+    >
+      <LazySyntaxBlock language={language} code={code} />
+    </Suspense>
+  );
 
   return (
     <div className="group relative">
@@ -83,15 +136,20 @@ export function CodeBlock({ language, code }: { language: string; code: string }
           {copyLabel}
         </span>
       </button>
-      <Suspense
-        fallback={
-          <pre className="bg-surface-sunken rounded p-3 text-xs overflow-x-auto">
-            <code>{code}</code>
-          </pre>
-        }
-      >
-        <LazySyntaxBlock language={language} code={code} />
-      </Suspense>
+      {reveal ? (
+        <div
+          tabIndex={0}
+          data-code-reveal=""
+          title={code}
+          onKeyDown={keepCodeKeysFromScrolling}
+          className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+        >
+          {/* 平时横向滚动。键盘落到时写出整段并换行。鼠标悬停仍要横向滚动，整段在 title 里。 */}
+          {surface}
+        </div>
+      ) : (
+        surface
+      )}
     </div>
   );
 }

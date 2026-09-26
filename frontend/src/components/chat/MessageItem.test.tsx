@@ -322,6 +322,24 @@ describe("MessageItem", () => {
       "data-code-block-copy",
       "",
     );
+    expect(document.querySelector("[data-code-reveal]")).toBeNull();
+  });
+
+  it("lets the keyboard read a fenced line longer than 80 characters", () => {
+    const line = "d".repeat(81);
+    render(
+      <MessageItem
+        message={{
+          id: "m14b",
+          role: "assistant",
+          content: "```\n" + line + "\n```",
+        }}
+      />,
+    );
+    const box = document.querySelector("[data-code-reveal]");
+    expect(box).toHaveAttribute("tabindex", "0");
+    expect(box).toHaveAttribute("title", line);
+    expect(box?.querySelector("[data-code-surface]")?.textContent).toContain(line);
   });
 
   it("does not mark fenced code as copied when the clipboard write fails", async () => {

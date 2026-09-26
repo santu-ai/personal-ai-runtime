@@ -144,3 +144,15 @@
   animation: blink 1s infinite;
   @apply text-fg-secondary;
 }
+
+/*
+ * 成段代码某一行过长时，高亮器把 overflow / white-space / word-break 写在行内样式上。
+ * 键盘落到 [data-code-reveal] 时折开整段。鼠标悬停仍横向滚动。
+ */
+[data-code-reveal]:focus-visible [data-code-surface],
+[data-code-reveal]:focus-visible [data-code-surface] code {
+  overflow: visible !important;
+  white-space: pre-wrap !important;
+  word-break: break-all !important;
+  overflow-wrap: anywhere !important;
+}
