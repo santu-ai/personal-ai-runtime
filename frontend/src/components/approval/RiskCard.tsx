@@ -39,6 +39,66 @@ function keepBareKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
   if (event.key === "Enter" || event.key === " ") event.preventDefault();
 }
 
+/** 详细参数平时限高。超过这么多行，或某一行超过这么多个字，键盘落到时写出整段。 */
+const ARGS_LINE_LIMIT = 5;
+const ARGS_LINE_CHARS = 80;
+/** 「查看完整内容」已经换行。超过大约这么多行才被限高挡住。 */
+const FULL_ROW_LIMIT = 10;
+const FULL_ROW_CHARS = 80;
+
+function argsNeedReveal(text: string): boolean {
+  const lines = text.split("\n");
+  if (lines.length > ARGS_LINE_LIMIT) return true;
+  return lines.some((line) => line.length > ARGS_LINE_CHARS);
+}
+
+function wrappedRows(text: string): number {
+  let rows = 0;
+  for (const line of text.split("\n")) {
+    rows += Math.max(1, Math.ceil(line.length / FULL_ROW_CHARS));
+  }
+  return rows;
+}
+
+function CappedPre({
+  text,
+  marker,
+  capClass,
+  preClassName,
+  wrapOnFocus,
+}: {
+  text: string;
+  marker: "args" | "full";
+  capClass: string;
+  preClassName: string;
+  wrapOnFocus: boolean;
+}) {
+  const reveal = wrapOnFocus ? argsNeedReveal(text) : wrappedRows(text) > FULL_ROW_LIMIT;
+  if (!reveal) {
+    return <pre className={`mt-1 ${preClassName} ${capClass}`}>{text}</pre>;
+  }
+  return (
+    <div
+      tabIndex={0}
+      data-approval-capped={marker}
+      title={text}
+      onKeyDown={keepBareKeysFromScrolling}
+      className={`group mt-1 rounded-sm focus-visible:max-h-none focus-visible:overflow-visible focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${capClass}`}
+    >
+      {/* 平时限高。键盘落到时写出整段。鼠标悬停仍是限高，整段在 title 里。 */}
+      <pre
+        className={`${preClassName}${
+          wrapOnFocus
+            ? " group-focus-visible:overflow-visible group-focus-visible:whitespace-pre-wrap group-focus-visible:break-all"
+            : ""
+        }`}
+      >
+        {text}
+      </pre>
+    </div>
+  );
+}
+
 function parseArgs(args: string): Record<string, unknown> {
   try {
     return JSON.parse(args);
@@ -91,9 +151,13 @@ function ExpandableText({ text, className }: { text: string; className: string }
           <summary className="cursor-pointer text-fg-tertiary hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded">
             查看完整内容
           </summary>
-          <pre className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap break-all text-fg-secondary">
-            {text}
-          </pre>
+          <CappedPre
+            text={text}
+            marker="full"
+            capClass="max-h-40 overflow-y-auto"
+            preClassName="whitespace-pre-wrap break-all text-fg-secondary"
+            wrapOnFocus={false}
+          />
         </details>
       )}
     </div>
@@ -281,9 +345,13 @@ export default function RiskCard({
             <summary className="text-xs text-fg-tertiary cursor-pointer hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded">
               查看详细参数
             </summary>
-            <pre className="bg-surface-sunken p-2 mt-1 rounded text-xs text-fg-secondary overflow-x-auto max-h-24 overflow-y-auto">
-              {JSON.stringify(parsedArgs, null, 2)}
-            </pre>
+            <CappedPre
+              text={JSON.stringify(parsedArgs, null, 2)}
+              marker="args"
+              capClass="max-h-24 overflow-y-auto"
+              preClassName="bg-surface-sunken p-2 rounded text-xs text-fg-secondary overflow-x-auto"
+              wrapOnFocus
+            />
           </details>
 
           {(timing?.createdAt || timing?.expiresAt || source?.proposedBy) && (
