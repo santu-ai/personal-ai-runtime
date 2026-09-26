@@ -93,9 +93,40 @@ function cleanPreview(text: string): string {
 const revealLine =
   "truncate group-focus-visible:overflow-visible group-focus-visible:whitespace-normal group-focus-visible:text-clip group-focus-visible:break-words";
 
+/** 某一行超过这么多个字，横向滚动会把后面藏起来。这一段没有高度限制。 */
+const PANEL_ARGS_LINE_CHARS = 80;
+
+const PANEL_ARGS_PRE = "bg-surface-sunken p-2 rounded text-fg-primary overflow-x-auto";
+
 function keepBareKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
   if (isImeKeyboardEvent(event.nativeEvent)) return;
   if (event.key === "Enter" || event.key === " ") event.preventDefault();
+}
+
+function panelArgsNeedReveal(text: string): boolean {
+  return text.split("\n").some((line) => line.length > PANEL_ARGS_LINE_CHARS);
+}
+
+function PanelArgs({ text }: { text: string }) {
+  if (!panelArgsNeedReveal(text)) {
+    return <pre className={PANEL_ARGS_PRE}>{text}</pre>;
+  }
+  return (
+    <div
+      tabIndex={0}
+      data-panel-args-preview=""
+      title={text}
+      onKeyDown={keepBareKeysFromScrolling}
+      className="group rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+    >
+      {/* 平时横向滚动。键盘落到时写出整段并换行。鼠标悬停仍要横向滚动，整段在 title 里。 */}
+      <pre
+        className={`${PANEL_ARGS_PRE} group-focus-visible:overflow-visible group-focus-visible:whitespace-pre-wrap group-focus-visible:break-all`}
+      >
+        {text}
+      </pre>
+    </div>
+  );
 }
 
 function EmailRow({ em }: { em: EmailItem }) {
@@ -269,9 +300,7 @@ export default function ToolCallDisplay({
               <div className="border-t border-border-strong px-3 py-2 space-y-2 text-xs">
                 <div>
                   <div className="text-fg-tertiary mb-1">参数</div>
-                  <pre className="bg-surface-sunken p-2 rounded text-fg-primary overflow-x-auto">
-                    {formatArgs(tc.arguments)}
-                  </pre>
+                  <PanelArgs text={formatArgs(tc.arguments)} />
                 </div>
                 {result && (
                   <div>
