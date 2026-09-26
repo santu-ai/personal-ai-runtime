@@ -1053,9 +1053,125 @@ describe("ChatView", () => {
       );
     });
 
-    await waitFor(() => {
-      expect(screen.getByText(/已拒绝「write_file」/)).toBeInTheDocument();
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("已拒绝「写入文件」，没有执行该操作。");
+    expect(status).toHaveClass("sr-only");
+    expect(status).not.toHaveFocus();
+    expect(screen.getByRole("textbox", { name: "输入消息" })).toHaveFocus();
+    expect(
+      screen.getAllByText("已拒绝「写入文件」，没有执行该操作。").some((node) => node !== status),
+    ).toBe(true);
+  });
+
+  it("does not read the denial note while cancel is in flight or when it fails", async () => {
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({
+          type: "confirmation_required",
+          tool_name: "write_file",
+          tool_args: { path: "/tmp/x", content: "data" },
+          approval_id: "ap-test-deny-fail",
+          tool_call_id: "tc-test-deny-fail",
+        });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+    let rejectResolve: (err: unknown) => void = () => {};
+    vi.mocked(resolveApproval).mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectResolve = reject;
+        }),
+    );
+
+    renderChatView();
+    const inputs = screen.getAllByPlaceholderText(/输入消息/);
+    fireEvent.change(inputs[inputs.length - 1], { target: { value: "create a file" } });
+    const sendButtons = screen.getAllByRole("button", { name: "发送" });
+    fireEvent.click(sendButtons[sendButtons.length - 1]);
+    const cancel = await screen.findByRole("button", { name: "取消" });
+    fireEvent.click(cancel);
+    expect(cancel).toHaveAttribute("aria-busy", "true");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText(/已拒绝/)).not.toBeInTheDocument();
+
+    await act(async () => {
+      rejectResolve(new ApiError("审批操作失败", 500));
     });
+    await waitFor(() => expect(resolveApproval).toHaveBeenCalled());
+    expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText(/已拒绝/)).not.toBeInTheDocument();
+  });
+
+  it("does not read a denial note when cancel already returned a reply", async () => {
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({
+          type: "confirmation_required",
+          tool_name: "write_file",
+          tool_args: { path: "/tmp/x", content: "data" },
+          approval_id: "ap-test-deny-reply",
+          tool_call_id: "tc-test-deny-reply",
+        });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+    vi.mocked(resolveApproval).mockResolvedValue({
+      status: "denied",
+      assistant_message: "好，先不做。",
+    });
+
+    renderChatView();
+    const inputs = screen.getAllByPlaceholderText(/输入消息/);
+    fireEvent.change(inputs[inputs.length - 1], { target: { value: "create a file" } });
+    const sendButtons = screen.getAllByRole("button", { name: "发送" });
+    fireEvent.click(sendButtons[sendButtons.length - 1]);
+    fireEvent.click(await screen.findByRole("button", { name: "取消" }));
+
+    expect(await screen.findByText("好，先不做。")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText(/已拒绝/)).not.toBeInTheDocument();
+  });
+
+  it("reads the denial note again when the same tool is cancelled twice", async () => {
+    const confirm = (approvalId: string) => {
+      vi.mocked(sendMessage).mockImplementationOnce(
+        async (_convId, _content, onEvent, _onError, onDone) => {
+          onEvent({
+            type: "confirmation_required",
+            tool_name: "ask_user",
+            tool_args: { question: "要不要先定范围？" },
+            approval_id: approvalId,
+            tool_call_id: `tc-${approvalId}`,
+          });
+          onEvent({ type: "done" });
+          onDone();
+        },
+      );
+    };
+    confirm("ap-deny-1");
+    vi.mocked(resolveApproval).mockResolvedValue({ status: "denied" });
+
+    renderChatView();
+    const inputs = screen.getAllByPlaceholderText(/输入消息/);
+    fireEvent.change(inputs[inputs.length - 1], { target: { value: "第一次" } });
+    const sendButtons = screen.getAllByRole("button", { name: "发送" });
+    fireEvent.click(sendButtons[sendButtons.length - 1]);
+    fireEvent.click(await screen.findByRole("button", { name: "取消" }));
+    const first = await screen.findByRole("status");
+    expect(first).toHaveTextContent("已拒绝「向你确认」，没有执行该操作。");
+
+    confirm("ap-deny-2");
+    const field = screen.getByRole("textbox", { name: "输入消息" });
+    fireEvent.change(field, { target: { value: "第二次" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    fireEvent.click(await screen.findByRole("button", { name: "取消" }));
+    await waitFor(() => expect(screen.getByRole("status")).not.toBe(first));
+    expect(screen.getByRole("status")).toHaveTextContent("已拒绝「向你确认」，没有执行该操作。");
+    expect(screen.getByRole("status")).not.toHaveFocus();
   });
 
   it("does not show 'I just remembered' toast on initial mount", () => {
