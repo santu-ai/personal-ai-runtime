@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import MemoryGraphView from "./MemoryGraphView";
 import type { MemoryGraph } from "../../api/client";
 
@@ -12,8 +12,10 @@ const graph: MemoryGraph = {
   edges: [{ source: "a", target: "b", weight: 1 }],
 };
 
-function node(name: string): HTMLElement {
-  return screen.getByRole("button", { name });
+function node(content: string): HTMLElement {
+  return screen.getByRole("button", {
+    name: (accessibleName) => accessibleName === content || accessibleName.endsWith(`，${content}`),
+  });
 }
 
 function circleOf(name: string): Element {
@@ -126,6 +128,88 @@ describe("MemoryGraphView", () => {
     expect(brief.querySelector("text")?.getAttribute("class")).not.toContain(
       "group-focus-visible:hidden",
     );
+  });
+
+  it("writes the same category names as the list and keeps the dot decorative", () => {
+    render(<MemoryGraphView graph={graph} />);
+    const legend = screen.getByRole("list", { name: "类别" });
+    const names = [...legend.querySelectorAll("[data-memory-legend-name]")].map(
+      (item) => item.textContent,
+    );
+    expect(names).toEqual(["你的偏好", "你的习惯", "关于你"]);
+    expect(within(legend).queryByText("preference")).not.toBeInTheDocument();
+    expect(within(legend).queryByText("fact")).not.toBeInTheDocument();
+    expect(within(legend).queryByText("habit")).not.toBeInTheDocument();
+    expect(within(legend).queryByText("你的目标")).not.toBeInTheDocument();
+    expect(within(legend).queryByText("你经历过的事")).not.toBeInTheDocument();
+
+    const habitDot = within(legend).getByText("你的习惯").previousElementSibling;
+    expect(habitDot).toHaveAttribute("aria-hidden", "true");
+    expect(habitDot).toHaveStyle({ backgroundColor: "#6b7280" });
+    const factDot = within(legend).getByText("关于你").previousElementSibling;
+    expect(factDot).toHaveStyle({ backgroundColor: "#10b981" });
+
+    const preference = node("喜欢早起");
+    expect(preference).toHaveAccessibleName("你的偏好，喜欢早起");
+    expect(preference.querySelector("text")).toBeNull();
+
+    fireEvent.mouseEnter(preference);
+    const lines = [...preference.querySelectorAll("text")].map((item) => item.textContent);
+    expect(lines).toEqual(["喜欢早起", "你的偏好"]);
+    expect(preference.querySelector("[data-memory-full]")).toBeNull();
+  });
+
+  it("keeps an unknown category as the original word and skips a blank one", () => {
+    render(
+      <MemoryGraphView
+        graph={{
+          nodes: [
+            { id: "known", content: "喜欢早起", category: "preference", confidence: 0.9 },
+            { id: "raw", content: "一条没翻译的分类", category: "custom_kind", confidence: 0.5 },
+            { id: "blank", content: "没有分类", category: "  ", confidence: 0.4 },
+            { id: "goal", content: "跑完马拉松", category: "goal", confidence: 0.6 },
+          ],
+          edges: [],
+        }}
+      />,
+    );
+    const legend = screen.getByRole("list", { name: "类别" });
+    const names = [...legend.querySelectorAll("[data-memory-legend-name]")].map(
+      (item) => item.textContent,
+    );
+    expect(names).toEqual(["你的偏好", "你的目标", "custom_kind"]);
+    expect(node("一条没翻译的分类")).toHaveAccessibleName("custom_kind，一条没翻译的分类");
+    expect(node("没有分类")).toHaveAccessibleName("没有分类");
+    expect(node("跑完马拉松")).toHaveAccessibleName("你的目标，跑完马拉松");
+    const preferenceDot = within(legend).getByText("你的偏好").previousElementSibling;
+    const goalDot = within(legend).getByText("你的目标").previousElementSibling;
+    expect(preferenceDot?.getAttribute("style")).toBe(goalDot?.getAttribute("style"));
+  });
+
+  it("writes the category above a long sentence when the keyboard lands", () => {
+    const full =
+      "这是一条很长的记忆，悬停只写出前三十个字，键盘落到这个点时要写出整句，不能停在省略号后面。";
+    render(
+      <MemoryGraphView
+        graph={{
+          nodes: [{ id: "long", content: full, category: "event", confidence: 0.9 }],
+          edges: [],
+        }}
+      />,
+    );
+    const long = node(full);
+    expect(long).toHaveAccessibleName(`你经历过的事，${full}`);
+    act(() => {
+      long.focus();
+    });
+    const caption = long.querySelector("[data-memory-full]");
+    expect(caption).toHaveTextContent("你经历过的事");
+    expect(caption).toHaveTextContent(full);
+    expect(caption).toHaveClass("hidden", "group-focus-visible:block");
+    const categoryLine = [...long.querySelectorAll("text")].find(
+      (item) => item.textContent === "你经历过的事",
+    );
+    expect(categoryLine).toHaveClass("group-focus-visible:hidden");
   });
 
   it("does not move while an IME process key is down", () => {
