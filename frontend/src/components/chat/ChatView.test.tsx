@@ -1595,6 +1595,8 @@ describe("ChatView", () => {
     const composer = screen.getByPlaceholderText(/输入消息/);
     expect(composer).toBeEnabled();
     expect(composer).toHaveAttribute("aria-busy", "true");
+    expect(composer).toHaveAttribute("aria-label", "输入消息");
+    expect(screen.getByRole("status")).toHaveTextContent("正在生成，输入消息可以先写下一条");
     expect(composer).toHaveFocus();
     expect(cancel).toBeEnabled();
     expect(cancel).toHaveAttribute("aria-busy", "true");
