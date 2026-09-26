@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
 import { TrustReportPanel, trustReportLayoutFocus } from "./TrustReport";
 
@@ -271,6 +271,140 @@ describe("TrustReportPanel", () => {
     expect(screen.queryByRole("link", { name: "shell_exec" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "corr_only" })).not.toBeInTheDocument();
     expect(screen.getByText("corr_only")).toBeInTheDocument();
+  });
+
+  it("writes the full approval, repair id, and tool name when keyboard focused", async () => {
+    const action = "mcp_filesystem__write_a_very_long_approval_action_that_used_to_stay_truncated";
+    const flow =
+      "这是一条很长的流程说明，平时只占一行，键盘落到这一行时要写出整句，不能只留在看不见的地方";
+    const plainAction = "shell_exec_without_an_id_and_long_enough_that_one_line_hides_the_rest";
+    const plainFlow = "没有编号的流程说明平时也只占一行，键盘落到操作名时写出整句";
+    const aggregate =
+      "mem-aggregate-id-that-is-too-long-for-one-line-and-should-expand-on-retry-focus";
+    const used = "mcp_filesystem__read_a_very_long_tool_name_that_used_to_stay_truncated";
+    const denied = "mcp_shell__run_a_very_long_denied_tool_name_that_used_to_stay_truncated";
+    const revealOnRow = [
+      "truncate",
+      "group-has-[:focus-visible]:overflow-visible",
+      "group-has-[:focus-visible]:whitespace-normal",
+      "group-has-[:focus-visible]:text-clip",
+      "group-has-[:focus-visible]:break-words",
+    ];
+    const revealOnFocus = [
+      "truncate",
+      "group-focus-visible:overflow-visible",
+      "group-focus-visible:whitespace-normal",
+      "group-focus-visible:text-clip",
+      "group-focus-visible:break-words",
+    ];
+
+    mockGetReport.mockResolvedValue({
+      ...BASE,
+      approvals: [
+        {
+          id: "a-long",
+          action,
+          status: "pending",
+          flow_type: "对话",
+          flow_label: flow,
+          correlation_id: "c-long",
+          proposed_by: "w",
+        },
+        {
+          id: "   ",
+          action: plainAction,
+          status: "pending",
+          flow_type: "系统",
+          flow_label: plainFlow,
+          correlation_id: "corr-long",
+        },
+      ],
+      memoryIndexRepairs: {
+        pending: 0,
+        failed_permanent: 1,
+        items: [
+          {
+            id: 7,
+            aggregate_id: aggregate,
+            event_type: "MemoryUpdated",
+            event_seq: 2,
+            error: "chroma unavailable",
+            retry_count: 5,
+            status: "failed_permanent",
+            created_at: "2026-01-01T00:00:00Z",
+            last_retry_at: "2026-01-01T00:10:00Z",
+          },
+        ],
+      },
+      governance: {
+        ...BASE.governance!,
+        tools_invoked: 4,
+        tools_denied: 1,
+        by_tool: { [used]: 4 },
+        denied_tools: { [denied]: 1 },
+      },
+    });
+    renderPage();
+
+    const link = await screen.findByRole("link", { name: action });
+    expect(link).toHaveClass("focus-visible:ring-focus-ring");
+    expect(link).toHaveAttribute("title", "打开审批");
+    const actionLine = link.querySelector(".truncate");
+    expect(actionLine).toHaveTextContent(action);
+    expect(actionLine).toHaveClass(...revealOnRow);
+    expect(actionLine?.className).not.toContain("group-hover:");
+    const approvalRow = link.parentElement;
+    expect(approvalRow).toHaveClass("group");
+    const flowLine = screen.getByText(flow);
+    expect(flowLine).toHaveClass(...revealOnRow);
+    expect(flowLine.className).not.toContain("group-hover:");
+    expect(flowLine.closest("a")).toBeNull();
+    expect(flowLine.closest(".group")).toBe(approvalRow);
+
+    const plain = screen.getByText(plainAction);
+    expect(plain).toHaveClass(...revealOnRow);
+    expect(plain.className).not.toContain("group-hover:");
+    const plainFocus = plain.parentElement;
+    expect(plainFocus).toHaveAttribute("tabindex", "0");
+    expect(plainFocus).toHaveClass("focus-visible:ring-focus-ring");
+    expect(plainFocus?.closest("a")).toBeNull();
+    expect(screen.queryByRole("link", { name: plainAction })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: plainAction })).not.toBeInTheDocument();
+    expect(screen.getByText(plainFlow).closest(".group")).toBe(plainFocus?.parentElement);
+    expect(fireEvent.keyDown(plainFocus!, { key: " " })).toBe(false);
+    expect(fireEvent.keyDown(plainFocus!, { key: "Enter" })).toBe(false);
+    expect(fireEvent.keyDown(plainFocus!, { key: "Enter", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(plainFocus!, { key: "Enter", keyCode: 229 })).toBe(true);
+    expect(fireEvent.keyDown(plainFocus!, { key: "Process" })).toBe(true);
+
+    const repairId = screen.getByText(aggregate);
+    expect(repairId).toHaveClass(...revealOnRow);
+    expect(repairId.className).not.toContain("group-hover:");
+    const repairRow = repairId.closest(".group");
+    expect(
+      within(repairRow as HTMLElement).getByRole("button", { name: "重试索引" }),
+    ).toBeInTheDocument();
+
+    const usedName = screen.getByText(used);
+    expect(usedName).toHaveClass(...revealOnFocus);
+    expect(usedName.className).not.toContain("group-hover:");
+    const usedRow = usedName.parentElement;
+    expect(usedRow).toHaveAttribute("tabindex", "0");
+    expect(usedRow).toHaveClass("group", "focus-visible:ring-focus-ring");
+    expect(fireEvent.keyDown(usedRow!, { key: " " })).toBe(false);
+    expect(fireEvent.keyDown(usedRow!, { key: "Enter" })).toBe(false);
+    expect(fireEvent.keyDown(usedRow!, { key: " ", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(usedRow!, { key: " ", keyCode: 229 })).toBe(true);
+    expect(fireEvent.keyDown(usedRow!, { key: "Process" })).toBe(true);
+
+    const deniedName = screen.getByText(denied);
+    expect(deniedName).toHaveClass(...revealOnFocus);
+    expect(deniedName.className).not.toContain("group-hover:");
+    const deniedRow = deniedName.parentElement;
+    expect(deniedRow).toHaveAttribute("tabindex", "0");
+    expect(deniedRow).toHaveClass("focus-visible:ring-focus-ring");
+    expect(fireEvent.keyDown(deniedRow!, { key: "Enter", keyCode: 229 })).toBe(true);
+    expect(screen.getByText("1 次拦截")).toBeInTheDocument();
   });
 
   it("shows memory index repair alert and retry", async () => {

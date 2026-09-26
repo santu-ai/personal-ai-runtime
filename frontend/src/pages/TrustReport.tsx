@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -21,6 +21,20 @@ import { useTrustReportQuery } from "../hooks/useTrustReportQuery";
 import { queryKeys } from "../hooks/useWsInvalidationBridge";
 import LoadErrorNotice, { useHeldQueryError } from "../components/ui/LoadErrorNotice";
 import { AdoptionSummaryView, formatAdoptionRate } from "../components/dashboard/AdoptionSummary";
+import { isImeKeyboardEvent } from "../utils/imeKey";
+
+/** 平时一行。键盘落到这一行时写出整句。鼠标悬停仍是一行。 */
+const revealOnFocus =
+  "truncate group-focus-visible:overflow-visible group-focus-visible:whitespace-normal group-focus-visible:text-clip group-focus-visible:break-words";
+
+/** 平时一行。键盘落到这一行里已有的控件时写出整句。鼠标悬停仍是一行。 */
+const revealOnRowFocus =
+  "truncate group-has-[:focus-visible]:overflow-visible group-has-[:focus-visible]:whitespace-normal group-has-[:focus-visible]:text-clip group-has-[:focus-visible]:break-words";
+
+function keepBareKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
+  if (isImeKeyboardEvent(event.nativeEvent)) return;
+  if (event.key === "Enter" || event.key === " ") event.preventDefault();
+}
 
 const FLOW_COLORS: Record<string, string> = {
   对话: "text-insight",
@@ -361,10 +375,10 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
               {failedRepairs.map((repair) => (
                 <div
                   key={repair.id}
-                  className="flex items-start gap-3 bg-danger/10 border border-danger/30 rounded-xl p-4"
+                  className="group flex items-start gap-3 bg-danger/10 border border-danger/30 rounded-xl p-4"
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-fg-primary font-mono truncate">
+                    <p className={`text-sm text-fg-primary font-mono ${revealOnRowFocus}`}>
                       {repair.aggregate_id}
                     </p>
                     <p className="text-xs text-fg-secondary mt-1">
@@ -427,22 +441,30 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
                     className="flex items-center gap-3 bg-surface-overlay/50 border border-border-strong/50 rounded-xl p-4 hover:border-border-strong transition-colors"
                   >
                     <div className="w-2 h-2 rounded-full bg-warning shrink-0" />
-                    <div className="flex-1 min-w-0">
+                    <div className="group flex-1 min-w-0">
                       {href ? (
                         <Link
                           to={href}
                           title="打开审批"
                           className="block rounded-sm text-sm text-fg-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                         >
-                          <span className="block truncate">{actionLabel}</span>
+                          <span className={`block ${revealOnRowFocus}`}>{actionLabel}</span>
                         </Link>
                       ) : (
-                        <p className="text-sm text-fg-primary truncate">{actionLabel}</p>
+                        <p
+                          tabIndex={0}
+                          onKeyDown={keepBareKeysFromScrolling}
+                          className="rounded-sm text-sm text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                        >
+                          <span className={`block ${revealOnRowFocus}`}>{actionLabel}</span>
+                        </p>
                       )}
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className={`text-xs ${flowColor}`}>{flowLabel}</span>
+                      <div className="mt-1 flex min-w-0 items-center gap-2">
+                        <span className={`shrink-0 text-xs ${flowColor}`}>{flowLabel}</span>
                         {a.flow_label && (
-                          <span className="text-xs text-fg-tertiary truncate">{a.flow_label}</span>
+                          <span className={`min-w-0 text-xs text-fg-tertiary ${revealOnRowFocus}`}>
+                            {a.flow_label}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -512,9 +534,12 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
                         <h3 className="text-sm font-medium text-fg-primary mb-3">最常用工具</h3>
                         <div className="space-y-1.5">
                           {topTools.map(([name, count]) => (
-                            <div key={name} className="flex items-center justify-between text-xs">
-                              <span className="text-fg-secondary truncate">{name}</span>
-                              <span className="text-fg-secondary">{count}</span>
+                            <div
+                              key={name}
+                              className="flex items-center justify-between gap-3 text-xs"
+                            >
+                              <ToolName name={name} />
+                              <span className="shrink-0 text-fg-secondary">{count}</span>
                             </div>
                           ))}
                         </div>
@@ -525,9 +550,12 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
                         <h3 className="text-sm font-medium text-danger mb-3">被拦截工具</h3>
                         <div className="space-y-1.5">
                           {deniedTools.map(([name, count]) => (
-                            <div key={name} className="flex items-center justify-between text-xs">
-                              <span className="text-fg-secondary truncate">{name}</span>
-                              <span className="text-danger">{count} 次拦截</span>
+                            <div
+                              key={name}
+                              className="flex items-center justify-between gap-3 text-xs"
+                            >
+                              <ToolName name={name} />
+                              <span className="shrink-0 text-danger">{count} 次拦截</span>
                             </div>
                           ))}
                         </div>
@@ -548,6 +576,18 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
           })()}
       </div>
     </div>
+  );
+}
+
+function ToolName({ name }: { name: string }) {
+  return (
+    <span
+      tabIndex={0}
+      onKeyDown={keepBareKeysFromScrolling}
+      className="group min-w-0 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+    >
+      <span className={`block text-fg-secondary ${revealOnFocus}`}>{name}</span>
+    </span>
   );
 }
 
