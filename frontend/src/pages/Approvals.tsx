@@ -20,6 +20,7 @@ import { TextArea } from "../components/ui/Input";
 import RiskCard from "../components/approval/RiskCard";
 import { canContinueApproval } from "./approvals/canContinue";
 import type { CapabilityPolicy } from "../api/settings";
+import { describeToolAction, toolLabel } from "../utils/toolLabels";
 
 /** 非空 task_id 打开任务页。空白不编造链接，也不使用 correlation_id。 */
 function taskPageHref(taskId: string | null | undefined): string | undefined {
@@ -41,6 +42,59 @@ function parseParams(params?: string): Record<string, unknown> | null {
   } catch {
     return { raw: params };
   }
+}
+
+function approvalArgs(params?: string): Record<string, unknown> {
+  const parsed = parseParams(params);
+  if (!parsed || Array.isArray(parsed)) return {};
+  return parsed;
+}
+
+/**
+ * 和执行计划同一套。有一句和工具名不同的说法就用这一句。
+ * 否则写出路径、命令、问题、搜索词或地址。占位的问号不写。
+ * `limit`、`max_lines`、`unread_only` 不写。只去掉两边的空白。
+ */
+function spokenToolName(action: string): string {
+  return toolLabel(action).trim();
+}
+
+function approvalArgument(action: string, args: Record<string, unknown>): string {
+  const label = spokenToolName(action);
+  const described = describeToolAction(action, args).trim();
+  if (described && described !== label && described !== "?" && described !== "$ ?") {
+    return described;
+  }
+  for (const key of ["path", "command", "question", "query", "url"] as const) {
+    const value = args[key];
+    if (typeof value !== "string") continue;
+    const text = value.trim();
+    if (!text) continue;
+    return key === "command" ? `$ ${text}` : text;
+  }
+  return "";
+}
+
+/** 字面上仍是这一句。读屏把中文工具名和这一句操作接在后面。没有可写的仍只读这一句。 */
+function approvalControlName(
+  label: string,
+  action: string | undefined,
+  params?: string,
+): string | undefined {
+  const name = action?.trim() ?? "";
+  if (!name) return undefined;
+  const detail = [spokenToolName(name), approvalArgument(name, approvalArgs(params))]
+    .filter(Boolean)
+    .join(" ");
+  if (!detail) return undefined;
+  return `${label}：${detail}`;
+}
+
+/** 问题有字时接在「你的回答」后面。只有空白时仍只读这一句。 */
+function answerFieldName(question: string): string {
+  const text = question.trim();
+  if (!text) return "你的回答";
+  return `你的回答：${text}`;
 }
 
 type ResolveFocus = "approve" | "reject";
@@ -466,6 +520,8 @@ function ApprovalCard({
     const raw = params?.question;
     return typeof raw === "string" ? raw : "";
   })();
+  const approveLabel = isAskUser ? "发送回答" : canContinue ? "批准并续写" : "批准";
+  const rejectLabel = isAskUser ? "取消" : "拒绝";
 
   return (
     <div data-approval-card={item.id}>
@@ -494,7 +550,7 @@ function ApprovalCard({
               {question || "助手需要你的回答才能继续。"}
             </p>
             <TextArea
-              aria-label="你的回答"
+              aria-label={answerFieldName(question)}
               className="w-full"
               maxLength={8000}
               value={draft}
@@ -508,6 +564,7 @@ function ApprovalCard({
           data-approval-focus="approve"
           onClick={() => (isAskUser ? onApprove(answer) : onApprove())}
           disabled={isAskUser && !answer && busyAction !== "approve"}
+          aria-label={approvalControlName(approveLabel, item.action, item.params)}
           aria-busy={busyAction === "approve" || undefined}
           className={busyAction === "approve" ? "opacity-50" : ""}
           title={
@@ -519,19 +576,20 @@ function ApprovalCard({
           }
         >
           {canContinue || isAskUser ? <MessageSquare size={14} /> : <Check size={14} />}
-          {isAskUser ? "发送回答" : canContinue ? "批准并续写" : "批准"}
+          {approveLabel}
         </Button>
         <Button
           size="sm"
           variant="secondary"
           data-approval-focus="reject"
           onClick={onReject}
+          aria-label={approvalControlName(rejectLabel, item.action, item.params)}
           aria-busy={busyAction === "reject" || undefined}
           className={busyAction === "reject" ? "opacity-50" : ""}
           title={isAskUser ? "取消这次澄清" : "拒绝此操作"}
         >
           <X size={14} />
-          {isAskUser ? "取消" : "拒绝"}
+          {rejectLabel}
         </Button>
       </RiskCard>
     </div>
