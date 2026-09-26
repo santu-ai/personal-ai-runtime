@@ -364,9 +364,13 @@ describe("ChatView", () => {
 
     const confirmBtn = await screen.findByRole("button", { name: "确认写入" });
     const composer = screen.getByPlaceholderText(/输入消息/);
+    const waiting = screen.getByRole("button", { name: "待你确认" });
     expect(confirmBtn).toHaveFocus();
     expect(composer).not.toHaveFocus();
     expect(composer).toBeDisabled();
+    expect(composer).toHaveAttribute("placeholder", "先在上面确认或取消，暂不能输入消息");
+    expect(waiting).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /思考中/ })).not.toBeInTheDocument();
   });
 
   it("keeps Tab inside the confirmation card and leaves it on Escape without resolving", async () => {

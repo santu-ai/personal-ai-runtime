@@ -51,6 +51,14 @@ export default function ChatComposer({
   const holding = generating || pending;
   const fieldDisabled = Boolean(disabled) && !holding;
   const actionDisabled = holding ? false : Boolean(disabled) || !value.trim();
+  // 这一栏仍是输入消息。占位先写出当前能不能发，再留着这几个字。
+  const statusPlaceholder = generating
+    ? "正在生成，输入消息可以先写下一条"
+    : pending
+      ? "正在发送…，输入消息仍可改"
+      : fieldDisabled
+        ? "先在上面确认或取消，暂不能输入消息"
+        : placeholder;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // 组字或输入法处理键时的 Enter 交给输入法，不把还没上屏的字发出去。
@@ -70,7 +78,7 @@ export default function ChatComposer({
         onChange={(e) => onChange(e.target.value)}
         onInput={adjustTextareaHeight}
         onKeyDown={handleKeyDown}
-        placeholder={placeholder}
+        placeholder={statusPlaceholder}
         rows={1}
         disabled={fieldDisabled}
         aria-busy={holding || undefined}
@@ -91,6 +99,7 @@ export default function ChatComposer({
         disabled={actionDisabled}
         data-chat-send=""
         aria-busy={holding || undefined}
+        title={fieldDisabled ? "先在上面确认或取消，才能继续发送" : undefined}
         className={`shrink-0${holding ? " opacity-50" : ""}`}
       >
         {generating ? (
@@ -98,11 +107,13 @@ export default function ChatComposer({
             <Square size={12} fill="currentColor" />
             取消生成
           </>
-        ) : disabled ? (
+        ) : pending ? (
           <>
             <Spinner size="sm" />
-            思考中
+            发送中
           </>
+        ) : fieldDisabled ? (
+          "待你确认"
         ) : (
           <>
             <Send size={14} />

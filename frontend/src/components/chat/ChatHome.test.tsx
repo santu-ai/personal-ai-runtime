@@ -347,7 +347,7 @@ describe("ChatHome", () => {
         }),
     );
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
-    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送中" }));
     expect(quickChat).toHaveBeenCalledTimes(1);
 
     await act(async () => {
@@ -382,7 +382,9 @@ describe("ChatHome", () => {
     fireEvent.keyDown(box, { key: "Enter" });
     expect(quickChat).toHaveBeenCalledTimes(1);
     expect(send).toHaveAttribute("aria-busy", "true");
+    expect(send).toHaveAccessibleName("发送中");
     expect(box).toHaveAttribute("aria-busy", "true");
+    expect(box).toHaveAttribute("placeholder", "正在发送…，输入消息仍可改");
     expect(send).toBeEnabled();
     expect(box).toBeEnabled();
     expect(send).toHaveFocus();
