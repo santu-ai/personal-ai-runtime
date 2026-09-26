@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError, ratifyMemory, rejectMemory } from "../../api/client";
@@ -76,6 +76,9 @@ interface Props {
   conversationId?: string;
 }
 
+const countRevealClass =
+  "min-w-0 flex-1 truncate group-has-[:focus-visible]:overflow-visible group-has-[:focus-visible]:whitespace-normal group-has-[:focus-visible]:text-clip group-has-[:focus-visible]:break-words";
+
 /**
  * Inline ratify/reject for proposed claims.
  *
@@ -84,6 +87,7 @@ interface Props {
  * /memories. Reuses existing memory APIs — no new fragment.
  */
 export default function ProposedMemoryBanner({ className = "", conversationId }: Props) {
+  const countId = useId();
   const opts = groupedOpts(conversationId);
   const scope = conversationId ? { conversationId } : undefined;
   const { data: proposedCount = 0 } = useProposedMemoryCountQuery(scope);
@@ -188,10 +192,15 @@ export default function ProposedMemoryBanner({ className = "", conversationId }:
 
   return (
     <div
+      role="region"
+      aria-labelledby={countId}
       className={`px-4 py-2 bg-insight/10 border-b border-insight/30 text-xs text-insight ${className}`.trim()}
     >
-      <div className="flex items-center gap-2">
-        <p className="flex-1 min-w-0">{heading}</p>
+      <div className="group flex min-w-0 items-center gap-2">
+        {/* 平时一行。键盘落到「查看全部」时写出整句。鼠标悬停仍是一行，整句在 title 里。 */}
+        <p id={countId} data-proposed-count="" title={heading} className={countRevealClass}>
+          {heading}
+        </p>
         <Link
           to="/memories?tab=review"
           data-proposed-review=""
