@@ -259,6 +259,7 @@ describe("MemoriesPage", () => {
     expect(await screen.findByText("没有待确认的记忆。")).toBeInTheDocument();
     expect(review).toHaveFocus();
     expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("shows the empty memory list after a successful read", async () => {
@@ -1507,8 +1508,243 @@ describe("MemoriesPage", () => {
     fireEvent.click(confirm);
     const tab = screen.getByRole("tab", { name: "待确认" });
     await waitFor(() => expect(tab).toHaveFocus());
-    expect(screen.getByText("没有待确认的记忆。")).toBeInTheDocument();
+    expect(
+      screen.getByText("没有待确认的记忆。", { selector: ":not([role=status])" }),
+    ).toBeInTheDocument();
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("没有待确认的记忆。");
+    expect(status).toHaveClass("sr-only");
+    expect(tab).toHaveFocus();
     expect(focusWhenGone.read()).toBe(tab);
+  });
+
+  it("does not read the review empty state when the page opens empty", async () => {
+    vi.mocked(listMemoriesGrouped).mockResolvedValue({ memories: [], total: 0 });
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
+    expect(await screen.findByText("没有待确认的记忆。")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("does not read the review empty state while confirm is still in flight", async () => {
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "proposed") {
+        return {
+          memories: [
+            {
+              id: "p1",
+              content: "只剩这一条",
+              origin: "claim",
+              claim_status: "proposed",
+              created_at: "2026-09-24T02:00:00Z",
+            },
+          ],
+          total: 1,
+        };
+      }
+      return { memories: [], total: 0 };
+    });
+    let release: (value: { status: string; claim_status: string }) => void = () => {};
+    vi.mocked(ratifyMemory).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
+    const confirm = await screen.findByRole("button", { name: "确认" });
+    fireEvent.click(confirm);
+    await waitFor(() => expect(confirm).toHaveAttribute("aria-busy", "true"));
+    expect(confirm).toHaveAccessibleName("确认");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText("没有待确认的记忆。")).not.toBeInTheDocument();
+    release({ status: "ok", claim_status: "ratified" });
+  });
+
+  it("does not read the review empty state when another row remains or confirm fails", async () => {
+    let proposed = [
+      {
+        id: "p1",
+        content: "第一条",
+        origin: "claim" as const,
+        claim_status: "proposed" as const,
+        created_at: "2026-09-24T02:00:00Z",
+      },
+      {
+        id: "p2",
+        content: "第二条",
+        origin: "claim" as const,
+        claim_status: "proposed" as const,
+        created_at: "2026-09-24T01:00:00Z",
+      },
+    ];
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "proposed") return { memories: proposed, total: proposed.length };
+      return { memories: [], total: 0 };
+    });
+    vi.mocked(ratifyMemory).mockImplementation(async () => {
+      proposed = [proposed[1]];
+      return { status: "ok", claim_status: "ratified" };
+    });
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
+    fireEvent.click((await screen.findAllByRole("button", { name: "确认" }))[0]);
+    await waitFor(() => expect(screen.queryByText("第一条")).not.toBeInTheDocument());
+    expect(screen.getByText("第二条")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    vi.mocked(ratifyMemory).mockRejectedValueOnce(new ApiError("确认记忆失败", 500));
+    fireEvent.click(screen.getByRole("button", { name: "确认" }));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("确认记忆失败", "记忆"));
+    expect(screen.getByText("第二条")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText("没有待确认的记忆。")).not.toBeInTheDocument();
+  });
+
+  it("reads the category empty sentence after the last filtered row leaves, not when the filter itself is empty", async () => {
+    let proposed = [
+      {
+        id: "p1",
+        content: "只剩习惯",
+        origin: "claim" as const,
+        claim_status: "proposed" as const,
+        category: "habit",
+        created_at: "2026-09-24T02:00:00Z",
+      },
+    ];
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      const category = typeof opts === "string" ? undefined : opts?.category;
+      if (status !== "proposed") return { memories: [], total: 0 };
+      const memories = category ? proposed.filter((row) => row.category === category) : proposed;
+      return { memories, total: memories.length };
+    });
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
+    expect(await screen.findByText("只剩习惯")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "分类" }), {
+      target: { value: "fact" },
+    });
+    expect(await screen.findByText("该分类下没有待确认的记忆。")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "分类" }), {
+      target: { value: "habit" },
+    });
+    expect(await screen.findByText("只剩习惯")).toBeInTheDocument();
+    vi.mocked(ratifyMemory).mockImplementation(async () => {
+      proposed = [];
+      return { status: "ok", claim_status: "ratified" };
+    });
+    const confirm = screen.getByRole("button", { name: "确认" });
+    confirm.focus();
+    fireEvent.click(confirm);
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("该分类下没有待确认的记忆。");
+    expect(status).toHaveClass("sr-only");
+    expect(screen.getByRole("tab", { name: "待确认" })).toHaveFocus();
+  });
+
+  it("reads the review empty state after the last reject, and again after the queue refills", async () => {
+    let proposed = [
+      {
+        id: "p1",
+        content: "只剩这一条",
+        origin: "claim" as const,
+        claim_status: "proposed" as const,
+        created_at: "2026-09-24T02:00:00Z",
+      },
+    ];
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "proposed") return { memories: proposed, total: proposed.length };
+      return { memories: [], total: 0 };
+    });
+    vi.mocked(rejectMemory).mockImplementation(async () => {
+      proposed = [];
+      return { status: "ok", claim_status: "rejected" };
+    });
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
+    fireEvent.click(await screen.findByRole("button", { name: "拒绝" }));
+    const dialog = await screen.findByRole("dialog", { name: "拒绝这条记忆？" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "拒绝" }));
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("没有待确认的记忆。");
+    expect(status).toHaveClass("sr-only");
+    expect(status).not.toHaveFocus();
+
+    proposed = [
+      {
+        id: "p2",
+        content: "又来一条",
+        origin: "claim",
+        claim_status: "proposed",
+        created_at: "2026-09-24T03:00:00Z",
+      },
+    ];
+    fireEvent.change(screen.getByRole("combobox", { name: "排序" }), {
+      target: { value: "created_at_asc" },
+    });
+    expect(await screen.findByText("又来一条")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    vi.mocked(ratifyMemory).mockImplementation(async () => {
+      proposed = [];
+      return { status: "ok", claim_status: "ratified" };
+    });
+    fireEvent.click(screen.getByRole("button", { name: "确认" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("没有待确认的记忆。");
+  });
+
+  it("reads the review empty state after bulk confirm and forget clear the last row", async () => {
+    let proposed = [
+      {
+        id: "p1",
+        content: "批量这一条",
+        origin: "claim" as const,
+        claim_status: "proposed" as const,
+        created_at: "2026-09-24T02:00:00Z",
+      },
+    ];
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "proposed") return { memories: proposed, total: proposed.length };
+      return { memories: [], total: 0 };
+    });
+    vi.mocked(bulkClaimAction).mockImplementation(async () => {
+      proposed = [];
+      return { status: "ok", action: "ratify", ok: 1, skipped: [] };
+    });
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
+    fireEvent.click(await screen.findByRole("checkbox", { name: /全选当前页/ }));
+    fireEvent.click(screen.getByRole("button", { name: /批量确认/ }));
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("没有待确认的记忆。");
+    expect(screen.getByRole("tab", { name: "待确认" })).toHaveFocus();
+
+    proposed = [
+      {
+        id: "p2",
+        content: "忘掉这一条",
+        origin: "claim",
+        claim_status: "proposed",
+        created_at: "2026-09-24T03:00:00Z",
+      },
+    ];
+    fireEvent.change(screen.getByRole("combobox", { name: "排序" }), {
+      target: { value: "created_at_asc" },
+    });
+    expect(await screen.findByText("忘掉这一条")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    vi.mocked(deleteMemory).mockImplementation(async () => {
+      proposed = [];
+      return { status: "ok" };
+    });
+    fireEvent.click(screen.getByRole("button", { name: "忘掉" }));
+    const dialog = await screen.findByRole("dialog", { name: "忘掉这条记忆？" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "忘掉" }));
+    const again = await screen.findByRole("status");
+    expect(again).toHaveTextContent("没有待确认的记忆。");
+    expect(screen.getByRole("tab", { name: "待确认" })).toHaveFocus();
   });
 
   it("moves focus to the next restore button", async () => {
@@ -1591,6 +1827,7 @@ describe("MemoriesPage", () => {
     await waitFor(() => expect(input).toHaveFocus());
     expect(screen.queryByRole("button", { name: "确认" })).not.toBeInTheDocument();
     expect(focusWhenGone.read()).toBe(input);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("does not send bulk confirm twice", async () => {
