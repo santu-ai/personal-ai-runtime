@@ -13,6 +13,11 @@ interface Props {
   onClick?: () => void;
 }
 
+/** 错误和警告打断当前这一句；通知等说完再读。 */
+function announceRole(tone: StatusTone): "alert" | "status" {
+  return tone === "danger" || tone === "warning" ? "alert" : "status";
+}
+
 /** Floating notice (live notification or API error). */
 export default function ToastCard({
   tone = "neutral",
@@ -24,10 +29,13 @@ export default function ToastCard({
 }: Props) {
   const t = STATUS_TONE[tone];
   return (
+    // 出现时读出来。不把焦点抢过来。
     <div
       className={`group border rounded-lg p-3 shadow-lg relative ${t.surface}`}
       data-testid={tone === "danger" ? "error-toast" : "notice-toast"}
       data-toast-id={toastId}
+      role={announceRole(tone)}
+      aria-atomic="true"
     >
       <div
         className={
