@@ -85,6 +85,18 @@ function adoptedTaskHref(workId: string | null | undefined): string | undefined 
   return taskPageHref(id);
 }
 
+/** 字面上仍是「转为任务」或「已转为任务」。读屏把旁边的标题和理由接在后面。来源编号不写进这一句。 */
+function suggestedActionControlName(
+  label: "转为任务" | "已转为任务",
+  action: { title: string; reason?: string | null },
+): string | undefined {
+  const title = action.title.trim();
+  const reason = action.reason?.trim() ?? "";
+  const sentence = [title, reason].filter(Boolean).join(" — ");
+  if (!sentence) return undefined;
+  return `${label}：${sentence}`;
+}
+
 type TaskDirectHandoff = {
   taskId: string;
   kind: "complete" | "cancel" | "adopt";
@@ -2640,7 +2652,8 @@ export default function TasksPage() {
                                       key={`${action.title}-${index}`}
                                       className="flex items-start justify-between gap-3"
                                     >
-                                      <span>
+                                      {/* 标题和理由整句都在，在这一行里换行。不截断，也不另占一个焦点。 */}
+                                      <span className="min-w-0 flex-1 break-words">
                                         {action.title}
                                         {action.reason ? ` — ${action.reason}` : ""}
                                         <SourceIdChips
@@ -2655,6 +2668,10 @@ export default function TasksPage() {
                                           <Link
                                             to={adoptedHref}
                                             data-task-adopted={index}
+                                            aria-label={suggestedActionControlName(
+                                              "已转为任务",
+                                              action,
+                                            )}
                                             className={adoptedLinkClass}
                                           >
                                             已转为任务
@@ -2669,10 +2686,14 @@ export default function TasksPage() {
                                           size="sm"
                                           variant="secondary"
                                           data-task-adopt={index}
+                                          aria-label={suggestedActionControlName(
+                                            "转为任务",
+                                            action,
+                                          )}
                                           aria-busy={actionBusy === `adopt:${index}` || undefined}
-                                          className={
-                                            actionBusy === `adopt:${index}` ? "opacity-50" : ""
-                                          }
+                                          className={`shrink-0${
+                                            actionBusy === `adopt:${index}` ? " opacity-50" : ""
+                                          }`}
                                           onClick={() => void handleAdopt(shownDelivery, index)}
                                         >
                                           转为任务
