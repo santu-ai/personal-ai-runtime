@@ -527,9 +527,10 @@ describe("MemoriesPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
     const category = await screen.findByRole("combobox", { name: "分类" });
     const options = within(category).getAllByRole("option");
+    const unknown = options[options.length - 1];
     expect(category).toHaveValue("custom_kind");
-    expect(options.at(-1)).toHaveTextContent("custom_kind");
-    expect(options.at(-1)).toHaveValue("custom_kind");
+    expect(unknown).toHaveTextContent("custom_kind");
+    expect(unknown).toHaveValue("custom_kind");
     expect(options.map((option) => option.textContent).slice(0, -1)).toEqual([
       "你的偏好",
       "你的习惯",
