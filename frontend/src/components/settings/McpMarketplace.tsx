@@ -14,6 +14,13 @@ function keepBareKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
   if (event.key === "Enter" || event.key === " ") event.preventDefault();
 }
 
+/** 字面上仍是「安装」或「已安装」。读屏把这一条的名称接在后面。只有空白时仍只读这一句。 */
+function marketplaceInstallName(label: "安装" | "已安装", name: string): string | undefined {
+  const text = name.trim();
+  if (!text) return undefined;
+  return `${label}：${text}`;
+}
+
 const CATEGORIES: Record<string, string> = {
   browser: "浏览器",
   search: "搜索",
@@ -190,6 +197,7 @@ export default function McpMarketplace() {
                 data-mcp-install={s.name}
                 onClick={() => void handleInstall(s.name)}
                 disabled={installed}
+                aria-label={marketplaceInstallName(installed ? "已安装" : "安装", s.name)}
                 aria-busy={busy || undefined}
                 className={
                   installed

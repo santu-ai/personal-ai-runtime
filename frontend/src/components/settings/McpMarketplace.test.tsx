@@ -57,7 +57,8 @@ describe("McpMarketplace descriptions", () => {
 
     const row = line.closest(".group");
     expect(row).not.toBeNull();
-    const install = within(row as HTMLElement).getByRole("button", { name: "安装" });
+    const install = within(row as HTMLElement).getByRole("button", { name: "安装：playwright" });
+    expect(install).toHaveTextContent("安装");
     expect(install).toBeEnabled();
     expect(row).toContainElement(install);
 
@@ -75,7 +76,7 @@ describe("McpMarketplace descriptions", () => {
     expect(installed).toHaveAttribute("tabindex", "0");
     const installedRow = installed.closest(".group");
     expect(
-      within(installedRow as HTMLElement).getByRole("button", { name: "已安装" }),
+      within(installedRow as HTMLElement).getByRole("button", { name: "已安装：installed-one" }),
     ).toBeDisabled();
 
     for (const name of ["blank", "empty"]) {
@@ -106,7 +107,9 @@ describe("McpMarketplace descriptions", () => {
 
     const row = line.closest(".group");
     expect(row).not.toBeNull();
-    const install = within(row as HTMLElement).getByRole("button", { name: "安装" });
+    const install = within(row as HTMLElement).getByRole("button", {
+      name: `安装：${name}`,
+    });
     expect(install).toBeEnabled();
     expect(row).toContainElement(install);
 
@@ -124,7 +127,9 @@ describe("McpMarketplace descriptions", () => {
     expect(installed).toHaveAttribute("tabindex", "0");
     const installedRow = installed.closest(".group");
     expect(
-      within(installedRow as HTMLElement).getByRole("button", { name: "已安装" }),
+      within(installedRow as HTMLElement).getByRole("button", {
+        name: "已安装：already-installed",
+      }),
     ).toBeDisabled();
 
     const blankRow = screen.getByText("空白名称不占焦点").closest(".group");
@@ -132,5 +137,56 @@ describe("McpMarketplace descriptions", () => {
     expect(blankName?.textContent).toBe("   ");
     expect(blankName?.className).not.toContain("truncate");
     expect(blankName).not.toHaveAttribute("tabindex");
+    expect(within(blankRow as HTMLElement).getByRole("button")).not.toHaveAttribute("aria-label");
+    expect(within(blankRow as HTMLElement).getByRole("button")).toHaveTextContent("安装");
+  });
+
+  it("names 安装 with this server and leaves the visible word", async () => {
+    vi.mocked(listMcpRegistry).mockResolvedValue([
+      {
+        name: "  前  后  ",
+        description: "说明不进名字",
+        category: "browser",
+        env_vars: { API_KEY: "secret" },
+        installed: false,
+      },
+      {
+        name: "前一段\n后一段",
+        description: "另一句说明",
+        category: "search",
+        env_vars: {},
+        installed: true,
+      },
+      server("   ", "空白说明也不进名字"),
+      server("", "空名称"),
+    ]);
+    renderWithRouter(<McpMarketplace />);
+
+    const installOf = (name: string) => {
+      const node = [...document.querySelectorAll("button[data-mcp-install]")].find(
+        (button) => button.getAttribute("data-mcp-install") === name,
+      );
+      if (!node) throw new Error(`missing install ${JSON.stringify(name)}`);
+      return node;
+    };
+
+    await screen.findByText("说明不进名字");
+    const spaced = installOf("  前  后  ");
+    expect(spaced).toHaveTextContent("安装");
+    expect(spaced).toHaveAttribute("aria-label", "安装：前  后");
+    expect(spaced.getAttribute("aria-label")).not.toMatch(/说明不进名字|浏览器|API_KEY|secret/);
+
+    const broken = installOf("前一段\n后一段");
+    expect(broken).toHaveTextContent("已安装");
+    expect(broken).toBeDisabled();
+    expect(broken).toHaveAttribute("aria-label", "已安装：前一段\n后一段");
+    expect(broken.getAttribute("aria-label")).not.toMatch(/另一句说明|搜索/);
+
+    for (const description of ["空白说明也不进名字", "空名称"]) {
+      const row = screen.getByText(description).closest(".group");
+      const button = within(row as HTMLElement).getByRole("button", { name: "安装" });
+      expect(button).not.toHaveAttribute("aria-label");
+      expect(button).toHaveTextContent("安装");
+    }
   });
 });
