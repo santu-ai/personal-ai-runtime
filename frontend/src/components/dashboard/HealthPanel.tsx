@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useId, useRef, useState, type KeyboardEvent } from "react";
 import { Shield, ChevronDown, ChevronRight } from "lucide-react";
 import { type ToolSummaryItem } from "../../api/client";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
 import { toolLabel } from "../../utils/toolLabels";
 
 interface HealthPanelProps {
@@ -36,8 +37,27 @@ interface HealthPanelProps {
   } | null;
 }
 
+/** 这一栏已经展开时，Esc 收起，焦点留在「运行状况」。组字时不收起。 */
+function collapseHealthOnEscape(
+  event: KeyboardEvent<HTMLElement>,
+  open: boolean,
+  button: HTMLButtonElement | null,
+  collapse: () => void,
+) {
+  if (!open) return;
+  if (event.key !== "Escape" || isImeKeyboardEvent(event.nativeEvent)) return;
+  if (event.defaultPrevented) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (button && document.activeElement !== button) button.focus();
+  collapse();
+}
+
 export default function HealthPanel({ cost, tools, memory, health, dashboard }: HealthPanelProps) {
   const [showHealth, setShowHealth] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const buttonId = useId();
+  const panelId = useId();
 
   const totalTokens = (cost?.total_prompt_tokens || 0) + (cost?.total_completion_tokens || 0);
   const totalCalls = cost?.total_calls || 0;
@@ -47,13 +67,26 @@ export default function HealthPanel({ cost, tools, memory, health, dashboard }: 
       : "100";
 
   return (
-    <div className="border-t border-border-subtle pt-4">
+    <div
+      className="border-t border-border-subtle pt-4"
+      onKeyDown={(event) =>
+        collapseHealthOnEscape(event, showHealth, buttonRef.current, () => setShowHealth(false))
+      }
+    >
       <button
+        ref={buttonRef}
         type="button"
+        id={buttonId}
+        aria-expanded={showHealth}
+        aria-controls={panelId}
         onClick={() => setShowHealth(!showHealth)}
         className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs text-fg-tertiary transition-colors hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
       >
-        {showHealth ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        {showHealth ? (
+          <ChevronDown size={14} aria-hidden="true" />
+        ) : (
+          <ChevronRight size={14} aria-hidden="true" />
+        )}
         <span>运行状况</span>
         {!showHealth && (
           <span className="text-fg-disabled ml-1">· Token / 成本 / 数据计数 ...</span>
@@ -61,7 +94,7 @@ export default function HealthPanel({ cost, tools, memory, health, dashboard }: 
       </button>
 
       {showHealth && (
-        <div className="mt-3 space-y-5">
+        <div id={panelId} role="region" aria-labelledby={buttonId} className="mt-3 space-y-5">
           {/* 我的数据 */}
           {dashboard?.data_sovereignty && (
             <div className="bg-surface-raised border border-border-subtle rounded-lg p-4">
