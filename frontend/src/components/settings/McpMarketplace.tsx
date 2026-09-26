@@ -1,8 +1,18 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { installMcpConnector } from "../../api/connectors";
 import { useErrorStore } from "../../stores/errorStore";
 import { useMcpRegistryQuery } from "../../hooks/useSettingsQuery";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
 import LoadErrorNotice, { queryErrorMessage, useHeldQueryError } from "../ui/LoadErrorNotice";
+
+/** 平时一行。键盘落到这一句或这一行的「安装」时写出整句。鼠标悬停仍是一行。 */
+const revealOnRowFocus =
+  "truncate group-has-[:focus-visible]:overflow-visible group-has-[:focus-visible]:whitespace-normal group-has-[:focus-visible]:text-clip group-has-[:focus-visible]:break-words";
+
+function keepBareKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
+  if (isImeKeyboardEvent(event.nativeEvent)) return;
+  if (event.key === "Enter" || event.key === " ") event.preventDefault();
+}
 
 const CATEGORIES: Record<string, string> = {
   browser: "浏览器",
@@ -136,10 +146,11 @@ export default function McpMarketplace() {
         servers.map((s) => {
           const installed = s.installed || installedExtra.has(s.name);
           const busy = installing === s.name;
+          const description = s.description?.trim() ? s.description : "";
           return (
             <div
               key={s.name}
-              className="flex items-center justify-between bg-surface-overlay/50 rounded-lg p-2.5"
+              className="group flex items-center justify-between bg-surface-overlay/50 rounded-lg p-2.5"
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
@@ -148,7 +159,15 @@ export default function McpMarketplace() {
                     {CATEGORIES[s.category] || s.category}
                   </span>
                 </div>
-                <p className="text-xs text-fg-disabled mt-0.5 truncate">{s.description}</p>
+                {description ? (
+                  <p
+                    tabIndex={0}
+                    onKeyDown={keepBareKeysFromScrolling}
+                    className={`mt-0.5 rounded-sm text-xs text-fg-disabled focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${revealOnRowFocus}`}
+                  >
+                    {description}
+                  </p>
+                ) : null}
                 {Object.keys(s.env_vars || {}).length > 0 && (
                   <p className="text-xs text-fg-disabled mt-0.5">
                     需要: {Object.keys(s.env_vars).join(", ")}
