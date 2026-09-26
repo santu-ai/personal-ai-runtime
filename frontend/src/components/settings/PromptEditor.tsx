@@ -10,6 +10,18 @@ type PromptField = "identity" | "coding_rules";
 type PromptAction = "save" | "reset";
 type PromptBusy = { field: PromptField; action: PromptAction };
 
+const PROMPT_FIELD_NAME: Record<PromptField, string> = {
+  identity: "身份定义",
+  coding_rules: "代码规则",
+};
+
+/** 字面上仍是「保存」或「重置」。读屏把这一栏接在后面。两边空白去掉。空白时仍只读这一句。 */
+function promptActionName(label: "保存" | "重置", field: string): string | undefined {
+  const text = field.trim();
+  if (!text) return undefined;
+  return `${label}：${text}`;
+}
+
 function focusIsIdle(stale?: HTMLElement | null): boolean {
   const active = document.activeElement;
   if (!active || active === document.body || active === document.documentElement) return true;
@@ -159,6 +171,7 @@ export default function PromptEditor() {
               data-prompt-action="reset"
               onClick={() => void run("identity", "reset")}
               disabled={!isCustomIdentity}
+              aria-label={promptActionName("重置", PROMPT_FIELD_NAME.identity)}
               aria-busy={busy?.field === "identity" && busy.action === "reset" ? true : undefined}
               className={`text-xs text-fg-disabled hover:text-fg-tertiary disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded${
                 busy?.field === "identity" && busy.action === "reset" ? " opacity-50" : ""
@@ -171,6 +184,7 @@ export default function PromptEditor() {
               data-prompt-field="identity"
               data-prompt-action="save"
               onClick={() => void run("identity", "save")}
+              aria-label={promptActionName("保存", PROMPT_FIELD_NAME.identity)}
               aria-busy={busy?.field === "identity" && busy.action === "save" ? true : undefined}
               className={`text-xs px-2 py-0.5 bg-surface-overlay hover:bg-border-strong rounded text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring${
                 busy?.field === "identity" && busy.action === "save" ? " opacity-50" : ""
@@ -206,6 +220,7 @@ export default function PromptEditor() {
               data-prompt-action="reset"
               onClick={() => void run("coding_rules", "reset")}
               disabled={!isCustomCodingRules}
+              aria-label={promptActionName("重置", PROMPT_FIELD_NAME.coding_rules)}
               aria-busy={
                 busy?.field === "coding_rules" && busy.action === "reset" ? true : undefined
               }
@@ -220,6 +235,7 @@ export default function PromptEditor() {
               data-prompt-field="coding_rules"
               data-prompt-action="save"
               onClick={() => void run("coding_rules", "save")}
+              aria-label={promptActionName("保存", PROMPT_FIELD_NAME.coding_rules)}
               aria-busy={
                 busy?.field === "coding_rules" && busy.action === "save" ? true : undefined
               }
