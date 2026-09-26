@@ -136,6 +136,41 @@ describe("OnboardingWizard", () => {
     expect(mockNavigate).toHaveBeenCalledWith("/settings");
   });
 
+  it("writes the full starter prompt when the topic is keyboard focused", async () => {
+    mockHealth.mockResolvedValue({
+      status: "ok",
+      auth_required: false,
+      startup: { checks: { llm: { configured: true } } },
+    } as Awaited<ReturnType<typeof getSystemHealth>>);
+    renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+
+    const prompt = "帮我设定一个这周想完成的目标，拆解成可执行的步骤";
+    const line = await screen.findByText(prompt);
+    expect(line).toHaveClass(
+      "truncate",
+      "group-focus-visible:overflow-visible",
+      "group-focus-visible:whitespace-normal",
+      "group-focus-visible:text-clip",
+      "group-focus-visible:break-words",
+    );
+    expect(line.className).not.toContain("group-hover:");
+    expect(line).not.toHaveAttribute("tabindex");
+    expect(line).not.toHaveAttribute("title");
+    const topic = line.closest("button");
+    expect(topic).toHaveClass("group", "focus-visible:ring-focus-ring");
+    expect(topic).toHaveAccessibleName(/帮我规划一个目标/);
+    expect(line.closest("button")).toBe(topic);
+
+    expect(fireEvent.keyDown(topic!, { key: " " })).toBe(true);
+    expect(fireEvent.keyDown(topic!, { key: "Enter" })).toBe(true);
+    expect(mockCreateConv).not.toHaveBeenCalled();
+
+    const free = screen.getByRole("button", { name: "自由聊几句" });
+    expect(free.querySelector(".truncate")).toBeNull();
+    expect(free).toHaveClass("group");
+  });
+
   it("launches conversation from starter prompt", async () => {
     mockHealth.mockResolvedValue({
       status: "ok",

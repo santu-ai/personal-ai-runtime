@@ -317,13 +317,16 @@ export default function OnboardingWizard({ onComplete }: Props) {
                     data-onboarding-starter={sp.label}
                     aria-busy={busy || undefined}
                     onClick={() => void launchConversation(sp.prompt, sp.title, sp.label)}
-                    className={`w-full flex items-center gap-3 p-3 bg-surface-overlay/50 hover:bg-surface-overlay border border-border-subtle hover:border-border-strong rounded-lg text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring${busy ? " opacity-50" : ""}`}
+                    className={`group w-full flex items-center gap-3 p-3 bg-surface-overlay/50 hover:bg-surface-overlay border border-border-subtle hover:border-border-strong rounded-lg text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring${busy ? " opacity-50" : ""}`}
                   >
                     <Icon size={18} className="text-insight shrink-0" />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm text-fg-primary">{sp.label}</div>
+                      {/* 说明平时只占一行。键盘落到这一题时写出整句。鼠标悬停仍是一行。 */}
                       {sp.prompt && (
-                        <div className="text-xs text-fg-tertiary truncate mt-0.5">{sp.prompt}</div>
+                        <div className="text-xs text-fg-tertiary mt-0.5 truncate group-focus-visible:overflow-visible group-focus-visible:whitespace-normal group-focus-visible:text-clip group-focus-visible:break-words">
+                          {sp.prompt}
+                        </div>
                       )}
                     </div>
                   </button>

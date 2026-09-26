@@ -181,6 +181,44 @@ describe("RiskCard", () => {
     expect(screen.getByRole("link", { name: "打开任务" })).toHaveAttribute("href", "/tasks/task_9");
   });
 
+  it("writes the full action sentence when that line is keyboard focused", () => {
+    const command = "rm -rf /tmp/a_very_long_path_that_used_to_stay_truncated_until_keyboard_focus";
+    renderWithRouter(
+      <RiskCard
+        action="shell_exec"
+        args={JSON.stringify({ command })}
+        riskLevel="high"
+        variant="panel"
+      >
+        <button type="button">批准</button>
+      </RiskCard>,
+    );
+    const line = screen.getByText(`$ ${command}`);
+    expect(line.tagName).toBe("P");
+    expect(line).toHaveClass(
+      "truncate",
+      "focus-visible:overflow-visible",
+      "focus-visible:whitespace-normal",
+      "focus-visible:text-clip",
+      "focus-visible:break-words",
+      "focus-visible:ring-focus-ring",
+    );
+    expect(line.className).not.toContain("group-hover:");
+    expect(line.className).not.toContain("hover:whitespace");
+    expect(line).toHaveAttribute("tabindex", "0");
+    expect(line).toHaveAttribute("title", `$ ${command}`);
+    expect(line.closest("button")).toBeNull();
+    expect(line.closest("a")).toBeNull();
+    expect(screen.getByRole("button", { name: "批准" })).toBeEnabled();
+
+    expect(fireEvent.keyDown(line, { key: " " })).toBe(false);
+    expect(fireEvent.keyDown(line, { key: "Enter" })).toBe(false);
+    expect(fireEvent.keyDown(line, { key: "Enter", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(line, { key: "Enter", keyCode: 229 })).toBe(true);
+    expect(fireEvent.keyDown(line, { key: "Process" })).toBe(true);
+    expect(fireEvent.keyDown(line, { key: " ", keyCode: 229 })).toBe(true);
+  });
+
   it("expands detailed args", () => {
     renderWithRouter(
       <RiskCard

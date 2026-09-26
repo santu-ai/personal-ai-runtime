@@ -392,6 +392,7 @@ describe("ChatView", () => {
 
     const confirm = await screen.findByRole("button", { name: "确认写入" });
     const cancel = screen.getByRole("button", { name: "取消" });
+    const actionLine = screen.getByText("写入文件", { selector: "p[tabindex='0']" });
     const writeSummary = screen.getByText("查看写入内容");
     const argsSummary = screen.getByText("查看详细参数");
     const context = screen.getByRole("button", { name: "上下文" });
@@ -400,6 +401,8 @@ describe("ChatView", () => {
     fireEvent.keyDown(confirm, { key: "Tab" });
     expect(cancel).toHaveFocus();
     fireEvent.keyDown(cancel, { key: "Tab" });
+    expect(actionLine).toHaveFocus();
+    fireEvent.keyDown(actionLine, { key: "Tab" });
     expect(writeSummary).toHaveFocus();
     fireEvent.keyDown(writeSummary, { key: "Tab" });
     expect(argsSummary).toHaveFocus();
@@ -418,7 +421,7 @@ describe("ChatView", () => {
     confirm.focus();
     (document.activeElement as HTMLElement).blur();
     fireEvent.keyDown(window, { key: "Tab" });
-    expect(writeSummary).toHaveFocus();
+    expect(actionLine).toHaveFocus();
 
     confirm.focus();
     fireEvent.keyDown(confirm, { key: "Escape" });
@@ -458,6 +461,7 @@ describe("ChatView", () => {
     const answer = await screen.findByLabelText("你的回答");
     const sendAnswer = screen.getByRole("button", { name: "发送回答" });
     const cancel = screen.getByRole("button", { name: "取消" });
+    const actionLine = screen.getByText("简报要覆盖最近几天？", { selector: "p[tabindex='0']" });
     const argsSummary = screen.getByText("查看详细参数");
     expect(answer).toHaveFocus();
     expect(sendAnswer).toBeDisabled();
@@ -469,9 +473,11 @@ describe("ChatView", () => {
     fireEvent.keyDown(answer, { key: "Tab" });
     expect(cancel).toHaveFocus();
     fireEvent.keyDown(cancel, { key: "Tab" });
+    expect(actionLine).toHaveFocus();
+    fireEvent.keyDown(actionLine, { key: "Tab" });
     expect(argsSummary).toHaveFocus();
     fireEvent.keyDown(argsSummary, { key: "Tab", shiftKey: true });
-    expect(cancel).toHaveFocus();
+    expect(actionLine).toHaveFocus();
 
     fireEvent.change(answer, { target: { value: "最近三天" } });
     answer.focus();

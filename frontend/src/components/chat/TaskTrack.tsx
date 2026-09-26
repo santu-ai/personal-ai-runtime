@@ -75,11 +75,14 @@ export default function TaskTrack({ stages }: Props) {
                 type="button"
                 aria-expanded={isExpanded}
                 onClick={() => setExpandedStageIdx(isExpanded ? null : idx)}
-                className="w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+                className="group w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
               >
                 <div className="flex items-center gap-1.5 min-w-0">
                   <Icon size={12} className="shrink-0" />
-                  <span className="text-xs font-medium text-fg-primary truncate">{label}</span>
+                  {/* 平时一行。键盘落到这一步时写出整句。鼠标悬停仍是一行。 */}
+                  <span className="min-w-0 flex-1 text-xs font-medium text-fg-primary truncate group-focus-visible:overflow-visible group-focus-visible:whitespace-normal group-focus-visible:text-clip group-focus-visible:break-words">
+                    {label}
+                  </span>
 
                   {/* Status badge */}
                   {status === "running" ? (
