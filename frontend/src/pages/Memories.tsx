@@ -64,6 +64,19 @@ type FocusAfter = {
   targetId: string | null;
 };
 
+/** 和页面上的空态同一句。有筛选时用分类那一句。 */
+function reviewEmptySentence(category: string): string {
+  return category ? "该分类下没有待确认的记忆。" : "没有待确认的记忆。";
+}
+
+type SpokenReviewEmpty = { id: number; text: string };
+
+type PendingReviewEmpty = {
+  ids: string[];
+  category: string;
+  order: ReviewOrder;
+};
+
 function isRatifiable(row: MemoryRow): boolean {
   return (
     row.origin === "claim" && (row.claim_status === "proposed" || row.claim_status === "rejected")
@@ -317,6 +330,10 @@ export default function MemoriesPage() {
 
   const [reviewCategory, setReviewCategory] = useState<string>("");
   const [reviewOrder, setReviewOrder] = useState<ReviewOrder>("created_at_desc");
+  const reviewCategoryRef = useRef(reviewCategory);
+  const reviewOrderRef = useRef(reviewOrder);
+  reviewCategoryRef.current = reviewCategory;
+  reviewOrderRef.current = reviewOrder;
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [bulkAction, setBulkAction] = useState<BulkAction | null>(null);
   const bulkBusyRef = useRef(false);
@@ -327,10 +344,24 @@ export default function MemoriesPage() {
   // 记住成功时读这一句。按钮上的「记住中...」不另读。换走这一页就不再留着。
   const spokenRememberSeq = useRef(0);
   const [spokenRemember, setSpokenRemember] = useState<{ id: number; text: string } | null>(null);
+  // 最后一条离开、页面写出空态时才读。打开时已经是空的不读。
+  const pendingReviewEmpty = useRef<PendingReviewEmpty | null>(null);
+  const reviewEmptySpokenSeq = useRef(0);
+  const spokenReviewEmptyLive = useRef<SpokenReviewEmpty | null>(null);
+  const [spokenReviewEmpty, setSpokenReviewEmpty] = useState<SpokenReviewEmpty | null>(null);
+  const [reviewEmptyTick, setReviewEmptyTick] = useState(0);
+  const aliveRef = useRef(true);
 
   useEffect(() => {
     if (viewMode !== "list") setSpokenRemember(null);
   }, [viewMode]);
+
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
 
   const {
     data,
@@ -432,6 +463,48 @@ export default function MemoriesPage() {
       queryClient.invalidateQueries({ queryKey: queryKeys.memoriesGrouped }),
       queryClient.invalidateQueries({ queryKey: ["memory", "claim-stats"] }),
     ]);
+
+  /** 当前筛选下的待确认页。别的分类或排序还留在缓存里时不拿来判断空态。 */
+  const currentProposedRows = (): MemoryRow[] | null => {
+    const entries = queryClient.getQueriesData<{ memories?: MemoryRow[] }>({
+      queryKey: queryKeys.memoriesGrouped,
+    });
+    for (const [key, cached] of entries) {
+      if (key.includes("count")) continue;
+      const opts = key[key.length - 1];
+      if (!opts || typeof opts !== "object") continue;
+      const record = opts as Record<string, unknown>;
+      if (record.claimStatus !== "proposed" || record.limit !== 100) continue;
+      const category = typeof record.category === "string" ? record.category : "";
+      if (category !== reviewCategoryRef.current) continue;
+      const order = record.order === "created_at_asc" ? "created_at_asc" : "created_at_desc";
+      if (order !== reviewOrderRef.current) continue;
+      return Array.isArray(cached?.memories) ? cached.memories : null;
+    }
+    return null;
+  };
+
+  /** 这次处理已经把当前这一页清空。等绘制出空态再读，不在这里抢焦点。 */
+  const markReviewEmpty = (ids: readonly string[]) => {
+    if (!aliveRef.current || viewModeRef.current !== "review") return;
+    const rows = currentProposedRows();
+    if (!rows || rows.length !== 0) return;
+    if (ids.some((id) => rows.some((row) => row.id === id))) return;
+    pendingReviewEmpty.current = {
+      ids: [...ids],
+      category: reviewCategoryRef.current,
+      order: reviewOrderRef.current,
+    };
+    setReviewEmptyTick((n) => n + 1);
+  };
+
+  const watchReviewEmpty = (ids: readonly string[]) => {
+    void Promise.resolve(invalidateMemories())
+      .catch(() => undefined)
+      .then(() => {
+        markReviewEmpty(ids);
+      });
+  };
 
   // Drop selections that left the current page after filter/refresh.
   useEffect(() => {
@@ -541,6 +614,9 @@ export default function MemoriesPage() {
       dropMemoryFromGroupedCache(queryClient, id);
       setDeleteTarget(null);
       removed = true;
+      const wasProposed =
+        deleteTarget.origin === "claim" && deleteTarget.claim_status === "proposed";
+      if (wasProposed) markReviewEmpty([id]);
       invalidateMemories();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "删除记忆失败", "记忆");
@@ -672,10 +748,66 @@ export default function MemoriesPage() {
           scope,
           targetId: stayed ? m.id : nextOk ? nextId : null,
         };
+        if (scope === "proposed") markReviewEmpty([m.id]);
       }
       endRatify(m.id);
     }
   };
+
+  // 最后一条离开、写出空态时读这一句。放到绘制前，不把焦点抢过来。
+  // 打开、换筛选或重试已经是空的不读。还有下一条不读。
+  useLayoutEffect(() => {
+    const pending = pendingReviewEmpty.current;
+    if (!pending) return;
+    if (
+      viewMode !== "review" ||
+      shownReviewError ||
+      pending.category !== reviewCategory ||
+      pending.order !== reviewOrder
+    ) {
+      pendingReviewEmpty.current = null;
+      return;
+    }
+    if (reviewInitialLoading || proposedFetching) return;
+    // 这一条还在画面上就先等。列表刷新上来之后再决定读不读。
+    if (pending.ids.some((id) => proposedMemories.some((row) => row.id === id))) return;
+    if (proposedMemories.length !== 0) {
+      pendingReviewEmpty.current = null;
+      return;
+    }
+    pendingReviewEmpty.current = null;
+    reviewEmptySpokenSeq.current += 1;
+    const next = {
+      id: reviewEmptySpokenSeq.current,
+      text: reviewEmptySentence(reviewCategory),
+    };
+    spokenReviewEmptyLive.current = next;
+    setSpokenReviewEmpty(next);
+  }, [
+    reviewEmptyTick,
+    viewMode,
+    shownReviewError,
+    reviewInitialLoading,
+    proposedFetching,
+    proposedMemories,
+    reviewCategory,
+    reviewOrder,
+  ]);
+
+  // 空态这句已经不在页面上，或换成了另一句，就卸下，避免读屏还停在上一次。
+  useLayoutEffect(() => {
+    const live = spokenReviewEmptyLive.current;
+    if (!live) return;
+    const showing =
+      viewMode === "review" &&
+      !shownReviewError &&
+      !reviewInitialLoading &&
+      proposedMemories.length === 0 &&
+      live.text === reviewEmptySentence(reviewCategory);
+    if (showing) return;
+    spokenReviewEmptyLive.current = null;
+    setSpokenReviewEmpty(null);
+  }, [viewMode, shownReviewError, reviewInitialLoading, proposedMemories.length, reviewCategory]);
 
   // 这一条离开列表后才交焦点。放到绘制前，不把焦点留在页面空白。
   // 已经移到别的控件上就不再抢。
@@ -711,14 +843,18 @@ export default function MemoriesPage() {
     let handoff: MemoryDialogHandoff | null = null;
     try {
       await rejectMemory(id, reason);
-      if (rejectLive.current === submitted) {
+      const closed = rejectLive.current === submitted;
+      if (closed) {
         rejectLive.current = "";
         setRejectTarget(null);
         setRejectReason("");
       } else {
         handoff = { kind: "kept", dialog: "reject" };
       }
-      invalidateMemories();
+      const wasProposed =
+        rejectTarget.origin === "claim" && rejectTarget.claim_status === "proposed";
+      if (closed && wasProposed) watchReviewEmpty([id]);
+      else invalidateMemories();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "拒绝记忆失败", "记忆");
       handoff = { kind: "failed", dialog: "reject" };
@@ -793,7 +929,7 @@ export default function MemoriesPage() {
     try {
       const result = await bulkClaimAction(action, ids);
       setSelectedIds(new Set());
-      invalidateMemories();
+      watchReviewEmpty(ids);
       if (result.skipped.length > 0) {
         addError(`已处理 ${result.ok} 条，跳过 ${result.skipped.length} 条`, "记忆");
       }
@@ -1072,9 +1208,13 @@ export default function MemoriesPage() {
                 />
               ) : proposedMemories.length === 0 ? (
                 <div className="text-center py-12">
-                  <p className="text-fg-tertiary text-sm">
-                    {reviewCategory ? "该分类下没有待确认的记忆。" : "没有待确认的记忆。"}
-                  </p>
+                  <p className="text-fg-tertiary text-sm">{reviewEmptySentence(reviewCategory)}</p>
+                  {spokenReviewEmpty ? (
+                    <p key={spokenReviewEmpty.id} className="sr-only" role="status">
+                      {/* 最后一条离开、写出这一句时读出来。等当前这一句说完。不把焦点抢过来。 */}
+                      {spokenReviewEmpty.text}
+                    </p>
+                  ) : null}
                 </div>
               ) : (
                 <ul className="space-y-2">
