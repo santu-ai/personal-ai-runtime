@@ -86,13 +86,43 @@ type TaskDirectHandoff = {
   taskId: string;
   kind: "complete" | "cancel" | "adopt";
   index?: number;
+  /** 点下去时详情上的状态。换成别的字才读。 */
+  fromStatus?: string;
+  /** 这一次已经读过的那句，避免同一轮再读。 */
+  spoken?: string;
 };
 
 /** 验收或返工已经写成功，等交付刷新后「验收」「返工」卸下再交接焦点。 */
 type ReviewHandoff = { taskId: string };
 
 /** 执行或再次运行已经写成功，等状态刷新后按钮卸下再交接焦点。 */
-type StatusHandoff = { taskId: string; kind: "execute" | "rerun" };
+type StatusHandoff = {
+  taskId: string;
+  kind: "execute" | "rerun";
+  fromStatus: string;
+  spoken?: string;
+};
+
+type SpokenTaskStatus = { id: number; taskId: string; text: string };
+
+/** 详情这一行的状态换成新的字时读这一句。字没换、或这次还没成功，不读。 */
+function publishTaskStatus(
+  pending: { fromStatus?: string; spoken?: string },
+  taskId: string,
+  status: string,
+  seq: { current: number },
+  live: { current: SpokenTaskStatus | null },
+  setSpoken: (value: SpokenTaskStatus) => void,
+): void {
+  if (pending.spoken || pending.fromStatus === undefined || status === pending.fromStatus) return;
+  const text = statusLabel(status).trim();
+  if (!text) return;
+  pending.spoken = text;
+  seq.current += 1;
+  const next = { id: seq.current, taskId, text };
+  live.current = next;
+  setSpoken(next);
+}
 
 /** 绘制前通知。测试在「完成」「取消」「转为任务」卸下按钮的同一轮读取焦点。 */
 export const taskPageLayoutFocus = {
@@ -1109,6 +1139,10 @@ export default function TasksPage() {
   const focusAfter = useRef<TaskDirectHandoff | null>(null);
   const reviewHandoff = useRef<ReviewHandoff | null>(null);
   const statusHandoff = useRef<StatusHandoff | null>(null);
+  // 完成、取消、执行或再次运行把详情这一行换成新的字时读这一句。打开时已经写着的不读。
+  const statusSpokenSeq = useRef(0);
+  const spokenLive = useRef<SpokenTaskStatus | null>(null);
+  const [spokenStatus, setSpokenStatus] = useState<SpokenTaskStatus | null>(null);
   const taskIdRef = useRef(urlTaskId);
   taskIdRef.current = urlTaskId;
   const [dialogBusy, setDialogBusy] = useState(false);
@@ -1215,6 +1249,9 @@ export default function TasksPage() {
     adoptKeys.current = {};
     actionLock.current = false;
     focusAfter.current = null;
+    statusHandoff.current = null;
+    spokenLive.current = null;
+    setSpokenStatus(null);
     setActionBusy(null);
   }, [urlTaskId]);
 
@@ -1470,6 +1507,7 @@ export default function TasksPage() {
   const handleExecute = async () => {
     if (!selected || !beginDialog()) return;
     const taskId = selected.id;
+    const fromStatus = selected.status;
     let handoff: TaskDialogHandoff | null = null;
     let closed = false;
     try {
@@ -1482,7 +1520,7 @@ export default function TasksPage() {
       handoff = { kind: "failed", dialog: "execute" };
     } finally {
       if (closed && taskIdRef.current === taskId) {
-        statusHandoff.current = { taskId, kind: "execute" };
+        statusHandoff.current = { taskId, kind: "execute", fromStatus };
       }
       dialogHandoff.current = handoff;
       endDialog();
@@ -1492,6 +1530,7 @@ export default function TasksPage() {
   const handleRerun = async () => {
     if (!selected || !beginDialog()) return;
     const taskId = selected.id;
+    const fromStatus = selected.status;
     let handoff: TaskDialogHandoff | null = null;
     let closed = false;
     try {
@@ -1504,7 +1543,7 @@ export default function TasksPage() {
       handoff = { kind: "failed", dialog: "rerun" };
     } finally {
       if (closed && taskIdRef.current === taskId) {
-        statusHandoff.current = { taskId, kind: "rerun" };
+        statusHandoff.current = { taskId, kind: "rerun", fromStatus };
       }
       dialogHandoff.current = handoff;
       endDialog();
@@ -1554,11 +1593,12 @@ export default function TasksPage() {
   const handleCancel = async () => {
     if (!selected) return;
     const taskId = selected.id;
+    const fromStatus = selected.status;
     if (!beginDirect(taskId, "cancel")) return;
     let handoff: TaskDirectHandoff | null = null;
     try {
       await cancelWorkItem(taskId);
-      handoff = { taskId, kind: "cancel" };
+      handoff = { taskId, kind: "cancel", fromStatus };
       invalidate();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "取消任务失败", "任务");
@@ -1628,11 +1668,12 @@ export default function TasksPage() {
   const handleComplete = async () => {
     if (!selected) return;
     const taskId = selected.id;
+    const fromStatus = selected.status;
     if (!beginDirect(taskId, "complete")) return;
     let handoff: TaskDirectHandoff | null = null;
     try {
       await updateWorkItemStatus(taskId, "completed");
-      handoff = { taskId, kind: "complete" };
+      handoff = { taskId, kind: "complete", fromStatus };
       invalidate();
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "完成任务失败", "任务");
@@ -1836,6 +1877,14 @@ export default function TasksPage() {
       statusHandoff.current = null;
       return;
     }
+    publishTaskStatus(
+      pending,
+      selected.id,
+      selected.status,
+      statusSpokenSeq,
+      spokenLive,
+      setSpokenStatus,
+    );
     const stillThere = pending.kind === "execute" ? Boolean(canExecute) : canRerunSameBrief;
     if (stillThere) return;
     statusHandoff.current = null;
@@ -1845,12 +1894,23 @@ export default function TasksPage() {
 
   // 「完成」「取消」或「转为任务」写成功后，这些按钮才卸下。
   // 放到绘制前，不把焦点留在页面空白。已经移到别的控件上就不再抢。
+  // 完成或取消把状态换成新的字时，同一轮读出来。转为任务不读这一句。
   useLayoutEffect(() => {
     const pending = focusAfter.current;
     if (!pending || actionBusy) return;
     if (!selected || pending.taskId !== selected.id) {
       focusAfter.current = null;
       return;
+    }
+    if (pending.kind === "complete" || pending.kind === "cancel") {
+      publishTaskStatus(
+        pending,
+        selected.id,
+        selected.status,
+        statusSpokenSeq,
+        spokenLive,
+        setSpokenStatus,
+      );
     }
     if (pending.kind === "complete") {
       if (canComplete) return;
@@ -1864,6 +1924,17 @@ export default function TasksPage() {
     if (!focusIsIdle()) return;
     placeDirectActionFocus(pending);
   }, [selected, actionBusy, canComplete, canCancel, currentDelivery]);
+
+  // 字已经和页面上的不一样，或换了一个任务，就卸下这一句，避免读屏还停在旧的字上。
+  // 刚读出的那一句和页面上相同，留着。
+  useLayoutEffect(() => {
+    const live = spokenLive.current;
+    if (!live) return;
+    const visible = selected ? statusLabel(selected.status).trim() : "";
+    if (selected && live.taskId === selected.id && visible === live.text) return;
+    spokenLive.current = null;
+    if (spokenStatus) setSpokenStatus(null);
+  }, [selected, spokenStatus]);
 
   useLayoutEffect(() => {
     // 版本行在交付下面。换一版时上面的正文高度会变，视口容易停在版本列表上。
@@ -2050,6 +2121,14 @@ export default function TasksPage() {
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <h2 className="text-xl font-medium text-fg-primary">{selected.title}</h2>
+                        {spokenStatus &&
+                        spokenStatus.taskId === selected.id &&
+                        spokenStatus.text === statusLabel(selected.status).trim() ? (
+                          <span key={spokenStatus.id} className="sr-only" role="status">
+                            {/* 这一行换成新的字时读出来，等当前这一句说完。不把焦点抢过来。 */}
+                            {spokenStatus.text}
+                          </span>
+                        ) : null}
                         <p className="text-sm text-fg-tertiary mt-1">
                           {isProjectBrief(selected)
                             ? "项目资料简报"
