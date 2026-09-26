@@ -110,6 +110,14 @@ function markTranscriptScrolledUp() {
   fireEvent.scroll(el);
 }
 
+function markTranscriptAtBottom() {
+  const el = screen.getByTestId("chat-transcript");
+  Object.defineProperty(el, "scrollHeight", { configurable: true, value: 400 });
+  Object.defineProperty(el, "clientHeight", { configurable: true, value: 400 });
+  Object.defineProperty(el, "scrollTop", { configurable: true, value: 0 });
+  fireEvent.scroll(el);
+}
+
 async function flushTranscriptScroll() {
   await act(async () => {
     await new Promise((resolve) => {
@@ -507,10 +515,89 @@ describe("ChatView", () => {
 
     const jump = await screen.findByRole("button", { name: "↓ 待确认" });
     expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+    const seen = captureFocusWhenSettled(
+      () => screen.queryByRole("button", { name: "↓ 待确认" }) == null,
+    );
+    jump.focus();
     fireEvent.click(jump);
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "↓ 待确认" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "确认写入" })).toBeInTheDocument();
+    const confirm = screen.getByRole("button", { name: "确认写入" });
+    expect(confirm).toHaveFocus();
+    expect(seen.read()).toBe(confirm);
+  });
+
+  it("returns focus to the composer when the new-message jump unmounts", async () => {
+    let emit: ((event: Record<string, unknown>) => void) | undefined;
+    vi.mocked(sendMessage).mockImplementation(
+      (_convId, _content, onEvent) =>
+        new Promise(() => {
+          emit = (event) => onEvent(event as never);
+        }),
+    );
+
+    renderChatView();
+    fireEvent.change(screen.getByPlaceholderText(/输入消息/), {
+      target: { value: "继续写" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByTestId("chat-transcript")).toBeInTheDocument();
+    await flushTranscriptScroll();
+    markTranscriptScrolledUp();
+
+    act(() => {
+      emit?.({ type: "text_delta", content: "还在写" });
+    });
+
+    const jump = await screen.findByRole("button", { name: "↓ 新消息" });
+    const seen = captureFocusWhenSettled(
+      () => screen.queryByRole("button", { name: "↓ 新消息" }) == null,
+    );
+    jump.focus();
+    fireEvent.click(jump);
+    const composer = screen.getByPlaceholderText(/输入消息/);
+    expect(composer).toHaveFocus();
+    expect(seen.read()).toBe(composer);
+    expect(screen.queryByRole("button", { name: "↓ 新消息" })).not.toBeInTheDocument();
+  });
+
+  it("does not steal focus when the jump chip hides without being focused", async () => {
+    let emit: ((event: Record<string, unknown>) => void) | undefined;
+    vi.mocked(sendMessage).mockImplementation(
+      (_convId, _content, onEvent) =>
+        new Promise(() => {
+          emit = (event) => onEvent(event as never);
+        }),
+    );
+
+    renderChatView();
+    fireEvent.change(screen.getByPlaceholderText(/输入消息/), {
+      target: { value: "create a file" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByTestId("chat-transcript")).toBeInTheDocument();
+    await flushTranscriptScroll();
+    markTranscriptScrolledUp();
+
+    act(() => {
+      emit?.({
+        type: "confirmation_required",
+        tool_name: "write_file",
+        tool_args: { path: "/tmp/x", content: "data" },
+        approval_id: "ap-jump-keep",
+        tool_call_id: "tc-jump-keep",
+      });
+    });
+
+    expect(await screen.findByRole("button", { name: "↓ 待确认" })).toBeInTheDocument();
+    const context = screen.getByRole("button", { name: "上下文" });
+    const jump = screen.getByRole("button", { name: "↓ 待确认" });
+    jump.focus();
+    context.focus();
+    markTranscriptAtBottom();
+    expect(screen.queryByRole("button", { name: "↓ 待确认" })).not.toBeInTheDocument();
+    expect(context).toHaveFocus();
+    expect(screen.getByRole("button", { name: "确认写入" })).not.toHaveFocus();
   });
 
   it("keeps the ask_user answer when resume fails", async () => {
