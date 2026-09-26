@@ -69,6 +69,45 @@ describe("NotificationBell", () => {
     expect(bell.querySelector("svg")?.parentElement).toHaveClass("group-focus-visible:hidden");
   });
 
+  it("writes the unread count on the icon when the rail is compact", async () => {
+    listNotifications.mockResolvedValue([
+      sample,
+      { ...sample, id: "n2", read: 1 },
+      { ...sample, id: "n3", read: 0 },
+    ]);
+    renderWithRouter(<NotificationBell compact />);
+    const bell = await screen.findByRole("button", { name: "通知 2" });
+    expect(bell).toHaveAttribute("aria-label", "通知 2");
+    expect(bell).toHaveAttribute("title", "通知 2");
+    const name = bell.querySelector("[data-rail-name]");
+    expect(name).toHaveTextContent("通知 2");
+    expect(name).toHaveClass("hidden", "group-focus-visible:block");
+    const icon = bell.querySelector("svg")?.parentElement;
+    expect(icon).toHaveClass("group-focus-visible:hidden");
+    expect(icon?.querySelector(".rounded-full")).toBeTruthy();
+  });
+
+  it("caps the compact unread count at 99+", async () => {
+    listNotifications.mockResolvedValue(
+      Array.from({ length: 100 }, (_, index) => ({ ...sample, id: `n${index}`, read: 0 })),
+    );
+    renderWithRouter(<NotificationBell compact />);
+    const bell = await screen.findByRole("button", { name: "通知 99+" });
+    expect(bell).toHaveAttribute("title", "通知 99+");
+    expect(bell.querySelector("[data-rail-name]")).toHaveTextContent("通知 99+");
+  });
+
+  it("keeps 通知 on the compact rail when nothing is unread", async () => {
+    listNotifications.mockResolvedValue([{ ...sample, read: 1 }]);
+    renderWithRouter(<NotificationBell compact />);
+    await waitFor(() => expect(listNotifications).toHaveBeenCalled());
+    await waitFor(() => expect(listNotifications.mock.settledResults[0]?.type).toBe("fulfilled"));
+    const bell = screen.getByRole("button", { name: "通知" });
+    expect(bell).toHaveAttribute("title", "通知");
+    expect(bell.querySelector("[data-rail-name]")).toHaveTextContent("通知");
+    expect(bell.querySelector(".rounded-full")).toBeNull();
+  });
+
   it("writes the full notification body when the row is keyboard focused", async () => {
     const content =
       "这份周报还没发出。需要你确认要把哪一版放进共享目录，以及这次改截止日是因为实验数据还没齐，还是因为审稿意见还没回。";
