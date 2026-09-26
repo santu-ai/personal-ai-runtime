@@ -17,6 +17,7 @@ import LoadErrorNotice, {
   retryControlName,
   useHeldQueryError,
 } from "../components/ui/LoadErrorNotice";
+import { goalProgressPercent } from "../utils/goalProgress";
 
 const CATEGORY_META: Record<string, { label: string; icon: typeof User; description: string }> = {
   preferences: { label: "偏好", icon: Heart, description: "你的喜好与倾向" },
@@ -163,12 +164,16 @@ export function PortraitPanel({ compact = false }: { compact?: boolean }) {
                     </div>
                     <div className="mt-3 pt-3 border-t border-border-strong/50">
                       <div className="flex items-center gap-2">
-                        <div className="flex-1 h-1.5 bg-border-strong rounded-full overflow-hidden">
+                        <div
+                          className="flex-1 h-1.5 bg-border-strong rounded-full overflow-hidden"
+                          aria-hidden="true"
+                        >
                           <div
                             className={`h-full rounded-full transition-all ${conf.color}`}
                             style={{ width: `${conf.pct}%` }}
                           />
                         </div>
+                        <span className="text-xs text-fg-tertiary">{conf.label}</span>
                         <span className="text-xs text-fg-tertiary">{conf.pct}%</span>
                       </div>
                     </div>
@@ -220,30 +225,37 @@ export function PortraitPanel({ compact = false }: { compact?: boolean }) {
               当前目标
             </h2>
             <div className="space-y-3">
-              {data!.goals.map((goal) => (
-                <div
-                  key={goal.id}
-                  className="bg-surface-overlay/50 border border-border-strong/50 rounded-xl p-4 hover:border-border-strong transition-colors"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium text-fg-primary">{goal.title}</h3>
-                    <span className="text-xs text-insight">
-                      {goal.progress > 0 ? `${goal.progress}%` : "待开始"}
-                    </span>
-                  </div>
-                  {goal.progress > 0 && (
-                    <div className="h-1.5 bg-border-strong rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-insight rounded-full transition-all"
-                        style={{ width: `${goal.progress}%` }}
-                      />
+              {data!.goals.map((goal) => {
+                const progressPct = Math.round(goalProgressPercent(goal.progress));
+                return (
+                  <div
+                    key={goal.id}
+                    className="bg-surface-overlay/50 border border-border-strong/50 rounded-xl p-4 hover:border-border-strong transition-colors"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-sm font-medium text-fg-primary">{goal.title}</h3>
+                      <span className="text-xs text-insight">
+                        {progressPct > 0 ? `${progressPct}%` : "待开始"}
+                      </span>
                     </div>
-                  )}
-                  {goal.deadline && (
-                    <p className="text-xs text-fg-tertiary mt-2">截止: {goal.deadline}</p>
-                  )}
-                </div>
-              ))}
+                    {progressPct > 0 && (
+                      <div
+                        className="h-1.5 bg-border-strong rounded-full overflow-hidden"
+                        aria-hidden="true"
+                      >
+                        <div
+                          className="h-full bg-insight rounded-full transition-all"
+                          data-portrait-progress=""
+                          style={{ width: `${progressPct}%` }}
+                        />
+                      </div>
+                    )}
+                    {goal.deadline && (
+                      <p className="text-xs text-fg-tertiary mt-2">截止: {goal.deadline}</p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </section>
         )}

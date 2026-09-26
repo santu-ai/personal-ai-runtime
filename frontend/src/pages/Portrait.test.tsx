@@ -93,6 +93,7 @@ describe("PortraitPage", () => {
     mockPortraitData({
       profile: {
         preferences: { data: { 编辑器: "VS Code", 主题: "暗色" }, confidence: 0.9 },
+        finance: { data: { 预算: "月结" }, confidence: 0.5 },
         values: { data: {}, confidence: 0.3 },
       },
       habits: [],
@@ -105,6 +106,14 @@ describe("PortraitPage", () => {
       expect(screen.getByText("VS Code")).toBeInTheDocument();
       expect(screen.getByText("90%")).toBeInTheDocument(); // 0.9 → 90%
     });
+    expect(screen.getByText("高可信")).toBeInTheDocument();
+    expect(screen.getByText("中等可信")).toBeInTheDocument();
+    expect(screen.getByText("50%")).toBeInTheDocument();
+    expect(screen.getByText("低可信")).toBeInTheDocument();
+    expect(screen.getByText("30%")).toBeInTheDocument();
+    const high = screen.getByText("高可信");
+    expect(high.previousElementSibling).toHaveAttribute("aria-hidden", "true");
+    expect(high.nextElementSibling).toHaveTextContent("90%");
   });
 
   it("renders habits with confidence and origin", async () => {
@@ -168,8 +177,64 @@ describe("PortraitPage", () => {
       expect(screen.getByText("60%")).toBeInTheDocument();
       expect(screen.getByText("开始运动")).toBeInTheDocument();
       expect(screen.getByText("待开始")).toBeInTheDocument();
-      expect(screen.getByText("截止: 2026-07-01")).toBeInTheDocument();
+    expect(screen.getByText("截止: 2026-07-01")).toBeInTheDocument();
+    const fill = document.querySelector("[data-portrait-progress]");
+    expect(fill).toHaveStyle({ width: "60%" });
+    expect(fill?.parentElement).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("shows goal progress on the same scale as the goals page", async () => {
+    mockPortraitData({
+      profile: {},
+      habits: [],
+      goals: [
+        {
+          id: "g1",
+          title: "比例",
+          progress: 0.3,
+          importance: 1,
+          deadline: null,
+          last_activity_at: null,
+        },
+        {
+          id: "g2",
+          title: "满比",
+          progress: 1,
+          importance: 1,
+          deadline: null,
+          last_activity_at: null,
+        },
+        {
+          id: "g3",
+          title: "超出",
+          progress: 150,
+          importance: 1,
+          deadline: null,
+          last_activity_at: null,
+        },
+        {
+          id: "g4",
+          title: "未开始",
+          progress: 0,
+          importance: 1,
+          deadline: null,
+          last_activity_at: null,
+        },
+      ],
     });
+    renderPortrait();
+    expect(await screen.findByText("30%")).toBeInTheDocument();
+    expect(screen.getAllByText("100%")).toHaveLength(2);
+    expect(screen.getByText("待开始")).toBeInTheDocument();
+    const fills = document.querySelectorAll("[data-portrait-progress]");
+    expect(fills).toHaveLength(3);
+    expect(fills[0]).toHaveStyle({ width: "30%" });
+    expect(fills[1]).toHaveStyle({ width: "100%" });
+    expect(fills[2]).toHaveStyle({ width: "100%" });
+    expect(screen.queryByText("0.3%")).not.toBeInTheDocument();
+    expect(screen.queryByText("1%")).not.toBeInTheDocument();
+    expect(screen.queryByText("150%")).not.toBeInTheDocument();
+  });
   });
 
   it("renders header with total item count", async () => {
