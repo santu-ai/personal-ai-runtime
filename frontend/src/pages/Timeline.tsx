@@ -19,6 +19,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useTimelineInfiniteQuery } from "../hooks/useTimelineQuery";
+import { actorLabel } from "../utils/actorLabels";
 import type { TimelineEvent } from "../api/timeline";
 import Button from "../components/ui/Button";
 import Spinner from "../components/ui/Spinner";
@@ -339,6 +340,8 @@ export default function TimelinePage() {
                     };
                     const Icon = iconInfo.Icon;
                     const taskHref = taskPageHref(event.work_id);
+                    const actor = event.actor?.trim() ?? "";
+                    const actorName = actor && actor !== "user" ? actorLabel(actor) : "";
                     return (
                       <div
                         key={event.id}
@@ -359,15 +362,11 @@ export default function TimelinePage() {
                           )}
                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-xs text-fg-disabled">{formatDate(event.ts)}</span>
-                            {event.actor && event.actor !== "user" && (
+                            {actorName ? (
                               <span className="text-xs text-fg-disabled bg-surface-overlay px-1.5 py-0.5 rounded">
-                                {event.actor.startsWith("agent:")
-                                  ? "AI"
-                                  : event.actor === "scheduler"
-                                    ? "定时"
-                                    : event.actor}
+                                {actorName}
                               </span>
-                            )}
+                            ) : null}
                           </div>
                         </div>
                       </div>

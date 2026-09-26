@@ -26,7 +26,7 @@ describe("provenanceSentence", () => {
   it("keeps a short update as one sentence that is not clipped", () => {
     const content = "住在上海";
     const line = provenanceSentence(event("MemoryUpdated", { content }));
-    expect(line.preview).toBe("内容由 user 更新为「住在上海」");
+    expect(line.preview).toBe("内容由你更新为「住在上海」");
     expect(line.full).toBe(line.preview);
     expect(eventDescription(event("MemoryUpdated", { content }))).toBe(line.preview);
   });
@@ -35,19 +35,19 @@ describe("provenanceSentence", () => {
     const content = "记".repeat(PROVENANCE_UPDATE_PREVIEW);
     const exact = provenanceSentence(event("MemoryUpdated", { content }));
     expect(exact.preview).toBe(exact.full);
-    expect(exact.full).toBe(`内容由 user 更新为「${content}」`);
+    expect(exact.full).toBe(`内容由你更新为「${content}」`);
 
     const longer = `${content}多`;
     const line = provenanceSentence(event("MemoryUpdated", { content: longer }));
-    expect(line.preview).toBe(`内容由 user 更新为「${content}…」`);
-    expect(line.full).toBe(`内容由 user 更新为「${longer}」`);
+    expect(line.preview).toBe(`内容由你更新为「${content}…」`);
+    expect(line.full).toBe(`内容由你更新为「${longer}」`);
     expect(line.preview).not.toBe(line.full);
     expect(eventDescription(event("MemoryUpdated", { content: longer }))).toBe(line.preview);
   });
 
   it("leaves an update without text unclipped", () => {
     const line = provenanceSentence(event("MemoryUpdated", { content: "" }));
-    expect(line.preview).toBe("内容被 user 更新");
+    expect(line.preview).toBe("内容被你更新");
     expect(line.full).toBe(line.preview);
     expect(provenanceSentence(event("MemoryUpdated", {})).preview).toBe(line.preview);
   });
@@ -76,7 +76,13 @@ describe("provenanceSentence", () => {
 
   it("does not clip a derived sentence", () => {
     const line = provenanceSentence(event("MemoryDerived", { confidence: 0.9 }, "brain"));
-    expect(line.preview).toBe("由 brain 抽取，置信度 0.90");
+    expect(line.preview).toBe("由 AI 抽取，置信度 0.90");
     expect(line.full).toBe(line.preview);
+    expect(provenanceSentence(event("MemoryDeleted", {}, "extractor")).preview).toBe("被 AI 删除");
+    expect(provenanceSentence(event("MemoryRevoked", {}, "scheduler")).preview).toBe("被定时撤销");
+    expect(provenanceSentence(event("MemoryUpdated", {}, "custom_bot")).preview).toBe(
+      "内容被 custom_bot 更新",
+    );
+    expect(provenanceSentence(event("CustomEvent", {}, "agent:planner")).preview).toBe("AI");
   });
 });

@@ -415,7 +415,7 @@ describe("MemoriesPage", () => {
         },
       ],
     });
-    expect(await screen.findByText("由 brain 抽取，置信度 0.90")).toBeInTheDocument();
+    expect(await screen.findByText("由 AI 抽取，置信度 0.90")).toBeInTheDocument();
     expect(screen.queryByTestId("memory-provenance-load-error")).not.toBeInTheDocument();
   });
 

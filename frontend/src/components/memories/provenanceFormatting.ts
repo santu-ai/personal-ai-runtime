@@ -1,4 +1,5 @@
 import type { MemoryProvenanceEvent } from "../../api/client";
+import { actorLabel } from "../../utils/actorLabels";
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
   MemoryDerived: "生成",
@@ -25,6 +26,13 @@ function same(text: string): ProvenanceSentence {
   return { preview: text, full: text };
 }
 
+/** 中文名字贴着句子。拉丁字母两边留空，和原来的英文执行者一样。 */
+function who(actor: string): string {
+  const name = actorLabel(actor);
+  if (!name) return "";
+  return /[A-Za-z]/.test(name) ? ` ${name} ` : name;
+}
+
 function clipped(prefix: string, body: string, limit: number, suffix: string): ProvenanceSentence {
   const full = `${prefix}${body}${suffix}`;
   if (body.length <= limit) return same(full);
@@ -47,25 +55,25 @@ export function provenanceSentence(e: MemoryProvenanceEvent): ProvenanceSentence
   switch (e.type) {
     case "MemoryDerived":
       return same(
-        `由 ${e.actor} 抽取${typeof conf === "number" ? `，置信度 ${conf.toFixed(2)}` : ""}`,
+        `由${who(e.actor)}抽取${typeof conf === "number" ? `，置信度 ${conf.toFixed(2)}` : ""}`,
       );
     case "MemoryUpdated":
       if (content) {
-        return clipped(`内容由 ${e.actor} 更新为「`, content, PROVENANCE_UPDATE_PREVIEW, "」");
+        return clipped(`内容由${who(e.actor)}更新为「`, content, PROVENANCE_UPDATE_PREVIEW, "」");
       }
-      return same(`内容被 ${e.actor} 更新`);
+      return same(`内容被${who(e.actor)}更新`);
     case "MemoryDecayed":
       return same(typeof conf === "number" ? `置信度衰减至 ${conf.toFixed(2)}` : "置信度衰减");
     case "MemoryDeleted":
-      return same(`被 ${e.actor} 删除`);
+      return same(`被${who(e.actor)}删除`);
     case "MemoryRevoked":
-      return same(`被 ${e.actor} 撤销`);
+      return same(`被${who(e.actor)}撤销`);
     case "MemoryIndexRepairFailed": {
       const err = typeof p.error === "string" ? p.error : "";
       if (!err) return same("向量索引修复失败，记忆可能无法语义召回");
       return clipped("向量索引修复失败：", err, PROVENANCE_REPAIR_PREVIEW, "");
     }
     default:
-      return same(`${e.actor}`);
+      return same(actorLabel(e.actor) || e.actor);
   }
 }
