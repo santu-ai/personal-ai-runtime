@@ -217,4 +217,113 @@ describe("TaskTrack", () => {
     expect(screen.getByText(new RegExp(jsonNote)).closest("[data-tool-result-preview]")).toBeNull();
     expect(screen.getByText(new RegExp(jsonNote)).textContent).not.toContain("[truncated]");
   });
+
+  it("writes the full arguments when the keyboard lands, and leaves a short block alone", () => {
+    const wide = "x".repeat(81);
+    const exact = "y".repeat(80);
+    const tall = JSON.stringify({ a: "1", b: "2", c: "3", d: "4" });
+    const fit = JSON.stringify({ a: "1", b: "2", c: "3" });
+    const tallText = JSON.stringify({ a: "1", b: "2", c: "3", d: "4" }, null, 2);
+    const fitText = JSON.stringify({ a: "1", b: "2", c: "3" }, null, 2);
+    expect(tallText.split("\n")).toHaveLength(6);
+    expect(fitText.split("\n")).toHaveLength(5);
+
+    renderWithRouter(
+      <TaskTrack
+        stages={[
+          {
+            toolCall: {
+              index: 0,
+              id: "tc-wide",
+              function_name: "read_file",
+              arguments: wide,
+            },
+          },
+          {
+            toolCall: {
+              index: 1,
+              id: "tc-exact",
+              function_name: "web_search",
+              arguments: exact,
+            },
+          },
+          {
+            toolCall: {
+              index: 2,
+              id: "tc-tall",
+              function_name: "shell_exec",
+              arguments: tall,
+            },
+          },
+          {
+            toolCall: {
+              index: 3,
+              id: "tc-fit",
+              function_name: "list_directory",
+              arguments: fit,
+            },
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("读取文件"));
+    const box = document.querySelector("[data-args-preview]");
+    if (!box) throw new Error("missing args preview");
+    expect(box).toHaveAttribute("title", wide);
+    expect(box).toHaveAttribute("tabindex", "0");
+    expect(box).toHaveClass(
+      "group",
+      "max-h-24",
+      "overflow-y-auto",
+      "focus-visible:max-h-none",
+      "focus-visible:overflow-visible",
+      "focus-visible:outline-none",
+      "focus-visible:ring-2",
+      "focus-visible:ring-focus-ring",
+    );
+    expect(box.className).not.toContain("group-hover:");
+    expect(box.closest("button")).toBeNull();
+    const step = screen.getByRole("button", { name: /读取文件/ });
+    expect(step).toHaveAttribute("aria-expanded", "true");
+    const body = box.querySelector("pre");
+    expect(body).toHaveTextContent(wide);
+    expect(body).toHaveClass(
+      "group-focus-visible:overflow-visible",
+      "group-focus-visible:whitespace-pre-wrap",
+      "group-focus-visible:break-all",
+    );
+    expect(body?.className).not.toContain("group-hover:");
+    expect(body?.className).not.toContain("group-focus-visible:hidden");
+
+    expect(fireEvent.keyDown(box, { key: " " })).toBe(false);
+    expect(fireEvent.keyDown(box, { key: "Enter" })).toBe(false);
+    expect(step).toHaveAttribute("aria-expanded", "true");
+    expect(fireEvent.keyDown(box, { key: "Enter", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "Enter", keyCode: 229 })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "Process" })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: " ", keyCode: 229 })).toBe(true);
+
+    fireEvent.click(screen.getByText("搜索网页"));
+    const exactPre = screen.getByRole("region").querySelector("pre");
+    expect(exactPre?.textContent).toBe(exact);
+    expect(exactPre?.closest("[data-args-preview]")).toBeNull();
+    expect(exactPre).not.toHaveAttribute("tabindex");
+    expect(exactPre).toHaveClass("max-h-24", "overflow-y-auto");
+
+    fireEvent.click(screen.getByText("执行命令"));
+    const tallBox = document.querySelector("[data-args-preview]");
+    expect(tallBox).toHaveAttribute("title", tallText);
+    expect(tallBox).toHaveAttribute("tabindex", "0");
+    expect(tallBox?.querySelector("pre")?.textContent).toBe(tallText);
+    expect(tallBox?.className).not.toContain("group-hover:");
+
+    fireEvent.click(screen.getByText("列出目录内容"));
+    expect(document.querySelector("[data-args-preview]")).toBeNull();
+    const fitPre = screen.getByRole("region").querySelector("pre");
+    expect(fitPre?.textContent).toBe(fitText);
+    expect(fitPre).not.toHaveAttribute("tabindex");
+    expect(fitPre?.tagName).toBe("PRE");
+    expect(fitPre).toHaveClass("max-h-24");
+  });
 });
