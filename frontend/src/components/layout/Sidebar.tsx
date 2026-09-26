@@ -112,6 +112,12 @@ function railLabel(label: string, count: number): string {
   return `${label} ${count > 99 ? "99+" : count}`;
 }
 
+/** 字面上仍是「删除对话」。读屏把这一条的标题接在后面。没有标题时读出「未命名」。 */
+function conversationDeleteName(title: string): string {
+  const shown = title.trim() || "未命名";
+  return `删除对话：${shown}`;
+}
+
 function RailName({ children }: { children: string }) {
   return (
     <span data-rail-name="" className={railNameClass}>
@@ -354,7 +360,7 @@ export default function Sidebar({
                       }}
                       className="group mr-1.5 inline-flex max-w-full items-center justify-center opacity-0 group-hover:opacity-100 text-fg-tertiary hover:text-danger transition-all ml-1 shrink-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded-md p-0.5"
                       title="删除对话"
-                      aria-label="删除对话"
+                      aria-label={conversationDeleteName(conv.title || "")}
                     >
                       <Trash2
                         size={13}
