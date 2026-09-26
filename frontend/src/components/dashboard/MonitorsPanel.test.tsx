@@ -152,14 +152,128 @@ describe("MonitorsPanel", () => {
     expect(inboxLine.className).not.toContain("group-hover:");
     const inboxRow = inboxLine.closest("li");
     expect(inboxRow).toHaveClass("group");
-    expect(within(inboxRow!).getByRole("button", { name: "停用" })).toBeInTheDocument();
+    const inboxToggle = within(inboxRow!).getByRole("button", { name: `停用：${inboxName}` });
+    expect(inboxToggle).toHaveTextContent("停用");
+    expect(inboxToggle.textContent).not.toContain(inboxName);
 
     const urlLine = screen.getByText(url);
     expect(urlLine).toHaveClass(...reveal);
     expect(urlLine.className).not.toContain("group-hover:");
     const urlRow = screen.getByText(urlName).closest("li");
     expect(urlRow).toHaveClass("group");
-    expect(within(urlRow!).getByRole("button", { name: "删除" })).toBeInTheDocument();
+    const urlRemove = within(urlRow!).getByRole("button", { name: `删除：${urlName}` });
+    expect(urlRemove).toHaveTextContent("删除");
+    expect(urlRemove.textContent).not.toContain(urlName);
+    expect(urlRemove).not.toHaveAttribute("aria-label", expect.stringContaining(url));
+  });
+
+  function rowsNamed(name: string): HTMLElement[] {
+    return [...document.querySelectorAll("div.truncate")]
+      .filter((node) => node.textContent === name)
+      .map((node) => {
+        const row = node.closest("li");
+        if (!row) throw new Error(`missing row ${JSON.stringify(name)}`);
+        return row as HTMLElement;
+      });
+  }
+
+  it("names 停用 and 删除 with the monitor name, and leaves the other controls bare", async () => {
+    const spaced = "  前  后  ";
+    const broken = " \n前一段\n后一段\n ";
+    await renderLoaded(
+      [
+        {
+          ...inboxFilter("if_space", spaced),
+          sender_contains: "发件人不进名字",
+          subject_contains: "主题不进名字",
+        },
+        inboxFilter("if_break", broken),
+        inboxFilter("if_blank", "   "),
+        inboxFilter("if_same", "老板"),
+        inboxFilter("if_same_2", "老板", false),
+      ],
+      [
+        {
+          ...urlMonitor("um_space", spaced),
+          url: "https://example.com/地址不进名字",
+          check_interval_minutes: 45,
+          last_error: "错误不进名字",
+        },
+        urlMonitor("um_blank", " \n "),
+      ],
+    );
+
+    const spacedRows = rowsNamed(spaced);
+    expect(spacedRows).toHaveLength(2);
+    const inboxSpaced = spacedRows.find((row) => row.textContent?.includes("发件人不进名字"));
+    const urlSpaced = spacedRows.find((row) => row.textContent?.includes("地址不进名字"));
+    if (!inboxSpaced || !urlSpaced) throw new Error("missing spaced rows");
+    expect(inboxSpaced.querySelector(".truncate")?.textContent).toBe(spaced);
+    const inboxToggle = within(inboxSpaced).getByRole("button", { name: /停用/ });
+    expect(inboxToggle).toHaveAttribute("aria-label", "停用：前  后");
+    expect(inboxToggle).toHaveTextContent("停用");
+    expect(inboxToggle.textContent).not.toContain("前");
+    const inboxRemove = within(inboxSpaced).getByRole("button", { name: /删除/ });
+    expect(inboxRemove).toHaveAttribute("aria-label", "删除：前  后");
+    expect(inboxRemove.getAttribute("aria-label")).not.toContain("发件人不进名字");
+    expect(inboxRemove.getAttribute("aria-label")).not.toContain("主题不进名字");
+
+    const inboxBroken = rowsNamed(broken)[0];
+    const brokenRemove = within(inboxBroken).getByRole("button", { name: /删除/ });
+    expect(brokenRemove).toHaveAttribute("aria-label", "删除：前一段\n后一段");
+    expect(brokenRemove).toHaveTextContent("删除");
+    expect(inboxBroken.querySelector(".truncate")?.textContent).toBe(broken);
+
+    const inboxBlank = rowsNamed("   ")[0];
+    expect(within(inboxBlank).getByRole("button", { name: "停用" })).not.toHaveAttribute(
+      "aria-label",
+    );
+    expect(within(inboxBlank).getByRole("button", { name: "删除" })).not.toHaveAttribute(
+      "aria-label",
+    );
+    expect(inboxBlank.querySelector(".truncate")?.textContent).toBe("   ");
+
+    const sameRows = rowsNamed("老板");
+    expect(sameRows).toHaveLength(2);
+    expect(within(sameRows[0]).getByRole("button", { name: /停用/ })).toHaveAttribute(
+      "aria-label",
+      "停用：老板",
+    );
+    expect(within(sameRows[1]).getByRole("button", { name: /启用/ })).toHaveAttribute(
+      "aria-label",
+      "启用：老板",
+    );
+    expect(within(sameRows[0]).getByRole("button", { name: /删除/ })).toHaveAttribute(
+      "aria-label",
+      "删除：老板",
+    );
+    expect(within(sameRows[1]).getByRole("button", { name: /删除/ })).toHaveAttribute(
+      "aria-label",
+      "删除：老板",
+    );
+
+    const urlRemove = within(urlSpaced).getByRole("button", { name: /删除/ });
+    expect(urlRemove).toHaveAttribute("aria-label", "删除：前  后");
+    expect(urlRemove.getAttribute("aria-label")).not.toContain("地址不进名字");
+    expect(urlRemove.getAttribute("aria-label")).not.toContain("45");
+    expect(urlRemove.getAttribute("aria-label")).not.toContain("错误不进名字");
+    expect(urlSpaced).toHaveTextContent("错误不进名字");
+
+    const urlBlank = rowsNamed(" \n ")[0];
+    expect(within(urlBlank).getByRole("button", { name: "停用" })).not.toHaveAttribute(
+      "aria-label",
+    );
+    expect(urlBlank.querySelector(".truncate")?.textContent).toBe(" \n ");
+
+    expect(screen.getByRole("button", { name: "添加过滤器" })).not.toHaveAttribute("aria-label");
+    expect(screen.getByRole("button", { name: "添加网页监控" })).not.toHaveAttribute("aria-label");
+    expect(screen.getByRole("button", { name: "立即检查" })).not.toHaveAttribute("aria-label");
+
+    fireEvent.click(within(sameRows[0]).getByRole("button", { name: /删除/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("button", { name: "删除" })).not.toHaveAttribute("aria-label");
+    expect(within(dialog).getByRole("button", { name: "取消" })).not.toHaveAttribute("aria-label");
+    expect(dialog).toHaveTextContent("老板");
   });
 
   it("adds an inbox filter from Enter, and ignores IME and a second press", async () => {
@@ -419,6 +533,8 @@ describe("MonitorsPanel", () => {
     fireEvent.click(remove);
 
     await waitFor(() => expect(toggle).toHaveAttribute("aria-busy", "true"));
+    expect(toggle).toHaveTextContent("停用");
+    expect(toggle).toHaveAttribute("aria-label", "停用：已有");
     expect(toggle).not.toBeDisabled();
     expect(toggle).toHaveFocus();
     expect(updateInboxFilter).toHaveBeenCalledTimes(1);

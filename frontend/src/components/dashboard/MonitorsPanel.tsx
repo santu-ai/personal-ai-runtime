@@ -34,6 +34,13 @@ import { timeAgo } from "../../utils/timeUtils";
 const revealOnRowFocus =
   "truncate group-has-[:focus-visible]:overflow-visible group-has-[:focus-visible]:whitespace-normal group-has-[:focus-visible]:text-clip group-has-[:focus-visible]:break-words";
 
+/** 字面上仍是这一句。读屏把这一条的名称接在后面。只有空白时仍只读这一句。 */
+function monitorActionName(label: string, name: string): string | undefined {
+  const text = name.trim();
+  if (!text) return undefined;
+  return `${label}：${text}`;
+}
+
 type MonitorHandoff =
   | { kind: "create-inbox"; id: string; token: string }
   | { kind: "create-url"; id: string; token: string }
@@ -388,6 +395,7 @@ export default function MonitorsPanel() {
                   <Button
                     size="sm"
                     variant="subtle"
+                    aria-label={monitorActionName(row.enabled ? "停用" : "启用", row.name)}
                     aria-busy={actionBusy === `toggle-inbox:${row.id}` || undefined}
                     className={busyClass(`toggle-inbox:${row.id}`)}
                     data-monitor-token={`toggle-inbox:${row.id}`}
@@ -400,6 +408,7 @@ export default function MonitorsPanel() {
                   <Button
                     size="sm"
                     variant="subtle"
+                    aria-label={monitorActionName("删除", row.name)}
                     data-monitor-token={`delete-inbox:${row.id}`}
                     data-monitor-action="delete-inbox"
                     data-monitor-id={row.id}
@@ -500,6 +509,7 @@ export default function MonitorsPanel() {
                   <Button
                     size="sm"
                     variant="subtle"
+                    aria-label={monitorActionName(row.enabled ? "停用" : "启用", row.name)}
                     aria-busy={actionBusy === `toggle-url:${row.id}` || undefined}
                     className={busyClass(`toggle-url:${row.id}`)}
                     data-monitor-token={`toggle-url:${row.id}`}
@@ -512,6 +522,7 @@ export default function MonitorsPanel() {
                   <Button
                     size="sm"
                     variant="subtle"
+                    aria-label={monitorActionName("删除", row.name)}
                     data-monitor-token={`delete-url:${row.id}`}
                     data-monitor-action="delete-url"
                     data-monitor-id={row.id}
