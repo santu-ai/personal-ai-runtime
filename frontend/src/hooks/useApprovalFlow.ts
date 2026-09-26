@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { resolveApproval, ApiError } from "../api/client";
 import type { DisplayMessage } from "./useChatMessages";
 import { stripToolMarkup } from "../utils/stripToolMarkup";
+import { toolLabel } from "../utils/toolLabels";
 
 interface PendingConfirmation {
   toolCall: {
@@ -18,6 +19,13 @@ type SetMessages = React.Dispatch<React.SetStateAction<DisplayMessage[]>>;
 
 type ResolveAction = "confirm" | "deny";
 
+/** 没有另给出回复时写进对话的那一句。名字和确认卡片相同。 */
+export function deniedOperationNote(toolName: string): string {
+  const name = toolName.trim();
+  if (!name) return "已拒绝该操作。";
+  return `已拒绝「${toolLabel(name)}」，没有执行该操作。`;
+}
+
 type ResolveResult = {
   status?: string;
   result?: string;
@@ -31,6 +39,13 @@ type ResolveResult = {
   tool_call_id?: string;
   tool_results?: Array<{ tool_name: string; tool_call_id: string; content: string }>;
 };
+
+/** 已经有续写回复，或还要再确认一次时，不另写这一句。 */
+function denialNoteFor(res: ResolveResult, toolName: string): string | null {
+  if (res.pending && res.approval_id) return null;
+  if (res.assistant_message) return null;
+  return deniedOperationNote(toolName);
+}
 
 function applyResolveToMessages(
   setMessages: SetMessages,
@@ -94,7 +109,7 @@ function applyResolveToMessages(
       updated.push({
         id: followupId,
         role: "assistant",
-        content: toolName ? `已拒绝「${toolName}」，没有执行该操作。` : "已拒绝该操作。",
+        content: deniedOperationNote(toolName),
         isStreaming: false,
       });
     }
@@ -200,9 +215,13 @@ export function useApprovalFlow(conversationId: string) {
   );
 
   const deny = useCallback(
-    async (setMessages: SetMessages, onError?: (msg: string, source: string) => void) => {
-      if (!pendingConfirmation || !beginResolve("deny")) return;
+    async (
+      setMessages: SetMessages,
+      onError?: (msg: string, source: string) => void,
+    ): Promise<string | null> => {
+      if (!pendingConfirmation || !beginResolve("deny")) return null;
       const pc = pendingConfirmation;
+      let note: string | null = null;
 
       try {
         const res = await resolveApproval(
@@ -213,6 +232,7 @@ export function useApprovalFlow(conversationId: string) {
           conversationId,
           pc.toolCall.id,
         );
+        note = denialNoteFor(res, pc.toolCall.function_name);
         applyResolveToMessages(
           setMessages,
           pc.assistantMsgId,
@@ -230,9 +250,11 @@ export function useApprovalFlow(conversationId: string) {
               ? err.message
               : "审批操作失败";
         onError?.(msg, "审批");
+        note = null;
       } finally {
         endResolve();
       }
+      return note;
     },
     [pendingConfirmation, conversationId],
   );

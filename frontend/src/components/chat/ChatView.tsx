@@ -122,6 +122,9 @@ export default function ChatView({ conversationId }: Props) {
   useConfirmFocusContainment(pendingConfirmation != null, confirmationRef);
   const focusedApprovalRef = useRef<string | null>(null);
   const focusAfterResolve = useRef<"confirm" | "deny" | null>(null);
+  // 拒绝成功、且没有另给出回复时读这一句。按钮上的忙碌不另读。
+  const spokenDenySeq = useRef(0);
+  const [spokenDeny, setSpokenDeny] = useState<{ id: number; text: string } | null>(null);
   const [promptPick, setPromptPick] = useState(0);
   const promptPickSource = useRef<EventTarget | null>(null);
   const { data: pendingApprovals = [] } = useApprovalsQuery();
@@ -559,7 +562,11 @@ export default function ChatView({ conversationId }: Props) {
 
   const handleDeny = useCallback(async () => {
     focusAfterResolve.current = "deny";
-    await deny(setMessages, addError);
+    const note = await deny(setMessages, addError);
+    // 失败不进这里，仍只走右下角提示。已经有回复时 note 为空，不另读。
+    if (!note) return;
+    spokenDenySeq.current += 1;
+    setSpokenDeny({ id: spokenDenySeq.current, text: note });
   }, [deny, setMessages, addError]);
 
   const handlePickPrompt = useCallback(
@@ -709,6 +716,12 @@ export default function ChatView({ conversationId }: Props) {
             className="h-full overflow-y-auto px-4 py-4"
           >
             <div className="max-w-3xl mx-auto space-y-4">
+              {spokenDeny ? (
+                <p key={spokenDeny.id} className="sr-only" role="status">
+                  {/* 出现时读出来，等当前这一句说完。不把焦点抢过来。 */}
+                  {spokenDeny.text}
+                </p>
+              ) : null}
               {messages.map((msg) => (
                 <MessageItem key={msg.id} message={msg} />
               ))}
