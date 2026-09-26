@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent,
   type ReactNode,
 } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -743,12 +744,43 @@ function formatStepLabel(step: Record<string, unknown>): string {
   return name === "step" ? "step" : toolLabel(name);
 }
 
-function truncateOutput(value: unknown): string {
+function collapsedOutput(value: unknown): string {
   const text =
     typeof value === "string" ? value : value == null ? "" : JSON.stringify(value, null, 0);
-  const collapsed = text.replace(/\s+/g, " ").trim();
-  if (collapsed.length <= OUTPUT_PREVIEW) return collapsed;
-  return `${collapsed.slice(0, OUTPUT_PREVIEW - 1)}…`;
+  return text.replace(/\s+/g, " ").trim();
+}
+
+/** 空格和回车不把页面滚走。组字或输入法处理键时这一下不拦住。 */
+function keepOutputKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
+  if (isImeKeyboardEvent(event.nativeEvent)) return;
+  if (event.key === "Enter" || event.key === " ") event.preventDefault();
+}
+
+function StepOutputPreview({ value }: { value: unknown }) {
+  const collapsed = collapsedOutput(value);
+  if (collapsed.length <= OUTPUT_PREVIEW) {
+    return (
+      <pre className="text-fg-secondary whitespace-pre-wrap break-all text-xs">{collapsed}</pre>
+    );
+  }
+  const preview = `${collapsed.slice(0, OUTPUT_PREVIEW - 1)}…`;
+  return (
+    <div
+      tabIndex={0}
+      data-output-preview=""
+      title={collapsed}
+      onKeyDown={keepOutputKeysFromScrolling}
+      className="group rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+    >
+      {/* 超过 240 个字时平时只写出前一段。键盘落到时写出整段。鼠标悬停仍是前一段。 */}
+      <pre className="text-fg-secondary whitespace-pre-wrap break-all text-xs group-focus-visible:hidden">
+        {preview}
+      </pre>
+      <pre className="hidden text-fg-secondary whitespace-pre-wrap break-all text-xs group-focus-visible:block">
+        {collapsed}
+      </pre>
+    </div>
+  );
 }
 
 function formatPlanConfirmDescription(
@@ -2457,9 +2489,7 @@ export default function TasksPage() {
                                 className="rounded-lg border border-border-subtle px-3 py-2 text-sm"
                               >
                                 <div className="text-xs text-fg-tertiary mb-1 font-mono">{key}</div>
-                                <pre className="text-fg-secondary whitespace-pre-wrap break-all text-xs">
-                                  {truncateOutput(value)}
-                                </pre>
+                                <StepOutputPreview value={value} />
                               </li>
                             ))}
                           </ul>
