@@ -553,7 +553,7 @@ describe("Layout new chat", () => {
     expect(newer).toBeEnabled();
     expect(newer).not.toHaveAttribute("aria-busy");
 
-    const start = await screen.findByRole("button", { name: "开始对话" });
+    const start = await screen.findByRole("button", { name: /^开始对话/ });
     fireEvent.click(start);
     expect(posts).toBe(1);
     expect(start).not.toHaveAttribute("aria-busy");

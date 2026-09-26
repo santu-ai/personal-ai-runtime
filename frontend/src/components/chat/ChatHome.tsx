@@ -32,6 +32,13 @@ interface ProactiveNudge {
   href?: string;
 }
 
+/** 字面上仍是这一句。读屏把旁边的说明接在后面。只有空白时仍只读这一句。 */
+export function nudgeActionName(action: string, message: string): string | undefined {
+  const text = message.trim();
+  if (!text) return undefined;
+  return `${action}：${text}`;
+}
+
 type InsightMemory = { content: string; category?: string };
 
 const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
@@ -429,13 +436,18 @@ export default function ChatHome() {
                       <p className="text-sm text-fg-primary">{nudge.message}</p>
                     </div>
                     {nudge.href ? (
-                      <Link to={nudge.href} className={actionClass}>
+                      <Link
+                        to={nudge.href}
+                        aria-label={nudgeActionName(nudge.action, nudge.message)}
+                        className={actionClass}
+                      >
                         {nudge.action}
                       </Link>
                     ) : (
                       <button
                         type="button"
                         data-home-nudge={nudge.title}
+                        aria-label={nudgeActionName(nudge.action, nudge.message)}
                         aria-busy={
                           starting?.kind === "nudge" && starting.title === nudge.title
                             ? true
