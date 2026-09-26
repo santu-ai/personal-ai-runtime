@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
 import {
   searchMemories,
@@ -9,8 +9,21 @@ import {
 } from "../../api/client";
 import { listWorkItems } from "../../api/workItems";
 import { useErrorStore } from "../../stores/errorStore";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
 import LoadErrorNotice, { queryErrorMessage } from "../ui/LoadErrorNotice";
 import type { ToolResult } from "./types";
+
+/** 平时短。键盘落到时写出整句。鼠标悬停仍是短的。 */
+const revealLine =
+  "block truncate group-focus-visible:overflow-visible group-focus-visible:whitespace-normal group-focus-visible:text-clip group-focus-visible:break-words";
+const revealClamp =
+  "line-clamp-2 group-focus-visible:line-clamp-none group-focus-visible:break-words";
+const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
+
+function keepBareKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
+  if (isImeKeyboardEvent(event.nativeEvent)) return;
+  if (event.key === "Enter" || event.key === " ") event.preventDefault();
+}
 
 interface Props {
   lastUserMessage?: string;
@@ -138,9 +151,9 @@ export default function ContextPanel({ lastUserMessage, toolResults = [], open, 
               <Link
                 key={g.id}
                 to={`/goals/${g.id}`}
-                className="block w-full text-left text-xs text-fg-primary p-2 hover:bg-surface-overlay rounded-lg mb-1 truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                className={`group block w-full text-left text-xs text-fg-primary p-2 hover:bg-surface-overlay rounded-lg mb-1 ${focusRing}`}
               >
-                {g.title}
+                <span className={revealLine}>{g.title}</span>
               </Link>
             ))
           )}
@@ -152,9 +165,11 @@ export default function ContextPanel({ lastUserMessage, toolResults = [], open, 
             {memories.map((m) => (
               <div
                 key={m.id}
-                className="text-xs text-fg-secondary p-2 bg-surface-overlay/50 rounded-lg mb-1 line-clamp-2"
+                tabIndex={0}
+                onKeyDown={keepBareKeysFromScrolling}
+                className={`group text-xs text-fg-secondary p-2 bg-surface-overlay/50 rounded-lg mb-1 ${focusRing}`}
               >
-                {m.content}
+                <div className={revealClamp}>{m.content}</div>
               </div>
             ))}
           </section>
@@ -166,9 +181,11 @@ export default function ContextPanel({ lastUserMessage, toolResults = [], open, 
             {recentTools.map((t, i) => (
               <div
                 key={`${t.tool_call_id}-${i}`}
-                className="text-xs text-fg-secondary p-2 bg-surface-overlay/50 rounded-lg mb-1 truncate"
+                tabIndex={0}
+                onKeyDown={keepBareKeysFromScrolling}
+                className={`group text-xs text-fg-secondary p-2 bg-surface-overlay/50 rounded-lg mb-1 ${focusRing}`}
               >
-                {t.tool_name}
+                <span className={revealLine}>{t.tool_name}</span>
               </div>
             ))}
           </section>

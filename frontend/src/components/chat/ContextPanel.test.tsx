@@ -136,6 +136,83 @@ describe("ContextPanel", () => {
     expect(screen.getByText(/喜欢 Rust 所有权模型/)).toBeInTheDocument();
   });
 
+  it("writes the full goal title when the row is keyboard focused", async () => {
+    render(
+      <MemoryRouter>
+        <ContextPanel open={true} onToggle={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    const link = await screen.findByRole("link", { name: "学习 Rust" });
+    expect(link).toHaveClass("group", "focus-visible:ring-focus-ring");
+    expect(link.className).not.toContain("truncate");
+    const line = link.querySelector(".truncate");
+    expect(line).toHaveTextContent("学习 Rust");
+    expect(line).toHaveClass(
+      "truncate",
+      "group-focus-visible:overflow-visible",
+      "group-focus-visible:whitespace-normal",
+      "group-focus-visible:text-clip",
+      "group-focus-visible:break-words",
+    );
+    expect(line?.className).not.toContain("group-hover:");
+  });
+
+  it("writes the full memory and tool name when those rows are keyboard focused", async () => {
+    const memory =
+      "这是一条很长的相关记忆，平时最多两行，键盘落到时要写出整句，不能只留在看不见的地方";
+    const tool = "mcp_filesystem__read_a_very_long_tool_name_that_used_to_stay_truncated";
+    vi.mocked(searchMemories).mockResolvedValue([
+      { id: "m-long", content: memory, category: "note", created_at: "" },
+    ]);
+    render(
+      <MemoryRouter>
+        <ContextPanel
+          open={true}
+          onToggle={vi.fn()}
+          lastUserMessage="帮我解释 Rust 所有权"
+          toolResults={[{ tool_name: tool, tool_call_id: "c1", content: "ok" }]}
+        />
+      </MemoryRouter>,
+    );
+
+    const memoryText = await screen.findByText(memory);
+    expect(memoryText).toHaveClass(
+      "line-clamp-2",
+      "group-focus-visible:line-clamp-none",
+      "group-focus-visible:break-words",
+    );
+    expect(memoryText.className).not.toContain("group-hover:");
+    const memoryRow = memoryText.parentElement;
+    expect(memoryRow).toHaveAttribute("tabindex", "0");
+    expect(memoryRow).toHaveClass("group", "focus-visible:ring-focus-ring");
+    expect(fireEvent.keyDown(memoryRow!, { key: " " })).toBe(false);
+    expect(fireEvent.keyDown(memoryRow!, { key: "Enter" })).toBe(false);
+    expect(fireEvent.keyDown(memoryRow!, { key: "Enter", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(memoryRow!, { key: "Enter", keyCode: 229 })).toBe(true);
+    expect(fireEvent.keyDown(memoryRow!, { key: "Process" })).toBe(true);
+
+    const toolText = screen.getByText(tool);
+    expect(toolText).toHaveClass(
+      "truncate",
+      "group-focus-visible:overflow-visible",
+      "group-focus-visible:whitespace-normal",
+      "group-focus-visible:text-clip",
+      "group-focus-visible:break-words",
+    );
+    expect(toolText.className).not.toContain("group-hover:");
+    const toolRow = toolText.parentElement;
+    expect(toolRow).toHaveAttribute("tabindex", "0");
+    expect(toolRow).toHaveClass("focus-visible:ring-focus-ring");
+    expect(fireEvent.keyDown(toolRow!, { key: " " })).toBe(false);
+    expect(fireEvent.keyDown(toolRow!, { key: "Enter", keyCode: 229 })).toBe(true);
+
+    const approval = screen.getByText("write_file");
+    expect(approval).not.toHaveAttribute("tabindex");
+    expect(approval.className).not.toContain("truncate");
+    expect(approval.className).not.toContain("line-clamp");
+  });
+
   it("calls onToggle when collapse clicked", async () => {
     const onToggle = vi.fn();
     render(
