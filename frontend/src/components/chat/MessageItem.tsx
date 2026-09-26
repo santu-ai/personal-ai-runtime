@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, type KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
 import { Copy, Check, Brain, Mail, Target, FileText } from "lucide-react";
 import ToolCallDisplay from "./ToolCallDisplay";
@@ -6,6 +6,7 @@ import TaskTrack from "./TaskTrack";
 import { CodeBlock } from "./CodeBlock";
 import { LazyMarkdown } from "./LazyMarkdown";
 import { stripToolMarkup } from "../../utils/stripToolMarkup";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
 import { timeAgo } from "../../utils/timeUtils";
 import { matchResultsByCallId } from "./matchToolResult";
 import type { ToolCall, ToolResult } from "./types";
@@ -145,13 +146,35 @@ function SourceBadge({ source }: { source: SourceCitation }) {
     document: "文档",
   };
 
+  const titled = Boolean(source.title);
+  const keepFromScrolling = (event: KeyboardEvent<HTMLSpanElement>) => {
+    if (isImeKeyboardEvent(event.nativeEvent)) return;
+    if (event.key === "Enter" || event.key === " ") event.preventDefault();
+  };
   return (
     <span
-      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border ${colorMap[source.type] || "bg-surface-overlay text-fg-primary border-border-strong"}`}
-      title={source.title}
+      tabIndex={titled ? 0 : undefined}
+      title={source.title || undefined}
+      onKeyDown={titled ? keepFromScrolling : undefined}
+      className={`group inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] ${
+        colorMap[source.type] || "bg-surface-overlay text-fg-primary border-border-strong"
+      }${
+        titled
+          ? " focus-visible:items-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+          : ""
+      }`}
     >
       {iconMap[source.type] || null}
-      <span className="truncate max-w-[120px]">{source.title || labelMap[source.type]}</span>
+      {/* 平时最多约 120px，整句在悬停 title 里。键盘落到时写出整句。 */}
+      <span
+        className={
+          titled
+            ? "min-w-0 max-w-[120px] truncate group-focus-visible:max-w-full group-focus-visible:overflow-visible group-focus-visible:whitespace-normal group-focus-visible:text-clip group-focus-visible:break-words"
+            : "max-w-[120px] truncate"
+        }
+      >
+        {source.title || labelMap[source.type]}
+      </span>
     </span>
   );
 }

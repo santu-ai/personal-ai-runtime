@@ -472,14 +472,15 @@ export default function ChatHome() {
                 }
                 setActiveConversation(lastConversation.id);
               }}
-              className={`block rounded-lg border border-border-subtle bg-surface-raised p-4 shadow-sm transition-colors hover:border-border-strong hover:bg-surface-hover/30 ${focusRing}`}
+              className={`group block rounded-lg border border-border-subtle bg-surface-raised p-4 shadow-sm transition-colors hover:border-border-strong hover:bg-surface-hover/30 ${focusRing}`}
             >
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-sm text-fg-tertiary">继续上次</span>
               </div>
               <p className="text-sm text-fg-primary">{lastConversation.title || "新对话"}</p>
               {lastConversation.summary && (
-                <p className="text-xs text-fg-tertiary mt-1 line-clamp-1">
+                // 平时一行。键盘落到这一行时写出整句。鼠标悬停仍是一行。
+                <p className="mt-1 line-clamp-1 break-words text-xs text-fg-tertiary group-focus-visible:line-clamp-none">
                   {lastConversation.summary}
                 </p>
               )}

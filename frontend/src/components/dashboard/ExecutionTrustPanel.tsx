@@ -1,8 +1,21 @@
+import type { KeyboardEvent } from "react";
 import { AlertTriangle, CheckCircle2, RotateCcw, ShieldAlert } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { ExecutionTrust, ExecutionTrustItem } from "../../api/types";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
 import { timeAgoShort } from "../../utils/timeUtils";
 import { STATUS_TONE } from "../ui/statusTone";
+
+/** 平时一行。键盘落到这一行时写出整句。鼠标悬停仍是一行，错误留在 title 里。 */
+const revealOnFocus =
+  "block truncate group-focus-visible:overflow-visible group-focus-visible:whitespace-normal group-focus-visible:text-clip group-focus-visible:break-words";
+const focusableRow =
+  "group min-w-0 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
+
+function keepBareKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
+  if (isImeKeyboardEvent(event.nativeEvent)) return;
+  if (event.key === "Enter" || event.key === " ") event.preventDefault();
+}
 
 function countOf(byStatus: Record<string, number>, status: string): number {
   return byStatus[status] ?? 0;
@@ -66,21 +79,31 @@ function TrustText({
 }) {
   const href = link ? taskPath(item.work_id) : null;
   const title = item.error || (href ? "打开任务" : undefined);
-  if (!href) {
+  const line = <span className={revealOnFocus}>{text}</span>;
+  if (href) {
     return (
-      <span className="min-w-0 truncate" title={title}>
-        {text}
+      <Link to={href} className={`${focusableRow} text-inherit hover:underline`} title={title}>
+        {line}
+      </Link>
+    );
+  }
+  // 没有任务链接时，错误只在悬停 title 里。键盘也能落到这一行，空格和回车不把页面滚走。
+  if (item.error) {
+    return (
+      <span
+        tabIndex={0}
+        title={title}
+        className={focusableRow}
+        onKeyDown={keepBareKeysFromScrolling}
+      >
+        {line}
       </span>
     );
   }
   return (
-    <Link
-      to={href}
-      className="min-w-0 rounded-sm text-inherit hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-      title={title}
-    >
-      <span className="block truncate">{text}</span>
-    </Link>
+    <span className="min-w-0 truncate" title={title}>
+      {text}
+    </span>
   );
 }
 

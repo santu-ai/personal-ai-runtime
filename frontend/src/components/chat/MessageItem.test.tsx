@@ -347,4 +347,46 @@ describe("MessageItem", () => {
     );
     expect(screen.queryByRole("button", { name: "已复制" })).not.toBeInTheDocument();
   });
+
+  it("writes the full source title when the chip is keyboard focused", () => {
+    const title = "上周和导师对齐过的实验记录，标题比胶囊宽，平时被截断，键盘落到时写出整句";
+    render(
+      <MessageItem
+        message={{
+          id: "m-src",
+          role: "assistant",
+          content: "我记得这件事。",
+          sources: [
+            { id: "s1", type: "memory", title },
+            { id: "s2", type: "email", title: "" },
+          ],
+        }}
+      />,
+    );
+
+    const line = screen.getByText(title);
+    expect(line).toHaveClass(
+      "truncate",
+      "max-w-[120px]",
+      "group-focus-visible:overflow-visible",
+      "group-focus-visible:whitespace-normal",
+      "group-focus-visible:text-clip",
+    );
+    expect(line.className).not.toContain("group-hover:");
+    const chip = line.parentElement;
+    expect(chip).toHaveAttribute("title", title);
+    expect(chip).toHaveAttribute("tabindex", "0");
+    expect(chip).toHaveClass("group", "focus-visible:ring-focus-ring");
+
+    expect(fireEvent.keyDown(chip!, { key: " " })).toBe(false);
+    expect(fireEvent.keyDown(chip!, { key: "Enter" })).toBe(false);
+    expect(fireEvent.keyDown(chip!, { key: "Enter", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(chip!, { key: "Enter", keyCode: 229 })).toBe(true);
+    expect(fireEvent.keyDown(chip!, { key: "Process" })).toBe(true);
+
+    const untitled = screen.getByText("邮件");
+    expect(untitled.parentElement).not.toHaveAttribute("tabindex");
+    expect(untitled.parentElement).not.toHaveAttribute("title");
+    expect(untitled.className).not.toContain("group-focus-visible:");
+  });
 });
