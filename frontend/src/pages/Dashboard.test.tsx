@@ -643,8 +643,8 @@ describe("DashboardPage", () => {
     expect(screen.getByTestId("execution-trust")).toBeInTheDocument();
     expect(screen.getByText(/imap timeout/)).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /imap timeout/ })).not.toBeInTheDocument();
-    expect(screen.getByText(/重试中 memory_decay/)).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /memory_decay/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/重试中 记忆衰减/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /记忆衰减/ })).not.toBeInTheDocument();
   });
 
   it("links execution failures to an existing task and leaves the rest as text", () => {
@@ -741,7 +741,7 @@ describe("DashboardPage", () => {
     );
     expect(screen.getByText(/no owner/)).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /no owner/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /重试中 handle_execute/ })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /重试中 执行任务/ })).toHaveAttribute(
       "href",
       "/tasks/task_retry",
     );
@@ -865,7 +865,7 @@ describe("DashboardPage", () => {
       "/tasks/task_shared",
     );
     expect(
-      screen.queryByRole("link", { name: /死信 handle_execute · same boom/ }),
+      screen.queryByRole("link", { name: /死信 执行任务 · same boom/ }),
     ).not.toBeInTheDocument();
     expect(screen.getByText(/different row/)).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /different row/ })).not.toBeInTheDocument();
@@ -875,8 +875,8 @@ describe("DashboardPage", () => {
       "/tasks/task_fourth",
     );
     expect(screen.getByText(/死信 4/)).toBeInTheDocument();
-    expect(screen.getByText(/重试中 memory_decay · 第 2 次/)).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /memory_decay/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/重试中 记忆衰减 · 第 2 次/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /记忆衰减/ })).not.toBeInTheDocument();
   });
 
   it("lists other recent failures without repeating the newest or a dead letter", () => {
@@ -1086,9 +1086,10 @@ describe("DashboardPage", () => {
     expect(screen.getByText(/blank owner/)).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /blank owner/ })).not.toBeInTheDocument();
     expect(screen.getAllByText(/shared letter/)).toHaveLength(1);
-    expect(
-      screen.getByRole("link", { name: /死信 handle_execute · shared letter/ }),
-    ).toHaveAttribute("href", "/tasks/task_shared");
+    expect(screen.getByRole("link", { name: /死信 执行任务 · shared letter/ })).toHaveAttribute(
+      "href",
+      "/tasks/task_shared",
+    );
     expect(screen.getByText(/second letter/)).toBeInTheDocument();
     expect(screen.getByText(/third letter/)).toBeInTheDocument();
     expect(screen.queryByText(/buried letter/)).not.toBeInTheDocument();
@@ -1096,7 +1097,7 @@ describe("DashboardPage", () => {
       "href",
       "/tasks/task_retry",
     );
-    expect(screen.getByText(/重试中 handle_execute · 第 2 次 · still waiting/)).toBeInTheDocument();
+    expect(screen.getByText(/重试中 执行任务 · 第 2 次 · still waiting/)).toBeInTheDocument();
   });
 
   it("does not repeat an approval or morning brief in reminders", () => {

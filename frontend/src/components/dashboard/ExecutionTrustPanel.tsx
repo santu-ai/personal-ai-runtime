@@ -2,6 +2,7 @@ import type { KeyboardEvent } from "react";
 import { AlertTriangle, CheckCircle2, RotateCcw, ShieldAlert } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { ExecutionTrust, ExecutionTrustItem } from "../../api/types";
+import { handlerLabel } from "../../utils/handlerLabels";
 import { isImeKeyboardEvent } from "../../utils/imeKey";
 import { timeAgoShort } from "../../utils/timeUtils";
 import { STATUS_TONE } from "../ui/statusTone";
@@ -21,12 +22,17 @@ function countOf(byStatus: Record<string, number>, status: string): number {
   return byStatus[status] ?? 0;
 }
 
+/** 和定时栏同一套名字。没有名字时仍用事件类型，再没有才是「未知执行」。 */
+function visibleHandlerName(item: { handler_name: string; event_type: string }): string {
+  return handlerLabel(item.handler_name) || item.event_type.trim() || "未知执行";
+}
+
 function rowLabel(item: {
   handler_name: string;
   event_type: string;
   error: string | null;
 }): string {
-  const name = item.handler_name || item.event_type || "未知执行";
+  const name = visibleHandlerName(item);
   return item.error ? `${name} · ${item.error}` : name;
 }
 
@@ -37,7 +43,7 @@ function taskPath(workId: string | null | undefined): string | null {
 }
 
 function retryLabel(item: ExecutionTrustItem): string {
-  const name = item.handler_name || item.event_type;
+  const name = visibleHandlerName(item);
   const attempt = item.retry_count > 0 ? ` · 第 ${item.retry_count} 次` : "";
   const error = item.error?.trim();
   return error ? `重试中 ${name}${attempt} · ${error}` : `重试中 ${name}${attempt}`;
@@ -135,7 +141,7 @@ export default function ExecutionTrustPanel({ trust }: Props) {
       {trust.last_completed && (
         <p className="text-xs text-fg-secondary flex items-center gap-1.5">
           <CheckCircle2 size={12} className="text-success shrink-0" />
-          最近完成 {trust.last_completed.handler_name || trust.last_completed.event_type}
+          最近完成 {visibleHandlerName(trust.last_completed)}
           {trust.last_completed.completed_at
             ? ` · ${timeAgoShort(trust.last_completed.completed_at)}`
             : ""}

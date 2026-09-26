@@ -44,6 +44,41 @@ const reveal = [
 ];
 
 describe("ExecutionTrustPanel", () => {
+  it("writes a known handler in Chinese and keeps an unknown name", () => {
+    renderWithRouter(
+      <ExecutionTrustPanel
+        trust={trust({
+          by_status: { failed: 1 },
+          last_completed: item({
+            id: "ex-done",
+            status: "completed",
+            handler_name: "morning_brief",
+            event_type: "TimerFired",
+            error: null,
+          }),
+          last_failed: item({
+            id: "ex-unknown",
+            handler_name: "custom_handler",
+            error: "boom",
+          }),
+          failed: [
+            item({
+              id: "ex-blank",
+              handler_name: "   ",
+              event_type: "TimerFired",
+              error: "no name",
+            }),
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText(/最近完成 早安简报/)).toBeInTheDocument();
+    expect(screen.getByText(/custom_handler · boom/)).toBeInTheDocument();
+    expect(screen.getByText(/TimerFired · no name/)).toBeInTheDocument();
+    expect(screen.queryByText(/morning_brief/)).not.toBeInTheDocument();
+  });
+
   it("writes the full error when a task link is keyboard focused", () => {
     const error =
       "imap timeout：连接在读完收件箱之前断了，键盘落到这一行时要写出整句，不能只留在悬停提示里";
@@ -110,7 +145,9 @@ describe("ExecutionTrustPanel", () => {
     expect(dead).toHaveAttribute("tabindex", "0");
     expect(dead).toHaveAttribute("title", error);
 
-    const retry = screen.getByText(/重试中 memory_decay/);
+    expect(screen.getByText(/收件箱拉取 · handler down/)).toBeInTheDocument();
+    expect(screen.queryByText("inbox_poll")).not.toBeInTheDocument();
+    const retry = screen.getByText(/重试中 记忆衰减/);
     expect(retry).toHaveClass("truncate");
     expect(retry.className).not.toContain("group-focus-visible:");
     expect(retry).not.toHaveAttribute("tabindex");
