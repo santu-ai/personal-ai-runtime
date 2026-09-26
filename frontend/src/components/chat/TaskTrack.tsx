@@ -13,6 +13,7 @@ import { useState } from "react";
 import { toolLabel, toolIcon } from "../../utils/toolLabels";
 import { detectOutcome } from "./detectToolFailure";
 import { formatArgs } from "./formatArgs";
+import ToolResultBody from "./ToolResultBody";
 import type { ToolCall, ToolResult } from "./types";
 
 interface TaskStage {
@@ -22,14 +23,6 @@ interface TaskStage {
 
 interface Props {
   stages: TaskStage[];
-}
-
-function formatResult(content: string): string {
-  try {
-    return JSON.stringify(JSON.parse(content), null, 2);
-  } catch {
-    return content.length > 500 ? content.slice(0, 500) + "\n... [truncated]" : content;
-  }
 }
 
 export default function TaskTrack({ stages }: Props) {
@@ -125,9 +118,7 @@ export default function TaskTrack({ stages }: Props) {
                   {stage.result && (
                     <div>
                       <div className="text-fg-tertiary mb-0.5">结果</div>
-                      <pre className="bg-surface-sunken p-1.5 rounded text-fg-primary overflow-x-auto text-[11px] max-h-24 overflow-y-auto">
-                        {formatResult(stage.result.content)}
-                      </pre>
+                      <ToolResultBody content={stage.result.content} frame="track" />
                     </div>
                   )}
                 </div>

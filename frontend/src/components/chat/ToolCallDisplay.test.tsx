@@ -188,4 +188,79 @@ describe("ToolCallDisplay", () => {
     }
     expect(screen.getByText(/读取文件/)).toBeInTheDocument();
   });
+
+  it("writes the full plain-text result when the keyboard lands, and keeps a short preview otherwise", () => {
+    const long = `行\n${"字".repeat(600)}`;
+    const exact = "a".repeat(500);
+    const json = JSON.stringify({ note: "字".repeat(600) });
+    render(
+      <ToolCallDisplay
+        defaultExpanded
+        toolCalls={[
+          toolCalls[0],
+          {
+            index: 1,
+            id: "tc-exact",
+            function_name: "shell_exec",
+            arguments: JSON.stringify({ command: "true" }),
+          },
+          {
+            index: 2,
+            id: "tc-json",
+            function_name: "web_search",
+            arguments: JSON.stringify({ query: "q" }),
+          },
+        ]}
+        toolResults={[
+          { tool_name: "read_file", tool_call_id: "tc-1", content: long },
+          { tool_name: "shell_exec", tool_call_id: "tc-exact", content: exact },
+          { tool_name: "web_search", tool_call_id: "tc-json", content: json },
+        ]}
+      />,
+    );
+
+    const box = document.querySelector("[data-tool-result-preview]");
+    if (!box) throw new Error("missing tool result preview");
+    expect(box).toHaveAttribute("title", long);
+    expect(box).toHaveAttribute("data-tool-result-preview", "");
+    expect(box).toHaveAttribute("tabindex", "0");
+    expect(box).toHaveClass(
+      "group",
+      "max-h-64",
+      "overflow-y-auto",
+      "focus-visible:max-h-none",
+      "focus-visible:overflow-visible",
+      "focus-visible:outline-none",
+      "focus-visible:ring-2",
+      "focus-visible:ring-focus-ring",
+    );
+    expect(box.className).not.toContain("group-hover:");
+    expect(box.closest("button")).toBeNull();
+    const preview = `${long.slice(0, 500)}\n... [truncated]`;
+    const short = box.querySelector(".group-focus-visible\\:hidden");
+    const full = box.querySelector(".group-focus-visible\\:block");
+    expect(short?.textContent).toBe(preview);
+    expect(short).toHaveClass("group-focus-visible:hidden");
+    expect(short?.className).not.toContain("group-hover:");
+    expect(full).toHaveClass("hidden", "group-focus-visible:block");
+    expect(full?.textContent).toBe(long);
+    expect(long.includes("\n")).toBe(true);
+
+    expect(fireEvent.keyDown(box, { key: " " })).toBe(false);
+    expect(fireEvent.keyDown(box, { key: "Enter" })).toBe(false);
+    expect(fireEvent.keyDown(box, { key: "Enter", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "Enter", keyCode: 229 })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "Process" })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: " ", keyCode: 229 })).toBe(true);
+
+    fireEvent.click(screen.getByText("执行命令"));
+    expect(screen.getByText(exact).closest("[data-tool-result-preview]")).toBeNull();
+    expect(screen.getByText(exact)).not.toHaveAttribute("tabindex");
+
+    fireEvent.click(screen.getByText("搜索网页"));
+    const jsonNote = "字".repeat(600);
+    expect(screen.getByText(new RegExp(jsonNote))).not.toHaveAttribute("tabindex");
+    expect(screen.getByText(new RegExp(jsonNote)).closest("[data-tool-result-preview]")).toBeNull();
+    expect(screen.getByText(new RegExp(jsonNote)).textContent).not.toContain("[truncated]");
+  });
 });

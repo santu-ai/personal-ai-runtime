@@ -143,4 +143,78 @@ describe("TaskTrack", () => {
     expect(screen.getByText("参数")).toBeInTheDocument();
     expect(screen.getByText(/"path"/)).toBeInTheDocument();
   });
+
+  it("writes the full plain-text result when the keyboard lands, and keeps a short preview otherwise", () => {
+    const long = `行\n${"字".repeat(600)}`;
+    const exact = "b".repeat(500);
+    const json = JSON.stringify({ note: "段".repeat(600) });
+    renderWithRouter(
+      <TaskTrack
+        stages={[
+          {
+            toolCall: multiToolCalls[0],
+            result: { tool_name: "read_file", tool_call_id: "tc-1", content: long },
+          },
+          {
+            toolCall: multiToolCalls[1],
+            result: { tool_name: "web_search", tool_call_id: "tc-2", content: exact },
+          },
+          {
+            toolCall: {
+              index: 2,
+              id: "tc-3",
+              function_name: "shell_exec",
+              arguments: JSON.stringify({ command: "true" }),
+            },
+            result: { tool_name: "shell_exec", tool_call_id: "tc-3", content: json },
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("读取文件"));
+    const box = document.querySelector("[data-tool-result-preview]");
+    if (!box) throw new Error("missing tool result preview");
+    expect(box).toHaveAttribute("title", long);
+    expect(box).toHaveAttribute("data-tool-result-preview", "");
+    expect(box).toHaveAttribute("tabindex", "0");
+    expect(box).toHaveClass(
+      "group",
+      "max-h-24",
+      "overflow-y-auto",
+      "focus-visible:max-h-none",
+      "focus-visible:overflow-visible",
+      "focus-visible:outline-none",
+      "focus-visible:ring-2",
+      "focus-visible:ring-focus-ring",
+    );
+    expect(box.className).not.toContain("group-hover:");
+    expect(box.closest("button")).toBeNull();
+    const step = screen.getByRole("button", { name: /读取文件/ });
+    expect(step).toHaveAttribute("aria-expanded", "true");
+    const preview = `${long.slice(0, 500)}\n... [truncated]`;
+    const short = box.querySelector(".group-focus-visible\\:hidden");
+    const full = box.querySelector(".group-focus-visible\\:block");
+    expect(short?.textContent).toBe(preview);
+    expect(short).toHaveClass("group-focus-visible:hidden");
+    expect(full).toHaveClass("hidden", "group-focus-visible:block");
+    expect(full?.textContent).toBe(long);
+
+    expect(fireEvent.keyDown(box, { key: " " })).toBe(false);
+    expect(fireEvent.keyDown(box, { key: "Enter" })).toBe(false);
+    expect(step).toHaveAttribute("aria-expanded", "true");
+    expect(fireEvent.keyDown(box, { key: "Enter", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "Enter", keyCode: 229 })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "Process" })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: " ", keyCode: 229 })).toBe(true);
+
+    fireEvent.click(screen.getByText("搜索网页"));
+    expect(screen.getByText(exact).closest("[data-tool-result-preview]")).toBeNull();
+    expect(screen.getByText(exact)).not.toHaveAttribute("tabindex");
+
+    fireEvent.click(screen.getByText("执行命令"));
+    const jsonNote = "段".repeat(600);
+    expect(screen.getByText(new RegExp(jsonNote)).closest("[data-tool-result-preview]")).toBeNull();
+    expect(screen.getByText(new RegExp(jsonNote)).textContent).not.toContain("[truncated]");
+  });
 });
