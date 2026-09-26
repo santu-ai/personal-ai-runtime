@@ -50,11 +50,18 @@ type RatifyScope = "proposed" | "rejected" | "list";
 
 /** 组字或输入法处理键时的 Enter 交给输入法。空内容或这次写还没回来，确认函数自己会停住。 */
 function submitOnEnter(submit: () => void) {
-  return (event: KeyboardEvent<HTMLInputElement>) => {
+  return (event: KeyboardEvent<HTMLInputElement | HTMLSelectElement>) => {
     if (event.key !== "Enter" || isImeKeyboardEvent(event.nativeEvent)) return;
     event.preventDefault();
     submit();
   };
+}
+
+/** 编辑里的分类和列表同一套说法。不认识的仍用原来的字，排在后面。 */
+function editCategoryKeys(current: string): string[] {
+  const known = Object.keys(CATEGORY_LABELS);
+  if (current && !(current in CATEGORY_LABELS)) return [...known, current];
+  return known;
 }
 
 type FocusAfter = {
@@ -1491,7 +1498,7 @@ export default function MemoriesPage() {
                 <label htmlFor={editCategoryId} className="text-xs text-fg-secondary mb-1 block">
                   分类
                 </label>
-                <input
+                <select
                   id={editCategoryId}
                   value={editCategory}
                   data-memory-dialog-field="edit"
@@ -1499,10 +1506,15 @@ export default function MemoriesPage() {
                     editLive.current = { ...editLive.current, category: e.target.value };
                     setEditCategory(e.target.value);
                   }}
-                  className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
-                  placeholder="如 fact, preference, habit"
+                  className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
                   onKeyDown={submitOnEnter(() => void confirmEdit())}
-                />
+                >
+                  {editCategoryKeys(editCategory).map((key) => (
+                    <option key={key} value={key}>
+                      {getCategoryMeta(key).title}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
             <div className="flex gap-2 justify-end">
