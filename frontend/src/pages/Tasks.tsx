@@ -111,14 +111,19 @@ type StatusHandoff = {
 
 type SpokenTaskStatus = { id: number; taskId: string; text: string };
 
-/** 详情里评审换成新的字时读这一句。字没换、或这次还没成功，不读。 */
+/** 详情里评审换成新的字时读这一句。字没换、或这次还没成功，不读。
+ * 同一轮页面上写出验收说明或返工理由时，再读那一行。空白不读。 */
 function publishReviewStatus(
   pending: ReviewHandoff,
   taskId: string,
   review: string | null,
+  note: string,
   seq: { current: number },
   live: { current: SpokenTaskStatus | null },
   setSpoken: (value: SpokenTaskStatus) => void,
+  noteSeq: { current: number },
+  noteLive: { current: SpokenTaskStatus | null },
+  setSpokenNote: (value: SpokenTaskStatus | null) => void,
 ): void {
   if (pending.spoken || (review ?? null) === pending.fromReview) return;
   const text = (review ? reviewLabel(review) : "").trim();
@@ -128,6 +133,16 @@ function publishReviewStatus(
   const next = { id: seq.current, taskId, text };
   live.current = next;
   setSpoken(next);
+  const spokenNote = note.trim();
+  if (!spokenNote) {
+    noteLive.current = null;
+    setSpokenNote(null);
+    return;
+  }
+  noteSeq.current += 1;
+  const noteNext = { id: noteSeq.current, taskId, text: spokenNote };
+  noteLive.current = noteNext;
+  setSpokenNote(noteNext);
 }
 
 /** 详情这一行的状态换成新的字时读这一句。字没换、或这次还没成功，不读。 */
@@ -237,6 +252,15 @@ function deliveryReworkReason(delivery: WorkDelivery | null | undefined): string
 
 function deliveryAcceptReason(delivery: WorkDelivery | null | undefined): string {
   return deliveryDecisionReason(delivery, "accepted");
+}
+
+/** 和交付区已经写着的那一行相同。空白不单列。 */
+function visibleReviewNote(delivery: WorkDelivery | null | undefined): string {
+  const accept = deliveryAcceptReason(delivery);
+  if (accept) return `验收说明：${accept}`;
+  const rework = deliveryReworkReason(delivery);
+  if (rework) return `返工理由：${rework}`;
+  return "";
 }
 
 function checkResultLabel(result: string): string {
@@ -1172,6 +1196,10 @@ export default function TasksPage() {
   const reviewSpokenSeq = useRef(0);
   const spokenReviewLive = useRef<SpokenTaskStatus | null>(null);
   const [spokenReview, setSpokenReview] = useState<SpokenTaskStatus | null>(null);
+  // 同一轮写出的验收说明或返工理由再读一句。空白不读。打开时已经写着的不读。
+  const reviewNoteSpokenSeq = useRef(0);
+  const spokenReviewNoteLive = useRef<SpokenTaskStatus | null>(null);
+  const [spokenReviewNote, setSpokenReviewNote] = useState<SpokenTaskStatus | null>(null);
   const taskIdRef = useRef(urlTaskId);
   taskIdRef.current = urlTaskId;
   const [dialogBusy, setDialogBusy] = useState(false);
@@ -1872,6 +1900,7 @@ export default function TasksPage() {
     ? reviewLabel(bundle.current_review_status).trim()
     : "";
   const currentDelivery = bundle?.current ?? null;
+  const reviewNoteVisible = visibleReviewNote(currentDelivery);
   const canRerunSameBrief = Boolean(
     selected && isProjectBrief(selected) && selected.status === "completed" && currentDelivery,
   );
@@ -1903,9 +1932,13 @@ export default function TasksPage() {
       pending,
       selected.id,
       selected.delivery_bundle?.current_review_status ?? null,
+      visibleReviewNote(selected.delivery_bundle?.current),
       reviewSpokenSeq,
       spokenReviewLive,
       setSpokenReview,
+      reviewNoteSpokenSeq,
+      spokenReviewNoteLive,
+      setSpokenReviewNote,
     );
     if (selected.delivery_bundle?.current?.review_status === "unreviewed") return;
     reviewHandoff.current = null;
@@ -1992,6 +2025,17 @@ export default function TasksPage() {
     spokenReviewLive.current = null;
     if (spokenReview) setSpokenReview(null);
   }, [selected, spokenReview]);
+
+  // 说明已经和页面上的不一样，或换了一个任务，就卸下这一句。
+  // 自己刷新改掉的说明不另读。刚读出的那一句和页面上相同，留着。
+  useLayoutEffect(() => {
+    const live = spokenReviewNoteLive.current;
+    if (!live) return;
+    const visible = visibleReviewNote(selected?.delivery_bundle?.current);
+    if (selected && live.taskId === selected.id && visible === live.text) return;
+    spokenReviewNoteLive.current = null;
+    if (spokenReviewNote) setSpokenReviewNote(null);
+  }, [selected, spokenReviewNote]);
 
   useLayoutEffect(() => {
     // 版本行在交付下面。换一版时上面的正文高度会变，视口容易停在版本列表上。
@@ -2207,9 +2251,25 @@ export default function TasksPage() {
                           {spokenReview &&
                           spokenReview.taskId === selected.id &&
                           spokenReview.text === reviewVisible ? (
-                            <span key={spokenReview.id} className="sr-only" role="status">
+                            <span
+                              key={`review-${spokenReview.id}`}
+                              className="sr-only"
+                              role="status"
+                            >
                               {/* 评审换成新的字时读出来，等当前这一句说完。不把焦点抢过来。 */}
                               {spokenReview.text}
+                            </span>
+                          ) : null}
+                          {spokenReviewNote &&
+                          spokenReviewNote.taskId === selected.id &&
+                          spokenReviewNote.text === reviewNoteVisible ? (
+                            <span
+                              key={`note-${spokenReviewNote.id}`}
+                              className="sr-only"
+                              role="status"
+                            >
+                              {/* 验收说明或返工理由写出来时再读这一句。空白不读。 */}
+                              {spokenReviewNote.text}
                             </span>
                           ) : null}
                           {handler?.dead_letter ? (
