@@ -101,6 +101,64 @@ describe("QuickCaptureDialog", () => {
     });
   });
 
+  it("does not open while an IME composition is in progress", () => {
+    renderWithRouter(<QuickCaptureDialog />);
+    fireEvent.keyDown(window, { key: "m", ctrlKey: true, shiftKey: true, isComposing: true });
+    fireEvent.keyDown(window, { key: "M", metaKey: true, shiftKey: true, isComposing: true });
+    expect(screen.queryByText("快速捕获")).not.toBeInTheDocument();
+  });
+
+  it("keeps the draft when the shortcut or desktop capture fires again", async () => {
+    renderWithRouter(<QuickCaptureDialog />);
+    openDialog();
+    const textarea = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    fireEvent.change(textarea, { target: { value: "还没保存" } });
+    fireEvent.keyDown(window, { key: "m", ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(window, { key: "M", metaKey: true, shiftKey: true });
+    fireEvent.keyDown(window, { key: "m", ctrlKey: true, shiftKey: true, repeat: true });
+    openDialog();
+    expect(textarea).toHaveValue("还没保存");
+    expect(screen.getByText("快速捕获")).toBeInTheDocument();
+    expect(mockCreateMemory).not.toHaveBeenCalled();
+  });
+
+  it("does not drop an in-flight save when capture is requested again", async () => {
+    let release: (row: { id: string; status: string }) => void = () => {};
+    mockCreateMemory.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<QuickCaptureDialog />);
+    openDialog();
+    const textarea = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    fireEvent.change(textarea, { target: { value: "只记一次" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await screen.findByRole("button", { name: "保存中..." });
+    fireEvent.keyDown(window, { key: "m", ctrlKey: true, shiftKey: true });
+    openDialog();
+    expect(textarea).toHaveValue("只记一次");
+    expect(mockCreateMemory).toHaveBeenCalledTimes(1);
+    release({ id: "mem-1", status: "ok" });
+    expect(await screen.findByRole("button", { name: "已保存" })).toBeInTheDocument();
+    expect(textarea).toHaveValue("只记一次");
+  });
+
+  it("opens a fresh note after the previous capture is closed", async () => {
+    renderWithRouter(<QuickCaptureDialog />);
+    openDialog();
+    const textarea = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    fireEvent.change(textarea, { target: { value: "先关掉" } });
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByText("快速捕获")).not.toBeInTheDocument());
+    fireEvent.keyDown(window, { key: "m", ctrlKey: true, shiftKey: true, repeat: true });
+    expect(screen.queryByText("快速捕获")).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "m", metaKey: true, shiftKey: true });
+    const next = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    expect(next).toHaveValue("");
+  });
+
   it("disables save when text is empty", async () => {
     renderWithRouter(<QuickCaptureDialog />);
     openDialog();

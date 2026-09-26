@@ -60,6 +60,7 @@ export default function QuickCaptureDialog() {
   const closeTimer = useRef<number | null>(null);
   const handoff = useRef<CaptureHandoff | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const openRef = useRef(false);
   const addError = useErrorStore((s) => s.addError);
 
   const clearCloseTimer = () => {
@@ -70,6 +71,7 @@ export default function QuickCaptureDialog() {
   };
 
   const resetCapture = useCallback((nextOpen: boolean) => {
+    openRef.current = nextOpen;
     saveGen.current += 1;
     savingRef.current = false;
     submittedRef.current = null;
@@ -84,6 +86,11 @@ export default function QuickCaptureDialog() {
     setOpen(nextOpen);
     setText("");
   }, []);
+  // 已经打开时再按快捷键，或再收到一次桌面捕获，不再清掉草稿，也不打断这次保存。
+  const requestOpen = useCallback(() => {
+    if (openRef.current) return;
+    resetCapture(true);
+  }, [resetCapture]);
   const dismiss = () => resetCapture(false);
   useOverlayDismiss(open, panelRef, dismiss, { initialFocus: "field" });
 
@@ -126,24 +133,25 @@ export default function QuickCaptureDialog() {
     const handler = (e: MessageEvent) => {
       if (e.origin !== window.location.origin) return;
       if (e.data && e.data.type === "quick-capture") {
-        resetCapture(true);
+        requestOpen();
       }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [resetCapture]);
+  }, [requestOpen]);
 
-  // Also bind a web keyboard shortcut (Ctrl/Cmd+Shift+M) for non-Electron use
+  // Also bind a web keyboard shortcut (Ctrl/Cmd+Shift+M) for non-Electron use.
+  // 连发和组字时的这一下不打开。已经打开时不再清掉草稿。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "m") {
-        e.preventDefault();
-        resetCapture(true);
-      }
+      if (!(e.ctrlKey || e.metaKey) || !e.shiftKey || e.key.toLowerCase() !== "m") return;
+      if (e.repeat || e.isComposing) return;
+      e.preventDefault();
+      requestOpen();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [resetCapture]);
+  }, [requestOpen]);
 
   const noteDraftKept = () => {
     savingRef.current = false;
@@ -205,6 +213,7 @@ export default function QuickCaptureDialog() {
       submittedRef.current = null;
       savingRef.current = false;
       textRef.current = "";
+      openRef.current = false;
       setSaved(false);
       setText("");
       setOpen(false);
