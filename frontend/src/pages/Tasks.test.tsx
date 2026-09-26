@@ -1,11 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const { addError } = vi.hoisted(() => ({
   addError: vi.fn(),
 }));
-import { Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { renderWithRouter } from "../test-utils";
+import { queryKeys } from "../hooks/useWsInvalidationBridge";
 import TasksPage, { taskPageLayoutFocus } from "./Tasks";
 import {
   acceptWorkDelivery,
@@ -277,6 +279,26 @@ function renderTasks(path: string) {
     </Routes>,
     { initialEntries: [path] },
   );
+}
+
+function renderTasksWithClient(path: string) {
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+      mutations: { retry: false },
+    },
+  });
+  const view = render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/tasks" element={<TasksPage />} />
+          <Route path="/tasks/:taskId" element={<TasksPage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  return { client, ...view };
 }
 
 /** 按钮卸下的那一轮，绘制前焦点已经在目标上。useEffect 会先停在页面空白。 */
@@ -4450,5 +4472,353 @@ describe("TasksPage", () => {
     expect(adopt).toHaveFocus();
     expect(adopt).not.toBeDisabled();
     expect(adopt).not.toHaveAttribute("aria-busy");
+  });
+
+  it("reads 已完成 when 完成 changes the detail status and does not take focus", async () => {
+    const box = trackTask(
+      {
+        ...sampleTask,
+        id: "sug_1",
+        title: "核对排期",
+        status: "pending",
+        executable_plan: JSON.stringify({ kind: "adopted_suggestion" }),
+      },
+      "task",
+    );
+    let release: () => void = () => {};
+    vi.mocked(updateWorkItemStatus).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            box.item = { ...box.item, status: "completed" };
+            resolve(box.item);
+          };
+        }),
+    );
+    renderTasks("/tasks/sug_1");
+    const done = await screen.findByRole("button", { name: "完成" });
+    const detail = screen.getByRole("region", { name: "任务详情" });
+    expect(
+      within(detail).getByText("待执行", { selector: "span:not([role='status'])" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    done.focus();
+    fireEvent.click(done);
+    expect(await screen.findByRole("button", { name: "完成" })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    await act(async () => {
+      release();
+    });
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent(/^已完成$/);
+    expect(status).toHaveClass("sr-only");
+    expect(status).not.toHaveFocus();
+    expect(currentTaskLink()).toHaveFocus();
+    expect(
+      within(screen.getByRole("region", { name: "任务详情" })).getByText("已完成", {
+        selector: "span:not([role='status'])",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("reads the raw status word when 完成 saves an unknown status", async () => {
+    const box = trackTask(
+      {
+        ...sampleTask,
+        id: "sug_1",
+        title: "核对排期",
+        status: "pending",
+        executable_plan: JSON.stringify({ kind: "adopted_suggestion" }),
+      },
+      "task",
+    );
+    vi.mocked(updateWorkItemStatus).mockImplementation(async () => {
+      box.item = { ...box.item, status: "archived" };
+      return box.item;
+    });
+    renderTasks("/tasks/sug_1");
+    fireEvent.click(await screen.findByRole("button", { name: "完成" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/^archived$/);
+    expect(
+      within(screen.getByRole("region", { name: "任务详情" })).getByText("archived", {
+        selector: "span:not([role='status'])",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not read a status when 完成 fails", async () => {
+    trackTask(
+      {
+        ...sampleTask,
+        id: "sug_1",
+        title: "核对排期",
+        status: "pending",
+        executable_plan: JSON.stringify({ kind: "adopted_suggestion" }),
+      },
+      "task",
+    );
+    vi.mocked(updateWorkItemStatus).mockRejectedValueOnce(new ApiError("完成任务失败", 500));
+    renderTasks("/tasks/sug_1");
+    fireEvent.click(await screen.findByRole("button", { name: "完成" }));
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("完成任务失败", "任务"));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "完成" })).toBeInTheDocument();
+  });
+
+  it("reads 已取消 when 取消 changes the detail status", async () => {
+    const box = trackTask(
+      {
+        ...sampleTask,
+        id: "job_1",
+        title: "夜间同步",
+        work_type: "background",
+        status: "pending",
+      },
+      "background",
+    );
+    vi.mocked(cancelWorkItem).mockImplementation(async () => {
+      box.item = { ...box.item, status: "cancelled" };
+      return box.item;
+    });
+    renderTasks("/tasks/job_1");
+    const cancel = await screen.findByRole("button", { name: "取消" });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    cancel.focus();
+    fireEvent.click(cancel);
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent(/^已取消$/);
+    expect(status).toHaveClass("sr-only");
+    expect(status).not.toHaveFocus();
+    expect(currentTaskLink()).toHaveFocus();
+  });
+
+  it("reads 运行中 when 再次运行 changes the detail status", async () => {
+    const box = trackTask(briefTask, "task");
+    let release: () => void = () => {};
+    vi.mocked(rerunProjectBrief).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            box.item = asRunning(box.item);
+            resolve({
+              work_id: "brief_1",
+              supersedes_delivery_id: "d2",
+              work: box.item,
+            });
+          };
+        }),
+    );
+    renderTasks("/tasks/brief_1");
+    fireEvent.click(await screen.findByRole("button", { name: "再次运行" }));
+    const dialog = await screen.findByRole("dialog", { name: "再次运行同一份简报" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认再次运行" }));
+    expect(
+      await within(dialog).findByRole("button", { name: "再次运行中..." }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    await act(async () => {
+      release();
+    });
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent(/^运行中$/);
+    expect(status).not.toHaveFocus();
+    expect(currentTaskLink()).toHaveFocus();
+    expect(screen.queryByRole("button", { name: "再次运行" })).not.toBeInTheDocument();
+  });
+
+  it("reads 运行中 when 执行 changes the detail status", async () => {
+    const box = trackTask(sampleTask, "task");
+    vi.mocked(executeWorkItem).mockImplementation(async () => {
+      box.item = asRunning(box.item);
+      return box.item;
+    });
+    renderTasks("/tasks/task_1");
+    fireEvent.click(await screen.findByRole("button", { name: "执行" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认执行" }));
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent(/^运行中$/);
+    expect(status).toHaveClass("sr-only");
+    expect(status).not.toHaveFocus();
+    expect(
+      within(screen.getByRole("region", { name: "任务详情" })).getByText("运行中", {
+        selector: "span:not([role='status'])",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not read when 重新执行 leaves the same status word", async () => {
+    const stuck: WorkItem = {
+      ...sampleTask,
+      status: "running",
+      execution: {
+        steps: [{ tool: "write_file" }],
+        resume_from: 0,
+        previous_output: {},
+        handler_execution: {
+          id: "wi_stuck",
+          status: "failed",
+          dead_letter: true,
+          retry_count: 2,
+          handler_name: "on_execute_requested",
+          started_at: "2026-08-06T00:00:00Z",
+          completed_at: "2026-08-06T00:01:00Z",
+          error: "interrupted",
+        },
+      },
+    };
+    const box = trackTask(stuck, "task");
+    vi.mocked(executeWorkItem).mockImplementation(async () => {
+      box.item = asRunning(box.item);
+      return box.item;
+    });
+    renderTasks("/tasks/task_1");
+    fireEvent.click(await screen.findByRole("button", { name: "重新执行" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认执行" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "重新执行" })).not.toBeInTheDocument(),
+    );
+    expect(
+      within(screen.getByRole("region", { name: "任务详情" })).getByText("运行中", {
+        selector: "span:not([role='status'])",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("does not read 已验收, a schedule note, or 转为任务", async () => {
+    const box = trackTask(briefTask, "task");
+    vi.mocked(acceptWorkDelivery).mockImplementation(async () => {
+      box.item = withReview(box.item, "accepted");
+      return {
+        replayed: false,
+        work_id: "brief_1",
+        decision: {},
+        bundle: box.item.delivery_bundle!,
+      };
+    });
+    renderTasks("/tasks/brief_1");
+    fireEvent.click(await screen.findByRole("button", { name: "验收" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认验收" }));
+    await waitFor(() => expect(screen.getAllByText("已验收").length).toBeGreaterThan(0));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "定时再次运行" }));
+    fireEvent.change(screen.getByLabelText("小时"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "确认定时" }));
+    expect(await screen.findByTestId("scheduled-repeat-note")).toHaveTextContent("再次运行");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    vi.mocked(adoptSuggestedAction).mockImplementation(async () => {
+      const bundle = box.item.delivery_bundle!;
+      box.item = {
+        ...box.item,
+        delivery_bundle: {
+          ...bundle,
+          current: {
+            ...bundle.current!,
+            suggested_actions: [{ title: "核对排期", adopted_work_id: "todo_1" }],
+          },
+        },
+      };
+      return {
+        work_id: box.item.id,
+        replayed: false,
+        action_index: 0,
+        created_work_id: "todo_1",
+        work: box.item,
+        bundle: box.item.delivery_bundle!,
+      };
+    });
+    fireEvent.click(screen.getByRole("button", { name: "转为任务" }));
+    expect(await screen.findByRole("link", { name: "已转为任务" })).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("drops the last status when another task opens and does not read the one already there", async () => {
+    const first: WorkItem = {
+      ...sampleTask,
+      id: "sug_1",
+      title: "核对排期",
+      status: "pending",
+      executable_plan: JSON.stringify({ kind: "adopted_suggestion" }),
+    };
+    const second: WorkItem = {
+      ...sampleTask,
+      id: "task_2",
+      title: "另一件",
+      status: "pending",
+    };
+    const box = { current: first };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [box.current, second];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockImplementation(async (id: string) =>
+      id === "task_2" ? second : box.current,
+    );
+    vi.mocked(updateWorkItemStatus).mockImplementation(async () => {
+      box.current = { ...box.current, status: "completed" };
+      return box.current;
+    });
+    renderTasks("/tasks/sug_1");
+    fireEvent.click(await screen.findByRole("button", { name: "完成" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/^已完成$/);
+
+    fireEvent.click(screen.getByRole("link", { name: /另一件/ }));
+    expect(await screen.findByRole("heading", { name: "另一件" })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "任务详情" })).getByText("待执行", {
+        selector: "span:not([role='status'])",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("reads 已完成 again after a refresh clears it and 完成 runs once more", async () => {
+    const box = trackTask(
+      {
+        ...sampleTask,
+        id: "sug_1",
+        title: "核对排期",
+        status: "pending",
+        executable_plan: JSON.stringify({ kind: "adopted_suggestion" }),
+      },
+      "task",
+    );
+    vi.mocked(updateWorkItemStatus).mockImplementation(async () => {
+      box.item = { ...box.item, status: "completed" };
+      return box.item;
+    });
+    const { client } = renderTasksWithClient("/tasks/sug_1");
+    fireEvent.click(await screen.findByRole("button", { name: "完成" }));
+    const first = await screen.findByRole("status");
+    expect(first).toHaveTextContent(/^已完成$/);
+
+    box.item = {
+      ...box.item,
+      status: "pending",
+      executable_plan: JSON.stringify({ kind: "adopted_suggestion" }),
+    };
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: queryKeys.tasks });
+    });
+    const again = await screen.findByRole("button", { name: "完成" });
+    expect(
+      within(screen.getByRole("region", { name: "任务详情" })).getByText("待执行", {
+        selector: "span:not([role='status'])",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    fireEvent.click(again);
+    const second = await screen.findByRole("status");
+    expect(second).not.toBe(first);
+    expect(second).toHaveTextContent(/^已完成$/);
+    expect(second).not.toHaveFocus();
   });
 });
