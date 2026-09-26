@@ -70,6 +70,14 @@ export default function InboxEmailDetailModal({ email, onClose }: Props) {
 
   if (!email) return null;
 
+  // 对话框先拿到焦点。这一段晚到，读屏名字不在按钮上，听不到。
+  // 生成中读这一句；写回来读摘要本身。失败仍走原来的提示，不在旁边再读一遍。
+  const summaryAnnouncement = shownSummaryError
+    ? null
+    : summarizing
+      ? "AI 正在生成摘要..."
+      : summary;
+
   const cat = CATEGORY_LABELS[email.category] || {
     label: email.category,
     color: "text-fg-tertiary",
@@ -150,13 +158,19 @@ export default function InboxEmailDetailModal({ email, onClose }: Props) {
                 }}
                 testId="inbox-summary-load-error"
               />
-            ) : summarizing ? (
-              <p className="text-sm text-fg-tertiary animate-pulse">AI 正在生成摘要...</p>
-            ) : (
-              <p className="text-sm text-fg-primary leading-relaxed bg-surface-overlay rounded-lg p-3">
-                {summary}
+            ) : summaryAnnouncement ? (
+              <p
+                className={
+                  summarizing
+                    ? "text-sm text-fg-tertiary animate-pulse"
+                    : "text-sm text-fg-primary leading-relaxed bg-surface-overlay rounded-lg p-3"
+                }
+                role="status"
+              >
+                {/* 出现时读出来，等当前这一句说完。不把焦点抢过来。 */}
+                {summaryAnnouncement}
               </p>
-            )}
+            ) : null}
           </div>
         </div>
 
