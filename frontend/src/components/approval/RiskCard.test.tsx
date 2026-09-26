@@ -8,6 +8,12 @@ afterEach(() => {
   cleanup();
 });
 
+function preWithText(text: string): HTMLElement {
+  const pre = [...document.querySelectorAll("pre")].find((node) => node.textContent === text);
+  if (!pre) throw new Error("missing pre");
+  return pre;
+}
+
 const policy: CapabilityPolicy = {
   auto_allow: ["read_file"],
   needs_user: ["write_file", "apply_patch"],
@@ -230,5 +236,187 @@ describe("RiskCard", () => {
     );
     fireEvent.click(screen.getByText("查看详细参数"));
     expect(screen.getByText(/"path"/)).toBeInTheDocument();
+  });
+
+  it("writes the full detailed args when the keyboard lands, and leaves a short block alone", () => {
+    const wide = JSON.stringify({ k: "x".repeat(72) }, null, 2);
+    const exact = JSON.stringify({ k: "x".repeat(71) }, null, 2);
+    const tall = JSON.stringify({ a: "1", b: "2", c: "3", d: "4" }, null, 2);
+    const fit = JSON.stringify({ a: "1", b: "2", c: "3" }, null, 2);
+    expect(wide.split("\n").some((line) => line.length > 80)).toBe(true);
+    expect(exact.split("\n").every((line) => line.length <= 80)).toBe(true);
+    expect(tall.split("\n")).toHaveLength(6);
+    expect(fit.split("\n")).toHaveLength(5);
+
+    const { rerender } = renderWithRouter(
+      <RiskCard action="read_file" args={JSON.stringify({ k: "x".repeat(72) })} riskLevel="low" />,
+    );
+
+    fireEvent.click(screen.getByText("查看详细参数"));
+    const box = document.querySelector("[data-approval-capped='args']");
+    if (!box) throw new Error("missing args preview");
+    expect(box).toHaveAttribute("title", wide);
+    expect(box).toHaveAttribute("tabindex", "0");
+    expect(box).toHaveClass(
+      "group",
+      "max-h-24",
+      "overflow-y-auto",
+      "focus-visible:max-h-none",
+      "focus-visible:overflow-visible",
+      "focus-visible:outline-none",
+      "focus-visible:ring-2",
+      "focus-visible:ring-focus-ring",
+    );
+    expect(box.className).not.toContain("group-hover:");
+    expect(box.closest("button")).toBeNull();
+    expect(box.closest("summary")).toBeNull();
+    const details = screen.getByText("查看详细参数").closest("details");
+    const openBefore = (details as HTMLDetailsElement).open;
+    const body = box.querySelector("pre");
+    expect(body?.textContent).toBe(wide);
+    expect(body).toHaveClass(
+      "group-focus-visible:overflow-visible",
+      "group-focus-visible:whitespace-pre-wrap",
+      "group-focus-visible:break-all",
+    );
+    expect(body?.className).not.toContain("group-hover:");
+    expect(body?.className).not.toContain("group-focus-visible:hidden");
+
+    expect(fireEvent.keyDown(box, { key: " " })).toBe(false);
+    expect(fireEvent.keyDown(box, { key: "Enter" })).toBe(false);
+    expect((details as HTMLDetailsElement).open).toBe(openBefore);
+    expect(fireEvent.keyDown(box, { key: "Enter", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "Enter", keyCode: 229 })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "Process" })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: " ", keyCode: 229 })).toBe(true);
+
+    rerender(
+      <RiskCard action="read_file" args={JSON.stringify({ k: "x".repeat(71) })} riskLevel="low" />,
+    );
+    expect(document.querySelector("[data-approval-capped='args']")).toBeNull();
+    const exactPre = preWithText(exact);
+    expect(exactPre.tagName).toBe("PRE");
+    expect(exactPre).not.toHaveAttribute("tabindex");
+    expect(exactPre).toHaveClass("max-h-24", "overflow-y-auto", "overflow-x-auto");
+
+    rerender(
+      <RiskCard
+        action="read_file"
+        args={JSON.stringify({ a: "1", b: "2", c: "3", d: "4" })}
+        riskLevel="low"
+      />,
+    );
+    const tallBox = document.querySelector("[data-approval-capped='args']");
+    expect(tallBox).toHaveAttribute("title", tall);
+    expect(tallBox).toHaveAttribute("tabindex", "0");
+    expect(tallBox?.querySelector("pre")?.textContent).toBe(tall);
+
+    rerender(
+      <RiskCard
+        action="read_file"
+        args={JSON.stringify({ a: "1", b: "2", c: "3" })}
+        riskLevel="low"
+      />,
+    );
+    expect(document.querySelector("[data-approval-capped='args']")).toBeNull();
+    const fitPre = preWithText(fit);
+    expect(fitPre.tagName).toBe("PRE");
+    expect(fitPre).not.toHaveAttribute("tabindex");
+    expect(fitPre).toHaveClass("max-h-24");
+  });
+
+  it("writes the full write preview when the keyboard lands, and leaves a short block alone", () => {
+    const wide = "w".repeat(801);
+    const exact = "w".repeat(800);
+    const tall = Array.from({ length: 11 }, () => "a".repeat(40)).join("\n");
+    const fit = Array.from({ length: 10 }, () => "a".repeat(40)).join("\n");
+    expect(wide.length).toBeGreaterThan(400);
+    expect(exact.length).toBeGreaterThan(400);
+
+    const { rerender } = renderWithRouter(
+      <RiskCard
+        action="write_file"
+        args={JSON.stringify({ path: "/tmp/a.txt", content: wide })}
+        riskLevel="medium"
+        variant="panel"
+      />,
+    );
+
+    fireEvent.click(screen.getByText("查看完整内容"));
+    const box = document.querySelector("[data-approval-capped='full']");
+    if (!box) throw new Error("missing full preview");
+    expect(box).toHaveAttribute("title", wide);
+    expect(box).toHaveAttribute("tabindex", "0");
+    expect(box).toHaveClass(
+      "group",
+      "max-h-40",
+      "overflow-y-auto",
+      "focus-visible:max-h-none",
+      "focus-visible:overflow-visible",
+      "focus-visible:outline-none",
+      "focus-visible:ring-2",
+      "focus-visible:ring-focus-ring",
+    );
+    expect(box.className).not.toContain("group-hover:");
+    expect(box.closest("button")).toBeNull();
+    expect(box.closest("summary")).toBeNull();
+    const details = screen.getByText("查看完整内容").closest("details");
+    const openBefore = (details as HTMLDetailsElement).open;
+    const body = box.querySelector("pre");
+    expect(body?.textContent).toBe(wide);
+    expect(body).toHaveClass("whitespace-pre-wrap", "break-all");
+    expect(body?.className).not.toContain("group-focus-visible:");
+    expect(body?.className).not.toContain("group-hover:");
+    expect(screen.getByText(`${wide.slice(0, 400)}…`, { exact: false })).toBeInTheDocument();
+
+    expect(fireEvent.keyDown(box, { key: " " })).toBe(false);
+    expect(fireEvent.keyDown(box, { key: "Enter" })).toBe(false);
+    expect((details as HTMLDetailsElement).open).toBe(openBefore);
+    expect(fireEvent.keyDown(box, { key: "Enter", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "Enter", keyCode: 229 })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "Process" })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: " ", keyCode: 229 })).toBe(true);
+
+    rerender(
+      <RiskCard
+        action="write_file"
+        args={JSON.stringify({ path: "/tmp/a.txt", content: exact })}
+        riskLevel="medium"
+        variant="panel"
+      />,
+    );
+    expect(document.querySelector("[data-approval-capped='full']")).toBeNull();
+    expect(screen.getByText("查看完整内容")).toBeInTheDocument();
+    const exactPre = preWithText(exact);
+    expect(exactPre.tagName).toBe("PRE");
+    expect(exactPre).not.toHaveAttribute("tabindex");
+    expect(exactPre).toHaveClass("max-h-40", "overflow-y-auto", "whitespace-pre-wrap");
+
+    rerender(
+      <RiskCard
+        action="write_file"
+        args={JSON.stringify({ path: "/tmp/a.txt", content: tall })}
+        riskLevel="medium"
+        variant="panel"
+      />,
+    );
+    const tallBox = document.querySelector("[data-approval-capped='full']");
+    expect(tallBox).toHaveAttribute("title", tall);
+    expect(tallBox).toHaveAttribute("tabindex", "0");
+    expect(tallBox?.querySelector("pre")?.textContent).toBe(tall);
+
+    rerender(
+      <RiskCard
+        action="write_file"
+        args={JSON.stringify({ path: "/tmp/a.txt", content: fit })}
+        riskLevel="medium"
+        variant="panel"
+      />,
+    );
+    expect(document.querySelector("[data-approval-capped='full']")).toBeNull();
+    const fitPre = preWithText(fit);
+    expect(fitPre.tagName).toBe("PRE");
+    expect(fitPre).not.toHaveAttribute("tabindex");
+    expect(fitPre).toHaveClass("max-h-40");
   });
 });
