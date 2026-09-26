@@ -43,4 +43,40 @@ describe("ToastCard", () => {
       "focus-visible:ring-focus-ring",
     );
   });
+
+  it("opens on Enter or Space without scrolling the page", () => {
+    const onClick = vi.fn();
+    render(<ToastCard tone="insight" title="喝水" body="该喝了" onClick={onClick} />);
+    const region = screen.getByRole("button", { name: /喝水/ });
+    expect(fireEvent.keyDown(region, { key: " " })).toBe(false);
+    expect(fireEvent.keyDown(region, { key: "Enter" })).toBe(false);
+    expect(onClick).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not open while an IME composition is in progress", () => {
+    const onClick = vi.fn();
+    render(<ToastCard tone="insight" title="喝水" onClick={onClick} />);
+    const region = screen.getByRole("button", { name: /喝水/ });
+    expect(fireEvent.keyDown(region, { key: "Enter", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(region, { key: " ", isComposing: true })).toBe(true);
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("does not open again when the key repeats", () => {
+    const onClick = vi.fn();
+    render(<ToastCard tone="insight" title="喝水" onClick={onClick} />);
+    const region = screen.getByRole("button", { name: /喝水/ });
+    expect(fireEvent.keyDown(region, { key: "Enter", repeat: true })).toBe(false);
+    expect(fireEvent.keyDown(region, { key: " ", repeat: true })).toBe(false);
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("ignores keys other than Enter and Space", () => {
+    const onClick = vi.fn();
+    render(<ToastCard tone="insight" title="喝水" onClick={onClick} />);
+    expect(fireEvent.keyDown(screen.getByRole("button", { name: /喝水/ }), { key: "a" })).toBe(
+      true,
+    );
+    expect(onClick).not.toHaveBeenCalled();
+  });
 });

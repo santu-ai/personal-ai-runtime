@@ -249,6 +249,7 @@ export default function NotificationBell({ compact = false }: Props) {
             });
           }}
           className={`nav-item nav-item-idle ${compact ? "justify-center px-0" : ""}`}
+          data-notification-bell=""
           aria-label="通知"
           title={compact ? "通知" : undefined}
         >
