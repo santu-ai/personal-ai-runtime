@@ -679,7 +679,10 @@ describe("TasksPage", () => {
 
     const log = await screen.findByRole("region", { name: "执行状态" });
     expect(within(log).getByText("Timeout after 30.0s")).toBeInTheDocument();
-    expect(within(log).getByText(/on_execute_requested/)).toBeInTheDocument();
+    expect(within(log).getByText("执行任务 · 失败 · 死信 · 重试 3")).toBeInTheDocument();
+    expect(within(log).queryByText(/on_execute_requested/)).not.toBeInTheDocument();
+    expect(within(log).queryByText(/handler:/)).not.toBeInTheDocument();
+    expect(within(log).queryByText(/dead_letter/)).not.toBeInTheDocument();
   });
 
   it("shows a stored failure reason beside the rerun hint", async () => {
@@ -876,7 +879,8 @@ describe("TasksPage", () => {
 
     const log = await screen.findByRole("region", { name: "执行状态" });
     expect(within(log).getByText("disk full")).toBeInTheDocument();
-    expect(within(log).getByText(/completed/)).toBeInTheDocument();
+    expect(within(log).getByText("执行任务 · 已完成")).toBeInTheDocument();
+    expect(within(log).queryByText(/completed/)).not.toBeInTheDocument();
   });
 
   it("offers retry when a running task's handler has already failed", async () => {

@@ -2,6 +2,7 @@ import type { KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
 import { Clock, RefreshCw } from "lucide-react";
 import type { RerunnableBrief, TimerStatusItem } from "../../api/types";
+import { handlerLabel } from "../../utils/handlerLabels";
 import { isImeKeyboardEvent } from "../../utils/imeKey";
 
 /** 平时一行。键盘落到这一行时写出整句。鼠标悬停仍是一行。 */
@@ -15,21 +16,8 @@ function keepBareKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
   if (event.key === "Enter" || event.key === " ") event.preventDefault();
 }
 
-const TIMER_LABELS: Record<string, string> = {
-  morning_brief: "早安简报",
-  deadline_alert: "截止提醒",
-  memory_decay: "记忆衰减",
-  world_model_snapshot: "世界模型快照",
-  projection_snapshots: "投影快照",
-  inbox_poll: "收件箱拉取",
-  inbox_digest: "收件箱摘要",
-  url_monitor: "网页监控",
-  telegram_poll: "Telegram 轮询",
-  reminder: "提醒",
-};
-
 function timerLabel(name: string): string {
-  return TIMER_LABELS[name] || name || "定时任务";
+  return handlerLabel(name) || "定时任务";
 }
 
 function scheduleLabel(scheduleType: string): string {

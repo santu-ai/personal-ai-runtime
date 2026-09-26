@@ -58,6 +58,7 @@ import {
 } from "../utils/deliverySourceNav";
 import { isImeKeyboardEvent } from "../utils/imeKey";
 import { timeAgo } from "../utils/timeUtils";
+import { executionStatusLabel, handlerLabel } from "../utils/handlerLabels";
 import { toolLabel } from "../utils/toolLabels";
 import { ListTodo } from "lucide-react";
 
@@ -209,16 +210,23 @@ function placeDirectActionFocus(handoff: TaskDirectHandoff): void {
 }
 
 function statusLabel(status: string): string {
-  const map: Record<string, string> = {
-    pending: "待执行",
-    running: "运行中",
-    blocked: "阻塞",
-    waiting_approval: "待审批",
-    completed: "已完成",
-    failed: "失败",
-    cancelled: "已取消",
-  };
-  return map[status] || status;
+  return executionStatusLabel(status);
+}
+
+/** 执行状态这一行。名字和定时栏相同，状态和任务行相同，死信写成「死信」。 */
+function executionStatusLine(handler: {
+  handler_name: string;
+  status: string;
+  dead_letter: boolean;
+  retry_count: number;
+}): string {
+  const parts = [
+    handlerLabel(handler.handler_name) || "—",
+    executionStatusLabel(handler.status) || "—",
+  ];
+  if (handler.dead_letter) parts.push("死信");
+  if (handler.retry_count > 0) parts.push(`重试 ${handler.retry_count}`);
+  return parts.join(" · ");
 }
 
 function statusClass(status: string): string {
@@ -2703,11 +2711,7 @@ export default function TasksPage() {
                       {handler && (
                         <section className="space-y-1 text-sm" aria-label="执行状态">
                           <h3 className="text-sm font-medium text-fg-primary">执行状态</h3>
-                          <p className="text-fg-secondary">
-                            handler: {handler.handler_name || "—"} · {handler.status}
-                            {handler.dead_letter ? " · dead_letter" : ""}
-                            {handler.retry_count > 0 ? ` · 重试 ${handler.retry_count}` : ""}
-                          </p>
+                          <p className="text-fg-secondary">{executionStatusLine(handler)}</p>
                           {handler.error ? (
                             <p className="whitespace-pre-wrap break-all text-xs text-danger">
                               {handler.error}
