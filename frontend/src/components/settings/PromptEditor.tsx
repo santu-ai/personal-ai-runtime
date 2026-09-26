@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getPromptConfig, updatePromptConfig } from "../../api/client";
 import { useErrorStore } from "../../stores/errorStore";
@@ -19,6 +19,8 @@ function focusIsIdle(stale?: HTMLElement | null): boolean {
 }
 
 export default function PromptEditor() {
+  const identityId = useId();
+  const codingRulesId = useId();
   const addError = useErrorStore((s) => s.addError);
   const queryClient = useQueryClient();
   const { data: cfg, isLoading, isFetching, error, refetch } = usePromptConfigQuery();
@@ -147,7 +149,7 @@ export default function PromptEditor() {
     <div className="space-y-4">
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-xs text-fg-secondary">
+          <label htmlFor={identityId} className="text-xs text-fg-secondary">
             身份定义 {isCustomIdentity && <span className="text-insight">(已自定义)</span>}
           </label>
           <div className="flex gap-2">
@@ -179,6 +181,7 @@ export default function PromptEditor() {
           </div>
         </div>
         <textarea
+          id={identityId}
           data-prompt-field="identity"
           data-prompt-input=""
           value={identity}
@@ -193,7 +196,7 @@ export default function PromptEditor() {
       </div>
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-xs text-fg-secondary">
+          <label htmlFor={codingRulesId} className="text-xs text-fg-secondary">
             代码规则 {isCustomCodingRules && <span className="text-insight">(已自定义)</span>}
           </label>
           <div className="flex gap-2">
@@ -229,6 +232,7 @@ export default function PromptEditor() {
           </div>
         </div>
         <textarea
+          id={codingRulesId}
           data-prompt-field="coding_rules"
           data-prompt-input=""
           value={codingRules}

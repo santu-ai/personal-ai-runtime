@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import {
   updateLlmSettings,
   testLlmConnection,
@@ -13,6 +13,27 @@ import Badge from "../ui/Badge";
 import { Input, PasswordInput } from "../ui/Input";
 
 const MASKED_SECRET = "••••••••";
+
+/** 旁边已经写着的名字连到这一栏。点名字会进去，读屏也读出这个名字。 */
+function NamedField({
+  label,
+  className = "",
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: (id: string) => ReactNode;
+}) {
+  const id = useId();
+  return (
+    <div className={className || undefined}>
+      <label htmlFor={id} className="text-xs text-fg-tertiary block mb-1">
+        {label}
+      </label>
+      {children(id)}
+    </div>
+  );
+}
 
 function emptyProvider(id = ""): LlmProviderConfig {
   return {
@@ -160,49 +181,55 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
       {!embedded && <h3 className="text-sm font-medium text-fg-secondary mb-3">LLM 配置</h3>}
 
       <div className="grid grid-cols-3 gap-3 mb-4">
-        <div>
-          <label className="text-xs text-fg-tertiary block mb-1">默认 Provider</label>
-          <select
-            value={llmDefault}
-            onChange={(e) => {
-              setLlmDefault(e.target.value);
-              markDirty();
-            }}
-            className="w-full bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-          >
-            {llmForm.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name || p.id}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="text-xs text-fg-tertiary block mb-1">Temperature</label>
-          <Input
-            type="number"
-            step="0.1"
-            min="0"
-            max="2"
-            value={llmTemperature}
-            onChange={(e) => {
-              setLlmTemperature(parseFloat(e.target.value) || 0);
-              markDirty();
-            }}
-          />
-        </div>
-        <div>
-          <label className="text-xs text-fg-tertiary block mb-1">Max Tokens</label>
-          <Input
-            type="number"
-            min="256"
-            value={llmMaxTokens}
-            onChange={(e) => {
-              setLlmMaxTokens(parseInt(e.target.value, 10) || 4096);
-              markDirty();
-            }}
-          />
-        </div>
+        <NamedField label="默认 Provider">
+          {(id) => (
+            <select
+              id={id}
+              value={llmDefault}
+              onChange={(e) => {
+                setLlmDefault(e.target.value);
+                markDirty();
+              }}
+              className="w-full bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+            >
+              {llmForm.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name || p.id}
+                </option>
+              ))}
+            </select>
+          )}
+        </NamedField>
+        <NamedField label="Temperature">
+          {(id) => (
+            <Input
+              id={id}
+              type="number"
+              step="0.1"
+              min="0"
+              max="2"
+              value={llmTemperature}
+              onChange={(e) => {
+                setLlmTemperature(parseFloat(e.target.value) || 0);
+                markDirty();
+              }}
+            />
+          )}
+        </NamedField>
+        <NamedField label="Max Tokens">
+          {(id) => (
+            <Input
+              id={id}
+              type="number"
+              min="256"
+              value={llmMaxTokens}
+              onChange={(e) => {
+                setLlmMaxTokens(parseInt(e.target.value, 10) || 4096);
+                markDirty();
+              }}
+            />
+          )}
+        </NamedField>
       </div>
 
       <div className="space-y-4">
@@ -262,68 +289,84 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-fg-tertiary block mb-1">ID</label>
-                  <Input
-                    value={provider.id}
-                    onChange={(e) => updateProvider(index, { id: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-fg-tertiary block mb-1">显示名称</label>
-                  <Input
-                    value={provider.name}
-                    onChange={(e) => updateProvider(index, { name: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-fg-tertiary block mb-1">类型</label>
-                  <select
-                    value={provider.type}
-                    onChange={(e) =>
-                      updateProvider(index, {
-                        type: e.target.value as LlmProviderConfig["type"],
-                        api_key: e.target.value === "ollama" ? "ollama" : provider.api_key,
-                      })
-                    }
-                    className="w-full bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-                  >
-                    <option value="openai_compatible">OpenAI 兼容</option>
-                    <option value="ollama">Ollama 本地</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-fg-tertiary block mb-1">模型</label>
-                  <Input
-                    value={provider.model}
-                    onChange={(e) => updateProvider(index, { model: e.target.value })}
-                    placeholder="deepseek-chat / gpt-4o / qwen2.5:7b"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="text-xs text-fg-tertiary block mb-1">Base URL</label>
-                  <Input
-                    value={provider.base_url}
-                    onChange={(e) => updateProvider(index, { base_url: e.target.value })}
-                    placeholder="https://api.deepseek.com/v1"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="text-xs text-fg-tertiary block mb-1">API Key</label>
-                  <PasswordInput
-                    value={provider.api_key}
-                    isSavedSecret={Boolean(
-                      provider.has_api_key && provider.api_key === MASKED_SECRET,
-                    )}
-                    onChange={(e) => updateProvider(index, { api_key: e.target.value })}
-                    placeholder={
-                      provider.type === "ollama" ? "ollama（可留空）" : "留空则使用 .env 中的密钥"
-                    }
-                  />
-                  {provider.has_api_key && provider.api_key === MASKED_SECRET && (
-                    <p className="text-xs text-fg-disabled mt-1">已保存密钥，留空则不修改</p>
+                <NamedField label="ID">
+                  {(id) => (
+                    <Input
+                      id={id}
+                      value={provider.id}
+                      onChange={(e) => updateProvider(index, { id: e.target.value })}
+                    />
                   )}
-                </div>
+                </NamedField>
+                <NamedField label="显示名称">
+                  {(id) => (
+                    <Input
+                      id={id}
+                      value={provider.name}
+                      onChange={(e) => updateProvider(index, { name: e.target.value })}
+                    />
+                  )}
+                </NamedField>
+                <NamedField label="类型">
+                  {(id) => (
+                    <select
+                      id={id}
+                      value={provider.type}
+                      onChange={(e) =>
+                        updateProvider(index, {
+                          type: e.target.value as LlmProviderConfig["type"],
+                          api_key: e.target.value === "ollama" ? "ollama" : provider.api_key,
+                        })
+                      }
+                      className="w-full bg-surface-overlay border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                    >
+                      <option value="openai_compatible">OpenAI 兼容</option>
+                      <option value="ollama">Ollama 本地</option>
+                    </select>
+                  )}
+                </NamedField>
+                <NamedField label="模型">
+                  {(id) => (
+                    <Input
+                      id={id}
+                      value={provider.model}
+                      onChange={(e) => updateProvider(index, { model: e.target.value })}
+                      placeholder="deepseek-chat / gpt-4o / qwen2.5:7b"
+                    />
+                  )}
+                </NamedField>
+                <NamedField label="Base URL" className="col-span-2">
+                  {(id) => (
+                    <Input
+                      id={id}
+                      value={provider.base_url}
+                      onChange={(e) => updateProvider(index, { base_url: e.target.value })}
+                      placeholder="https://api.deepseek.com/v1"
+                    />
+                  )}
+                </NamedField>
+                <NamedField label="API Key" className="col-span-2">
+                  {(id) => (
+                    <>
+                      <PasswordInput
+                        id={id}
+                        value={provider.api_key}
+                        isSavedSecret={Boolean(
+                          provider.has_api_key && provider.api_key === MASKED_SECRET,
+                        )}
+                        onChange={(e) => updateProvider(index, { api_key: e.target.value })}
+                        placeholder={
+                          provider.type === "ollama"
+                            ? "ollama（可留空）"
+                            : "留空则使用 .env 中的密钥"
+                        }
+                      />
+                      {provider.has_api_key && provider.api_key === MASKED_SECRET && (
+                        <p className="text-xs text-fg-disabled mt-1">已保存密钥，留空则不修改</p>
+                      )}
+                    </>
+                  )}
+                </NamedField>
               </div>
 
               <label className="flex items-center gap-2 text-xs text-fg-secondary">
