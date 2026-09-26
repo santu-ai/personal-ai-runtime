@@ -155,19 +155,45 @@ describe("Sidebar", () => {
   it("calls onDeleteChat when delete button clicked", () => {
     const onDeleteChat = vi.fn();
     renderSidebar("/", { onDeleteChat });
-    const deleteButtons = screen.getAllByLabelText("删除对话");
-    fireEvent.click(deleteButtons[0]);
+    fireEvent.click(screen.getByRole("button", { name: "删除对话：Rust学习讨论" }));
     expect(onDeleteChat).toHaveBeenCalledWith("c1");
   });
 
   it("writes 删除对话 when the keyboard lands on the trash icon", () => {
     renderSidebar("/");
-    const button = screen.getAllByRole("button", { name: "删除对话" })[0];
+    const button = screen.getByRole("button", { name: "删除对话：Rust学习讨论" });
     expect(button).toHaveAttribute("title", "删除对话");
-    const name = button?.querySelector("[data-icon-name]");
+    const name = button.querySelector("[data-icon-name]");
     expect(name).toHaveTextContent("删除对话");
     expect(name).toHaveClass("hidden", "group-focus-visible:block");
-    expect(button?.querySelector("svg")).toHaveClass("group-focus-visible:hidden");
+    expect(button.querySelector("svg")).toHaveClass("group-focus-visible:hidden");
+  });
+
+  it("names each delete button with that conversation title", () => {
+    renderSidebar("/", {
+      conversations: [
+        { id: "c-space", title: "  前  后  " },
+        { id: "c-break", title: "前一段\n后一段" },
+        { id: "c-blank", title: "   " },
+        { id: "c-empty", title: "" },
+        { id: "c-sum", title: "同题", summary: "摘要不进名字" },
+      ],
+    });
+    const named = (id: string) =>
+      document.querySelector(`[data-conversation-delete="${id}"]`) as HTMLButtonElement;
+    const spaced = named("c-space");
+    expect(spaced).toHaveAttribute("aria-label", "删除对话：前  后");
+    expect(spaced).toHaveAttribute("title", "删除对话");
+    expect(named("c-break")).toHaveAttribute("aria-label", "删除对话：前一段\n后一段");
+    expect(named("c-blank")).toHaveAttribute("aria-label", "删除对话：未命名");
+    expect(named("c-empty")).toHaveAttribute("aria-label", "删除对话：未命名");
+    const withSummary = named("c-sum");
+    expect(withSummary).toHaveAttribute("aria-label", "删除对话：同题");
+    expect(withSummary.getAttribute("aria-label")).not.toContain("摘要不进名字");
+    expect(withSummary.querySelector("[data-icon-name]")).toHaveTextContent("删除对话");
+    expect(screen.getByRole("button", { name: "删除对话：同题" })).toBe(withSummary);
+    expect(screen.getByRole("link", { name: /摘要不进名字/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /前\s+后/ }).textContent).toBe("  前  后  ");
   });
 
   it("keeps an icon rail on a narrow viewport and writes the name when the keyboard lands", () => {

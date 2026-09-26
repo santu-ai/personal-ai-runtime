@@ -182,7 +182,7 @@ describe("Layout delete conversation", () => {
     );
 
     expect(await screen.findByRole("link", { name: "周末计划" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "删除对话" }));
+    fireEvent.click(screen.getByRole("button", { name: "删除对话：周末计划" }));
     const dialog = await screen.findByRole("dialog", { name: "删除对话" });
     expect(dialog).toHaveTextContent("周末计划");
     fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
@@ -299,7 +299,9 @@ describe("Layout delete conversation focus", () => {
 
   function deleteButton(title: string) {
     const link = screen.getByRole("link", { name: title });
-    return within(link.parentElement as HTMLElement).getByRole("button", { name: "删除对话" });
+    return within(link.parentElement as HTMLElement).getByRole("button", {
+      name: `删除对话：${title}`,
+    });
   }
 
   it("moves focus to the next conversation delete button", async () => {
