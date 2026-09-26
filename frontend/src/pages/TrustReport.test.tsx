@@ -5,6 +5,7 @@ import { TrustReportPanel, trustReportLayoutFocus } from "./TrustReport";
 
 import { getTrustReport, type TrustReportData } from "../api/trustReport";
 import { retryMemoryIndexRepair } from "../api/telemetry";
+import { visibleToolName } from "../utils/toolLabels";
 
 vi.mock("../api/trustReport", () => ({ getTrustReport: vi.fn() }));
 vi.mock("../api/telemetry", async (importOriginal) => {
@@ -237,13 +238,15 @@ describe("TrustReportPanel", () => {
     });
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText("write_file")).toBeInTheDocument();
-      expect(screen.getByText("send_email")).toBeInTheDocument();
+      expect(screen.getByText("写入文件")).toBeInTheDocument();
+      expect(screen.getByText("发送邮件")).toBeInTheDocument();
     });
-    const writeFile = screen.getByRole("link", { name: "write_file" });
+    expect(screen.queryByText("write_file")).not.toBeInTheDocument();
+    expect(screen.queryByText("send_email")).not.toBeInTheDocument();
+    const writeFile = screen.getByRole("link", { name: "写入文件" });
     expect(writeFile).toHaveAttribute("href", "/approvals");
     expect(writeFile).toHaveClass("focus-visible:ring-focus-ring");
-    const sendEmail = screen.getByRole("link", { name: "send_email" });
+    const sendEmail = screen.getByRole("link", { name: "发送邮件" });
     expect(sendEmail).toHaveAttribute("href", "/approvals");
     expect(sendEmail).toHaveClass("focus-visible:ring-focus-ring");
     expect(screen.getByText("讨论").closest("a")).toBeNull();
@@ -266,23 +269,49 @@ describe("TrustReportPanel", () => {
     });
     renderPage();
     await waitFor(() => {
-      expect(screen.getByText("shell_exec")).toBeInTheDocument();
+      expect(screen.getByText("执行命令")).toBeInTheDocument();
     });
+    expect(screen.queryByText("shell_exec")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "执行命令" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "shell_exec" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "corr_only" })).not.toBeInTheDocument();
     expect(screen.getByText("corr_only")).toBeInTheDocument();
   });
 
+  it("writes 未知操作 when the pending action is blank", async () => {
+    mockGetReport.mockResolvedValue({
+      ...BASE,
+      approvals: [
+        {
+          id: "a-blank",
+          action: "   ",
+          status: "pending",
+          flow_type: "系统",
+          flow_label: "空白操作",
+          correlation_id: "c-blank",
+        },
+      ],
+    });
+    renderPage();
+    const row = await screen.findByRole("link", { name: "未知操作" });
+    expect(row).toHaveAttribute("href", "/approvals");
+    expect(screen.queryByText("执行操作")).not.toBeInTheDocument();
+  });
+
   it("writes the full approval, repair id, and tool name when keyboard focused", async () => {
     const action = "mcp_filesystem__write_a_very_long_approval_action_that_used_to_stay_truncated";
+    const actionLabel = visibleToolName(action, "未知操作");
     const flow =
       "这是一条很长的流程说明，平时只占一行，键盘落到这一行时要写出整句，不能只留在看不见的地方";
     const plainAction = "shell_exec_without_an_id_and_long_enough_that_one_line_hides_the_rest";
+    const plainLabel = visibleToolName(plainAction, "未知操作");
     const plainFlow = "没有编号的流程说明平时也只占一行，键盘落到操作名时写出整句";
     const aggregate =
       "mem-aggregate-id-that-is-too-long-for-one-line-and-should-expand-on-retry-focus";
     const used = "mcp_filesystem__read_a_very_long_tool_name_that_used_to_stay_truncated";
+    const usedLabel = visibleToolName(used, used);
     const denied = "mcp_shell__run_a_very_long_denied_tool_name_that_used_to_stay_truncated";
+    const deniedLabel = visibleToolName(denied, denied);
     const revealOnRow = [
       "truncate",
       "group-has-[:focus-visible]:overflow-visible",
@@ -346,11 +375,12 @@ describe("TrustReportPanel", () => {
     });
     renderPage();
 
-    const link = await screen.findByRole("link", { name: action });
+    const link = await screen.findByRole("link", { name: actionLabel });
     expect(link).toHaveClass("focus-visible:ring-focus-ring");
     expect(link).toHaveAttribute("title", "打开审批");
+    expect(screen.queryByText(action)).not.toBeInTheDocument();
     const actionLine = link.querySelector(".truncate");
-    expect(actionLine).toHaveTextContent(action);
+    expect(actionLine).toHaveTextContent(actionLabel);
     expect(actionLine).toHaveClass(...revealOnRow);
     expect(actionLine?.className).not.toContain("group-hover:");
     const approvalRow = link.parentElement;
@@ -361,14 +391,17 @@ describe("TrustReportPanel", () => {
     expect(flowLine.closest("a")).toBeNull();
     expect(flowLine.closest(".group")).toBe(approvalRow);
 
-    const plain = screen.getByText(plainAction);
+    const plain = screen.getByText(plainLabel);
     expect(plain).toHaveClass(...revealOnRow);
     expect(plain.className).not.toContain("group-hover:");
     const plainFocus = plain.parentElement;
     expect(plainFocus).toHaveAttribute("tabindex", "0");
     expect(plainFocus).toHaveClass("focus-visible:ring-focus-ring");
     expect(plainFocus?.closest("a")).toBeNull();
+    expect(screen.queryByText(plainAction)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: plainLabel })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: plainAction })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: plainLabel })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: plainAction })).not.toBeInTheDocument();
     expect(screen.getByText(plainFlow).closest(".group")).toBe(plainFocus?.parentElement);
     expect(fireEvent.keyDown(plainFocus!, { key: " " })).toBe(false);
@@ -385,7 +418,8 @@ describe("TrustReportPanel", () => {
       within(repairRow as HTMLElement).getByRole("button", { name: "重试索引" }),
     ).toBeInTheDocument();
 
-    const usedName = screen.getByText(used);
+    const usedName = screen.getByText(usedLabel);
+    expect(screen.queryByText(used)).not.toBeInTheDocument();
     expect(usedName).toHaveClass(...revealOnFocus);
     expect(usedName.className).not.toContain("group-hover:");
     const usedRow = usedName.parentElement;
@@ -397,7 +431,8 @@ describe("TrustReportPanel", () => {
     expect(fireEvent.keyDown(usedRow!, { key: " ", keyCode: 229 })).toBe(true);
     expect(fireEvent.keyDown(usedRow!, { key: "Process" })).toBe(true);
 
-    const deniedName = screen.getByText(denied);
+    const deniedName = screen.getByText(deniedLabel);
+    expect(screen.queryByText(denied)).not.toBeInTheDocument();
     expect(deniedName).toHaveClass(...revealOnFocus);
     expect(deniedName.className).not.toContain("group-hover:");
     const deniedRow = deniedName.parentElement;

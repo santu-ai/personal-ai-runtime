@@ -22,6 +22,7 @@ import { queryKeys } from "../hooks/useWsInvalidationBridge";
 import LoadErrorNotice, { useHeldQueryError } from "../components/ui/LoadErrorNotice";
 import { AdoptionSummaryView, formatAdoptionRate } from "../components/dashboard/AdoptionSummary";
 import { isImeKeyboardEvent } from "../utils/imeKey";
+import { visibleToolName } from "../utils/toolLabels";
 
 /** 平时一行。键盘落到这一行时写出整句。鼠标悬停仍是一行。 */
 const revealOnFocus =
@@ -434,7 +435,7 @@ export function TrustReportPanel({ compact = false }: { compact?: boolean }) {
                 const flowColor = FLOW_COLORS[a.flow_type] ?? "text-fg-secondary";
                 const flowLabel = a.flow_type;
                 const href = approvalsHref(a.id);
-                const actionLabel = a.action ?? "未知操作";
+                const actionLabel = visibleToolName(a.action, "未知操作");
                 return (
                   <div
                     key={a.id?.trim() || `blank-${index}`}
@@ -586,7 +587,9 @@ function ToolName({ name }: { name: string }) {
       onKeyDown={keepBareKeysFromScrolling}
       className="group min-w-0 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
     >
-      <span className={`block text-fg-secondary ${revealOnFocus}`}>{name}</span>
+      <span className={`block text-fg-secondary ${revealOnFocus}`}>
+        {visibleToolName(name, name)}
+      </span>
     </span>
   );
 }
