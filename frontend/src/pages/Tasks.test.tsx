@@ -1464,6 +1464,35 @@ describe("TasksPage", () => {
     await waitFor(() => expect(getWorkDelivery).toHaveBeenCalledWith("brief_1", "d1"));
   });
 
+  it("does not move version rows while an IME process key is down", async () => {
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [briefTask];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(briefTask);
+    renderTasks("/tasks/brief_1");
+
+    const current = await screen.findByRole("button", { name: /v2 · 待验收/ });
+    const previous = screen.getByRole("button", { name: /v1 · 已要求返工/ });
+    current.focus();
+
+    expect(fireEvent.keyDown(current, { key: "ArrowUp", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(current, { key: "ArrowUp", keyCode: 229 })).toBe(true);
+    expect(fireEvent.keyDown(current, { key: "Process" })).toBe(true);
+    expect(fireEvent.keyDown(current, { key: "Home", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(current, { key: "End", keyCode: 229 })).toBe(true);
+
+    expect(current).toHaveFocus();
+    expect(current).toHaveAttribute("tabindex", "0");
+    expect(previous).toHaveAttribute("tabindex", "-1");
+    expect(getWorkDelivery).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(current, { key: "ArrowUp" });
+    expect(previous).toHaveFocus();
+    expect(previous).toHaveAttribute("tabindex", "0");
+    expect(getWorkDelivery).not.toHaveBeenCalled();
+  });
+
   it("scrolls the delivery into view when switching versions and keeps row focus", async () => {
     let release: ((row: WorkDelivery) => void) | undefined;
     vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {

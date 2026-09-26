@@ -55,6 +55,7 @@ import {
   splitBacktickSourceIds,
   type DeliverySourceRef,
 } from "../utils/deliverySourceNav";
+import { isImeKeyboardEvent } from "../utils/imeKey";
 import { timeAgo } from "../utils/timeUtils";
 import { toolLabel } from "../utils/toolLabels";
 import { ListTodo } from "lucide-react";
@@ -916,6 +917,8 @@ function DeliveryVersionHistory({
                 }`}
                 onKeyDown={(event) => {
                   if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+                  // 组字或输入法处理键时不移动，也不拦住这一下。
+                  if (isImeKeyboardEvent(event.nativeEvent)) return;
                   const next = nextVersionIndex(
                     rows.findIndex((item) => item.delivery_id === row.delivery_id),
                     rows.length,
