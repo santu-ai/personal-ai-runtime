@@ -34,6 +34,13 @@ function confidenceLabel(value: number | undefined): string | null {
   return `${Math.round(value * 100)}%`;
 }
 
+/** 字面上仍是这一句。读屏把这条记忆的内容接在后面。只有空白时仍只读这一句。 */
+function memoryActionName(label: string, content: string): string | undefined {
+  const text = content.trim();
+  if (!text) return undefined;
+  return `${label}：${text}`;
+}
+
 interface Props {
   memory: MemoryRow;
   onRatify: (m: MemoryRow) => void;
@@ -78,7 +85,7 @@ export default function MemoryListItem({
             checked={!!selected}
             onChange={() => onToggleSelect(m)}
             className="rounded border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-            aria-label={`选择：${m.content.slice(0, 40)}`}
+            aria-label={memoryActionName("选择", m.content) ?? "选择"}
           />
         </label>
       )}
@@ -132,6 +139,7 @@ export default function MemoryListItem({
                 data-memory-id={m.id}
                 data-memory-action="ratify"
                 data-memory-scope="proposed"
+                aria-label={memoryActionName("确认", m.content)}
                 aria-busy={ratifying || undefined}
                 onClick={() => onRatify(m)}
                 className={`text-xs text-success hover:text-success/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded${ratifying ? " opacity-50" : ""}`}
@@ -141,6 +149,7 @@ export default function MemoryListItem({
               </button>
               <button
                 type="button"
+                aria-label={memoryActionName("拒绝", m.content)}
                 onClick={() => {
                   if (ratifying) return;
                   onReject(m);
@@ -158,6 +167,7 @@ export default function MemoryListItem({
               data-memory-id={m.id}
               data-memory-action="ratify"
               data-memory-scope="rejected"
+              aria-label={memoryActionName("恢复", m.content)}
               aria-busy={ratifying || undefined}
               onClick={() => onRatify(m)}
               className={`text-xs text-insight hover:text-insight/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded${ratifying ? " opacity-50" : ""}`}
@@ -167,6 +177,7 @@ export default function MemoryListItem({
             </button>
           )}
           <button
+            aria-label={memoryActionName("编辑", m.content)}
             onClick={() => onEdit(m)}
             className="text-xs text-insight hover:text-insight/80 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
           >
@@ -176,6 +187,7 @@ export default function MemoryListItem({
           <button
             type="button"
             data-memory-chat={m.id}
+            aria-label={memoryActionName("继续聊", m.content)}
             aria-busy={chatting || undefined}
             onClick={() => onContinueChat(m)}
             className={`text-xs text-fg-secondary hover:text-fg-primary focus-visible:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded ${
@@ -185,6 +197,7 @@ export default function MemoryListItem({
             继续聊
           </button>
           <button
+            aria-label={memoryActionName("来源", m.content)}
             onClick={() => onShowProvenance(m)}
             className="text-xs text-insight hover:text-insight/80 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
           >
@@ -194,6 +207,7 @@ export default function MemoryListItem({
           <button
             type="button"
             data-memory-forget={m.id}
+            aria-label={memoryActionName("忘掉", m.content)}
             onClick={() => onDelete(m)}
             className="text-xs text-fg-tertiary hover:text-danger opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
           >

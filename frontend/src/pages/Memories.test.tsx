@@ -158,7 +158,7 @@ describe("MemoriesPage", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /恢复/ })[0]!);
     await waitFor(() => expect(ratifyMemory).toHaveBeenCalledWith("r1"));
 
-    fireEvent.click(screen.getByRole("button", { name: "拒绝" }));
+    fireEvent.click(screen.getByRole("button", { name: /^拒绝：/ }));
     expect(await screen.findByText("拒绝这条记忆？")).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText("例如：记错了、过时了"), {
       target: { value: "过时了" },
@@ -188,7 +188,7 @@ describe("MemoriesPage", () => {
       return { memories: [], total: 0 };
     });
     renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
-    const opener = await screen.findByRole("button", { name: "拒绝" });
+    const opener = await screen.findByRole("button", { name: /^拒绝：/ });
     expect(screen.getByRole("combobox", { name: "分类" })).toHaveClass(
       "focus-visible:ring-focus-ring",
     );
@@ -352,7 +352,7 @@ describe("MemoriesPage", () => {
     vi.mocked(getMemoryProvenance).mockRejectedValue(new ApiError("来源链暂时读不到", 503));
     renderWithRouter(<MemoriesPage />);
     await screen.findByText("喜欢早起跑步");
-    fireEvent.click(within(memoryItem("喜欢早起跑步")).getByRole("button", { name: "来源" }));
+    fireEvent.click(within(memoryItem("喜欢早起跑步")).getByRole("button", { name: /^来源：/ }));
 
     const dialog = await screen.findByRole("dialog", { name: "记忆来源链" });
     const alert = await screen.findByTestId("memory-provenance-load-error");
@@ -370,7 +370,7 @@ describe("MemoriesPage", () => {
     vi.mocked(getMemoryProvenance).mockRejectedValueOnce(new ApiError("来源链暂时读不到", 503));
     renderWithRouter(<MemoriesPage />);
     await screen.findByText("喜欢早起跑步");
-    fireEvent.click(within(memoryItem("喜欢早起跑步")).getByRole("button", { name: "来源" }));
+    fireEvent.click(within(memoryItem("喜欢早起跑步")).getByRole("button", { name: /^来源：/ }));
     const retry = await screen.findByRole("button", { name: "重试" });
     await waitFor(() => expect(retry).toHaveFocus());
 
@@ -423,7 +423,7 @@ describe("MemoriesPage", () => {
     vi.mocked(getMemoryProvenance).mockRejectedValue(new Error("   "));
     renderWithRouter(<MemoriesPage />);
     await screen.findByText("喜欢早起跑步");
-    fireEvent.click(within(memoryItem("喜欢早起跑步")).getByRole("button", { name: "来源" }));
+    fireEvent.click(within(memoryItem("喜欢早起跑步")).getByRole("button", { name: /^来源：/ }));
     expect(await screen.findByTestId("memory-provenance-load-error")).toHaveTextContent(
       "加载来源链失败",
     );
@@ -446,12 +446,12 @@ describe("MemoriesPage", () => {
     });
     renderWithRouter(<MemoriesPage />);
     await screen.findByText("喜欢早起跑步");
-    fireEvent.click(within(memoryItem("喜欢早起跑步")).getByRole("button", { name: "来源" }));
+    fireEvent.click(within(memoryItem("喜欢早起跑步")).getByRole("button", { name: /^来源：/ }));
     expect(await screen.findByTestId("memory-provenance-load-error")).toHaveTextContent(
       "来源链暂时读不到",
     );
 
-    fireEvent.click(within(memoryItem("住在上海")).getByRole("button", { name: "来源" }));
+    fireEvent.click(within(memoryItem("住在上海")).getByRole("button", { name: /^来源：/ }));
     expect(await screen.findByText("加载中...")).toBeInTheDocument();
     expect(screen.queryByText("来源链暂时读不到")).not.toBeInTheDocument();
     expect(screen.queryByTestId("memory-provenance-load-error")).not.toBeInTheDocument();
@@ -462,7 +462,7 @@ describe("MemoriesPage", () => {
   it("shows an empty provenance chain after a successful read", async () => {
     renderWithRouter(<MemoriesPage />);
     await screen.findByText("喜欢早起跑步");
-    fireEvent.click(within(memoryItem("喜欢早起跑步")).getByRole("button", { name: "来源" }));
+    fireEvent.click(within(memoryItem("喜欢早起跑步")).getByRole("button", { name: /^来源：/ }));
     expect(await screen.findByText("无事件记录")).toBeInTheDocument();
     expect(screen.queryByTestId("memory-provenance-load-error")).not.toBeInTheDocument();
     expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
@@ -471,7 +471,7 @@ describe("MemoriesPage", () => {
   it("returns focus to the source button when the provenance dialog closes", async () => {
     renderWithRouter(<MemoriesPage />);
     await screen.findByText("喜欢早起跑步");
-    const opener = within(memoryItem("喜欢早起跑步")).getByRole("button", { name: "来源" });
+    const opener = within(memoryItem("喜欢早起跑步")).getByRole("button", { name: /^来源：/ });
     opener.focus();
     fireEvent.click(opener);
     const dialog = await screen.findByRole("dialog", { name: "记忆来源链" });
@@ -485,7 +485,7 @@ describe("MemoriesPage", () => {
 
   it("connects the edit dialog names to their fields", async () => {
     renderWithRouter(<MemoriesPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^编辑：/ }));
     const dialog = await screen.findByRole("dialog", { name: "编辑记忆" });
 
     const content = within(dialog).getByRole("textbox", { name: "内容" });
@@ -524,7 +524,7 @@ describe("MemoriesPage", () => {
       total: 1,
     });
     renderWithRouter(<MemoriesPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^编辑：/ }));
     const category = await screen.findByRole("combobox", { name: "分类" });
     const options = within(category).getAllByRole("option");
     const unknown = options[options.length - 1];
@@ -543,7 +543,7 @@ describe("MemoriesPage", () => {
 
   it("closes the edit dialog on Escape and returns focus", async () => {
     renderWithRouter(<MemoriesPage />);
-    const opener = await screen.findByRole("button", { name: "编辑" });
+    const opener = await screen.findByRole("button", { name: /^编辑：/ });
     opener.focus();
     fireEvent.click(opener);
     const field = await screen.findByPlaceholderText("记忆内容");
@@ -655,7 +655,7 @@ describe("MemoriesPage", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     await screen.findByRole("button", { name: "记住中..." });
     fireEvent.change(input, { target: { value: "喜欢喝茶，也喜欢咖啡" } });
-    const edit = screen.getByRole("button", { name: "编辑" });
+    const edit = screen.getByRole("button", { name: /^编辑：/ });
     edit.focus();
 
     release({ id: "m-new", status: "ok" });
@@ -826,7 +826,7 @@ describe("MemoriesPage", () => {
     );
 
     renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
-    fireEvent.click(await screen.findByRole("button", { name: "拒绝" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^拒绝：/ }));
     const dialog = await screen.findByRole("dialog", { name: "拒绝这条记忆？" });
     const field = within(dialog).getByPlaceholderText("例如：记错了、过时了");
     fireEvent.change(field, { target: { value: "  过时了  " } });
@@ -858,7 +858,7 @@ describe("MemoriesPage", () => {
     );
 
     renderWithRouter(<MemoriesPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^编辑：/ }));
     const dialog = await screen.findByRole("dialog", { name: "编辑记忆" });
     const content = within(dialog).getByPlaceholderText("记忆内容");
     const category = within(dialog).getByRole("combobox", { name: "分类" });
@@ -919,7 +919,7 @@ describe("MemoriesPage", () => {
     );
 
     renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
-    fireEvent.click(await screen.findByRole("button", { name: "拒绝" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^拒绝：/ }));
     const dialog = await screen.findByRole("dialog", { name: "拒绝这条记忆？" });
     const field = within(dialog).getByPlaceholderText("例如：记错了、过时了");
     fireEvent.change(field, { target: { value: "  过时了  " } });
@@ -967,7 +967,7 @@ describe("MemoriesPage", () => {
     );
 
     renderWithRouter(<MemoriesPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^编辑：/ }));
     const dialog = await screen.findByRole("dialog", { name: "编辑记忆" });
     const content = within(dialog).getByPlaceholderText("记忆内容");
     const category = within(dialog).getByRole("combobox", { name: "分类" });
@@ -1038,7 +1038,7 @@ describe("MemoriesPage", () => {
     );
 
     renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
-    const open = await screen.findByRole("button", { name: "拒绝" });
+    const open = await screen.findByRole("button", { name: /^拒绝：/ });
     fireEvent.click(open);
     const dialog = await screen.findByRole("dialog", { name: "拒绝这条记忆？" });
     const field = within(dialog).getByPlaceholderText("例如：记错了、过时了");
@@ -1088,7 +1088,7 @@ describe("MemoriesPage", () => {
     );
 
     renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
-    fireEvent.click(await screen.findByRole("button", { name: "拒绝" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^拒绝：/ }));
     const dialog = await screen.findByRole("dialog", { name: "拒绝这条记忆？" });
     const field = within(dialog).getByPlaceholderText("例如：记错了、过时了");
     fireEvent.change(field, { target: { value: "过时了" } });
@@ -1120,7 +1120,7 @@ describe("MemoriesPage", () => {
     );
 
     renderWithRouter(<MemoriesPage />);
-    const open = await screen.findByRole("button", { name: "编辑" });
+    const open = await screen.findByRole("button", { name: /^编辑：/ });
     fireEvent.click(open);
     const dialog = await screen.findByRole("dialog", { name: "编辑记忆" });
     const content = within(dialog).getByPlaceholderText("记忆内容");
@@ -1155,7 +1155,7 @@ describe("MemoriesPage", () => {
     );
 
     renderWithRouter(<MemoriesPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^编辑：/ }));
     const dialog = await screen.findByRole("dialog", { name: "编辑记忆" });
     const content = within(dialog).getByPlaceholderText("记忆内容");
     fireEvent.change(content, { target: { value: "改为夜跑" } });
@@ -1187,7 +1187,7 @@ describe("MemoriesPage", () => {
     );
 
     renderWithRouter(<MemoriesPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^编辑：/ }));
     const dialog = await screen.findByRole("dialog", { name: "编辑记忆" });
     const content = within(dialog).getByPlaceholderText("记忆内容");
     fireEvent.change(content, { target: { value: "改为夜跑" } });
@@ -1223,7 +1223,7 @@ describe("MemoriesPage", () => {
     );
 
     renderWithRouter(<MemoriesPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "忘掉" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^忘掉：/ }));
     const dialog = await screen.findByRole("dialog", { name: "忘掉这条记忆？" });
     fireEvent.click(within(dialog).getByRole("button", { name: "忘掉" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "忘掉中..." }));
@@ -1277,7 +1277,7 @@ describe("MemoriesPage", () => {
     renderWithRouter(<MemoriesPage />);
     const row = (await screen.findByText("先记")).closest("li");
     expect(row).toBeTruthy();
-    const remove = within(row as HTMLElement).getByRole("button", { name: "忘掉" });
+    const remove = within(row as HTMLElement).getByRole("button", { name: /^忘掉：/ });
     remove.focus();
     fireEvent.click(remove);
     const dialog = await screen.findByRole("dialog", { name: "忘掉这条记忆？" });
@@ -1295,7 +1295,7 @@ describe("MemoriesPage", () => {
       expect(screen.queryByRole("dialog", { name: "忘掉这条记忆？" })).not.toBeInTheDocument(),
     );
     const next = screen.getByText("后记").closest("li");
-    const nextForget = within(next as HTMLElement).getByRole("button", { name: "忘掉" });
+    const nextForget = within(next as HTMLElement).getByRole("button", { name: /^忘掉：/ });
     expect(nextForget).toHaveFocus();
     expect(focusWhenGone.read()).toBe(nextForget);
   });
@@ -1321,7 +1321,7 @@ describe("MemoriesPage", () => {
     vi.mocked(deleteMemory).mockResolvedValue({ status: "ok" });
     renderWithRouter(<MemoriesPage />);
     const row = (await screen.findByText("后记")).closest("li");
-    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "忘掉" }));
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: /^忘掉：/ }));
     const dialog = await screen.findByRole("dialog", { name: "忘掉这条记忆？" });
     within(dialog).getByRole("button", { name: "忘掉" }).focus();
     fireEvent.click(within(dialog).getByRole("button", { name: "忘掉" }));
@@ -1329,13 +1329,13 @@ describe("MemoriesPage", () => {
       expect(screen.queryByRole("dialog", { name: "忘掉这条记忆？" })).not.toBeInTheDocument(),
     );
     const previous = screen.getByText("先记").closest("li");
-    expect(within(previous as HTMLElement).getByRole("button", { name: "忘掉" })).toHaveFocus();
+    expect(within(previous as HTMLElement).getByRole("button", { name: /^忘掉：/ })).toHaveFocus();
   });
 
   it("moves focus to the capture field when the only memory is forgotten", async () => {
     vi.mocked(deleteMemory).mockResolvedValue({ status: "ok" });
     renderWithRouter(<MemoriesPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "忘掉" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^忘掉：/ }));
     const dialog = await screen.findByRole("dialog", { name: "忘掉这条记忆？" });
     within(dialog).getByRole("button", { name: "忘掉" }).focus();
     fireEvent.click(within(dialog).getByRole("button", { name: "忘掉" }));
@@ -1354,7 +1354,7 @@ describe("MemoriesPage", () => {
         }),
     );
     renderWithRouter(<MemoriesPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "忘掉" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^忘掉：/ }));
     const dialog = await screen.findByRole("dialog", { name: "忘掉这条记忆？" });
     fireEvent.click(within(dialog).getByRole("button", { name: "忘掉" }));
     const input = screen.getByPlaceholderText("告诉我一件关于你的事，我会记住...");
@@ -1400,8 +1400,8 @@ describe("MemoriesPage", () => {
     );
 
     renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
-    const [first] = await screen.findAllByRole("button", { name: "确认" });
-    expect(screen.getAllByRole("button", { name: "确认" })).toHaveLength(2);
+    const [first] = await screen.findAllByRole("button", { name: /^确认：/ });
+    expect(screen.getAllByRole("button", { name: /^确认：/ })).toHaveLength(2);
     first.focus();
     fireEvent.click(first);
     fireEvent.click(first);
@@ -1409,11 +1409,11 @@ describe("MemoriesPage", () => {
     expect(first).toBeEnabled();
     expect(first).toHaveFocus();
     const reject = within(screen.getByText("第一条").closest("li")!).getByRole("button", {
-      name: "拒绝",
+      name: /^拒绝：/,
     });
     expect(reject).toBeEnabled();
     expect(reject).not.toHaveAttribute("aria-busy");
-    const second = screen.getAllByRole("button", { name: "确认" })[1];
+    const second = screen.getAllByRole("button", { name: /^确认：/ })[1];
     expect(second).toBeEnabled();
     expect(second).not.toHaveAttribute("aria-busy");
     fireEvent.click(reject);
@@ -1425,7 +1425,7 @@ describe("MemoriesPage", () => {
     await act(async () => {
       release({ status: "ok", claim_status: "ratified" });
     });
-    const next = screen.getByRole("button", { name: "确认" });
+    const next = screen.getByRole("button", { name: /^确认：/ });
     await waitFor(() => expect(next).toHaveFocus());
     expect(screen.getByText("第二条")).toBeInTheDocument();
     expect(screen.queryByText("第一条")).not.toBeInTheDocument();
@@ -1461,7 +1461,7 @@ describe("MemoriesPage", () => {
     );
 
     renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
-    const confirm = await screen.findByRole("button", { name: "确认" });
+    const confirm = await screen.findByRole("button", { name: /^确认：/ });
     confirm.focus();
     fireEvent.click(confirm);
     await waitFor(() => expect(confirm).toHaveAttribute("aria-busy", "true"));
@@ -1506,7 +1506,7 @@ describe("MemoriesPage", () => {
     );
 
     renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
-    const [first, second] = await screen.findAllByRole("button", { name: "确认" });
+    const [first, second] = await screen.findAllByRole("button", { name: /^确认：/ });
     first.focus();
     fireEvent.click(first);
     await waitFor(() => expect(first).toHaveAttribute("aria-busy", "true"));
@@ -1517,7 +1517,7 @@ describe("MemoriesPage", () => {
       release({ status: "ok", claim_status: "ratified" });
     });
     await waitFor(() => expect(screen.queryByText("第一条")).not.toBeInTheDocument());
-    const kept = screen.getByRole("button", { name: "确认" });
+    const kept = screen.getByRole("button", { name: /^确认：/ });
     expect(kept).toHaveFocus();
     expect(focusWhenGone.read()).toBe(kept);
     expect(focusWhenGone.read()).not.toBe(document.body);
@@ -1544,7 +1544,7 @@ describe("MemoriesPage", () => {
     });
 
     renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
-    const confirm = await screen.findByRole("button", { name: "确认" });
+    const confirm = await screen.findByRole("button", { name: /^确认：/ });
     confirm.focus();
     const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("只剩这一条"));
     fireEvent.click(confirm);
@@ -1594,10 +1594,10 @@ describe("MemoriesPage", () => {
         }),
     );
     renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
-    const confirm = await screen.findByRole("button", { name: "确认" });
+    const confirm = await screen.findByRole("button", { name: /^确认：/ });
     fireEvent.click(confirm);
     await waitFor(() => expect(confirm).toHaveAttribute("aria-busy", "true"));
-    expect(confirm).toHaveAccessibleName("确认");
+    expect(confirm).toHaveAccessibleName("确认：只剩这一条");
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.queryByText("没有待确认的记忆。")).not.toBeInTheDocument();
     release({ status: "ok", claim_status: "ratified" });
@@ -1630,13 +1630,13 @@ describe("MemoriesPage", () => {
       return { status: "ok", claim_status: "ratified" };
     });
     renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
-    fireEvent.click((await screen.findAllByRole("button", { name: "确认" }))[0]);
+    fireEvent.click((await screen.findAllByRole("button", { name: /^确认：/ }))[0]);
     await waitFor(() => expect(screen.queryByText("第一条")).not.toBeInTheDocument());
     expect(screen.getByText("第二条")).toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
 
     vi.mocked(ratifyMemory).mockRejectedValueOnce(new ApiError("确认记忆失败", 500));
-    fireEvent.click(screen.getByRole("button", { name: "确认" }));
+    fireEvent.click(screen.getByRole("button", { name: /^确认：/ }));
     await waitFor(() => expect(addError).toHaveBeenCalledWith("确认记忆失败", "记忆"));
     expect(screen.getByText("第二条")).toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
@@ -1677,7 +1677,7 @@ describe("MemoriesPage", () => {
       proposed = [];
       return { status: "ok", claim_status: "ratified" };
     });
-    const confirm = screen.getByRole("button", { name: "确认" });
+    const confirm = screen.getByRole("button", { name: /^确认：/ });
     confirm.focus();
     fireEvent.click(confirm);
     const status = await screen.findByRole("status");
@@ -1706,7 +1706,7 @@ describe("MemoriesPage", () => {
       return { status: "ok", claim_status: "rejected" };
     });
     renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
-    fireEvent.click(await screen.findByRole("button", { name: "拒绝" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^拒绝：/ }));
     const dialog = await screen.findByRole("dialog", { name: "拒绝这条记忆？" });
     fireEvent.click(within(dialog).getByRole("button", { name: "拒绝" }));
     const status = await screen.findByRole("status");
@@ -1733,7 +1733,7 @@ describe("MemoriesPage", () => {
       proposed = [];
       return { status: "ok", claim_status: "ratified" };
     });
-    fireEvent.click(screen.getByRole("button", { name: "确认" }));
+    fireEvent.click(screen.getByRole("button", { name: /^确认：/ }));
     expect(await screen.findByRole("status")).toHaveTextContent("没有待确认的记忆。");
   });
 
@@ -1781,7 +1781,7 @@ describe("MemoriesPage", () => {
       proposed = [];
       return { status: "ok" };
     });
-    fireEvent.click(screen.getByRole("button", { name: "忘掉" }));
+    fireEvent.click(screen.getByRole("button", { name: /^忘掉：/ }));
     const dialog = await screen.findByRole("dialog", { name: "忘掉这条记忆？" });
     fireEvent.click(within(dialog).getByRole("button", { name: "忘掉" }));
     const again = await screen.findByRole("status");
@@ -1819,7 +1819,7 @@ describe("MemoriesPage", () => {
     });
 
     renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
-    const [first, second] = await screen.findAllByRole("button", { name: "恢复" });
+    const [first, second] = await screen.findAllByRole("button", { name: /^恢复：/ });
     first.focus();
     const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("先恢复这条"));
     fireEvent.click(first);
@@ -1859,15 +1859,15 @@ describe("MemoriesPage", () => {
     });
 
     renderWithRouter(<MemoriesPage />);
-    const confirm = await screen.findByRole("button", { name: "确认" });
+    const confirm = await screen.findByRole("button", { name: /^确认：/ });
     confirm.focus();
     const focusWhenGone = captureFocusWhenGone(
-      () => !screen.queryByRole("button", { name: "确认" }),
+      () => !screen.queryByRole("button", { name: /^确认：/ }),
     );
     fireEvent.click(confirm);
     const input = screen.getByPlaceholderText("告诉我一件关于你的事，我会记住...");
     await waitFor(() => expect(input).toHaveFocus());
-    expect(screen.queryByRole("button", { name: "确认" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^确认：/ })).not.toBeInTheDocument();
     expect(focusWhenGone.read()).toBe(input);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
@@ -2035,7 +2035,7 @@ describe("MemoriesPage", () => {
     observer.observe(bulk, { attributes: true, attributeFilter: ["disabled"] });
     release({ status: "ok", action: "ratify", ok: 1, skipped: [] });
     const next = within(screen.getByText("第二条").closest("li")!).getByRole("button", {
-      name: "确认",
+      name: /^确认：/,
     });
     await waitFor(() => expect(next).toHaveFocus());
     expect(focusWhenDisabled).toBe(next);
@@ -2087,7 +2087,7 @@ describe("MemoriesPage", () => {
     fireEvent.click(await screen.findByRole("checkbox", { name: /全选当前页/ }));
     const bulk = screen.getByRole("button", { name: /批量确认/ });
     const kept = within(screen.getByText("第二条").closest("li")!).getByRole("button", {
-      name: "确认",
+      name: /^确认：/,
     });
     bulk.focus();
     fireEvent.click(bulk);
@@ -2116,10 +2116,10 @@ describe("MemoriesPage", () => {
     renderWithRouter(<MemoriesPage />);
     const first = within(
       (await screen.findByText("喜欢早起跑步")).closest("li") as HTMLElement,
-    ).getByRole("button", { name: "继续聊" });
+    ).getByRole("button", { name: /^继续聊：/ });
     const second = within(screen.getByText("晚上喝茶").closest("li") as HTMLElement).getByRole(
       "button",
-      { name: "继续聊" },
+      { name: /^继续聊：/ },
     );
     first.focus();
     fireEvent.click(first);
@@ -2153,7 +2153,7 @@ describe("MemoriesPage", () => {
     renderWithRouter(<MemoriesPage />);
     const chat = within(
       (await screen.findByText("喜欢早起跑步")).closest("li") as HTMLElement,
-    ).getByRole("button", { name: "继续聊" });
+    ).getByRole("button", { name: /^继续聊：/ });
     chat.focus();
     fireEvent.click(chat);
     fireEvent.click(chat);
