@@ -24,7 +24,7 @@ import { isImeKeyboardEvent } from "../../utils/imeKey";
 const SUGGESTION_PREVIEW = 50;
 const MEMORY_NOTICE_PREVIEW = 40;
 
-/** 顶上「待确认」平时只写前一段。整句留给键盘落到「关闭」时。 */
+/** 顶上「待确认」平时只写前一段。整句留给键盘落到「关闭」时。出现时读屏读整句。 */
 function pendingMemoryNotice(content: string): { preview: string; full: string } {
   const clipped = content.length > MEMORY_NOTICE_PREVIEW;
   const shown = clipped ? `${content.slice(0, MEMORY_NOTICE_PREVIEW)}…` : content;
@@ -643,8 +643,13 @@ export default function ChatView({ conversationId }: Props) {
             dismissMemoryNotice();
           }}
         >
-          <BrainCircuit size={14} className="shrink-0" />
+          <BrainCircuit size={14} className="shrink-0" aria-hidden />
+          {/* 大约六秒就消失。出现时读整句，等当前这一句说完。不把焦点抢过来。 */}
+          <span className="sr-only" role="status">
+            {memoryNotice.full}
+          </span>
           <span
+            aria-hidden="true"
             className={`min-w-0 flex-1 truncate${
               memoryNotice.preview === memoryNotice.full ? "" : " group-has-[:focus-visible]:hidden"
             }`}
@@ -654,6 +659,7 @@ export default function ChatView({ conversationId }: Props) {
           </span>
           {memoryNotice.preview === memoryNotice.full ? null : (
             <span
+              aria-hidden="true"
               data-prompt-name=""
               className="hidden min-w-0 flex-1 whitespace-normal group-has-[:focus-visible]:block"
             >
