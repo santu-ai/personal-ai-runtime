@@ -23,6 +23,13 @@ function visibleGoalStatus(goal: WorkItem): string {
   return [label, stagnant ? "已停滞" : ""].filter(Boolean).join(" · ");
 }
 
+/** 字面上仍是「添加」。读屏把这一条接在后面。只有空白时仍只读「添加」。 */
+function suggestedStepAddName(step: string): string | undefined {
+  const text = step.trim();
+  if (!text) return undefined;
+  return `添加：${text}`;
+}
+
 interface GoalDetailPanelProps {
   goal: WorkItem;
   /** 这次「就此目标对话」还没创建回来。按钮不禁用，标为忙碌。 */
@@ -456,6 +463,7 @@ export default function GoalDetailPanel({
                       type="button"
                       data-goal-suggest-step={step}
                       onClick={() => void handleAddSuggestedStep(step, idx)}
+                      aria-label={suggestedStepAddName(step)}
                       aria-busy={adding || undefined}
                       className={`text-xs px-2 py-0.5 bg-surface-overlay hover:bg-border-strong rounded text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring${
                         adding ? " opacity-50" : ""
