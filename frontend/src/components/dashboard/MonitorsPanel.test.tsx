@@ -180,28 +180,30 @@ describe("MonitorsPanel", () => {
   it("names 停用 and 删除 with the monitor name, and leaves the other controls bare", async () => {
     const spaced = "  前  后  ";
     const broken = " \n前一段\n后一段\n ";
-    await renderLoaded(
-      [
-        {
-          ...inboxFilter("if_space", spaced),
-          sender_contains: "发件人不进名字",
-          subject_contains: "主题不进名字",
-        },
-        inboxFilter("if_break", broken),
-        inboxFilter("if_blank", "   "),
-        inboxFilter("if_same", "老板"),
-        inboxFilter("if_same_2", "老板", false),
-      ],
-      [
-        {
-          ...urlMonitor("um_space", spaced),
-          url: "https://example.com/地址不进名字",
-          check_interval_minutes: 45,
-          last_error: "错误不进名字",
-        },
-        urlMonitor("um_blank", " \n "),
-      ],
-    );
+    const inbox = [
+      {
+        ...inboxFilter("if_space", spaced),
+        sender_contains: "发件人不进名字",
+        subject_contains: "主题不进名字",
+      },
+      inboxFilter("if_break", broken),
+      inboxFilter("if_blank", "   "),
+      inboxFilter("if_same", "老板"),
+      inboxFilter("if_same_2", "老板", false),
+    ];
+    const urls = [
+      {
+        ...urlMonitor("um_space", spaced),
+        url: "https://example.com/地址不进名字",
+        check_interval_minutes: 45,
+        last_error: "错误不进名字",
+      },
+      urlMonitor("um_blank", " \n "),
+    ];
+    vi.mocked(listInboxFilters).mockImplementation(async () => inbox.map((row) => ({ ...row })));
+    vi.mocked(listUrlMonitors).mockImplementation(async () => urls.map((row) => ({ ...row })));
+    renderWithRouter(<MonitorsPanel />);
+    expect(await screen.findAllByRole("button", { name: "删除：老板" })).toHaveLength(2);
 
     const spacedRows = rowsNamed(spaced);
     expect(spacedRows).toHaveLength(2);
@@ -225,10 +227,10 @@ describe("MonitorsPanel", () => {
     expect(inboxBroken.querySelector(".truncate")?.textContent).toBe(broken);
 
     const inboxBlank = rowsNamed("   ")[0];
-    expect(within(inboxBlank).getByRole("button", { name: "停用" })).not.toHaveAttribute(
+    expect(within(inboxBlank).getByRole("button", { name: /^停用/ })).not.toHaveAttribute(
       "aria-label",
     );
-    expect(within(inboxBlank).getByRole("button", { name: "删除" })).not.toHaveAttribute(
+    expect(within(inboxBlank).getByRole("button", { name: /^删除/ })).not.toHaveAttribute(
       "aria-label",
     );
     expect(inboxBlank.querySelector(".truncate")?.textContent).toBe("   ");
@@ -260,7 +262,7 @@ describe("MonitorsPanel", () => {
     expect(urlSpaced).toHaveTextContent("错误不进名字");
 
     const urlBlank = rowsNamed(" \n ")[0];
-    expect(within(urlBlank).getByRole("button", { name: "停用" })).not.toHaveAttribute(
+    expect(within(urlBlank).getByRole("button", { name: /^停用/ })).not.toHaveAttribute(
       "aria-label",
     );
     expect(urlBlank.querySelector(".truncate")?.textContent).toBe(" \n ");
@@ -410,8 +412,8 @@ describe("MonitorsPanel", () => {
     add.focus();
     fireEvent.click(add);
     fireEvent.click(add);
-    fireEvent.click(within(rowOf("已有")).getByRole("button", { name: "停用" }));
-    fireEvent.click(within(rowOf("已有")).getByRole("button", { name: "删除" }));
+    fireEvent.click(within(rowOf("已有")).getByRole("button", { name: /^停用/ }));
+    fireEvent.click(within(rowOf("已有")).getByRole("button", { name: /^删除/ }));
     fireEvent.click(screen.getByRole("button", { name: "立即检查" }));
     fireEvent.click(screen.getByRole("button", { name: "添加网页监控" }));
 
@@ -419,7 +421,7 @@ describe("MonitorsPanel", () => {
     expect(add).not.toBeDisabled();
     expect(add).toHaveFocus();
     expect(add).toHaveClass("opacity-50");
-    expect(within(rowOf("已有")).getByRole("button", { name: "停用" })).not.toHaveAttribute(
+    expect(within(rowOf("已有")).getByRole("button", { name: /^停用/ })).not.toHaveAttribute(
       "aria-busy",
     );
     expect(createInboxFilter).toHaveBeenCalledTimes(1);
@@ -445,7 +447,7 @@ describe("MonitorsPanel", () => {
     });
     const created = await screen.findByText("老板");
     const toggle = within(created.closest("li") as HTMLElement).getByRole("button", {
-      name: "停用",
+      name: /^停用/,
     });
     expect(focusWhenDisabled).toBe(toggle);
     expect(add).toBeDisabled();
@@ -504,7 +506,7 @@ describe("MonitorsPanel", () => {
     const add = screen.getByRole("button", { name: "添加过滤器" });
     add.focus();
     fireEvent.click(add);
-    const keep = within(rowOf("已有")).getByRole("button", { name: "删除" });
+    const keep = within(rowOf("已有")).getByRole("button", { name: /^删除/ });
     keep.focus();
 
     await act(async () => {
@@ -525,8 +527,8 @@ describe("MonitorsPanel", () => {
           release = resolve;
         }),
     );
-    const toggle = within(rowOf("已有")).getByRole("button", { name: "停用" });
-    const remove = within(rowOf("已有")).getByRole("button", { name: "删除" });
+    const toggle = within(rowOf("已有")).getByRole("button", { name: /^停用/ });
+    const remove = within(rowOf("已有")).getByRole("button", { name: /^删除/ });
     toggle.focus();
     fireEvent.click(toggle);
     fireEvent.click(toggle);
@@ -547,14 +549,14 @@ describe("MonitorsPanel", () => {
       release(inbox[0]);
     });
     await waitFor(() =>
-      expect(within(rowOf("已有")).getByRole("button", { name: "启用" })).toHaveFocus(),
+      expect(within(rowOf("已有")).getByRole("button", { name: /^启用/ })).toHaveFocus(),
     );
     expect(rowOf("已有")).toHaveTextContent("已停用");
   });
 
   it("does not delete a filter until confirm, and Escape returns to the row", async () => {
     await renderLoaded([inboxFilter("if_a", "甲")]);
-    const remove = within(rowOf("甲")).getByRole("button", { name: "删除" });
+    const remove = within(rowOf("甲")).getByRole("button", { name: /^删除/ });
     remove.focus();
     fireEvent.click(remove);
     const dialog = await screen.findByRole("dialog", { name: "删除收件箱过滤器" });
@@ -581,7 +583,7 @@ describe("MonitorsPanel", () => {
           };
         }),
     );
-    const remove = within(rowOf("甲")).getByRole("button", { name: "删除" });
+    const remove = within(rowOf("甲")).getByRole("button", { name: /^删除/ });
     remove.focus();
     fireEvent.click(remove);
     const dialog = await screen.findByRole("dialog", { name: "删除收件箱过滤器" });
@@ -592,7 +594,7 @@ describe("MonitorsPanel", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
     fireEvent.keyDown(window, { key: "Escape" });
     fireEvent.click(dialog.parentElement as HTMLElement);
-    fireEvent.click(within(rowOf("乙")).getByRole("button", { name: "停用" }));
+    fireEvent.click(within(rowOf("乙")).getByRole("button", { name: /^停用/ }));
     fireEvent.click(remove);
 
     await waitFor(() => expect(confirm).toHaveAttribute("aria-busy", "true"));
@@ -609,7 +611,7 @@ describe("MonitorsPanel", () => {
     });
     await waitFor(() => expect(screen.queryByText("甲")).not.toBeInTheDocument());
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(within(rowOf("乙")).getByRole("button", { name: "删除" })).toHaveFocus();
+    expect(within(rowOf("乙")).getByRole("button", { name: /^删除/ })).toHaveFocus();
   });
 
   it("moves focus to the previous filter delete button when the last row goes", async () => {
@@ -625,7 +627,7 @@ describe("MonitorsPanel", () => {
           };
         }),
     );
-    const remove = within(rowOf("乙")).getByRole("button", { name: "删除" });
+    const remove = within(rowOf("乙")).getByRole("button", { name: /^删除/ });
     remove.focus();
     fireEvent.click(remove);
     const dialog = await screen.findByRole("dialog", { name: "删除收件箱过滤器" });
@@ -637,7 +639,7 @@ describe("MonitorsPanel", () => {
       release();
     });
     await waitFor(() => expect(screen.queryByText("乙")).not.toBeInTheDocument());
-    expect(within(rowOf("甲")).getByRole("button", { name: "删除" })).toHaveFocus();
+    expect(within(rowOf("甲")).getByRole("button", { name: /^删除/ })).toHaveFocus();
   });
 
   it("moves focus to the filter name when the only filter is deleted", async () => {
@@ -653,7 +655,7 @@ describe("MonitorsPanel", () => {
           };
         }),
     );
-    const remove = within(rowOf("甲")).getByRole("button", { name: "删除" });
+    const remove = within(rowOf("甲")).getByRole("button", { name: /^删除/ });
     remove.focus();
     fireEvent.click(remove);
     const dialog = await screen.findByRole("dialog", { name: "删除收件箱过滤器" });
@@ -672,7 +674,7 @@ describe("MonitorsPanel", () => {
   it("keeps the delete dialog and focus when a filter delete fails", async () => {
     await renderLoaded([inboxFilter("if_a", "甲")]);
     vi.mocked(deleteInboxFilter).mockRejectedValue(new ApiError("删除失败", 500));
-    const remove = within(rowOf("甲")).getByRole("button", { name: "删除" });
+    const remove = within(rowOf("甲")).getByRole("button", { name: /^删除/ });
     remove.focus();
     fireEvent.click(remove);
     const dialog = await screen.findByRole("dialog", { name: "删除收件箱过滤器" });
@@ -705,7 +707,7 @@ describe("MonitorsPanel", () => {
           };
         }),
     );
-    fireEvent.click(within(rowOf("甲")).getByRole("button", { name: "删除" }));
+    fireEvent.click(within(rowOf("甲")).getByRole("button", { name: /^删除/ }));
     const dialog = await screen.findByRole("dialog", { name: "删除收件箱过滤器" });
     fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
     const name = screen.getByPlaceholderText("名称（如：老板）");
@@ -716,7 +718,7 @@ describe("MonitorsPanel", () => {
     });
     await waitFor(() => expect(screen.queryByText("甲")).not.toBeInTheDocument());
     expect(name).toHaveFocus();
-    expect(within(rowOf("乙")).getByRole("button", { name: "删除" })).not.toHaveFocus();
+    expect(within(rowOf("乙")).getByRole("button", { name: /^删除/ })).not.toHaveFocus();
   });
 
   it("does not check twice, blocks adding a page, and keeps focus on 立即检查", async () => {
@@ -739,7 +741,7 @@ describe("MonitorsPanel", () => {
     fireEvent.click(check);
     fireEvent.click(check);
     fireEvent.click(screen.getByRole("button", { name: "添加网页监控" }));
-    fireEvent.click(within(rowOf("发布页")).getByRole("button", { name: "删除" }));
+    fireEvent.click(within(rowOf("发布页")).getByRole("button", { name: /^删除/ }));
 
     await waitFor(() => expect(check).toHaveAttribute("aria-busy", "true"));
     expect(check).not.toBeDisabled();
@@ -816,7 +818,7 @@ describe("MonitorsPanel", () => {
     });
     const created = await screen.findByText("发布说明");
     const toggle = within(created.closest("li") as HTMLElement).getByRole("button", {
-      name: "停用",
+      name: /^停用/,
     });
     expect(focusWhenDisabled).toBe(toggle);
     expect(add).toBeDisabled();
@@ -840,7 +842,7 @@ describe("MonitorsPanel", () => {
           };
         }),
     );
-    const remove = within(rowOf("甲页")).getByRole("button", { name: "删除" });
+    const remove = within(rowOf("甲页")).getByRole("button", { name: /^删除/ });
     remove.focus();
     fireEvent.click(remove);
     const dialog = await screen.findByRole("dialog", { name: "删除网页监控" });
@@ -855,7 +857,7 @@ describe("MonitorsPanel", () => {
     });
     await waitFor(() => expect(screen.queryByText("甲页")).not.toBeInTheDocument());
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(within(rowOf("乙页")).getByRole("button", { name: "删除" })).toHaveFocus();
+    expect(within(rowOf("乙页")).getByRole("button", { name: /^删除/ })).toHaveFocus();
     expect(deleteUrlMonitor).toHaveBeenCalledTimes(1);
     expect(deleteUrlMonitor).toHaveBeenCalledWith("um_a");
   });
