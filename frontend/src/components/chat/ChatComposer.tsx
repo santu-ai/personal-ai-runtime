@@ -5,6 +5,10 @@ import Button from "../ui/Button";
 import Spinner from "../ui/Spinner";
 import { isImeKeyboardEvent } from "../../utils/imeKey";
 
+const SENDING_STATUS = "正在发送…，输入消息仍可改";
+const GENERATING_STATUS = "正在生成，输入消息可以先写下一条";
+const CONFIRM_STATUS = "先在上面确认或取消，暂不能输入消息";
+
 interface ChatComposerProps {
   value: string;
   onChange: (value: string) => void;
@@ -54,12 +58,15 @@ export default function ChatComposer({
   // 这一栏仍是输入消息。占位先写出当前能不能发，再留着这几个字。
   // 读屏名字固定，不跟着占位变成状态句；写了字、占位看不见时也还是这个名字。
   const statusPlaceholder = generating
-    ? "正在生成，输入消息可以先写下一条"
+    ? GENERATING_STATUS
     : pending
-      ? "正在发送…，输入消息仍可改"
+      ? SENDING_STATUS
       : fieldDisabled
-        ? "先在上面确认或取消，暂不能输入消息"
+        ? CONFIRM_STATUS
         : placeholder;
+  // 这两句写在占位里。焦点还在输入框时，读屏名字仍是「输入消息」，听不到。
+  // 待确认那句不另读：焦点在确认或回答上。平时的占位不另读。
+  const spokenStatus = generating ? GENERATING_STATUS : pending ? SENDING_STATUS : null;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // 组字或输入法处理键时的 Enter 交给输入法，不把还没上屏的字发出去。
@@ -72,6 +79,12 @@ export default function ChatComposer({
   return (
     <div className="flex items-end gap-2 rounded-xl border border-border-subtle bg-surface-raised p-2.5 shadow-sm transition-colors focus-within:border-focus-ring">
       <VoiceInput onTranscript={handleVoiceTranscript} disabled={fieldDisabled} />
+      {spokenStatus ? (
+        <span className="sr-only" role="status">
+          {/* 出现时读出来，等当前这一句说完。不把焦点抢过来。 */}
+          {spokenStatus}
+        </span>
+      ) : null}
       <textarea
         ref={inputRef}
         data-chat-composer=""

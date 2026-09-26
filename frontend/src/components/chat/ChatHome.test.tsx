@@ -385,6 +385,8 @@ describe("ChatHome", () => {
     expect(send).toHaveAccessibleName("发送中");
     expect(box).toHaveAttribute("aria-busy", "true");
     expect(box).toHaveAttribute("placeholder", "正在发送…，输入消息仍可改");
+    expect(box).toHaveAttribute("aria-label", "输入消息");
+    expect(screen.getByRole("status")).toHaveTextContent("正在发送…，输入消息仍可改");
     expect(send).toBeEnabled();
     expect(box).toBeEnabled();
     expect(send).toHaveFocus();
