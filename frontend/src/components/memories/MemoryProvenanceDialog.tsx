@@ -1,8 +1,14 @@
-import { useEffect, useRef, useState } from "react";
-import { getMemoryProvenance, type MemoryRow, type MemoryProvenance } from "../../api/client";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import {
+  getMemoryProvenance,
+  type MemoryProvenance,
+  type MemoryProvenanceEvent,
+  type MemoryRow,
+} from "../../api/client";
 import { useErrorStore } from "../../stores/errorStore";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
 import { timeAgoShort } from "../../utils/timeUtils";
-import { eventTypeLabel, eventDescription } from "./provenanceFormatting";
+import { eventTypeLabel, provenanceSentence } from "./provenanceFormatting";
 import { History } from "lucide-react";
 import LoadErrorNotice, { queryErrorMessage, useHeldQueryError } from "../ui/LoadErrorNotice";
 import { useOverlayDismiss } from "../ui/useOverlayDismiss";
@@ -10,6 +16,34 @@ import { useOverlayDismiss } from "../ui/useOverlayDismiss";
 interface Props {
   target: MemoryRow;
   onClose: () => void;
+}
+
+/** 空格和回车不把页面滚走。组字或输入法处理键时这一下不拦住。 */
+function keepProvenanceKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
+  if (isImeKeyboardEvent(event.nativeEvent)) return;
+  if (event.key === "Enter" || event.key === " ") event.preventDefault();
+}
+
+function ProvenanceSentenceView({ event }: { event: MemoryProvenanceEvent }) {
+  const line = provenanceSentence(event);
+  if (line.preview === line.full) {
+    return <p className="mt-0.5 text-sm text-fg-primary">{line.full}</p>;
+  }
+  return (
+    <p
+      tabIndex={0}
+      title={line.full}
+      data-provenance-preview=""
+      onKeyDown={keepProvenanceKeysFromScrolling}
+      className="group mt-0.5 rounded-sm text-sm text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+    >
+      {/* 平时写出前一段。键盘落到这一句时写出整句。鼠标悬停仍是前一段。 */}
+      <span className="group-focus-visible:hidden">{line.preview}</span>
+      <span className="hidden whitespace-pre-wrap break-words group-focus-visible:block">
+        {line.full}
+      </span>
+    </p>
+  );
 }
 
 export default function MemoryProvenanceDialog({ target, onClose }: Props) {
@@ -106,7 +140,7 @@ export default function MemoryProvenanceDialog({ target, onClose }: Props) {
                   </span>
                   <span className="text-xs text-fg-tertiary">{timeAgoShort(e.ts)}</span>
                 </div>
-                <p className="text-sm text-fg-primary mt-0.5">{eventDescription(e)}</p>
+                <ProvenanceSentenceView event={e} />
               </li>
             ))}
           </ol>
