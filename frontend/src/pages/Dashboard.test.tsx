@@ -1422,7 +1422,7 @@ describe("DashboardPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "信任" }));
     const back = await screen.findByRole("button", { name: "← 返回今日" });
     await waitFor(() => expect(back).toHaveFocus());
-    const link = screen.getByRole("link", { name: "write_file" });
+    const link = screen.getByRole("link", { name: "写入文件" });
     link.focus();
     view.rerender(<DashboardPage />);
     expect(link).toHaveFocus();

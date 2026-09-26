@@ -10,6 +10,7 @@ import {
 import { listWorkItems } from "../../api/workItems";
 import { useErrorStore } from "../../stores/errorStore";
 import { isImeKeyboardEvent } from "../../utils/imeKey";
+import { visibleToolName } from "../../utils/toolLabels";
 import LoadErrorNotice, { queryErrorMessage } from "../ui/LoadErrorNotice";
 import type { ToolResult } from "./types";
 
@@ -144,7 +145,7 @@ export default function ContextPanel({ lastUserMessage, toolResults = [], open, 
                 key={a.id}
                 className="text-xs text-fg-secondary p-2 bg-warning/10 rounded-lg mb-1"
               >
-                {a.action || "未知操作"}
+                {visibleToolName(a.action, "未知操作")}
               </div>
             ))}
           </section>
@@ -202,7 +203,7 @@ export default function ContextPanel({ lastUserMessage, toolResults = [], open, 
                 onKeyDown={keepBareKeysFromScrolling}
                 className={`group text-xs text-fg-secondary p-2 bg-surface-overlay/50 rounded-lg mb-1 ${focusRing}`}
               >
-                <span className={revealLine}>{t.tool_name}</span>
+                <span className={revealLine}>{visibleToolName(t.tool_name, t.tool_name)}</span>
               </div>
             ))}
           </section>

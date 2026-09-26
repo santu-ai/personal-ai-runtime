@@ -252,6 +252,16 @@ export function toolLabel(name: string): string {
   return TOOL_LABELS[name]?.label ?? fallbackLabel(name);
 }
 
+/**
+ * 页面上写出的工具名或操作名，和对话、审批页同一套。
+ * 空白（含只有空格）用 empty，避免 fallback 把空串写成「执行操作」。
+ */
+export function visibleToolName(name: string | null | undefined, empty: string): string {
+  const trimmed = name?.trim() ?? "";
+  if (!trimmed) return empty;
+  return toolLabel(trimmed).replace(/\s+/g, " ").trim();
+}
+
 /** Lucide icon component for a tool name. */
 export function toolIcon(name: string): LucideIcon {
   return TOOL_LABELS[name]?.icon ?? fallbackIcon(name);

@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent, within } from "@testing-library/rea
 import { MemoryRouter } from "react-router-dom";
 import ContextPanel from "./ContextPanel";
 import { searchMemories, listPendingApprovals } from "../../api/client";
+import { visibleToolName } from "../../utils/toolLabels";
 
 const { addError } = vi.hoisted(() => ({ addError: vi.fn() }));
 
@@ -94,6 +95,7 @@ describe("ContextPanel", () => {
     ]);
     vi.mocked(listPendingApprovals).mockResolvedValue([
       { id: "a1", action: "write_file", status: "pending" },
+      { id: "a-blank", action: "   ", status: "pending" },
     ]);
   });
 
@@ -132,7 +134,10 @@ describe("ContextPanel", () => {
     await waitFor(() => {
       expect(screen.getByText(/待审批/)).toBeInTheDocument();
     });
-    expect(screen.getByText("write_file")).toBeInTheDocument();
+    expect(screen.getByText("写入文件")).toBeInTheDocument();
+    expect(screen.getByText("未知操作")).toBeInTheDocument();
+    expect(screen.queryByText("write_file")).not.toBeInTheDocument();
+    expect(screen.queryByText("执行操作")).not.toBeInTheDocument();
     expect(screen.getByText(/喜欢 Rust 所有权模型/)).toBeInTheDocument();
   });
 
@@ -162,6 +167,7 @@ describe("ContextPanel", () => {
     const memory =
       "这是一条很长的相关记忆，平时最多两行，键盘落到时要写出整句，不能只留在看不见的地方";
     const tool = "mcp_filesystem__read_a_very_long_tool_name_that_used_to_stay_truncated";
+    const toolLabelText = visibleToolName(tool, tool);
     vi.mocked(searchMemories).mockResolvedValue([
       { id: "m-long", content: memory, category: "note", created_at: "" },
     ]);
@@ -192,7 +198,8 @@ describe("ContextPanel", () => {
     expect(fireEvent.keyDown(memoryRow!, { key: "Enter", keyCode: 229 })).toBe(true);
     expect(fireEvent.keyDown(memoryRow!, { key: "Process" })).toBe(true);
 
-    const toolText = screen.getByText(tool);
+    const toolText = screen.getByText(toolLabelText);
+    expect(screen.queryByText(tool)).not.toBeInTheDocument();
     expect(toolText).toHaveClass(
       "truncate",
       "group-focus-visible:overflow-visible",
@@ -207,7 +214,7 @@ describe("ContextPanel", () => {
     expect(fireEvent.keyDown(toolRow!, { key: " " })).toBe(false);
     expect(fireEvent.keyDown(toolRow!, { key: "Enter", keyCode: 229 })).toBe(true);
 
-    const approval = screen.getByText("write_file");
+    const approval = screen.getByText("写入文件");
     expect(approval).not.toHaveAttribute("tabindex");
     expect(approval.className).not.toContain("truncate");
     expect(approval.className).not.toContain("line-clamp");
