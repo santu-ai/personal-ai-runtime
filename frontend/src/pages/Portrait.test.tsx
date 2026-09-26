@@ -177,7 +177,8 @@ describe("PortraitPage", () => {
       expect(screen.getByText("60%")).toBeInTheDocument();
       expect(screen.getByText("开始运动")).toBeInTheDocument();
       expect(screen.getByText("待开始")).toBeInTheDocument();
-    expect(screen.getByText("截止: 2026-07-01")).toBeInTheDocument();
+      expect(screen.getByText("截止: 2026-07-01")).toBeInTheDocument();
+    });
     const fill = document.querySelector("[data-portrait-progress]");
     expect(fill).toHaveStyle({ width: "60%" });
     expect(fill?.parentElement).toHaveAttribute("aria-hidden", "true");
@@ -234,7 +235,6 @@ describe("PortraitPage", () => {
     expect(screen.queryByText("0.3%")).not.toBeInTheDocument();
     expect(screen.queryByText("1%")).not.toBeInTheDocument();
     expect(screen.queryByText("150%")).not.toBeInTheDocument();
-  });
   });
 
   it("renders header with total item count", async () => {
