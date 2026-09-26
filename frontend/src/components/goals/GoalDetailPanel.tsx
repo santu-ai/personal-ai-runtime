@@ -426,28 +426,31 @@ export default function GoalDetailPanel({
         )}
 
         <div className="space-y-2">
-          {(goal.actions || []).map((action) => (
-            <div
-              key={action.id}
-              className="flex items-center gap-3 p-3 bg-surface-overlay/50 rounded-lg"
-            >
-              <input
-                type="checkbox"
-                checked={action.status === "completed"}
-                aria-label={action.title || "行动步骤"}
-                aria-busy={busyActions.has(action.id) || undefined}
-                onChange={() => void handleToggleAction(goal.id, action.id, action.status)}
-                className={`w-4 h-4 rounded border-border-strong bg-surface-overlay accent-success focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
-                  busyActions.has(action.id) ? "opacity-50" : ""
-                }`}
-              />
-              <span
-                className={`text-sm flex-1 ${action.status === "completed" ? "line-through text-fg-tertiary" : "text-fg-primary"}`}
+          {(goal.actions || []).map((action) => {
+            const stepName = action.title.trim();
+            return (
+              <label
+                key={action.id}
+                className="flex cursor-pointer items-center gap-3 rounded-lg bg-surface-overlay/50 p-3"
               >
-                {action.title}
-              </span>
-            </div>
-          ))}
+                <input
+                  type="checkbox"
+                  checked={action.status === "completed"}
+                  aria-label={stepName ? undefined : "行动步骤"}
+                  aria-busy={busyActions.has(action.id) || undefined}
+                  onChange={() => void handleToggleAction(goal.id, action.id, action.status)}
+                  className={`w-4 h-4 rounded border-border-strong bg-surface-overlay accent-success focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                    busyActions.has(action.id) ? "opacity-50" : ""
+                  }`}
+                />
+                <span
+                  className={`text-sm flex-1 ${action.status === "completed" ? "line-through text-fg-tertiary" : "text-fg-primary"}`}
+                >
+                  {action.title}
+                </span>
+              </label>
+            );
+          })}
           <NewActionInput goalId={goal.id} onAdd={(title) => handleCreateAction(goal.id, title)} />
         </div>
       </div>
