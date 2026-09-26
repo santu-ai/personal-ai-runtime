@@ -151,25 +151,29 @@ function InlineCode({ children }: { children: React.ReactNode }) {
   );
 }
 
+const SOURCE_KIND_ICON = {
+  memory: Brain,
+  email: Mail,
+  goal: Target,
+  document: FileText,
+} as const;
+
+const SOURCE_KIND_NAME = {
+  memory: "记忆",
+  email: "邮件",
+  goal: "目标",
+  document: "文档",
+} as const;
+
 function SourceBadge({ source }: { source: SourceCitation }) {
-  const iconMap = {
-    memory: <Brain size={10} />,
-    email: <Mail size={10} />,
-    goal: <Target size={10} />,
-    document: <FileText size={10} />,
-  };
   const colorMap = {
     memory: "bg-insight/15 text-insight border-insight/30",
     email: "bg-warning/15 text-warning border-warning/30",
     goal: "bg-success/15 text-success border-success/30",
     document: "bg-insight/15 text-insight border-insight/30",
   };
-  const labelMap = {
-    memory: "记忆",
-    email: "邮件",
-    goal: "目标",
-    document: "文档",
-  };
+  const kind = SOURCE_KIND_NAME[source.type];
+  const Icon = SOURCE_KIND_ICON[source.type];
 
   const titled = Boolean(source.title);
   const keepFromScrolling = (event: KeyboardEvent<HTMLSpanElement>) => {
@@ -189,7 +193,23 @@ function SourceBadge({ source }: { source: SourceCitation }) {
           : ""
       }`}
     >
-      {iconMap[source.type] || null}
+      {Icon ? (
+        <Icon
+          size={10}
+          aria-hidden
+          className={titled ? "shrink-0 group-focus-visible:hidden" : undefined}
+        />
+      ) : null}
+      {/* 有标题时平时只画图标。键盘落到时写出类型，图标让开。鼠标悬停仍是图标。 */}
+      {titled && kind ? (
+        <span
+          data-icon-name=""
+          aria-hidden="true"
+          className="hidden shrink-0 group-focus-visible:inline"
+        >
+          {kind}
+        </span>
+      ) : null}
       {/* 平时最多约 120px，整句在悬停 title 里。键盘落到时写出整句。 */}
       <span
         className={
@@ -198,7 +218,7 @@ function SourceBadge({ source }: { source: SourceCitation }) {
             : "max-w-[120px] truncate"
         }
       >
-        {source.title || labelMap[source.type]}
+        {source.title || kind}
       </span>
     </span>
   );
