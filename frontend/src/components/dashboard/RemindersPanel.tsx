@@ -1,6 +1,6 @@
 import { Zap } from "lucide-react";
 import { type Notification } from "../../api/client";
-import { notificationPreview } from "../../utils/notificationUtils";
+import { notificationPreview, notificationRowName } from "../../utils/notificationUtils";
 import LoadErrorNotice from "../ui/LoadErrorNotice";
 
 interface RemindersPanelProps {
@@ -35,6 +35,7 @@ export default function RemindersPanel({
               key={n.id}
               type="button"
               onClick={() => void onNotificationClick(n)}
+              aria-label={notificationRowName(n.title, n.content, n.read)}
               className={`group w-full text-left p-3 bg-surface-overlay/50 rounded-lg hover:bg-surface-overlay transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
                 n.read ? "opacity-60" : ""
               }`}
