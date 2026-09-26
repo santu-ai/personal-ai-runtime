@@ -511,6 +511,13 @@ export default function InboxPage() {
   );
 }
 
+/** 字面上仍是这一句。读屏把这封的主题和发件人接在后面。两边都是空白时仍只读这一句。 */
+function triageActionName(label: string, email: InboxEmail): string | undefined {
+  const detail = [email.subject.trim(), email.sender.trim()].filter(Boolean).join(" ");
+  if (!detail) return undefined;
+  return `${label}：${detail}`;
+}
+
 function TriageCard({
   email,
   loadingDetail,
@@ -532,7 +539,7 @@ function TriageCard({
   }`;
   return (
     <div className="group rounded-lg border border-border-subtle bg-surface-sunken p-3">
-      {/* 平时一行。键盘落到「查看」「标记已读」或「让 AI 处理」时写出整句。鼠标悬停仍是一行。 */}
+      {/* 平时一行。键盘落到「查看」「标记已读」或「让 AI 处理」时写出整句。鼠标悬停仍是一行。字面上仍是这三句，读屏接上主题和发件人。 */}
       <div className="flex min-w-0 items-baseline gap-2 group-has-[:focus-visible]:flex-col group-has-[:focus-visible]:items-stretch">
         <div className="min-w-0 flex-1 truncate text-sm font-medium text-fg-primary group-has-[:focus-visible]:overflow-visible group-has-[:focus-visible]:whitespace-normal group-has-[:focus-visible]:text-clip group-has-[:focus-visible]:break-words">
           {email.subject}
@@ -545,6 +552,7 @@ function TriageCard({
         <button
           type="button"
           onClick={onView}
+          aria-label={triageActionName("查看", email)}
           aria-busy={loadingDetail || undefined}
           className={`inline-flex items-center gap-1 text-xs text-fg-secondary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded${
             loadingDetail ? " opacity-50" : ""
@@ -560,6 +568,7 @@ function TriageCard({
         <button
           type="button"
           data-inbox-mark={email.id}
+          aria-label={triageActionName("标记已读", email)}
           aria-busy={busyAction === "read" || undefined}
           onClick={onMarkRead}
           className={writeClass}
@@ -569,6 +578,7 @@ function TriageCard({
         <button
           type="button"
           data-inbox-ai={email.id}
+          aria-label={triageActionName("让 AI 处理", email)}
           aria-busy={busyAction === "handled" || undefined}
           onClick={onAiProcess}
           className={writeClass}
