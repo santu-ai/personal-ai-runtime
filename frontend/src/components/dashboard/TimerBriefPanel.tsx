@@ -1,6 +1,19 @@
+import type { KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
 import { Clock, RefreshCw } from "lucide-react";
 import type { RerunnableBrief, TimerStatusItem } from "../../api/types";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
+
+/** 平时一行。键盘落到这一行时写出整句。鼠标悬停仍是一行。 */
+const revealOnFocus =
+  "block truncate group-focus-visible:overflow-visible group-focus-visible:whitespace-normal group-focus-visible:text-clip group-focus-visible:break-words";
+const focusableRow =
+  "group block min-w-0 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
+
+function keepBareKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
+  if (isImeKeyboardEvent(event.nativeEvent)) return;
+  if (event.key === "Enter" || event.key === " ") event.preventDefault();
+}
 
 const TIMER_LABELS: Record<string, string> = {
   morning_brief: "早安简报",
@@ -34,15 +47,22 @@ function TimerRow({ item }: { item: TimerStatusItem }) {
     item.fire_at || "时间未定"
   }`;
   const workId = item.work_id?.trim();
+  const line = <span className={revealOnFocus}>{text}</span>;
+  // 没有任务时仍是纯文本。键盘也能落到这一行，空格和回车不把页面滚走。
   if (!workId) {
-    return <span className="min-w-0 truncate text-fg-secondary">{text}</span>;
+    return (
+      <span
+        tabIndex={0}
+        onKeyDown={keepBareKeysFromScrolling}
+        className={`${focusableRow} text-fg-secondary`}
+      >
+        {line}
+      </span>
+    );
   }
   return (
-    <Link
-      to={taskPath(workId)}
-      className="block min-w-0 rounded-sm text-fg-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-    >
-      <span className="block truncate">{text}</span>
+    <Link to={taskPath(workId)} className={`${focusableRow} text-fg-primary hover:underline`}>
+      {line}
     </Link>
   );
 }
