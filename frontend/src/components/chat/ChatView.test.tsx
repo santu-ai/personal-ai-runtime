@@ -3,6 +3,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import ChatView, { chatViewLayoutFocus } from "./ChatView";
+import { listWorkItems } from "../../api/workItems";
+import type { WorkItem } from "../../api/types";
 import { clearComposerDrafts, writeComposerDraft } from "./composerDraft";
 import {
   ApiError,
@@ -194,6 +196,7 @@ describe("ChatView", () => {
     proposedCountState.data = 0;
     approvalsState.data = [];
     vi.mocked(getMessages).mockResolvedValue([]);
+    vi.mocked(listWorkItems).mockResolvedValue([]);
     chatStoreState.pendingPrompt = null;
     clearComposerDrafts();
   });
@@ -1654,7 +1657,20 @@ describe("ChatView", () => {
   it("fills an empty composer from a prompt chip before paint", () => {
     renderChatView();
     const field = screen.getByPlaceholderText(/输入消息/) as HTMLTextAreaElement;
-    const chip = screen.getByRole("button", { name: "读写文件" });
+    const chip = screen.getByRole("button", {
+      name: "帮我在桌面创建一个 todo.md，列出今天的任务",
+    });
+    expect(chip).toHaveTextContent("读写文件");
+    expect(chip.querySelector("[data-prompt-name]")).toHaveTextContent(
+      "帮我在桌面创建一个 todo.md，列出今天的任务",
+    );
+    expect(chip.querySelector("[data-prompt-name]")).toHaveClass(
+      "hidden",
+      "group-focus-visible:block",
+    );
+    expect(chip.querySelector("span.group-focus-visible\\:hidden")).toHaveClass(
+      "group-focus-visible:hidden",
+    );
     const prompt = "帮我在桌面创建一个 todo.md，列出今天的任务";
     const seen = captureFocusWhenSettled(
       () => document.activeElement === field && field.value === prompt,
@@ -1671,7 +1687,9 @@ describe("ChatView", () => {
     renderChatView();
     const field = screen.getByPlaceholderText(/输入消息/);
     fireEvent.change(field, { target: { value: "   " } });
-    fireEvent.click(screen.getByRole("button", { name: "读写文件" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "帮我在桌面创建一个 todo.md，列出今天的任务" }),
+    );
     expect(field).toHaveValue("帮我在桌面创建一个 todo.md，列出今天的任务");
   });
 
@@ -1679,7 +1697,9 @@ describe("ChatView", () => {
     renderChatView();
     const field = screen.getByPlaceholderText(/输入消息/) as HTMLTextAreaElement;
     fireEvent.change(field, { target: { value: "先写着" } });
-    const chip = screen.getByRole("button", { name: "读写文件" });
+    const chip = screen.getByRole("button", {
+      name: "帮我在桌面创建一个 todo.md，列出今天的任务",
+    });
     const seen = captureFocusWhenSettled(
       () => document.activeElement === field && field.value === "先写着",
     );
@@ -1690,7 +1710,9 @@ describe("ChatView", () => {
     expect(seen.read()).toBe(field);
     expect(field).toHaveFocus();
 
-    const other = screen.getByRole("button", { name: "搜索网页" });
+    const other = screen.getByRole("button", {
+      name: "帮我搜索最新的 Python 3.13 特性并总结",
+    });
     other.focus();
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -1703,9 +1725,13 @@ describe("ChatView", () => {
     renderChatView();
     const field = screen.getByPlaceholderText(/输入消息/);
     fireEvent.change(field, { target: { value: "先写着" } });
-    const other = screen.getByRole("button", { name: "搜索网页" });
+    const other = screen.getByRole("button", {
+      name: "帮我搜索最新的 Python 3.13 特性并总结",
+    });
     other.focus();
-    fireEvent.click(screen.getByRole("button", { name: "读写文件" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "帮我在桌面创建一个 todo.md，列出今天的任务" }),
+    );
     expect(field).toHaveValue("先写着");
     expect(other).toHaveFocus();
   });
@@ -1730,5 +1756,44 @@ describe("ChatView", () => {
     fireEvent.click(chip);
     expect(field).toHaveValue("先写着");
     expect(field).toHaveFocus();
+  });
+
+  it("writes the full suggestion on a long in-thread chip and leaves a short one as the sentence", async () => {
+    const title = "x".repeat(40);
+    const full = `目标「${title}」已停滞，帮我分析下一步`;
+    vi.mocked(listWorkItems).mockResolvedValue([
+      {
+        id: "g1",
+        title,
+        status: "active",
+        last_activity_at: null,
+      } as WorkItem,
+    ]);
+    vi.mocked(getMessages).mockResolvedValue([
+      {
+        id: "u1",
+        conversation_id: "test-conv-1",
+        role: "user",
+        content: "hello",
+        tool_calls: null,
+        tool_call_id: null,
+        created_at: "2026-08-17T00:00:00Z",
+      },
+    ]);
+    renderChatView();
+    await screen.findByTestId("chat-transcript");
+    const chip = await screen.findByRole("button", { name: full });
+    expect(chip).toHaveTextContent(`${full.slice(0, 50)}…`);
+    expect(chip.querySelector("[data-prompt-name]")).toHaveTextContent(full);
+    expect(chip.querySelector("[data-prompt-name]")).toHaveClass(
+      "hidden",
+      "group-focus-visible:block",
+    );
+    expect(chip.querySelector("span")).toHaveClass("group-focus-visible:hidden");
+    expect(chip).toHaveAttribute("title", full);
+    const short = screen.getByRole("button", { name: "查看今日收件箱摘要" });
+    expect(short.querySelector("[data-prompt-name]")).toBeNull();
+    expect(short).not.toHaveAttribute("title");
+    vi.mocked(listWorkItems).mockResolvedValue([]);
   });
 });
