@@ -223,8 +223,9 @@ export default function QuickCaptureDialog() {
 
   const handleKey = (e: React.KeyboardEvent) => {
     if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey)) return;
-    e.preventDefault();
+    // 组字或输入法处理键时不保存，也不拦住这一下。
     if (isImeKeyboardEvent(e.nativeEvent)) return;
+    e.preventDefault();
     void handleSave();
   };
 
