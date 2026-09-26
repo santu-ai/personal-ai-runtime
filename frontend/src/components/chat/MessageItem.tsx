@@ -168,18 +168,15 @@ const markdownComponents = {
   a: MarkdownLink,
   code({ className, children, ...props }: { className?: string; children?: React.ReactNode }) {
     const match = /language-(\w+)/.exec(className || "");
-    const codeStr = String(children).replace(/\n$/, "");
+    const raw = String(children ?? "");
+    const codeStr = raw.replace(/\n$/, "");
 
-    if (match) {
-      const nodeProps = props as Record<string, unknown>;
-      const inline = nodeProps.inline as boolean | undefined;
-      if (inline) {
-        return <InlineCode>{children}</InlineCode>;
-      }
-      return <CodeBlock language={match[1]} code={codeStr} />;
+    // 带语言，或正文里有换行，是成段代码。行内那颗复制盖不住这一块。
+    if (match || raw.includes("\n")) {
+      return <CodeBlock language={match?.[1] ?? "text"} code={codeStr} />;
     }
 
-    if (!className && String(children).length < 50) {
+    if (!className && raw.length < 50) {
       return <InlineCode>{children}</InlineCode>;
     }
 

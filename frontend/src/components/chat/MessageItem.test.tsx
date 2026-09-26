@@ -230,4 +230,81 @@ describe("MessageItem", () => {
     expect(screen.getByRole("button", { name: "复制" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "已复制" })).not.toBeInTheDocument();
   });
+
+  it("shows a keyboard-visible copy button on fenced code", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(
+      <MessageItem
+        message={{
+          id: "m13",
+          role: "assistant",
+          content: "```js\nconst x = 1\n```",
+        }}
+      />,
+    );
+    const copy = screen.getByRole("button", { name: "复制" });
+    expect(copy).toHaveAttribute("data-code-block-copy", "");
+    expect(copy.className.split(/\s+/)).toEqual(
+      expect.arrayContaining([
+        "opacity-0",
+        "group-hover:opacity-100",
+        "focus-visible:opacity-100",
+        "focus-visible:ring-focus-ring",
+      ]),
+    );
+    fireEvent.click(copy);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("const x = 1"));
+    expect(screen.getByRole("button", { name: "已复制" })).toBe(copy);
+  });
+
+  it("copies an unlabeled fenced block without the trailing newline", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(
+      <MessageItem
+        message={{
+          id: "m14",
+          role: "assistant",
+          content: "```\necho hi\n```",
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "复制" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("echo hi"));
+    expect(screen.getByRole("button", { name: "已复制" })).toHaveAttribute(
+      "data-code-block-copy",
+      "",
+    );
+  });
+
+  it("does not mark fenced code as copied when the clipboard write fails", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"));
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(
+      <MessageItem
+        message={{
+          id: "m15",
+          role: "assistant",
+          content: "```js\nconst x = 1\n```",
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "复制" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("const x = 1"));
+    expect(screen.getByRole("button", { name: "复制" })).toHaveAttribute(
+      "data-code-block-copy",
+      "",
+    );
+    expect(screen.queryByRole("button", { name: "已复制" })).not.toBeInTheDocument();
+  });
 });
