@@ -466,6 +466,10 @@ describe("MessageItem", () => {
     expect(chip).toHaveAttribute("title", title);
     expect(chip).toHaveAttribute("tabindex", "0");
     expect(chip).toHaveClass("group", "focus-visible:ring-focus-ring");
+    const kind = chip?.querySelector("[data-icon-name]");
+    expect(kind).toHaveTextContent("记忆");
+    expect(kind).toHaveClass("hidden", "group-focus-visible:inline");
+    expect(chip?.querySelector("svg")).toHaveClass("group-focus-visible:hidden");
 
     expect(fireEvent.keyDown(chip!, { key: " " })).toBe(false);
     expect(fireEvent.keyDown(chip!, { key: "Enter" })).toBe(false);
@@ -476,6 +480,37 @@ describe("MessageItem", () => {
     const untitled = screen.getByText("邮件");
     expect(untitled.parentElement).not.toHaveAttribute("tabindex");
     expect(untitled.parentElement).not.toHaveAttribute("title");
+    expect(untitled.parentElement?.querySelector("[data-icon-name]")).toBeNull();
+    expect(untitled.parentElement?.querySelector("svg")?.getAttribute("class") ?? "").not.toContain(
+      "group-focus-visible:",
+    );
     expect(untitled.className).not.toContain("group-focus-visible:");
+  });
+
+  it("writes the source kind when a titled chip is keyboard focused", () => {
+    render(
+      <MessageItem
+        message={{
+          id: "m-src-kind",
+          role: "assistant",
+          content: "这几处都有标题。",
+          sources: [
+            { id: "g1", type: "goal", title: "本周目标" },
+            { id: "d1", type: "document", title: "备忘" },
+            { id: "e1", type: "email", title: "延期说明" },
+          ],
+        }}
+      />,
+    );
+
+    const expectKind = (title: string, name: string) => {
+      const chip = screen.getByText(title).parentElement;
+      expect(chip).toHaveAttribute("tabindex", "0");
+      expect(chip?.querySelector("[data-icon-name]")).toHaveTextContent(name);
+      expect(chip?.querySelector("svg")).toHaveClass("group-focus-visible:hidden");
+    };
+    expectKind("本周目标", "目标");
+    expectKind("备忘", "文档");
+    expectKind("延期说明", "邮件");
   });
 });
