@@ -11,6 +11,10 @@ import {
   Brain,
 } from "lucide-react";
 import { type MemoryRow } from "../../api/client";
+import PromptChipFace from "./PromptChipFace";
+
+const MEMORY_PREVIEW = 60;
+const SUGGESTION_PREVIEW = 50;
 
 const SUGGESTION_META: Record<
   string,
@@ -70,23 +74,39 @@ export default function WelcomeScreen({
                 <span className="text-xs text-insight font-medium">我记得你</span>
               </div>
               <div className="space-y-1.5">
-                {recentMemories.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={(e) =>
-                      onPickPrompt(
-                        `你记得我${m.category === "preference" ? "喜欢" : m.category === "fact" ? "" : "的"}「${m.content.slice(0, 60)}」，基于这个继续聊聊`,
-                        e.currentTarget,
-                      )
-                    }
-                    className="block w-full text-left text-xs text-fg-secondary hover:text-insight transition-colors truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
-                    title={m.content}
-                  >
-                    · {m.content.slice(0, 60)}
-                    {m.content.length > 60 ? "…" : ""}
-                  </button>
-                ))}
+                {recentMemories.map((m) => {
+                  const clipped = m.content.length > MEMORY_PREVIEW;
+                  const shown = `· ${m.content}`;
+                  const preview = clipped ? `· ${m.content.slice(0, MEMORY_PREVIEW)}…` : shown;
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={(e) =>
+                        onPickPrompt(
+                          `你记得我${m.category === "preference" ? "喜欢" : m.category === "fact" ? "" : "的"}「${m.content.slice(0, MEMORY_PREVIEW)}」，基于这个继续聊聊`,
+                          e.currentTarget,
+                        )
+                      }
+                      className={`group block w-full min-w-0 text-left text-xs text-fg-secondary hover:text-insight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded${
+                        clipped ? "" : " truncate"
+                      }`}
+                      title={m.content}
+                      aria-label={clipped ? shown : undefined}
+                    >
+                      {clipped ? (
+                        <PromptChipFace
+                          preview={<span className="block truncate">{preview}</span>}
+                          full={shown}
+                          previewClassName="block min-w-0 max-w-full group-focus-visible:hidden"
+                          fullClassName="hidden whitespace-normal text-left group-focus-visible:block"
+                        />
+                      ) : (
+                        preview
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -99,11 +119,19 @@ export default function WelcomeScreen({
                   key={c.label}
                   type="button"
                   onClick={(e) => onPickPrompt(c.prompt, e.currentTarget)}
-                  className="flex items-center gap-1 text-xs px-2.5 py-1.5 bg-surface-overlay/60 hover:bg-surface-overlay text-fg-secondary hover:text-fg-primary rounded-full border border-border-subtle hover:border-border-strong transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                  className="group inline-flex max-w-full items-center text-xs px-2.5 py-1.5 bg-surface-overlay/60 hover:bg-surface-overlay text-fg-secondary hover:text-fg-primary rounded-full border border-border-subtle hover:border-border-strong transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                   title={c.prompt}
+                  aria-label={c.prompt}
                 >
-                  <ChipIcon size={13} />
-                  <span>{c.label}</span>
+                  <PromptChipFace
+                    preview={
+                      <>
+                        <ChipIcon size={13} aria-hidden />
+                        <span>{c.label}</span>
+                      </>
+                    }
+                    full={c.prompt}
+                  />
                 </button>
               );
             })}
@@ -112,15 +140,33 @@ export default function WelcomeScreen({
           <div className="flex flex-wrap justify-center gap-2 mb-8">
             {suggestions.map((s) => {
               const SIcon = getSuggestionIcon(s);
+              const clipped = s.length > SUGGESTION_PREVIEW;
+              const preview = clipped ? `${s.slice(0, SUGGESTION_PREVIEW)}…` : s;
               return (
                 <button
                   key={s}
                   type="button"
                   onClick={(e) => onPickPrompt(s, e.currentTarget)}
-                  className="flex items-center gap-1.5 text-xs px-3 py-2 bg-surface-overlay hover:bg-border-strong text-fg-secondary hover:text-fg-primary rounded-full border border-border-subtle hover:border-border-strong transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                  className="group inline-flex max-w-full items-center gap-1.5 text-xs px-3 py-2 bg-surface-overlay hover:bg-border-strong text-fg-secondary hover:text-fg-primary rounded-full border border-border-subtle hover:border-border-strong transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                  title={clipped ? s : undefined}
+                  aria-label={clipped ? s : undefined}
                 >
-                  <SIcon size={13} className="text-fg-secondary" />
-                  <span>{s.length > 50 ? s.slice(0, 50) + "…" : s}</span>
+                  {clipped ? (
+                    <PromptChipFace
+                      preview={
+                        <>
+                          <SIcon size={13} className="text-fg-secondary" aria-hidden />
+                          <span>{preview}</span>
+                        </>
+                      }
+                      full={s}
+                    />
+                  ) : (
+                    <>
+                      <SIcon size={13} className="text-fg-secondary" aria-hidden />
+                      <span>{preview}</span>
+                    </>
+                  )}
                 </button>
               );
             })}

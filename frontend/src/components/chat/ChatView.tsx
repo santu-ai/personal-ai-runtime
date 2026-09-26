@@ -17,7 +17,10 @@ import WelcomeScreen from "./WelcomeScreen";
 import ProposedMemoryBanner from "./ProposedMemoryBanner";
 import LoadErrorNotice from "../ui/LoadErrorNotice";
 import { readComposerDraft, writeComposerDraft } from "./composerDraft";
+import PromptChipFace from "./PromptChipFace";
 import { useConfirmFocusContainment } from "./confirmFocus";
+
+const SUGGESTION_PREVIEW = 50;
 
 interface Props {
   conversationId: string;
@@ -730,15 +733,33 @@ export default function ChatView({ conversationId }: Props) {
             <div className="mb-3 flex flex-wrap gap-2">
               {suggestions.map((s) => {
                 const SIcon = getSuggestionIcon(s);
+                const clipped = s.length > SUGGESTION_PREVIEW;
+                const preview = clipped ? `${s.slice(0, SUGGESTION_PREVIEW)}…` : s;
                 return (
                   <button
                     key={s}
                     type="button"
                     onClick={(e) => handlePickPrompt(s, e.currentTarget)}
-                    className="flex items-center gap-1 rounded-full border border-border-subtle bg-surface-raised px-3 py-1.5 text-xs text-fg-secondary shadow-sm transition-all hover:border-border-strong hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                    className="group inline-flex max-w-full items-center gap-1 rounded-full border border-border-subtle bg-surface-raised px-3 py-1.5 text-xs text-fg-secondary shadow-sm transition-all hover:border-border-strong hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                    title={clipped ? s : undefined}
+                    aria-label={clipped ? s : undefined}
                   >
-                    <SIcon size={12} className="text-fg-secondary" />
-                    <span>{s.length > 50 ? s.slice(0, 50) + "…" : s}</span>
+                    {clipped ? (
+                      <PromptChipFace
+                        preview={
+                          <>
+                            <SIcon size={12} className="text-fg-secondary" aria-hidden />
+                            <span>{preview}</span>
+                          </>
+                        }
+                        full={s}
+                      />
+                    ) : (
+                      <>
+                        <SIcon size={12} className="text-fg-secondary" aria-hidden />
+                        <span>{preview}</span>
+                      </>
+                    )}
                   </button>
                 );
               })}
