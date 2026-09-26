@@ -64,6 +64,9 @@ export default function ChatView({ conversationId }: Props) {
   /** 点了「上下文」或「收起」。这一钮卸下后才交到对面；移到别的控件就清掉。 */
   const contextToggleFocus = useRef(false);
   const prevMemoryTotalRef = useRef<number | null>(null);
+  const memoryNoticeRef = useRef<HTMLDivElement>(null);
+  /** 关掉时焦点还在这条提示上。卸下后才交出去；已经在别的控件上就不记。 */
+  const memoryNoticeReturnRef = useRef(false);
 
   const addError = useErrorStore((s) => s.addError);
   const pendingPrompt = useChatStore((s) => s.pendingPrompt);
@@ -248,10 +251,19 @@ export default function ChatView({ conversationId }: Props) {
     void loadSuggestions();
   }, [memData, loadSuggestions]);
 
+  const dismissMemoryNotice = useCallback(() => {
+    const root = memoryNoticeRef.current;
+    const active = document.activeElement;
+    if (root && active instanceof Node && root.contains(active)) {
+      memoryNoticeReturnRef.current = true;
+    }
+    setMemoryNotice(null);
+  }, []);
+
   useEffect(() => {
     prevMemoryTotalRef.current = null;
-    setMemoryNotice(null);
-  }, [conversationId]);
+    dismissMemoryNotice();
+  }, [conversationId, dismissMemoryNotice]);
 
   // Surface a "待确认" toast when this conversation yields a new proposed memory.
   // Uses the conversation-scoped proposed count (not the global memory total).
@@ -267,13 +279,13 @@ export default function ChatView({ conversationId }: Props) {
         setMemoryNotice(
           `待确认：${newestProposed.content.slice(0, 40)}${newestProposed.content.length > 40 ? "…" : ""}`,
         );
-        const t = setTimeout(() => setMemoryNotice(null), 6000);
+        const t = setTimeout(() => dismissMemoryNotice(), 6000);
         prevMemoryTotalRef.current = proposedTotal;
         return () => clearTimeout(t);
       }
     }
     prevMemoryTotalRef.current = proposedTotal;
-  }, [proposedTotal, newestProposed]);
+  }, [proposedTotal, newestProposed, dismissMemoryNotice, conversationId]);
 
   const BOTTOM_THRESHOLD_PX = 80;
 
@@ -481,6 +493,30 @@ export default function ChatView({ conversationId }: Props) {
     if (next && document.activeElement !== next) next.focus();
   }, [contextOpen]);
 
+  // 「待确认：…」卸下的同一轮交焦点。放到绘制前，不先停在页面空白。
+  // 已经移到别的控件上就不再抢。输入框还能输入就落到输入框；待确认时落到回答框或确认按钮；
+  // 再没有就落到「上下文」，已经展开时落到「收起」。
+  useLayoutEffect(() => {
+    if (memoryNotice || !memoryNoticeReturnRef.current) return;
+    memoryNoticeReturnRef.current = false;
+    if (!focusIsBlank()) return;
+    const composer = inputRef.current;
+    if (composer && !composer.disabled) {
+      composer.focus();
+      return;
+    }
+    const root = confirmationRef.current;
+    const answer = root?.querySelector<HTMLTextAreaElement>("textarea:not([disabled])");
+    const button = root?.querySelector<HTMLButtonElement>("button:not([disabled])");
+    const target = answer ?? button;
+    if (target && document.activeElement !== target) {
+      target.focus();
+      return;
+    }
+    const exit = document.querySelector<HTMLButtonElement>("[data-confirm-exit]");
+    if (exit && document.activeElement !== exit) exit.focus();
+  }, [memoryNotice]);
+
   useLayoutEffect(() => {
     chatViewLayoutFocus.notify?.();
   });
@@ -586,12 +622,16 @@ export default function ChatView({ conversationId }: Props) {
     <div className="flex-1 flex flex-col min-h-0">
       <ProposedMemoryBanner conversationId={conversationId} />
       {memoryNotice && (
-        <div className="px-4 py-2 bg-insight/10 border-b border-insight/30 flex items-center gap-2 text-xs text-insight animate-pulse">
+        <div
+          ref={memoryNoticeRef}
+          data-memory-notice=""
+          className="px-4 py-2 bg-insight/10 border-b border-insight/30 flex items-center gap-2 text-xs text-insight animate-pulse"
+        >
           <BrainCircuit size={14} className="shrink-0" />
           <span className="flex-1 truncate">{memoryNotice}</span>
           <button
             type="button"
-            onClick={() => setMemoryNotice(null)}
+            onClick={() => dismissMemoryNotice()}
             className="text-insight/70 hover:text-insight shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
             aria-label="关闭"
           >

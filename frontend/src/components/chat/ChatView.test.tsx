@@ -151,6 +151,33 @@ function renderChatView() {
     </QueryClientProvider>,
   );
 }
+
+/** 同一棵树再渲染，才能在发出之后把待确认记忆数加上去。 */
+function mountChatView() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
+  const tree = () => (
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <ChatView conversationId="test-conv-1" />
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+  const view = render(tree());
+  return {
+    rerenderChat() {
+      view.rerender(tree());
+    },
+  };
+}
+
+function growProposedMemory(content: string) {
+  memoriesState.data = {
+    memories: [{ id: "m-new", content }],
+    recent: [{ id: "m-new", content }],
+  };
+}
 describe("ChatView", () => {
   beforeAll(() => {
     Element.prototype.scrollIntoView = vi.fn();
@@ -979,15 +1006,174 @@ describe("ChatView", () => {
     // Regression for Issue 5: initial cache load (or StrictMode remount)
     // must never fire a spurious toast. The notice only fires after the
     // user sends a message AND the memory total grows beyond the post-send
-    // baseline — both gates are verified at the logic level. Driving the
-    // full "growth after send" path here requires intercepting React's
-    // re-render schedule in ways that make the test more brittle than the
-    // code; the post-send growth branch is covered by manual smoke instead.
+    // baseline. The growth path is covered by the notice dismiss focus tests.
     memoriesState.data.memories = [{ content: "likes tea" }];
     memoriesState.data.recent = [{ content: "likes tea" }];
     renderChatView();
     expect(screen.queryByText(/我刚记住了/)).not.toBeInTheDocument();
     expect(screen.queryByText(/待确认：/)).not.toBeInTheDocument();
+  });
+
+  function mockPlainReply(text: string) {
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({ type: "text_delta", content: text });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+  }
+
+  async function sendFromComposer() {
+    fireEvent.change(screen.getByPlaceholderText(/输入消息/), {
+      target: { value: "请记住我喜欢喝茶" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+  }
+
+  it("moves focus to the composer in the same layout turn when 待确认 is closed", async () => {
+    mockPlainReply("记下了。");
+    const view = mountChatView();
+    await sendFromComposer();
+    await waitFor(() => expect(screen.getByText("记下了。")).toBeInTheDocument());
+
+    growProposedMemory("喜欢喝茶");
+    view.rerenderChat();
+    const close = screen.getByRole("button", { name: "关闭" });
+    expect(screen.getByText("待确认：喜欢喝茶")).toBeInTheDocument();
+    const field = screen.getByPlaceholderText(/输入消息/);
+    const seen = captureFocusWhenSettled(
+      () => screen.queryByRole("button", { name: "关闭" }) == null,
+    );
+    close.focus();
+    fireEvent.click(close);
+
+    expect(screen.queryByText("待确认：喜欢喝茶")).not.toBeInTheDocument();
+    expect(field).toHaveFocus();
+    expect(document.body).not.toHaveFocus();
+    expect(seen.read()).toBe(field);
+  });
+
+  it("moves focus to the composer when 待确认 times out while the close button is focused", async () => {
+    mockPlainReply("记下了。");
+    const view = mountChatView();
+    await sendFromComposer();
+    await waitFor(() => expect(screen.getByText("记下了。")).toBeInTheDocument());
+
+    vi.useFakeTimers();
+    try {
+      growProposedMemory("喜欢喝茶");
+      view.rerenderChat();
+      const close = screen.getByRole("button", { name: "关闭" });
+      const field = screen.getByPlaceholderText(/输入消息/);
+      const seen = captureFocusWhenSettled(
+        () => screen.queryByRole("button", { name: "关闭" }) == null,
+      );
+      close.focus();
+      act(() => {
+        vi.advanceTimersByTime(6000);
+      });
+      expect(screen.queryByText("待确认：喜欢喝茶")).not.toBeInTheDocument();
+      expect(field).toHaveFocus();
+      expect(document.body).not.toHaveFocus();
+      expect(seen.read()).toBe(field);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not steal focus when 待确认 times out after focus already moved", async () => {
+    mockPlainReply("记下了。");
+    const view = mountChatView();
+    await sendFromComposer();
+    await waitFor(() => expect(screen.getByText("记下了。")).toBeInTheDocument());
+
+    vi.useFakeTimers();
+    try {
+      growProposedMemory("喜欢喝茶");
+      view.rerenderChat();
+      const context = screen.getByRole("button", { name: "上下文" });
+      context.focus();
+      const seen = captureFocusWhenSettled(
+        () => screen.queryByRole("button", { name: "关闭" }) == null,
+      );
+      act(() => {
+        vi.advanceTimersByTime(6000);
+      });
+      expect(screen.queryByText("待确认：喜欢喝茶")).not.toBeInTheDocument();
+      expect(context).toHaveFocus();
+      expect(seen.read()).toBe(context);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("moves focus to the confirm button when 待确认 closes during a pending confirmation", async () => {
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({
+          type: "confirmation_required",
+          tool_name: "write_file",
+          tool_args: { path: "/tmp/x", content: "data" },
+          approval_id: "ap-memory-notice",
+          tool_call_id: "tc-memory-notice",
+        });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+    const view = mountChatView();
+    await sendFromComposer();
+    const confirm = await screen.findByRole("button", { name: "确认写入" });
+    await waitFor(() => expect(confirm).toHaveFocus());
+
+    growProposedMemory("喜欢喝茶");
+    view.rerenderChat();
+    const close = screen.getByRole("button", { name: "关闭" });
+    const seen = captureFocusWhenSettled(
+      () => screen.queryByRole("button", { name: "关闭" }) == null,
+    );
+    close.focus();
+    fireEvent.click(close);
+
+    expect(screen.getByRole("button", { name: "确认写入" })).toHaveFocus();
+    expect(screen.getByPlaceholderText(/输入消息/)).not.toHaveFocus();
+    expect(document.body).not.toHaveFocus();
+    expect(seen.read()).toBe(screen.getByRole("button", { name: "确认写入" }));
+  });
+
+  it("moves focus to the answer field when 待确认 closes during ask_user", async () => {
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({
+          type: "confirmation_required",
+          tool_name: "ask_user",
+          tool_args: { question: "简报要覆盖最近几天？" },
+          approval_id: "ap-memory-ask",
+          tool_call_id: "tc-memory-ask",
+        });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+    const view = mountChatView();
+    await sendFromComposer();
+    const answer = await screen.findByLabelText("你的回答");
+    await waitFor(() => expect(answer).toHaveFocus());
+
+    growProposedMemory("喜欢喝茶");
+    view.rerenderChat();
+    const close = screen.getByRole("button", { name: "关闭" });
+    const seen = captureFocusWhenSettled(
+      () => screen.queryByRole("button", { name: "关闭" }) == null,
+    );
+    close.focus();
+    fireEvent.click(close);
+
+    expect(answer).toHaveFocus();
+    expect(screen.getByRole("button", { name: "发送回答" })).not.toHaveFocus();
+    expect(document.body).not.toHaveFocus();
+    expect(seen.read()).toBe(answer);
   });
 
   it("sends a pending home prompt after messages hydrate", async () => {
