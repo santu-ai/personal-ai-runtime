@@ -62,6 +62,8 @@ describe("PromptEditor field names", () => {
     expect(resetRules).toHaveAttribute("aria-label", "重置：代码规则");
 
     expect(saveIdentity.getAttribute("aria-label")).not.toBe(saveRules.getAttribute("aria-label"));
-    expect(resetIdentity.getAttribute("aria-label")).not.toBe(resetRules.getAttribute("aria-label"));
+    expect(resetIdentity.getAttribute("aria-label")).not.toBe(
+      resetRules.getAttribute("aria-label"),
+    );
   });
 });
