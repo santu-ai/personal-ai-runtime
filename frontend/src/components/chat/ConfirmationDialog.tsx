@@ -6,7 +6,7 @@ import { useCapabilityPolicyQuery } from "../../hooks/useSettingsQuery";
 import type { CapabilityPolicy } from "../../api/settings";
 import { getRiskLevelFromPolicy } from "../../utils/riskMeta";
 import { isImeKeyboardEvent } from "../../utils/imeKey";
-import { toolLabel } from "../../utils/toolLabels";
+import { describeToolAction, toolLabel } from "../../utils/toolLabels";
 import type { ToolCall } from "./types";
 
 type ResolveAction = "confirm" | "deny";
@@ -118,13 +118,53 @@ function suggestionFor(
   };
 }
 
+function spokenSentence(text: string): string {
+  const value = text.trim();
+  if (!value) return "";
+  return /[。！？]$/.test(value) ? value : `${value}。`;
+}
+
+function descriptionAlreadyInTitle(heading: string, description: string, label: string): boolean {
+  if (!description || description === heading || description === label) return true;
+  return false;
+}
+
+/** 和卡片上看得见的标题、高风险、操作那一句相同。参数、提示和按钮名字不在这里。 */
+export function confirmationSpokenText(
+  toolCall: Pick<ToolCall, "function_name" | "arguments">,
+  policy: CapabilityPolicy | null | undefined,
+): string {
+  const args = parseToolArgs(toolCall.arguments);
+  if (toolCall.function_name === "ask_user") {
+    const question =
+      typeof args.question === "string" && args.question.trim()
+        ? args.question.trim()
+        : "助手需要你的回答才能继续。";
+    const context = typeof args.context === "string" ? args.context.trim() : "";
+    return [spokenSentence("需要你补充一点信息"), spokenSentence(question), spokenSentence(context)]
+      .filter(Boolean)
+      .join("");
+  }
+  const label = toolLabel(toolCall.function_name);
+  const heading = suggestionFor(toolCall.function_name, policy)?.title ?? `确认${label}`;
+  const description = describeToolAction(toolCall.function_name, args).trim();
+  const parts = [spokenSentence(heading)];
+  if (getRiskLevelFromPolicy(toolCall.function_name, policy) === "high") {
+    parts.push(spokenSentence("高风险"));
+  }
+  if (!descriptionAlreadyInTitle(heading, description, label)) {
+    parts.push(spokenSentence(description));
+  }
+  return parts.filter(Boolean).join("");
+}
+
 export default function ConfirmationDialog({
   toolCall,
   onConfirm,
   onDeny,
   busyAction = null,
 }: Props) {
-  const { data: policy } = useCapabilityPolicyQuery();
+  const { data: policy, isPending: policyPending } = useCapabilityPolicyQuery();
   const isAskUser = toolCall.function_name === "ask_user";
   const riskLevel = isAskUser ? "low" : getRiskLevelFromPolicy(toolCall.function_name, policy);
   const suggestion = isAskUser ? undefined : suggestionFor(toolCall.function_name, policy);
@@ -141,91 +181,99 @@ export default function ConfirmationDialog({
   };
 
   return (
-    <RiskCard
-      action={toolCall.function_name}
-      args={toolCall.arguments}
-      riskLevel={riskLevel}
-      policy={policy}
-      variant="inline"
-      title={isAskUser ? "需要你补充一点信息" : suggestion?.title}
-    >
-      <div className="w-full space-y-2">
-        {isAskUser ? (
-          <>
-            <p className="text-sm text-fg-primary whitespace-pre-wrap">
-              {question || "助手需要你的回答才能继续。"}
-            </p>
-            {context ? (
-              <p className="text-xs text-fg-tertiary whitespace-pre-wrap">{context}</p>
-            ) : null}
-            <TextArea
-              aria-label="你的回答"
-              className="w-full"
-              maxLength={ANSWER_MAX}
-              value={draft}
-              placeholder="输入回答，助手会带着它继续"
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (busy) return;
-                // 和快速捕获一样：组字或输入法处理键时的 Ctrl/Cmd+Enter 不把还没上屏的字发出去，也不拦住这一下。
-                if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey) || !answer) return;
-                if (isImeKeyboardEvent(event.nativeEvent)) return;
-                event.preventDefault();
-                press(() => onConfirm(answer));
-              }}
-            />
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                data-confirm-action="confirm"
-                disabled={!answer && busyAction !== "confirm"}
-                aria-busy={busyAction === "confirm" || undefined}
-                className={busyAction === "confirm" ? "opacity-50" : ""}
-                onClick={() => press(() => onConfirm(answer))}
-              >
-                发送回答
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                data-confirm-action="deny"
-                aria-busy={busyAction === "deny" || undefined}
-                className={busyAction === "deny" ? "opacity-50" : ""}
-                onClick={() => press(onDeny)}
-              >
-                取消
-              </Button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="text-xs text-fg-tertiary">
-              {suggestion?.hint ?? "确认后将执行工具并继续当前对话"}
-            </p>
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                data-confirm-action="confirm"
-                aria-busy={busyAction === "confirm" || undefined}
-                className={busyAction === "confirm" ? "opacity-50" : ""}
-                onClick={() => press(onConfirm)}
-              >
-                {suggestion?.confirm ?? "确认执行"}
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                data-confirm-action="deny"
-                aria-busy={busyAction === "deny" || undefined}
-                className={busyAction === "deny" ? "opacity-50" : ""}
-                onClick={() => press(onDeny)}
-              >
-                取消
-              </Button>
-            </div>
-          </>
-        )}
-      </div>
-    </RiskCard>
+    <>
+      {/* 工具卡等能力策略回来再读，避免同一张先读一遍再补上高风险。向你确认不依赖策略，出现就读。等当前这一句说完。不把焦点抢过来。 */}
+      {isAskUser || !policyPending ? (
+        <p key={toolCall.id} className="sr-only" role="status">
+          {confirmationSpokenText(toolCall, policy)}
+        </p>
+      ) : null}
+      <RiskCard
+        action={toolCall.function_name}
+        args={toolCall.arguments}
+        riskLevel={riskLevel}
+        policy={policy}
+        variant="inline"
+        title={isAskUser ? "需要你补充一点信息" : suggestion?.title}
+      >
+        <div className="w-full space-y-2">
+          {isAskUser ? (
+            <>
+              <p className="text-sm text-fg-primary whitespace-pre-wrap">
+                {question || "助手需要你的回答才能继续。"}
+              </p>
+              {context ? (
+                <p className="text-xs text-fg-tertiary whitespace-pre-wrap">{context}</p>
+              ) : null}
+              <TextArea
+                aria-label="你的回答"
+                className="w-full"
+                maxLength={ANSWER_MAX}
+                value={draft}
+                placeholder="输入回答，助手会带着它继续"
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (busy) return;
+                  // 和快速捕获一样：组字或输入法处理键时的 Ctrl/Cmd+Enter 不把还没上屏的字发出去，也不拦住这一下。
+                  if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey) || !answer) return;
+                  if (isImeKeyboardEvent(event.nativeEvent)) return;
+                  event.preventDefault();
+                  press(() => onConfirm(answer));
+                }}
+              />
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  data-confirm-action="confirm"
+                  disabled={!answer && busyAction !== "confirm"}
+                  aria-busy={busyAction === "confirm" || undefined}
+                  className={busyAction === "confirm" ? "opacity-50" : ""}
+                  onClick={() => press(() => onConfirm(answer))}
+                >
+                  发送回答
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  data-confirm-action="deny"
+                  aria-busy={busyAction === "deny" || undefined}
+                  className={busyAction === "deny" ? "opacity-50" : ""}
+                  onClick={() => press(onDeny)}
+                >
+                  取消
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-fg-tertiary">
+                {suggestion?.hint ?? "确认后将执行工具并继续当前对话"}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  data-confirm-action="confirm"
+                  aria-busy={busyAction === "confirm" || undefined}
+                  className={busyAction === "confirm" ? "opacity-50" : ""}
+                  onClick={() => press(onConfirm)}
+                >
+                  {suggestion?.confirm ?? "确认执行"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  data-confirm-action="deny"
+                  aria-busy={busyAction === "deny" || undefined}
+                  className={busyAction === "deny" ? "opacity-50" : ""}
+                  onClick={() => press(onDeny)}
+                >
+                  取消
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      </RiskCard>
+    </>
   );
 }

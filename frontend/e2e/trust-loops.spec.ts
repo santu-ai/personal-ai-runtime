@@ -143,7 +143,9 @@ test.describe("Trust loops", () => {
     });
 
     await page.goto(`/chat/${E2E_CONV_ID}`);
-    await expect(page.getByText(/建议：写入文件/)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole("heading", { name: /建议：写入文件/ })).toBeVisible({
+      timeout: 10000,
+    });
     await expect(page.getByRole("button", { name: "确认写入" })).toBeVisible();
   });
 
@@ -341,13 +343,19 @@ test.describe("Trust loops", () => {
           const cid = url.searchParams.get("conversation_id");
           if (cid === convA && phase === "old" && !oldRatified) {
             await route.fulfill({
-              json: { memories: [{ id: "mem-old", content: "暗号是 TIANSHAN", confidence: 0.8 }], total: 1 },
+              json: {
+                memories: [{ id: "mem-old", content: "暗号是 TIANSHAN", confidence: 0.8 }],
+                total: 1,
+              },
             });
             return;
           }
           if (cid === convA && phase === "new" && !newRatified) {
             await route.fulfill({
-              json: { memories: [{ id: "mem-new", content: "暗号是 HUASHAN", confidence: 0.8 }], total: 1 },
+              json: {
+                memories: [{ id: "mem-new", content: "暗号是 HUASHAN", confidence: 0.8 }],
+                total: 1,
+              },
             });
             return;
           }

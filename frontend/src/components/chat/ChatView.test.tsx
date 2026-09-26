@@ -249,7 +249,7 @@ describe("ChatView", () => {
     fireEvent.click(sendButtons[sendButtons.length - 1]);
 
     await waitFor(() => {
-      expect(screen.getByText(/建议：写入文件/)).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /建议：写入文件/ })).toBeInTheDocument();
     });
     expect(screen.queryByText(/抱歉，未能生成回复/)).not.toBeInTheDocument();
   });
@@ -284,7 +284,7 @@ describe("ChatView", () => {
     fireEvent.click(sendButtons[sendButtons.length - 1]);
 
     await waitFor(() => {
-      expect(screen.getByText(/建议：写入文件/)).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /建议：写入文件/ })).toBeInTheDocument();
     });
 
     const confirmBtn = within(container).getByRole("button", { name: "确认写入" });
@@ -335,7 +335,7 @@ describe("ChatView", () => {
     fireEvent.click(sendButtons[sendButtons.length - 1]);
 
     await waitFor(() => {
-      expect(screen.getByText(/建议：写入文件/)).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /建议：写入文件/ })).toBeInTheDocument();
     });
     fireEvent.click(within(container).getByRole("button", { name: "确认写入" }));
 
@@ -371,6 +371,10 @@ describe("ChatView", () => {
     const confirmBtn = await screen.findByRole("button", { name: "确认写入" });
     const composer = screen.getByPlaceholderText(/输入消息/);
     const waiting = screen.getByRole("button", { name: "待你确认" });
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("建议：写入文件。高风险。");
+    expect(status).toHaveClass("sr-only");
+    expect(status).not.toHaveFocus();
     expect(confirmBtn).toHaveFocus();
     expect(composer).not.toHaveFocus();
     expect(composer).toBeDisabled();
@@ -720,6 +724,10 @@ describe("ChatView", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
     const answer = await screen.findByLabelText("你的回答");
+    const asked = screen.getByRole("status");
+    expect(asked).toHaveTextContent("需要你补充一点信息。简报要覆盖最近几天？");
+    expect(asked).toHaveClass("sr-only");
+    expect(asked).not.toHaveFocus();
     expect(answer).toHaveFocus();
     fireEvent.change(answer, { target: { value: "最近三天" } });
     const sendAnswer = screen.getByRole("button", { name: "发送回答" });
@@ -742,6 +750,8 @@ describe("ChatView", () => {
     await waitFor(() => expect(sendAnswer).not.toHaveAttribute("aria-busy"));
     expect(sendAnswer).toHaveFocus();
     expect(answer).toHaveValue("最近三天");
+    expect(screen.getByRole("status")).toBe(asked);
+    expect(asked).toHaveTextContent("需要你补充一点信息。简报要覆盖最近几天？");
     expect(screen.getByPlaceholderText(/输入消息/)).not.toHaveFocus();
   });
 
@@ -962,11 +972,11 @@ describe("ChatView", () => {
         screen.getAllByRole("button", { name: "发送" }).length - 1
       ],
     );
-    expect(await screen.findByText(/建议：写入文件/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /建议：写入文件/ })).toBeInTheDocument();
 
     rerender(renderWith("test-conv-2"));
     await waitFor(() => {
-      expect(screen.queryByText(/建议：写入文件/)).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: /建议：写入文件/ })).not.toBeInTheDocument();
     });
   });
 
@@ -1007,7 +1017,7 @@ describe("ChatView", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/建议：写入文件/)).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /建议：写入文件/ })).toBeInTheDocument();
     });
     fireEvent.click(within(container).getByRole("button", { name: "确认写入" }));
 
@@ -1043,7 +1053,7 @@ describe("ChatView", () => {
     fireEvent.click(sendButtons[sendButtons.length - 1]);
 
     await waitFor(() => {
-      expect(screen.getByText(/建议：写入文件/)).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /建议：写入文件/ })).toBeInTheDocument();
     });
 
     fireEvent.click(within(container).getByRole("button", { name: "取消" }));
@@ -1099,7 +1109,7 @@ describe("ChatView", () => {
     const cancel = await screen.findByRole("button", { name: "取消" });
     fireEvent.click(cancel);
     expect(cancel).toHaveAttribute("aria-busy", "true");
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("建议：写入文件。高风险。");
     expect(screen.queryByText(/已拒绝/)).not.toBeInTheDocument();
 
     await act(async () => {
@@ -1107,7 +1117,7 @@ describe("ChatView", () => {
     });
     await waitFor(() => expect(resolveApproval).toHaveBeenCalled());
     expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("建议：写入文件。高风险。");
     expect(screen.queryByText(/已拒绝/)).not.toBeInTheDocument();
   });
 
@@ -1167,16 +1177,23 @@ describe("ChatView", () => {
     const sendButtons = screen.getAllByRole("button", { name: "发送" });
     fireEvent.click(sendButtons[sendButtons.length - 1]);
     fireEvent.click(await screen.findByRole("button", { name: "取消" }));
-    const first = await screen.findByRole("status");
-    expect(first).toHaveTextContent("已拒绝「向你确认」，没有执行该操作。");
+    const denied = "已拒绝「向你确认」，没有执行该操作。";
+    const first = await waitFor(() => {
+      const notes = screen.getAllByRole("status").filter((node) => node.textContent === denied);
+      expect(notes).toHaveLength(1);
+      return notes[0];
+    });
 
     confirm("ap-deny-2");
     const field = screen.getByRole("textbox", { name: "输入消息" });
     fireEvent.change(field, { target: { value: "第二次" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
     fireEvent.click(await screen.findByRole("button", { name: "取消" }));
-    await waitFor(() => expect(screen.getByRole("status")).not.toBe(first));
-    expect(screen.getByRole("status")).toHaveTextContent("已拒绝「向你确认」，没有执行该操作。");
+    await waitFor(() => {
+      const notes = screen.getAllByRole("status").filter((node) => node.textContent === denied);
+      expect(notes).toHaveLength(1);
+      expect(notes[0]).not.toBe(first);
+    });
     expect(screen.getByRole("status")).not.toHaveFocus();
   });
 
@@ -1570,7 +1587,7 @@ describe("ChatView", () => {
       },
     ];
     renderChatView();
-    expect(await screen.findByText(/建议：写入文件/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /建议：写入文件/ })).toBeInTheDocument();
     const confirmBtn = screen.getByRole("button", { name: "确认写入" });
     expect(confirmBtn).toBeInTheDocument();
     expect(confirmBtn).toHaveFocus();
@@ -2103,7 +2120,7 @@ describe("ChatView", () => {
         screen.getAllByRole("button", { name: "发送" }).length - 1
       ],
     );
-    expect(await screen.findByText(/建议：写入文件/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /建议：写入文件/ })).toBeInTheDocument();
 
     fireEvent.change(composer(), { target: { value: "确认期间先留着" } });
     fireEvent.keyDown(composer(), { key: "Enter" });
