@@ -16,6 +16,13 @@ const statusLabels: Record<string, string> = {
   completed: "已完成",
 };
 
+/** 和详情徽章、列表行同一套说法。进行中且停滞时用「 · 」接上。 */
+function visibleGoalStatus(goal: WorkItem): string {
+  const label = (statusLabels[goal.status] || goal.status).trim();
+  const stagnant = goal.status === "active" && isStagnant(goal.last_activity_at, goal.created_at);
+  return [label, stagnant ? "已停滞" : ""].filter(Boolean).join(" · ");
+}
+
 interface GoalDetailPanelProps {
   goal: WorkItem;
   /** 这次「就此目标对话」还没创建回来。按钮不禁用，标为忙碌。 */
@@ -85,6 +92,9 @@ export default function GoalDetailPanel({
   const suggestHandoff = useRef<SuggestHandoff | null>(null);
   const statusLock = useRef(false);
   const [statusBusy, setStatusBusy] = useState<string | null>(null);
+  // 暂停、完成或恢复写成功、徽章换成新状态时读这一句。打开时已经写着的不读。
+  const statusSpokenSeq = useRef(0);
+  const [spokenStatus, setSpokenStatus] = useState<{ id: number; text: string } | null>(null);
   const actionLocks = useRef(new Set<string>());
   const [busyActions, setBusyActions] = useState<ReadonlySet<string>>(() => new Set());
   const decomposeLock = useRef(false);
@@ -164,6 +174,7 @@ export default function GoalDetailPanel({
     focusAfter.current = null;
     setSuggestedSteps([]);
     setSpokenSuggestions(null);
+    setSpokenStatus(null);
     setDecomposing(false);
     setAddingSteps(new Set());
     setAddingAll(false);
@@ -182,9 +193,14 @@ export default function GoalDetailPanel({
     }
     if (goal.status === pending.from) return;
     focusAfter.current = null;
+    const text = visibleGoalStatus(goal);
+    if (text) {
+      statusSpokenSeq.current += 1;
+      setSpokenStatus({ id: statusSpokenSeq.current, text });
+    }
     if (!focusIsIdle()) return;
     placeGoalStatusFocus(goal.status);
-  }, [goal.id, goal.status, statusBusy]);
+  }, [goal, statusBusy]);
 
   // 这一条离开建议，或「全部添加」卸下的同一轮就把焦点交出去。放到绘制前，不把焦点留在页面空白。
   // 已经移到别的控件上就不再抢。
@@ -304,6 +320,12 @@ export default function GoalDetailPanel({
         <div className="min-w-0">
           <h2 className="text-xl font-semibold tracking-tight text-fg-primary">{goal.title}</h2>
           <div className="mt-2 flex flex-wrap items-center gap-2">
+            {spokenStatus ? (
+              <p key={spokenStatus.id} className="sr-only" role="status">
+                {/* 徽章换成这一句时读出来，等当前这一句说完。不把焦点抢过来。 */}
+                {spokenStatus.text}
+              </p>
+            ) : null}
             <Badge
               tone={goal.status === "active" || goal.status === "completed" ? "success" : "default"}
             >
