@@ -1492,7 +1492,7 @@ describe("ChatView", () => {
     expect(screen.queryByRole("heading", { name: "开始对话" })).not.toBeInTheDocument();
 
     vi.mocked(getMessages).mockResolvedValueOnce([]);
-    fireEvent.click(within(error).getByRole("button", { name: "重试" }));
+    fireEvent.click(within(error).getByRole("button", { name: /^重试(：|$)/ }));
 
     expect(await screen.findByRole("heading", { name: "开始对话" })).toBeInTheDocument();
     expect(screen.queryByTestId("chat-messages-load-error")).not.toBeInTheDocument();
@@ -1519,7 +1519,7 @@ describe("ChatView", () => {
     );
 
     renderChatView();
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     expect(screen.getByTestId("chat-messages-load-error")).toHaveTextContent("对话暂时读不到");
     expect(screen.queryByRole("heading", { name: "开始对话" })).not.toBeInTheDocument();
     expect(sendMessage).not.toHaveBeenCalled();

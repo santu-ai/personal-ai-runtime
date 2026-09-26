@@ -8,6 +8,13 @@ export function queryErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+/** 字面上仍是「重试」。读屏把旁边的原因接在后面。两边的空白去掉，中间的空白和换行留着。 */
+export function retryControlName(message: string): string | undefined {
+  const text = message.trim();
+  if (!text) return undefined;
+  return `重试：${text}`;
+}
+
 /**
  * 首次失败时缓存里没有数据。重试一开始可能把查询错误清掉，这里留住原因，
  * 按钮才不会被「加载中」换掉。scope 变了（例如换了一条详情）就不再沿用上一条原因。
@@ -71,6 +78,7 @@ export default function LoadErrorNotice({
         type="button"
         size="sm"
         variant="secondary"
+        aria-label={retryControlName(message)}
         aria-busy={busy || undefined}
         onClick={() => {
           if (busy) return;

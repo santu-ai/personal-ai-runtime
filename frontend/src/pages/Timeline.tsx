@@ -22,6 +22,7 @@ import { useTimelineInfiniteQuery } from "../hooks/useTimelineQuery";
 import { actorLabel } from "../utils/actorLabels";
 import type { TimelineEvent } from "../api/timeline";
 import Button from "../components/ui/Button";
+import { retryControlName } from "../components/ui/LoadErrorNotice";
 import Spinner from "../components/ui/Spinner";
 
 /** 有原文用原文。空白或不是 Error 时用页面自己的说法，避免空白失败条。 */
@@ -60,6 +61,7 @@ function LoadErrorNotice({
       <Button
         size="sm"
         variant="secondary"
+        aria-label={retryControlName(message)}
         aria-busy={busy || undefined}
         onClick={() => {
           if (busy) return;

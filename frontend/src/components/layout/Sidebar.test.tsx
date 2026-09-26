@@ -282,7 +282,7 @@ describe("Sidebar", () => {
     const alert = screen.getByTestId("conversations-load-error");
     expect(alert).toHaveTextContent("会话暂时读不到");
     expect(screen.queryByText("暂无对话")).not.toBeInTheDocument();
-    const retry = within(alert).getByRole("button", { name: "重试" });
+    const retry = within(alert).getByRole("button", { name: /^重试(：|$)/ });
     expect(retry).toHaveClass("focus-visible:ring-focus-ring");
     await waitFor(() => expect(retry).toHaveFocus());
     fireEvent.click(retry);
@@ -295,7 +295,10 @@ describe("Sidebar", () => {
       conversationsLoadError: "会话暂时读不到",
       conversationsLoadBusy: true,
     });
-    expect(screen.getByRole("button", { name: "重试" })).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("button", { name: /^重试(：|$)/ })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
     expect(screen.queryByText("暂无对话")).not.toBeInTheDocument();
     expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
   });

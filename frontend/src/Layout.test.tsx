@@ -91,7 +91,7 @@ describe("Layout conversation list", () => {
     const alert = await screen.findByTestId("conversations-load-error", {}, { timeout: 4000 });
     expect(alert).toHaveTextContent("会话暂时读不到");
     expect(screen.queryByText("暂无对话")).not.toBeInTheDocument();
-    const retry = within(alert).getByRole("button", { name: "重试" });
+    const retry = within(alert).getByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
 
     fireEvent.click(retry);

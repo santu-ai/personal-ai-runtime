@@ -276,7 +276,7 @@ describe("SettingsPage", () => {
     const alert = await screen.findByTestId("mcp-registry-load-error");
     expect(alert).toHaveTextContent("加载失败");
     expect(screen.queryByText("暂无可用 MCP 服务器")).not.toBeInTheDocument();
-    const retry = within(alert).getByRole("button", { name: "重试" });
+    const retry = within(alert).getByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
   });
 
@@ -299,7 +299,9 @@ describe("SettingsPage", () => {
     expect(alert).toHaveTextContent("加载 MCP 服务器失败");
     expect(screen.queryByText("暂无 MCP 服务器")).not.toBeInTheDocument();
     expect(screen.queryByText("MCP 未启用或连接信息不可用")).not.toBeInTheDocument();
-    await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+    await waitFor(() =>
+      expect(within(alert).getByRole("button", { name: /^重试(：|$)/ })).toHaveFocus(),
+    );
   });
 
   it("shows a retry when Telegram status fails to load", async () => {
@@ -310,7 +312,7 @@ describe("SettingsPage", () => {
     expect(alert).toHaveTextContent("网关暂时读不到");
     expect(screen.queryByText("加载 Telegram 状态…")).not.toBeInTheDocument();
     expect(screen.queryByText("启用每分钟本地轮询")).not.toBeInTheDocument();
-    const retry = within(alert).getByRole("button", { name: "重试" });
+    const retry = within(alert).getByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
   });
 
@@ -336,7 +338,7 @@ describe("SettingsPage", () => {
       );
     renderWithRouter(<SettingsPage />);
     await expandSection("Telegram 网关");
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     fireEvent.click(retry);
     expect(retry).toBeInTheDocument();
     expect(retry).toHaveAttribute("aria-busy", "true");
@@ -355,7 +357,9 @@ describe("SettingsPage", () => {
     expect(alert).toHaveTextContent("配置暂时读不到");
     expect(screen.queryByText("加载设置…")).not.toBeInTheDocument();
     expect(screen.queryByText("设置")).not.toBeInTheDocument();
-    await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+    await waitFor(() =>
+      expect(within(alert).getByRole("button", { name: /^重试(：|$)/ })).toHaveFocus(),
+    );
   });
 
   it("uses the settings fallback when the config error has no message", async () => {
@@ -378,7 +382,7 @@ describe("SettingsPage", () => {
           }),
       );
     renderWithRouter(<SettingsPage />);
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     fireEvent.click(retry);
     expect(retry).toBeInTheDocument();
     await waitFor(() => expect(retry).toHaveAttribute("aria-busy", "true"));
@@ -410,7 +414,9 @@ describe("SettingsPage", () => {
     expect(screen.queryByText("加载策略中…")).not.toBeInTheDocument();
     expect(screen.queryByText("加载失败，点击重试")).not.toBeInTheDocument();
     expect(screen.queryByText("（无）")).not.toBeInTheDocument();
-    await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+    await waitFor(() =>
+      expect(within(alert).getByRole("button", { name: /^重试(：|$)/ })).toHaveFocus(),
+    );
   });
 
   it("uses the capability fallback when the policy error has no message", async () => {
@@ -435,7 +441,7 @@ describe("SettingsPage", () => {
       );
     renderWithRouter(<SettingsPage />);
     await expandSection("AI 能力与信任");
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     fireEvent.click(retry);
     expect(retry).toBeInTheDocument();
     await waitFor(() => expect(retry).toHaveAttribute("aria-busy", "true"));
@@ -461,7 +467,9 @@ describe("SettingsPage", () => {
     expect(
       screen.queryByPlaceholderText("定义 AI 的身份、性格、行为准则..."),
     ).not.toBeInTheDocument();
-    await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+    await waitFor(() =>
+      expect(within(alert).getByRole("button", { name: /^重试(：|$)/ })).toHaveFocus(),
+    );
   });
 
   it("shows that the LLM config was saved and clears it after another edit", async () => {

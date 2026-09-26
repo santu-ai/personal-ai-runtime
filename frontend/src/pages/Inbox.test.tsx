@@ -465,7 +465,7 @@ describe("InboxPage", () => {
     expect(addError).toHaveBeenCalledWith("加载失败", "收件箱");
     expect(screen.queryByText("还没有同步到邮件")).not.toBeInTheDocument();
     expect(screen.queryByText("暂无")).not.toBeInTheDocument();
-    const retry = within(alert).getByRole("button", { name: "重试" });
+    const retry = within(alert).getByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
   });
 
@@ -480,7 +480,7 @@ describe("InboxPage", () => {
   it("keeps the mailbox retry mounted until the reread finishes", async () => {
     vi.mocked(listInboxEmails).mockRejectedValue(new ApiError("加载失败", 500));
     renderWithRouter(<InboxPage />);
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
 
     let release: (() => void) | undefined;
@@ -496,7 +496,10 @@ describe("InboxPage", () => {
     );
     fireEvent.click(retry);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "重试" })).toHaveAttribute("aria-busy", "true"),
+      expect(screen.getByRole("button", { name: /^重试(：|$)/ })).toHaveAttribute(
+        "aria-busy",
+        "true",
+      ),
     );
     expect(screen.getByTestId("inbox-load-error")).toHaveTextContent("加载失败");
     expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
@@ -589,7 +592,9 @@ describe("InboxPage", () => {
     expect(
       within(secondCard as HTMLElement).getByRole("button", { name: triageControl("查看") }),
     ).not.toHaveAttribute("aria-busy");
-    await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+    await waitFor(() =>
+      expect(within(alert).getByRole("button", { name: /^重试(：|$)/ })).toHaveFocus(),
+    );
   });
 
   it("keeps focus on 查看 while that message is opening and returns there on Escape", async () => {
@@ -663,7 +668,7 @@ describe("InboxPage", () => {
     renderWithRouter(<InboxPage />);
     const card = (await screen.findByText("请尽快回复")).closest("div.rounded-lg") as HTMLElement;
     fireEvent.click(within(card).getByRole("button", { name: triageControl("查看") }));
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
 
     let release: ((row: InboxEmail) => void) | undefined;

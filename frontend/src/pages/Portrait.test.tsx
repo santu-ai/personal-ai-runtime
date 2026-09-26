@@ -44,7 +44,7 @@ describe("PortraitPage", () => {
       { timeout: 3000 },
     );
     const before = mockGetPortrait.mock.calls.length;
-    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    fireEvent.click(screen.getByRole("button", { name: /^重试(：|$)/ }));
     await waitFor(() => expect(mockGetPortrait.mock.calls.length).toBeGreaterThan(before));
     expect(screen.queryByText("画像尚未建立")).not.toBeInTheDocument();
   });
@@ -61,7 +61,7 @@ describe("PortraitPage", () => {
     let release: ((row: PortraitData) => void) | undefined;
     mockGetPortrait.mockRejectedValue(new Error("获取画像失败"));
     renderPortrait();
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     mockGetPortrait.mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -208,7 +208,9 @@ describe("PortraitPage", () => {
     expect(await screen.findByText("画像尚未建立")).toBeInTheDocument();
     mockGetPortrait.mockRejectedValue(new Error("刷新失败"));
     await client.refetchQueries({ queryKey: queryKeys.portrait });
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
+    expect(retry).toHaveAttribute("aria-label", "重试：刷新失败");
+    expect(retry).toHaveTextContent("重试");
     expect(retry).toHaveClass("focus-visible:ring-focus-ring");
     expect(screen.getByText(/刷新失败/)).toBeInTheDocument();
     expect(screen.queryByTestId("portrait-load-error")).not.toBeInTheDocument();

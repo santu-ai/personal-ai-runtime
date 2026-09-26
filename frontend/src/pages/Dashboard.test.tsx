@@ -304,7 +304,7 @@ describe("DashboardPage", () => {
     const alert = screen.getByTestId("dashboard-load-error");
     expect(alert).toHaveTextContent("后端连接失败");
     expect(screen.queryByText("今天暂无紧急事项")).not.toBeInTheDocument();
-    const retry = within(alert).getByRole("button", { name: "重试" });
+    const retry = within(alert).getByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
     fireEvent.click(retry);
     expect(mockRefresh).toHaveBeenCalledOnce();
@@ -323,7 +323,7 @@ describe("DashboardPage", () => {
     expect(alert).toHaveTextContent("后端连接失败");
     expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
     expect(screen.queryByText("今天暂无紧急事项")).not.toBeInTheDocument();
-    const retry = within(alert).getByRole("button", { name: "重试" });
+    const retry = within(alert).getByRole("button", { name: /^重试(：|$)/ });
     expect(retry).toHaveAttribute("aria-busy", "true");
     await waitFor(() => expect(retry).toHaveFocus());
     fireEvent.click(retry);
@@ -1202,7 +1202,7 @@ describe("DashboardPage", () => {
     expect(useErrorStore.getState().addError).toHaveBeenCalledWith("审批服务不可用", "今天");
     expect(screen.queryByText("今天暂无紧急事项")).not.toBeInTheDocument();
     expect(screen.queryByText("没有待决事项")).not.toBeInTheDocument();
-    const retry = within(alert).getByRole("button", { name: "重试" });
+    const retry = within(alert).getByRole("button", { name: /^重试(：|$)/ });
     expect(retry).toHaveClass("focus-visible:ring-focus-ring");
     await waitFor(() => expect(retry).toHaveFocus());
   });
@@ -1234,12 +1234,15 @@ describe("DashboardPage", () => {
       () => approvals as unknown as ReturnType<typeof useApprovalsQuery>,
     );
     const view = renderDashboard();
-    const retry = screen.getByRole("button", { name: "重试" });
+    const retry = screen.getByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
 
     approvals = { data: undefined, error: null, isFetching: true, isPending: false, refetch };
     view.rerender(<DashboardPage />);
-    expect(screen.getByRole("button", { name: "重试" })).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("button", { name: /^重试(：|$)/ })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
     expect(screen.getByTestId("today-decide-load-error")).toHaveTextContent("审批服务不可用");
     expect(screen.queryByText("今天暂无紧急事项")).not.toBeInTheDocument();
     expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
@@ -1276,7 +1279,9 @@ describe("DashboardPage", () => {
     expect(alert).toHaveTextContent("目标服务不可用");
     expect(screen.queryByText("没有时限内目标")).not.toBeInTheDocument();
     expect(screen.queryByText("今天暂无紧急事项")).not.toBeInTheDocument();
-    await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+    await waitFor(() =>
+      expect(within(alert).getByRole("button", { name: /^重试(：|$)/ })).toHaveFocus(),
+    );
   });
 
   it("does not claim an empty day while a today column is still loading", () => {
@@ -1315,11 +1320,11 @@ describe("DashboardPage", () => {
     expect(screen.queryByText("今天还没有处理记录")).not.toBeInTheDocument();
     expect(screen.queryByText("今天暂无紧急事项")).not.toBeInTheDocument();
     await waitFor(() =>
-      expect(within(handled).getByRole("button", { name: "重试" })).toHaveFocus(),
+      expect(within(handled).getByRole("button", { name: /^重试(：|$)/ })).toHaveFocus(),
     );
-    expect(within(reminders).getByRole("button", { name: "重试" })).not.toHaveFocus();
+    expect(within(reminders).getByRole("button", { name: /^重试(：|$)/ })).not.toHaveFocus();
 
-    fireEvent.click(within(reminders).getByRole("button", { name: "重试" }));
+    fireEvent.click(within(reminders).getByRole("button", { name: /^重试(：|$)/ }));
     expect(retryNotifications).toHaveBeenCalledOnce();
   });
 
@@ -1385,7 +1390,7 @@ describe("DashboardPage", () => {
     });
     renderDashboard();
     fireEvent.click(screen.getByRole("button", { name: "信任" }));
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
     expect(screen.getByRole("button", { name: "← 返回今日" })).not.toHaveFocus();
     expect(screen.getByTestId("trust-report-load-error")).toHaveTextContent("信任报告读不到");
@@ -1400,7 +1405,7 @@ describe("DashboardPage", () => {
       refetch: vi.fn(),
     } as unknown as ReturnType<typeof useApprovalsQuery>);
     renderDashboard();
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
 
     fireEvent.click(screen.getByRole("button", { name: "信任" }));
@@ -1408,7 +1413,9 @@ describe("DashboardPage", () => {
     fireEvent.keyDown(window, { key: "Escape" });
 
     const decide = await screen.findByTestId("today-decide-load-error");
-    await waitFor(() => expect(within(decide).getByRole("button", { name: "重试" })).toHaveFocus());
+    await waitFor(() =>
+      expect(within(decide).getByRole("button", { name: /^重试(：|$)/ })).toHaveFocus(),
+    );
     expect(screen.getByRole("button", { name: "信任" })).not.toHaveFocus();
   });
 

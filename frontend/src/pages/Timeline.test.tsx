@@ -218,7 +218,9 @@ describe("TimelinePage", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("加载失败");
     expect(screen.queryByText("还没有任何事件")).not.toBeInTheDocument();
-    const retry = within(alert).getByRole("button", { name: "重试" });
+    const retry = within(alert).getByRole("button", { name: /^重试(：|$)/ });
+    expect(retry).toHaveAttribute("aria-label", "重试：加载失败");
+    expect(retry).toHaveTextContent("重试");
     expect(retry).toHaveClass("focus-visible:ring-focus-ring");
     await waitFor(() => expect(retry).toHaveFocus());
     mockList.mockResolvedValue({
@@ -240,7 +242,7 @@ describe("TimelinePage", () => {
     let release: ((row: Awaited<ReturnType<typeof listTimelineEvents>>) => void) | undefined;
     mockList.mockRejectedValueOnce(new Error("加载失败"));
     renderWithRouter(<TimelinePage />);
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
     mockList.mockImplementationOnce(
       () =>
@@ -250,7 +252,10 @@ describe("TimelinePage", () => {
     );
     fireEvent.click(retry);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "重试" })).toHaveAttribute("aria-busy", "true"),
+      expect(screen.getByRole("button", { name: /^重试(：|$)/ })).toHaveAttribute(
+        "aria-busy",
+        "true",
+      ),
     );
     expect(screen.getByTestId("timeline-load-error")).toHaveTextContent("加载失败");
     expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
@@ -303,10 +308,13 @@ describe("TimelinePage", () => {
           release = resolve;
         }),
     );
-    const retry = within(alert).getByRole("button", { name: "重试" });
+    const retry = within(alert).getByRole("button", { name: /^重试(：|$)/ });
     fireEvent.click(retry);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "重试" })).toHaveAttribute("aria-busy", "true"),
+      expect(screen.getByRole("button", { name: /^重试(：|$)/ })).toHaveAttribute(
+        "aria-busy",
+        "true",
+      ),
     );
     expect(screen.getByText("事件一")).toBeInTheDocument();
     expect(screen.getByTestId("timeline-load-error")).toHaveTextContent("下一页读不到");
@@ -525,7 +533,7 @@ describe("TimelinePage", () => {
       () => !screen.queryByRole("button", { name: "加载更多" }),
     );
     fireEvent.click(more);
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
     expect(focusWhenGone.read()).toBe(retry);
   });
@@ -534,7 +542,7 @@ describe("TimelinePage", () => {
     let release: ((row: Awaited<ReturnType<typeof listTimelineEvents>>) => void) | undefined;
     mockList.mockRejectedValueOnce(new Error("加载失败"));
     renderWithRouter(<TimelinePage />);
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
     mockList.mockImplementationOnce(
       () =>
@@ -547,7 +555,7 @@ describe("TimelinePage", () => {
     await waitFor(() => expect(retry).toHaveAttribute("aria-busy", "true"));
     expect(mockList).toHaveBeenCalledTimes(2);
     const focusWhenGone = captureFocusWhenGone(
-      () => !screen.queryByRole("button", { name: "重试" }),
+      () => !screen.queryByRole("button", { name: /^重试(：|$)/ }),
     );
     await act(async () => {
       release?.({
@@ -574,7 +582,7 @@ describe("TimelinePage", () => {
     let release: ((row: Awaited<ReturnType<typeof listTimelineEvents>>) => void) | undefined;
     mockList.mockRejectedValueOnce(new Error("加载失败"));
     renderWithRouter(<TimelinePage />);
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
     mockList.mockImplementationOnce(
       () =>
@@ -584,7 +592,7 @@ describe("TimelinePage", () => {
     );
     fireEvent.click(retry);
     const focusWhenGone = captureFocusWhenGone(
-      () => !screen.queryByRole("button", { name: "重试" }),
+      () => !screen.queryByRole("button", { name: /^重试(：|$)/ }),
     );
     await act(async () => {
       release?.({
@@ -606,7 +614,7 @@ describe("TimelinePage", () => {
     let release: ((row: Awaited<ReturnType<typeof listTimelineEvents>>) => void) | undefined;
     mockList.mockRejectedValueOnce(new Error("加载失败"));
     renderWithRouter(<TimelinePage />);
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
     mockList.mockImplementationOnce(
       () =>
@@ -616,7 +624,7 @@ describe("TimelinePage", () => {
     );
     fireEvent.click(retry);
     const focusWhenGone = captureFocusWhenGone(
-      () => !screen.queryByRole("button", { name: "重试" }),
+      () => !screen.queryByRole("button", { name: /^重试(：|$)/ }),
     );
     await act(async () => {
       release?.({
@@ -638,7 +646,7 @@ describe("TimelinePage", () => {
     let release: ((row: Awaited<ReturnType<typeof listTimelineEvents>>) => void) | undefined;
     mockList.mockRejectedValueOnce(new Error("加载失败"));
     renderWithRouter(<TimelinePage />);
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
     const outside = document.createElement("button");
     outside.type = "button";
@@ -653,7 +661,7 @@ describe("TimelinePage", () => {
     fireEvent.click(retry);
     outside.focus();
     const focusWhenGone = captureFocusWhenGone(
-      () => !screen.queryByRole("button", { name: "重试" }),
+      () => !screen.queryByRole("button", { name: /^重试(：|$)/ }),
     );
     await act(async () => {
       release?.({

@@ -57,7 +57,7 @@ describe("MonitorsPanel", () => {
     expect(addError).toHaveBeenCalledWith("加载失败", "监控");
     expect(screen.queryByText("暂无邮件规则")).not.toBeInTheDocument();
     expect(screen.queryByText("暂无网页监控")).not.toBeInTheDocument();
-    const retry = within(alert).getByRole("button", { name: "重试" });
+    const retry = within(alert).getByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
   });
 
@@ -71,7 +71,7 @@ describe("MonitorsPanel", () => {
   it("keeps the monitor retry mounted until the reread finishes", async () => {
     vi.mocked(listInboxFilters).mockRejectedValue(new ApiError("加载失败", 500));
     renderWithRouter(<MonitorsPanel />);
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
 
     let releaseFilters: (() => void) | undefined;
@@ -83,7 +83,10 @@ describe("MonitorsPanel", () => {
     );
     fireEvent.click(retry);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "重试" })).toHaveAttribute("aria-busy", "true"),
+      expect(screen.getByRole("button", { name: /^重试(：|$)/ })).toHaveAttribute(
+        "aria-busy",
+        "true",
+      ),
     );
     expect(screen.getByTestId("monitors-load-error")).toHaveTextContent("加载失败");
     expect(screen.queryByText("加载中…")).not.toBeInTheDocument();

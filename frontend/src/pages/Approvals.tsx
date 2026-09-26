@@ -12,6 +12,7 @@ import { useErrorStore } from "../stores/errorStore";
 import { useApprovalsQuery, useInvalidateApprovals } from "../hooks/useApprovalsQuery";
 import { useCapabilityPolicyQuery } from "../hooks/useSettingsQuery";
 import Button from "../components/ui/Button";
+import { retryControlName } from "../components/ui/LoadErrorNotice";
 import Badge from "../components/ui/Badge";
 import Card from "../components/ui/Card";
 import PageHeader from "../components/ui/PageHeader";
@@ -448,6 +449,7 @@ export default function ApprovalsPage() {
             <Button
               size="sm"
               variant="secondary"
+              aria-label={retryControlName(shownError)}
               aria-busy={isFetching || undefined}
               onClick={() => {
                 if (isFetching) return;

@@ -276,7 +276,9 @@ describe("MemoriesPage", () => {
     expect(alert).toHaveTextContent("加载失败");
     expect(addError).toHaveBeenCalledWith("加载失败", "记忆");
     expect(screen.queryByText(/我还没有记住任何事/)).not.toBeInTheDocument();
-    await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+    await waitFor(() =>
+      expect(within(alert).getByRole("button", { name: /^重试(：|$)/ })).toHaveFocus(),
+    );
   });
 
   it("keeps the memory list retry until the reread finishes", async () => {
@@ -287,7 +289,7 @@ describe("MemoriesPage", () => {
       throw new ApiError("加载失败", 500);
     });
     renderWithRouter(<MemoriesPage />);
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
       const status = typeof opts === "string" ? opts : opts?.claimStatus;
       if (status) return { memories: [], total: 0 };
@@ -320,8 +322,10 @@ describe("MemoriesPage", () => {
     expect(screen.queryByText("没有待确认的记忆。")).not.toBeInTheDocument();
     const rejected = screen.getByTestId("memories-rejected-load-error");
     expect(rejected).toHaveTextContent("拒绝列表失败");
-    expect(within(rejected).getByRole("button", { name: "重试" })).not.toHaveFocus();
-    await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+    expect(within(rejected).getByRole("button", { name: /^重试(：|$)/ })).not.toHaveFocus();
+    await waitFor(() =>
+      expect(within(alert).getByRole("button", { name: /^重试(：|$)/ })).toHaveFocus(),
+    );
   });
 
   it("shows an empty graph after a successful read", async () => {
@@ -336,7 +340,9 @@ describe("MemoriesPage", () => {
     const alert = await screen.findByTestId("memories-graph-load-error");
     expect(alert).toHaveTextContent("加载失败");
     expect(screen.queryByText("暂无记忆数据可显示")).not.toBeInTheDocument();
-    await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+    await waitFor(() =>
+      expect(within(alert).getByRole("button", { name: /^重试(：|$)/ })).toHaveFocus(),
+    );
   });
 
   function memoryItem(content: string): HTMLElement {
@@ -363,7 +369,9 @@ describe("MemoriesPage", () => {
     expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
     expect(screen.queryByText("无事件记录")).not.toBeInTheDocument();
     expect(memoryItem("喜欢早起跑步")).toBeInTheDocument();
-    await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
+    await waitFor(() =>
+      expect(within(alert).getByRole("button", { name: /^重试(：|$)/ })).toHaveFocus(),
+    );
   });
 
   it("holds the provenance failure while that reread is in flight", async () => {
@@ -371,7 +379,7 @@ describe("MemoriesPage", () => {
     renderWithRouter(<MemoriesPage />);
     await screen.findByText("喜欢早起跑步");
     fireEvent.click(within(memoryItem("喜欢早起跑步")).getByRole("button", { name: /^来源：/ }));
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
 
     let release:

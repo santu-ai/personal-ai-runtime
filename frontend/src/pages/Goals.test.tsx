@@ -267,7 +267,7 @@ describe("GoalsPage", () => {
     expect(screen.getByRole("heading", { name: "目标" })).toBeInTheDocument();
     expect(screen.queryByText("暂无目标")).not.toBeInTheDocument();
     expect(screen.queryByText("创建第一个目标，让 AI 帮你追踪进度")).not.toBeInTheDocument();
-    const retry = within(alert).getByRole("button", { name: "重试" });
+    const retry = within(alert).getByRole("button", { name: /^重试(：|$)/ });
     expect(retry).toHaveClass("focus-visible:ring-focus-ring");
     await waitFor(() => expect(retry).toHaveFocus());
   });
@@ -284,7 +284,7 @@ describe("GoalsPage", () => {
     let release: ((rows: WorkItem[]) => void) | undefined;
     vi.mocked(listGoals).mockRejectedValueOnce(new ApiError("加载失败", 500));
     renderGoals();
-    const retry = await screen.findByRole("button", { name: "重试" });
+    const retry = await screen.findByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).toHaveFocus());
 
     vi.mocked(listGoals).mockImplementationOnce(
@@ -295,7 +295,10 @@ describe("GoalsPage", () => {
     );
     fireEvent.click(retry);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "重试" })).toHaveAttribute("aria-busy", "true"),
+      expect(screen.getByRole("button", { name: /^重试(：|$)/ })).toHaveAttribute(
+        "aria-busy",
+        "true",
+      ),
     );
     expect(screen.getByTestId("goals-load-error")).toHaveTextContent("加载失败");
     expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
@@ -316,7 +319,7 @@ describe("GoalsPage", () => {
     expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
     expect(screen.queryByText("目标不存在")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /学习 Rust/ })).toBeInTheDocument();
-    const retry = within(alert).getByRole("button", { name: "重试" });
+    const retry = within(alert).getByRole("button", { name: /^重试(：|$)/ });
     await waitFor(() => expect(retry).not.toHaveAttribute("aria-busy", "true"), { timeout: 4000 });
     await waitFor(() => expect(retry).toHaveFocus());
 
@@ -346,7 +349,7 @@ describe("GoalsPage", () => {
     expect(alert).toHaveTextContent("列表失败");
     expect(within(list).queryByText("暂无其他目标")).not.toBeInTheDocument();
     expect(screen.queryByText("暂无目标")).not.toBeInTheDocument();
-    expect(within(alert).getByRole("button", { name: "重试" })).not.toHaveFocus();
+    expect(within(alert).getByRole("button", { name: /^重试(：|$)/ })).not.toHaveFocus();
   });
 
   it("does not create a goal while an IME composition is confirming", () => {
