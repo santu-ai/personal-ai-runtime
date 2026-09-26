@@ -1,6 +1,21 @@
-import { useId, useRef, type ReactNode } from "react";
+import { useId, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import Button from "./Button";
 import { useOverlayDismiss } from "./useOverlayDismiss";
+
+const SINGLE_LINE_INPUT_TYPES = new Set([
+  "text",
+  "search",
+  "url",
+  "tel",
+  "email",
+  "password",
+  "number",
+]);
+
+/** 单行文字框里的 Enter 才确认。多行、勾选、文件框都不走这一下。 */
+function isSingleLineTextInput(target: EventTarget | null): boolean {
+  return target instanceof HTMLInputElement && SINGLE_LINE_INPUT_TYPES.has(target.type);
+}
 
 interface Props {
   open: boolean;
@@ -46,6 +61,15 @@ export default function Dialog({
   };
   useOverlayDismiss(open, panelRef, dismiss);
 
+  const confirmFromEnter = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    // 组字时的 Enter 交给输入法。多行框仍换行，勾选仍留给空格。
+    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+    if (!isSingleLineTextInput(event.target)) return;
+    if (confirmBusy || confirmDisabled) return;
+    event.preventDefault();
+    onConfirm();
+  };
+
   if (!open) return null;
 
   return (
@@ -63,6 +87,7 @@ export default function Dialog({
         tabIndex={-1}
         className="bg-surface-raised border border-border-subtle rounded-xl p-5 max-w-md w-full mx-4 shadow-overlay outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={confirmFromEnter}
       >
         <h3 id={titleId} className="text-base font-semibold tracking-tight text-fg-primary">
           {title}

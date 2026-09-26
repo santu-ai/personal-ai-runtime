@@ -193,4 +193,48 @@ describe("Dialog", () => {
     fireEvent.click(btn);
     expect(onConfirm).not.toHaveBeenCalled();
   });
+
+  it("confirms from Enter in a single-line field", () => {
+    const onConfirm = vi.fn();
+    const { rerender } = render(
+      <Dialog open title="定时" onConfirm={onConfirm} onCancel={vi.fn()}>
+        <input aria-label="小时" />
+        <textarea aria-label="说明" />
+        <input type="checkbox" aria-label="邮箱" />
+      </Dialog>,
+    );
+    const hours = screen.getByLabelText("小时");
+    hours.focus();
+    fireEvent.keyDown(hours, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(screen.getByLabelText("说明"), { key: "Enter" });
+    fireEvent.keyDown(screen.getByLabelText("邮箱"), { key: "Enter" });
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(hours, { key: "Enter" });
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(hours).toHaveFocus();
+
+    rerender(
+      <Dialog open title="定时" confirmDisabled onConfirm={onConfirm} onCancel={vi.fn()}>
+        <input aria-label="小时" />
+      </Dialog>,
+    );
+    fireEvent.keyDown(screen.getByLabelText("小时"), { key: "Enter" });
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <Dialog
+        open
+        title="定时"
+        confirmLabel="设定中..."
+        confirmBusy
+        onConfirm={onConfirm}
+        onCancel={vi.fn()}
+      >
+        <input aria-label="小时" />
+      </Dialog>,
+    );
+    fireEvent.keyDown(screen.getByLabelText("小时"), { key: "Enter" });
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
 });
