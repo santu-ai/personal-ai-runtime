@@ -113,6 +113,39 @@ function nextGraphIndex(index: number, count: number, key: string): number | nul
   return null;
 }
 
+/** 悬停时只写出这么多字。键盘落到时才换成整句。 */
+const GRAPH_LABEL_LIMIT = 30;
+const GRAPH_CAPTION_WIDTH = 280;
+
+function clippedGraphLabel(content: string): string | null {
+  if (content.length <= GRAPH_LABEL_LIMIT) return null;
+  return `${content.slice(0, GRAPH_LABEL_LIMIT)}...`;
+}
+
+/** 整句放在画布里面，避免被 SVG 裁掉。优先写在圆点上方。 */
+function graphCaptionFrame(
+  anchorX: number,
+  anchorY: number,
+  content: string,
+  canvasWidth: number,
+  canvasHeight: number,
+): { x: number; y: number; width: number; height: number } {
+  const width = Math.min(GRAPH_CAPTION_WIDTH, Math.max(32, canvasWidth - 16));
+  const lineHeight = 16;
+  const lines = Math.max(1, Math.ceil(content.length / 18));
+  const needed = lines * lineHeight + 4;
+  const maxHeight = Math.max(lineHeight + 4, canvasHeight - 16);
+  const height = Math.min(needed, maxHeight);
+  const x = Math.max(8, Math.min(canvasWidth - width - 8, anchorX - width / 2));
+  const roomAbove = Math.max(0, anchorY - 28);
+  const roomBelow = Math.max(0, canvasHeight - anchorY - 24);
+  const placeAbove = roomAbove >= height || roomAbove >= roomBelow;
+  const y = placeAbove
+    ? Math.max(8, anchorY - 16 - height)
+    : Math.min(Math.max(8, canvasHeight - height - 8), anchorY + 18);
+  return { x, y, width, height };
+}
+
 const CATEGORY_COLORS: Record<string, string> = {
   fact: "#10b981", // success — 关于你的事实（已验证）
   preference: "#6366f1", // insight — 偏好（AI 洞察）
@@ -197,6 +230,10 @@ export default function MemoryGraphView({ graph }: { graph: MemoryGraph }) {
           const isHovered = hoveredNode === node.id;
           const isFocused = focusedNode === node.id;
           const revealed = isHovered || isFocused;
+          const clipped = clippedGraphLabel(node.content);
+          const caption = clipped
+            ? graphCaptionFrame(pos.x, pos.y, node.content, width, height)
+            : null;
           return (
             <g
               key={node.id}
@@ -213,7 +250,7 @@ export default function MemoryGraphView({ graph }: { graph: MemoryGraph }) {
               onBlur={() => setFocusedNode((current) => (current === node.id ? null : current))}
               onKeyDown={onNodeKeyDown(node.id)}
               // 组的外框会画成大方块。焦点环画在圆点上，颜色与时间线相同。
-              className="cursor-pointer focus-visible:outline-none"
+              className="group cursor-pointer focus-visible:outline-none"
             >
               <circle
                 cx={pos.x}
@@ -223,6 +260,7 @@ export default function MemoryGraphView({ graph }: { graph: MemoryGraph }) {
                 stroke={isFocused ? "var(--color-focus-ring)" : isHovered ? "#f3f4f6" : "none"}
                 strokeWidth={2}
               />
+              {/* 超过三十个字时悬停只写出前一段。键盘落到时这句让开，整句另写。 */}
               {revealed && (
                 <text
                   x={pos.x}
@@ -230,11 +268,29 @@ export default function MemoryGraphView({ graph }: { graph: MemoryGraph }) {
                   textAnchor="middle"
                   fill="#f3f4f6"
                   fontSize={11}
-                  className="pointer-events-none"
+                  className={
+                    clipped
+                      ? "pointer-events-none group-focus-visible:hidden"
+                      : "pointer-events-none"
+                  }
                 >
-                  {node.content.slice(0, 30)}
-                  {node.content.length > 30 ? "..." : ""}
+                  {clipped ?? node.content}
                 </text>
+              )}
+              {revealed && caption && (
+                <foreignObject
+                  x={caption.x}
+                  y={caption.y}
+                  width={caption.width}
+                  height={caption.height}
+                  data-memory-full=""
+                  aria-hidden="true"
+                  className="pointer-events-none hidden overflow-visible group-focus-visible:block"
+                >
+                  <div className="break-words text-center text-[11px] leading-snug text-[#f3f4f6]">
+                    {node.content}
+                  </div>
+                </foreignObject>
               )}
             </g>
           );
