@@ -1143,6 +1143,43 @@ describe("ChatView", () => {
     await waitFor(() => expect(ratifyMemory).toHaveBeenCalledWith("m1"));
   });
 
+  it("moves focus from 上下文 to 收起 and back without landing on the page", async () => {
+    vi.mocked(getMessages).mockResolvedValue([
+      {
+        id: "u1",
+        conversation_id: "test-conv-1",
+        role: "user",
+        content: "hello",
+        tool_calls: null,
+        tool_call_id: null,
+        created_at: "2026-08-17T00:00:00Z",
+      },
+    ]);
+    renderChatView();
+
+    const open = await screen.findByRole("button", { name: "上下文" });
+    const field = screen.getByPlaceholderText(/输入消息/);
+    // 消息读回来时输入框会先拿到焦点。等这一轮结束再点，避免和打开面板挤在同一帧。
+    await waitFor(() => expect(field).toHaveFocus());
+    open.focus();
+    fireEvent.click(open);
+    const collapse = await screen.findByRole("button", { name: "收起" });
+    expect(collapse).toHaveFocus();
+    expect(document.body).not.toHaveFocus();
+
+    collapse.focus();
+    fireEvent.click(collapse);
+    expect(screen.getByRole("button", { name: "上下文" })).toHaveFocus();
+
+    const openAgain = screen.getByRole("button", { name: "上下文" });
+    openAgain.focus();
+    fireEvent.click(openAgain);
+    field.focus();
+    fireEvent.click(screen.getByRole("button", { name: "收起" }));
+    expect(field).toHaveFocus();
+    expect(screen.getByRole("button", { name: "上下文" })).not.toHaveFocus();
+  });
+
   it("keeps the context toggle out of the proposed-memory banner", async () => {
     vi.mocked(getMessages).mockResolvedValue([
       {

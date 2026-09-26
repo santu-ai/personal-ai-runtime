@@ -61,6 +61,8 @@ export default function ChatView({ conversationId }: Props) {
   const generateFocusHeld = useRef(false);
   /** 焦点在「↓ 新消息 / ↓ 待确认」上。卸下后才交出去；移到别的控件就清掉。 */
   const jumpReturnRef = useRef(false);
+  /** 点了「上下文」或「收起」。这一钮卸下后才交到对面；移到别的控件就清掉。 */
+  const contextToggleFocus = useRef(false);
   const prevMemoryTotalRef = useRef<number | null>(null);
 
   const addError = useErrorStore((s) => s.addError);
@@ -469,6 +471,16 @@ export default function ChatView({ conversationId }: Props) {
     composer.focus();
   }, [showJumpToLatest, pendingConfirmation]);
 
+  // 「上下文」和「收起」互相卸下。放到绘制前，不先停在页面空白。
+  // 已经移到别的控件上就不再抢。
+  useLayoutEffect(() => {
+    if (!contextToggleFocus.current) return;
+    contextToggleFocus.current = false;
+    if (!focusIsBlank()) return;
+    const next = document.querySelector<HTMLButtonElement>("[data-confirm-exit]");
+    if (next && document.activeElement !== next) next.focus();
+  }, [contextOpen]);
+
   useLayoutEffect(() => {
     chatViewLayoutFocus.notify?.();
   });
@@ -592,7 +604,10 @@ export default function ChatView({ conversationId }: Props) {
           <button
             type="button"
             data-confirm-exit=""
-            onClick={() => setContextOpen(true)}
+            onClick={() => {
+              contextToggleFocus.current = true;
+              setContextOpen(true);
+            }}
             className="rounded-md border border-border-subtle bg-surface-overlay px-2.5 py-1 text-xs text-fg-secondary transition-colors hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             title="展开上下文面板"
           >
@@ -634,7 +649,10 @@ export default function ChatView({ conversationId }: Props) {
           lastUserMessage={lastUserMessage}
           toolResults={allToolResults}
           open={contextOpen}
-          onToggle={() => setContextOpen(!contextOpen)}
+          onToggle={() => {
+            contextToggleFocus.current = true;
+            setContextOpen((open) => !open);
+          }}
         />
       </div>
 
