@@ -131,6 +131,107 @@ describe("MonitorsPanel", () => {
     }
   }
 
+  it("adds an inbox filter from Enter, and ignores IME and a second press", async () => {
+    const inbox: InboxFilter[] = [];
+    await renderLoaded(inbox);
+    const name = screen.getByPlaceholderText("名称（如：老板）");
+    const sender = screen.getByPlaceholderText("发件人包含（可空）");
+    const urlName = screen.getByPlaceholderText("名称（如：发布说明）");
+    fireEvent.change(name, { target: { value: "老板" } });
+    name.focus();
+    fireEvent.keyDown(name, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(name, { key: "Enter" });
+    expect(createInboxFilter).not.toHaveBeenCalled();
+
+    fireEvent.change(sender, { target: { value: "boss" } });
+    fireEvent.change(urlName, { target: { value: "发布说明" } });
+    fireEvent.change(screen.getByPlaceholderText("https://…"), {
+      target: { value: "https://example.com/notes" },
+    });
+    let release: (row: InboxFilter) => void = () => {};
+    vi.mocked(createInboxFilter).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = (row) => {
+            inbox.push(row);
+            resolve(row);
+          };
+        }),
+    );
+    sender.focus();
+    fireEvent.keyDown(sender, { key: "Enter" });
+    fireEvent.keyDown(sender, { key: "Enter" });
+    fireEvent.keyDown(urlName, { key: "Enter" });
+
+    await waitFor(() => expect(createInboxFilter).toHaveBeenCalledTimes(1));
+    expect(createInboxFilter).toHaveBeenCalledWith({
+      name: "老板",
+      sender_contains: "boss",
+      subject_contains: "",
+    });
+    expect(createUrlMonitor).not.toHaveBeenCalled();
+    expect(sender).toHaveFocus();
+    expect(screen.getByRole("button", { name: "添加过滤器" })).toHaveAttribute("aria-busy", "true");
+
+    await act(async () => {
+      release(inboxFilter("if_new", "老板"));
+    });
+    expect(await screen.findByText("老板")).toBeInTheDocument();
+    expect(sender).toHaveFocus();
+    expect(name).toHaveValue("");
+    expect(sender).toHaveValue("");
+  });
+
+  it("adds a url monitor from Enter, and ignores IME and an incomplete form", async () => {
+    const urls: UrlMonitor[] = [];
+    await renderLoaded([], urls);
+    const urlName = screen.getByPlaceholderText("名称（如：发布说明）");
+    const urlValue = screen.getByPlaceholderText("https://…");
+    const interval = screen.getByPlaceholderText("检查间隔（分钟，最少 30）");
+    fireEvent.change(urlName, { target: { value: "发布说明" } });
+    urlName.focus();
+    fireEvent.keyDown(urlName, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(urlName, { key: "Enter" });
+    expect(createUrlMonitor).not.toHaveBeenCalled();
+
+    fireEvent.change(urlValue, { target: { value: "https://example.com/notes" } });
+    fireEvent.change(interval, { target: { value: "90" } });
+    let release: (row: UrlMonitor) => void = () => {};
+    vi.mocked(createUrlMonitor).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = (row) => {
+            urls.push(row);
+            resolve(row);
+          };
+        }),
+    );
+    interval.focus();
+    fireEvent.keyDown(interval, { key: "Enter" });
+    fireEvent.keyDown(interval, { key: "Enter" });
+
+    await waitFor(() => expect(createUrlMonitor).toHaveBeenCalledTimes(1));
+    expect(createUrlMonitor).toHaveBeenCalledWith({
+      name: "发布说明",
+      url: "https://example.com/notes",
+      check_interval_minutes: 90,
+    });
+    expect(interval).toHaveFocus();
+    expect(screen.getByRole("button", { name: "添加网页监控" })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+
+    await act(async () => {
+      release(urlMonitor("um_new", "发布说明"));
+    });
+    expect(await screen.findByText("发布说明")).toBeInTheDocument();
+    expect(interval).toHaveFocus();
+    expect(urlName).toHaveValue("");
+    expect(urlValue).toHaveValue("");
+    expect(interval).toHaveValue("60");
+  });
+
   it("does not send a second inbox filter, keeps focus, then moves it to 停用", async () => {
     const inbox = [inboxFilter("if_a", "已有")];
     const urls = [urlMonitor("um_a", "发布页")];
