@@ -1,4 +1,5 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Check, Copy } from "lucide-react";
 
 const LazySyntaxBlock = lazy(async () => {
   const [{ PrismAsyncLight }, { oneDark }] = await Promise.all([
@@ -17,15 +18,66 @@ const LazySyntaxBlock = lazy(async () => {
 });
 
 export function CodeBlock({ language, code }: { language: string; code: string }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+    };
+  }, []);
+
+  const handleCopy = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      const write = navigator.clipboard?.writeText?.bind(navigator.clipboard);
+      if (!write) return;
+      // 失败时不写成已复制，也不让未接住的拒绝冒到控制台。
+      void write(code).then(
+        () => {
+          setCopied(true);
+          if (timer.current !== null) window.clearTimeout(timer.current);
+          timer.current = window.setTimeout(() => {
+            timer.current = null;
+            setCopied(false);
+          }, 2000);
+        },
+        () => {
+          setCopied(false);
+        },
+      );
+    },
+    [code],
+  );
+
+  const copyLabel = copied ? "已复制" : "复制";
+
   return (
-    <Suspense
-      fallback={
-        <pre className="bg-surface-sunken rounded p-3 text-xs overflow-x-auto">
-          <code>{code}</code>
-        </pre>
-      }
-    >
-      <LazySyntaxBlock language={language} code={code} />
-    </Suspense>
+    <div className="group relative">
+      <button
+        type="button"
+        data-code-block-copy=""
+        onClick={handleCopy}
+        // 只在悬停时出现的话，键盘落到这一钮时整颗都是透明的，焦点环也看不见。
+        className="absolute top-2 right-2 z-10 rounded p-1 opacity-0 bg-surface-overlay hover:bg-border-strong transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+        aria-label={copyLabel}
+        title={copyLabel}
+      >
+        {copied ? (
+          <Check size={14} className="text-success" />
+        ) : (
+          <Copy size={14} className="text-fg-secondary" />
+        )}
+      </button>
+      <Suspense
+        fallback={
+          <pre className="bg-surface-sunken rounded p-3 text-xs overflow-x-auto">
+            <code>{code}</code>
+          </pre>
+        }
+      >
+        <LazySyntaxBlock language={language} code={code} />
+      </Suspense>
+    </div>
   );
 }
