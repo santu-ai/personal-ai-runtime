@@ -102,13 +102,18 @@ describe("ConfirmationDialog", () => {
 
     const answer = screen.getByLabelText("你的回答");
     fireEvent.change(answer, { target: { value: "最近三天" } });
-    fireEvent.keyDown(answer, { key: "Enter", metaKey: true, isComposing: true });
-    fireEvent.keyDown(answer, { key: "Enter", ctrlKey: true, isComposing: true });
-    fireEvent.keyDown(answer, { key: "Enter", ctrlKey: true, keyCode: 229 });
+    expect(fireEvent.keyDown(answer, { key: "Enter", metaKey: true, isComposing: true })).toBe(
+      true,
+    );
+    expect(fireEvent.keyDown(answer, { key: "Enter", ctrlKey: true, isComposing: true })).toBe(
+      true,
+    );
+    expect(fireEvent.keyDown(answer, { key: "Enter", ctrlKey: true, keyCode: 229 })).toBe(true);
+    expect(fireEvent.keyDown(answer, { key: "Process", ctrlKey: true, keyCode: 229 })).toBe(true);
     expect(onConfirm).not.toHaveBeenCalled();
     expect(answer).toHaveValue("最近三天");
 
-    fireEvent.keyDown(answer, { key: "Enter", ctrlKey: true });
+    expect(fireEvent.keyDown(answer, { key: "Enter", ctrlKey: true })).toBe(false);
     expect(onConfirm).toHaveBeenCalledOnce();
     expect(onConfirm).toHaveBeenCalledWith("最近三天");
   });

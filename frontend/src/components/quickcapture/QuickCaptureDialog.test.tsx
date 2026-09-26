@@ -234,9 +234,14 @@ describe("QuickCaptureDialog", () => {
     openDialog();
     const textarea = await screen.findByPlaceholderText("想到什么，立刻记下来...");
     fireEvent.change(textarea, { target: { value: "还在组字" } });
-    fireEvent.keyDown(textarea, { key: "Enter", metaKey: true, isComposing: true });
-    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true, isComposing: true });
-    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true, keyCode: 229 });
+    expect(fireEvent.keyDown(textarea, { key: "Enter", metaKey: true, isComposing: true })).toBe(
+      true,
+    );
+    expect(fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true, isComposing: true })).toBe(
+      true,
+    );
+    expect(fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true, keyCode: 229 })).toBe(true);
+    expect(fireEvent.keyDown(textarea, { key: "Process", ctrlKey: true, keyCode: 229 })).toBe(true);
     expect(mockCreateMemory).not.toHaveBeenCalled();
     expect(textarea).toHaveValue("还在组字");
   });
