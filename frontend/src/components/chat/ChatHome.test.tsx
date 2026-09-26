@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { act, cleanup, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { renderWithRouter } from "../../test-utils";
-import ChatHome from "./ChatHome";
+import ChatHome, { nudgeActionName } from "./ChatHome";
 import { clearComposerDrafts } from "./composerDraft";
 
 const quickChat = vi.fn();
@@ -159,6 +159,13 @@ describe("ChatHome", () => {
     });
     renderWithRouter(<ChatHome />);
     expect(await screen.findByText(/我已经记住了 1 件关于你的事/)).toBeInTheDocument();
+    const plan = screen.getByRole("button", { name: /^规划目标/ });
+    expect(plan).toHaveTextContent("规划目标");
+    expect(plan).toHaveAttribute(
+      "aria-label",
+      "规划目标：我已经记住了 1 件关于你的事。要不要设定一个目标？",
+    );
+    expect(plan.getAttribute("aria-label")).not.toContain("根据你对我的了解");
   });
 
   it("writes the full continue summary when the card is keyboard focused", async () => {
@@ -190,9 +197,77 @@ describe("ChatHome", () => {
   it("links the approval nudge to the approvals page", async () => {
     approvalsState.data = [{ id: "ap-1" }];
     renderWithRouter(<ChatHome />);
-    const link = await screen.findByRole("link", { name: "去审批" });
+    const link = await screen.findByRole("link", { name: /^去审批/ });
     expect(link).toHaveAttribute("href", "/approvals");
     expect(link).toHaveClass("focus-visible:ring-focus-ring");
+  });
+
+  it("names a home nudge with the sentence beside it", async () => {
+    approvalsState.data = [{ id: "ap-1" }, { id: "ap-2" }];
+    mockInbox.mockResolvedValue([
+      {
+        id: "m1",
+        subject: "Hello",
+        sender: "a@b.com",
+        preview: "Preview",
+        received_at: "2026-06-28T10:00:00Z",
+        category: "general",
+        importance: 1,
+        reason: "",
+        notified: 0,
+        digested: 0,
+        status: "pending",
+        created_at: "2026-06-28T10:00:00Z",
+      },
+    ]);
+    mockGoals.mockResolvedValue([
+      {
+        id: "g1",
+        title: "  前一段\n后一段  ",
+        description: null,
+        work_type: "goal",
+        parent_work_id: null,
+        status: "active",
+        priority: 0,
+        dependencies_json: null,
+        executable_plan: null,
+        created_at: "2020-01-01T00:00:00Z",
+        updated_at: "2020-01-01T00:00:00Z",
+        completed_at: null,
+        progress: 0,
+        importance: 1,
+        urgency: 1,
+        deadline: null,
+        last_activity_at: "2020-01-01T00:00:00Z",
+      },
+    ]);
+    renderWithRouter(<ChatHome />);
+
+    const approve = await screen.findByRole("link", { name: /^去审批/ });
+    expect(approve).toHaveTextContent("去审批");
+    expect(approve).toHaveAttribute("aria-label", "去审批：有 2 项工具调用等待你批准");
+
+    const goalLine = screen.getByText(/前一段/);
+    expect(goalLine.textContent).toContain("「  前一段\n后一段  」已经 ");
+    expect(goalLine.textContent).toMatch(/天没有进展了$/);
+    const push = screen.getByRole("button", { name: /^聊聊怎么推进/ });
+    expect(push).toHaveTextContent("聊聊怎么推进");
+    expect(push).toHaveAttribute("aria-label", `聊聊怎么推进：${goalLine.textContent}`);
+    expect(push.getAttribute("aria-label")).toContain("前一段\n后一段");
+    expect(push.getAttribute("aria-label")).not.toContain("帮我分析原因");
+
+    const inbox = screen.getByRole("button", { name: /^帮我看看/ });
+    expect(inbox).toHaveTextContent("帮我看看");
+    expect(inbox).toHaveAttribute("aria-label", "帮我看看：收件箱有 1 封邮件，可能有需要你处理的");
+    expect(inbox.getAttribute("aria-label")).not.toContain("总结一下需要我处理的");
+
+    expect(approve.getAttribute("aria-label")).not.toBe(inbox.getAttribute("aria-label"));
+  });
+
+  it("keeps a blank home nudge name as the visible words", () => {
+    expect(nudgeActionName("去审批", "  有 1 项\n等待  ")).toBe("去审批：有 1 项\n等待");
+    expect(nudgeActionName("去审批", "   \n  ")).toBeUndefined();
+    expect(nudgeActionName("去审批", "同一句")).toBe(nudgeActionName("去审批", "同一句"));
   });
 
   it("sends from the home composer into a new chat", async () => {
@@ -205,7 +280,7 @@ describe("ChatHome", () => {
 
   it("handles proactive nudge click", async () => {
     renderWithRouter(<ChatHome />);
-    const start = await screen.findByRole("button", { name: "开始对话" });
+    const start = await screen.findByRole("button", { name: /^开始对话/ });
     expect(start).toHaveClass("focus-visible:ring-focus-ring");
     fireEvent.click(start);
     expect(quickChat).toHaveBeenCalledWith(expect.objectContaining({ title: "建立记忆" }));
@@ -376,7 +451,7 @@ describe("ChatHome", () => {
         }),
     );
     const send = screen.getByRole("button", { name: "发送" });
-    const start = await screen.findByRole("button", { name: "开始对话" });
+    const start = await screen.findByRole("button", { name: /^开始对话/ });
     send.focus();
     fireEvent.click(send);
     fireEvent.keyDown(box, { key: "Enter" });
@@ -432,7 +507,7 @@ describe("ChatHome", () => {
 
   it("does not start another chat from a nudge while one is opening", async () => {
     renderWithRouter(<ChatHome />);
-    const start = await screen.findByRole("button", { name: "开始对话" });
+    const start = await screen.findByRole("button", { name: /^开始对话/ });
     const box = screen.getByPlaceholderText(/输入消息/);
     fireEvent.change(box, { target: { value: "另一句" } });
     let release: ((ok: boolean) => void) | undefined;
@@ -446,6 +521,11 @@ describe("ChatHome", () => {
     start.focus();
     fireEvent.click(start);
     expect(start).toHaveAttribute("aria-busy", "true");
+    expect(start).toHaveTextContent("开始对话");
+    expect(start).toHaveAttribute(
+      "aria-label",
+      "开始对话：我还不太了解你。聊几句，让我记住对你重要的事",
+    );
     expect(start).toBeEnabled();
     expect(start).toHaveFocus();
     fireEvent.click(start);
