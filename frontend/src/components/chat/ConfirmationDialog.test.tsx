@@ -3,20 +3,24 @@ import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import ConfirmationDialog from "./ConfirmationDialog";
 import { renderWithRouter } from "../../test-utils";
 
+const policyQuery = {
+  data: {
+    auto_allow: ["read_file"],
+    needs_user: ["write_file", "apply_patch", "send_email", "computer_click"],
+    forbidden: ["shell_exec"],
+    external_ingestion: [],
+  },
+  isPending: false,
+  isLoading: false,
+  error: null as Error | null,
+};
+
 vi.mock("../../hooks/useSettingsQuery", () => ({
-  useCapabilityPolicyQuery: () => ({
-    data: {
-      auto_allow: ["read_file"],
-      needs_user: ["write_file", "apply_patch", "send_email", "computer_click"],
-      forbidden: ["shell_exec"],
-      external_ingestion: [],
-    },
-    isLoading: false,
-    error: null,
-  }),
+  useCapabilityPolicyQuery: () => policyQuery,
 }));
 
 afterEach(() => {
+  policyQuery.isPending = false;
   cleanup();
 });
 
@@ -33,11 +37,62 @@ describe("ConfirmationDialog", () => {
       <ConfirmationDialog toolCall={toolCall} onConfirm={vi.fn()} onDeny={vi.fn()} />,
     );
 
-    expect(screen.getByText(/建议：写入文件/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "建议：写入文件" })).toBeInTheDocument();
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("建议：写入文件。高风险。");
+    expect(status).toHaveClass("sr-only");
+    expect(status).not.toHaveFocus();
     expect(screen.getByText(/确认后将写入文件/)).toBeInTheDocument();
     const summary = screen.getByText("查看详细参数");
     fireEvent.click(summary);
     expect(screen.getByText(/"path"/)).toBeInTheDocument();
+  });
+
+  it("waits for the capability policy before reading a tool card once", () => {
+    policyQuery.isPending = true;
+    const view = renderWithRouter(
+      <ConfirmationDialog toolCall={toolCall} onConfirm={vi.fn()} onDeny={vi.fn()} />,
+    );
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "建议：写入文件" })).toBeInTheDocument();
+
+    policyQuery.isPending = false;
+    view.rerender(<ConfirmationDialog toolCall={toolCall} onConfirm={vi.fn()} onDeny={vi.fn()} />);
+    expect(screen.getByRole("status")).toHaveTextContent("建议：写入文件。高风险。");
+  });
+
+  it("keeps the same announcement while busy and reads the next card again", () => {
+    const view = renderWithRouter(
+      <ConfirmationDialog toolCall={toolCall} onConfirm={vi.fn()} onDeny={vi.fn()} />,
+    );
+    const status = screen.getByRole("status");
+    view.rerender(
+      <ConfirmationDialog
+        toolCall={toolCall}
+        busyAction="confirm"
+        onConfirm={vi.fn()}
+        onDeny={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("status")).toBe(status);
+    expect(status).toHaveTextContent("建议：写入文件。高风险。");
+
+    view.rerender(
+      <ConfirmationDialog
+        toolCall={{
+          index: 0,
+          id: "tc-next",
+          function_name: "apply_patch",
+          arguments: JSON.stringify({ path: "/tmp/a.md" }),
+        }}
+        onConfirm={vi.fn()}
+        onDeny={vi.fn()}
+      />,
+    );
+    const next = screen.getByRole("status");
+    expect(next).not.toBe(status);
+    expect(next).toHaveTextContent("建议：修改文件。高风险。/tmp/a.md。");
+    expect(next).not.toHaveFocus();
   });
 
   it("calls onConfirm when user approves", () => {
@@ -317,7 +372,7 @@ describe("ConfirmationDialog", () => {
       />,
     );
 
-    expect(screen.getByText(/^建议：/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^建议：/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "确认执行" })).toBeInTheDocument();
   });
 });

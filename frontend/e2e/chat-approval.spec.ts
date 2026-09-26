@@ -103,9 +103,13 @@ test.describe("Chat approval flow", () => {
     await page.goto(`/chat/${CONV_ID}`);
     await page.getByPlaceholder(/输入消息/).fill("请写入一个文件");
     await page.getByRole("button", { name: "发送" }).click();
-    await expect(page.getByText(/建议：写入文件/)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole("heading", { name: /建议：写入文件/ })).toBeVisible({
+      timeout: 10000,
+    });
     await page.getByRole("button", { name: "确认写入" }).click();
-    await expect(page.getByText(/建议：写入文件/)).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("heading", { name: /建议：写入文件/ })).not.toBeVisible({
+      timeout: 5000,
+    });
   });
 
   test("approve can present a second confirmation without sending again", async ({ page }) => {
@@ -148,13 +152,17 @@ test.describe("Chat approval flow", () => {
     await page.goto(`/chat/${CONV_ID}`);
     await page.getByPlaceholder(/输入消息/).fill("请写入两个文件");
     await page.getByRole("button", { name: "发送" }).click();
-    await expect(page.getByText(/建议：写入文件/)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole("heading", { name: /建议：写入文件/ })).toBeVisible({
+      timeout: 10000,
+    });
     await page.getByRole("button", { name: "确认写入" }).click();
     await expect(page.getByText("还需要再写一份。")).toBeVisible({ timeout: 5000 });
     await expect(page.getByRole("button", { name: "确认写入" })).toBeVisible();
     await page.getByRole("button", { name: "确认写入" }).click();
     await expect(page.getByText("两份都写好了。")).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText(/建议：写入文件/)).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("heading", { name: /建议：写入文件/ })).not.toBeVisible({
+      timeout: 5000,
+    });
   });
 
   test("switching conversations does not leak the pending confirmation", async ({ page }) => {
@@ -241,13 +249,19 @@ test.describe("Chat approval flow", () => {
     });
 
     await page.goto(`/chat/${CONV_ID}`);
-    await expect(page.getByText(/建议：写入文件/)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole("heading", { name: /建议：写入文件/ })).toBeVisible({
+      timeout: 10000,
+    });
     await page.getByText("另一段对话").click();
     await expect(page).toHaveURL(new RegExp(`/chat/${otherId}`));
-    await expect(page.getByText(/建议：写入文件/)).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("heading", { name: /建议：写入文件/ })).not.toBeVisible({
+      timeout: 5000,
+    });
     await page.getByText("待审批对话").click();
     await expect(page).toHaveURL(new RegExp(`/chat/${CONV_ID}`));
-    await expect(page.getByText(/建议：写入文件/)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole("heading", { name: /建议：写入文件/ })).toBeVisible({
+      timeout: 10000,
+    });
   });
 
   test("user can deny pending tool approval", async ({ page }) => {
@@ -274,10 +288,14 @@ test.describe("Chat approval flow", () => {
     await page.goto(`/chat/${CONV_ID}`);
     await page.getByPlaceholder(/输入消息/).fill("请写入一个文件");
     await page.getByRole("button", { name: "发送" }).click();
-    await expect(page.getByText(/建议：写入文件/)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole("heading", { name: /建议：写入文件/ })).toBeVisible({
+      timeout: 10000,
+    });
 
     await page.getByRole("button", { name: "取消" }).click();
-    await expect(page.getByText(/建议：写入文件/)).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("heading", { name: /建议：写入文件/ })).not.toBeVisible({
+      timeout: 5000,
+    });
   });
 
   test("ask_user card sends the typed answer and continues the chat", async ({ page }) => {
@@ -315,20 +333,20 @@ test.describe("Chat approval flow", () => {
     await expect(page.getByRole("heading", { name: "需要你补充一点信息" })).toBeVisible({
       timeout: 10000,
     });
-    // RiskCard also repeats the question in its summary and raw args.
-    await expect(page.locator("p:not([title])", { hasText: "你想先看哪一周？" })).toHaveText(
-      "你想先看哪一周？",
-    );
-    await expect(page.locator("p:not([title])", { hasText: "用来对比完成情况" })).toHaveText(
-      "用来对比完成情况",
-    );
+    // RiskCard repeats the question on a titled summary. The polite live region repeats both sentences.
+    await expect(
+      page.locator("p:not([title]):not([role=status])", { hasText: "你想先看哪一周？" }),
+    ).toHaveText("你想先看哪一周？");
+    await expect(
+      page.locator("p:not([title]):not([role=status])", { hasText: "用来对比完成情况" }),
+    ).toHaveText("用来对比完成情况");
     const sendAnswer = page.getByRole("button", { name: "发送回答" });
     await expect(sendAnswer).toBeDisabled();
     await page.getByRole("textbox", { name: "你的回答" }).fill("最近三天");
     await expect(sendAnswer).toBeEnabled();
     await sendAnswer.click();
     await expect(page.getByText("好，按最近三天继续。")).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText("需要你补充一点信息")).not.toBeVisible();
+    await expect(page.getByRole("heading", { name: "需要你补充一点信息" })).not.toBeVisible();
     expect(resolveBody).toMatchObject({
       decision: "approve",
       tool_name: "ask_user",
@@ -364,9 +382,13 @@ test.describe("Chat approval flow", () => {
     await page.goto(`/chat/${CONV_ID}`);
     await page.getByPlaceholder(/输入消息/).fill("帮我对比一下");
     await page.getByRole("button", { name: "发送" }).click();
-    await expect(page.getByText("需要你补充一点信息")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole("heading", { name: "需要你补充一点信息" })).toBeVisible({
+      timeout: 10000,
+    });
     await page.getByRole("button", { name: "取消" }).click();
-    await expect(page.getByText("需要你补充一点信息")).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("heading", { name: "需要你补充一点信息" })).not.toBeVisible({
+      timeout: 5000,
+    });
     await expect(
       page.getByRole("paragraph").filter({ hasText: "已拒绝「向你确认」，没有执行该操作。" }),
     ).toBeVisible();
