@@ -223,9 +223,9 @@ describe("ApprovalsPage", () => {
     await waitFor(() =>
       expect(screen.getAllByText("简报要覆盖最近几天？").length).toBeGreaterThan(0),
     );
-    const send = screen.getByRole("button", { name: "发送回答" });
+    const send = screen.getByRole("button", { name: /^发送回答：/ });
     expect(send).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("你的回答"), { target: { value: "最近三天" } });
+    fireEvent.change(screen.getByLabelText(/^你的回答：/), { target: { value: "最近三天" } });
     fireEvent.click(send);
     await waitFor(() => {
       expect(mockResolve).toHaveBeenCalledWith(
@@ -251,8 +251,10 @@ describe("ApprovalsPage", () => {
     mockList.mockResolvedValueOnce([ask]).mockResolvedValue([]);
     mockResolve.mockResolvedValue({ status: "denied" });
     renderWithRouter(<ApprovalsPage />);
-    await waitFor(() => expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^取消：/ })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^取消：/ }));
     await waitFor(() => {
       expect(mockResolve).toHaveBeenCalledWith(
         "ap-ask",
@@ -363,8 +365,8 @@ describe("ApprovalsPage", () => {
     );
     mockList.mockResolvedValue([sampleApproval]);
     renderWithRouter(<ApprovalsPage />);
-    const approve = await screen.findByRole("button", { name: "批准" });
-    const reject = screen.getByRole("button", { name: "拒绝" });
+    const approve = await screen.findByRole("button", { name: /^批准：/ });
+    const reject = screen.getByRole("button", { name: /^拒绝：/ });
     approve.focus();
     fireEvent.click(approve);
     fireEvent.click(approve);
@@ -400,22 +402,22 @@ describe("ApprovalsPage", () => {
     );
     mockList.mockResolvedValue([ask]);
     renderWithRouter(<ApprovalsPage />);
-    const field = await screen.findByLabelText("你的回答");
-    const send = screen.getByRole("button", { name: "发送回答" });
+    const field = await screen.findByLabelText(/^你的回答：/);
+    const send = screen.getByRole("button", { name: /^发送回答：/ });
     expect(send).toBeDisabled();
     fireEvent.change(field, { target: { value: "  最近三天  " } });
     expect(send).toBeEnabled();
     send.focus();
     fireEvent.click(send);
     fireEvent.click(send);
-    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    fireEvent.click(screen.getByRole("button", { name: /^取消：/ }));
 
     await waitFor(() => expect(send).toHaveAttribute("aria-busy", "true"));
     expect(send).toBeEnabled();
     expect(send).toHaveFocus();
     expect(send).toHaveClass("opacity-50");
-    expect(screen.getByRole("button", { name: "取消" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "取消" })).not.toHaveAttribute("aria-busy");
+    expect(screen.getByRole("button", { name: /^取消：/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /^取消：/ })).not.toHaveAttribute("aria-busy");
     expect(field).toBeEnabled();
     expect(field).toHaveValue("  最近三天  ");
     expect(mockResolve).toHaveBeenCalledTimes(1);
@@ -425,7 +427,7 @@ describe("ApprovalsPage", () => {
     await waitFor(() => expect(addError).toHaveBeenCalledWith("发送失败", "审批"));
     expect(field).toHaveValue("  最近三天  ");
     expect(field).toBeEnabled();
-    expect(screen.getByRole("button", { name: "发送回答" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: /^发送回答：/ })).toHaveFocus();
     expect(mockResolve).toHaveBeenCalledWith(
       "ap-ask",
       "approve",
@@ -453,9 +455,9 @@ describe("ApprovalsPage", () => {
     );
     mockList.mockResolvedValue([ask]);
     renderWithRouter(<ApprovalsPage />);
-    const field = await screen.findByLabelText("你的回答");
+    const field = await screen.findByLabelText(/^你的回答：/);
     fireEvent.change(field, { target: { value: "最近三天" } });
-    const send = screen.getByRole("button", { name: "发送回答" });
+    const send = screen.getByRole("button", { name: /^发送回答：/ });
     send.focus();
     fireEvent.click(send);
     field.focus();
@@ -481,7 +483,7 @@ describe("ApprovalsPage", () => {
     let release: (rows: EnrichedApproval[]) => void = () => {};
     mockList.mockResolvedValueOnce([sampleApproval]);
     renderWithRouter(<ApprovalsPage />);
-    await screen.findByRole("button", { name: "批准" });
+    await screen.findByRole("button", { name: /^批准：/ });
     mockList.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -526,11 +528,11 @@ describe("ApprovalsPage", () => {
     mockList.mockResolvedValueOnce([sampleApproval, second]).mockResolvedValue([second]);
     mockReject.mockResolvedValue({ id: "ap-1", status: "rejected" });
     renderWithRouter(<ApprovalsPage />);
-    const rejects = await screen.findAllByRole("button", { name: "拒绝" });
+    const rejects = await screen.findAllByRole("button", { name: /^拒绝：/ });
     rejects[0].focus();
     fireEvent.click(rejects[0]);
-    await waitFor(() => expect(screen.getAllByRole("button", { name: "批准" })).toHaveLength(1));
-    expect(screen.getByRole("button", { name: "批准" })).toHaveFocus();
+    await waitFor(() => expect(screen.getAllByRole("button", { name: /^批准：/ })).toHaveLength(1));
+    expect(screen.getByRole("button", { name: /^批准：/ })).toHaveFocus();
     expect(mockReject).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
@@ -545,12 +547,12 @@ describe("ApprovalsPage", () => {
         }),
     );
     renderWithRouter(<ApprovalsPage />);
-    const reject = await screen.findByRole("button", { name: "拒绝" });
+    const reject = await screen.findByRole("button", { name: /^拒绝：/ });
     reject.focus();
     fireEvent.click(reject);
     expect(reject).toHaveAttribute("aria-busy", "true");
     const focusWhenGone = captureFocusWhenGone(
-      () => !screen.queryByRole("button", { name: "拒绝" }),
+      () => !screen.queryByRole("button", { name: /^拒绝：/ }),
     );
     await act(async () => {
       release({ id: "ap-1", status: "rejected" });
@@ -576,9 +578,9 @@ describe("ApprovalsPage", () => {
     );
     mockList.mockResolvedValue([sampleApproval, second]);
     renderWithRouter(<ApprovalsPage />);
-    const rejects = await screen.findAllByRole("button", { name: "拒绝" });
+    const rejects = await screen.findAllByRole("button", { name: /^拒绝：/ });
     fireEvent.click(rejects[0]);
-    const nextApprove = (await screen.findAllByRole("button", { name: "批准" }))[1];
+    const nextApprove = (await screen.findAllByRole("button", { name: /^批准：/ }))[1];
     nextApprove.focus();
     fail(new MockApiError("拒绝操作失败", 500));
     await waitFor(() => expect(addError).toHaveBeenCalledWith("拒绝操作失败", "审批"));
@@ -609,7 +611,7 @@ describe("ApprovalsPage", () => {
     mockList.mockResolvedValueOnce([sampleApproval]).mockResolvedValue([]);
     mockApprove.mockResolvedValue({ id: "ap-1", status: "approved" });
     renderWithRouter(<ApprovalsPage />);
-    const approve = await screen.findByRole("button", { name: "批准" });
+    const approve = await screen.findByRole("button", { name: /^批准：/ });
     const refresh = screen.getByRole("button", { name: "刷新" });
     approve.focus();
     fireEvent.click(approve);
@@ -619,7 +621,7 @@ describe("ApprovalsPage", () => {
     expect(status).toHaveTextContent("暂无待审批项 所有高风险操作已处理完毕");
     expect(status).toHaveClass("sr-only");
     expect(refresh).toHaveFocus();
-    expect(screen.queryByRole("button", { name: "批准" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^批准：/ })).not.toBeInTheDocument();
   });
 
   it("does not read the empty queue while the decision is still in flight", async () => {
@@ -632,10 +634,10 @@ describe("ApprovalsPage", () => {
     );
     mockList.mockResolvedValue([sampleApproval]);
     renderWithRouter(<ApprovalsPage />);
-    const approve = await screen.findByRole("button", { name: "批准" });
+    const approve = await screen.findByRole("button", { name: /^批准：/ });
     fireEvent.click(approve);
     await waitFor(() => expect(approve).toHaveAttribute("aria-busy", "true"));
-    expect(approve).toHaveAccessibleName("批准");
+    expect(approve).toHaveAccessibleName("批准：写入文件 /tmp/test.txt");
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.queryByText("暂无待审批项")).not.toBeInTheDocument();
 
@@ -650,9 +652,9 @@ describe("ApprovalsPage", () => {
     mockReject.mockRejectedValue(new MockApiError("拒绝操作失败", 500));
     mockList.mockResolvedValue([sampleApproval]);
     renderWithRouter(<ApprovalsPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "拒绝" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^拒绝：/ }));
     await waitFor(() => expect(addError).toHaveBeenCalledWith("拒绝操作失败", "审批"));
-    expect(screen.getByRole("button", { name: "拒绝" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^拒绝：/ })).toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.queryByText("暂无待审批项")).not.toBeInTheDocument();
   });
@@ -667,7 +669,7 @@ describe("ApprovalsPage", () => {
     mockList.mockResolvedValueOnce([ask]).mockResolvedValue([]);
     mockResolve.mockResolvedValue({ status: "denied" });
     renderWithRouter(<ApprovalsPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "取消" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^取消：/ }));
     const status = await screen.findByRole("status");
     expect(status).toHaveTextContent("暂无待审批项 所有高风险操作已处理完毕");
     expect(screen.getByRole("button", { name: "刷新" })).toHaveFocus();
@@ -682,17 +684,107 @@ describe("ApprovalsPage", () => {
       .mockResolvedValueOnce([]);
     mockReject.mockResolvedValue({ id: "ap-1", status: "rejected" });
     renderWithRouter(<ApprovalsPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "拒绝" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^拒绝：/ }));
     const first = await screen.findByRole("status");
     expect(first).toHaveTextContent("暂无待审批项 所有高风险操作已处理完毕");
 
     fireEvent.click(screen.getByRole("button", { name: "刷新" }));
-    await screen.findByRole("button", { name: "拒绝" });
+    await screen.findByRole("button", { name: /^拒绝：/ });
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "拒绝" }));
+    fireEvent.click(screen.getByRole("button", { name: /^拒绝：/ }));
     const second = await screen.findByRole("status");
     expect(second).toHaveTextContent("暂无待审批项 所有高风险操作已处理完毕");
     expect(second).not.toBe(first);
+  });
+
+  it("names each decision with the tool and the distinguishing argument", async () => {
+    const question = "  前一段\n后一段  ";
+    const rows: EnrichedApproval[] = [
+      sampleApproval,
+      {
+        ...sampleApproval,
+        id: "ap-mail",
+        action: "send_email",
+        params: JSON.stringify({
+          to: "a@corp.com",
+          subject: "主题不进名字",
+          body: "正文不进名字",
+        }),
+        flow_label: "流程名不进名字",
+      },
+      {
+        ...sampleApproval,
+        id: "ap-shell",
+        action: "shell_exec",
+        params: JSON.stringify({
+          command: "  echo hi  ",
+          limit: 3,
+          max_lines: 9,
+          unread_only: true,
+        }),
+      },
+      {
+        ...sampleApproval,
+        id: "ap-ask",
+        action: "ask_user",
+        conversation_id: "conv-9",
+        tool_call_id: "tc-9",
+        params: JSON.stringify({ question, context: "补充不进名字" }),
+      },
+      {
+        ...sampleApproval,
+        id: "ap-blank",
+        action: "   ",
+        params: JSON.stringify({ path: "/tmp/ignored.txt" }),
+      },
+      {
+        ...sampleApproval,
+        id: "ap-unknown",
+        action: "mcp_shell__run_custom_tool",
+        params: "{}",
+      },
+    ];
+    mockList.mockResolvedValue(rows);
+    renderWithRouter(<ApprovalsPage />);
+
+    const write = await screen.findByRole("button", { name: "批准：写入文件 /tmp/test.txt" });
+    expect(write).toHaveTextContent("批准");
+    expect(write.textContent).not.toContain("/tmp/test.txt");
+    expect(write).toHaveAttribute("title", "批准此操作");
+    expect(screen.getByRole("button", { name: "拒绝：写入文件 /tmp/test.txt" })).toHaveTextContent(
+      "拒绝",
+    );
+
+    const mail = screen.getByRole("button", { name: "批准：发送邮件" });
+    expect(mail).toHaveTextContent("批准");
+    expect(mail.getAttribute("aria-label")).not.toMatch(/a@corp.com|主题不进名字|正文不进名字/);
+    expect(mail.getAttribute("aria-label")).not.toContain("流程名不进名字");
+    expect(mail.getAttribute("aria-label")).not.toMatch(/高风险|important/);
+
+    const shell = screen.getByRole("button", { name: /^批准：执行命令/ });
+    expect(shell).toHaveAttribute("aria-label", "批准：执行命令 $   echo hi");
+    expect(shell.getAttribute("aria-label")).not.toMatch(/limit|max_lines|unread_only|\b3\b|\b9\b/);
+
+    const send = screen.getByRole("button", { name: /^发送回答：向你确认/ });
+    expect(send).toHaveTextContent("发送回答");
+    expect(send).toHaveAttribute("aria-label", "发送回答：向你确认 前一段\n后一段");
+    expect(send.getAttribute("aria-label")).not.toContain("补充不进名字");
+    const cancel = screen.getByRole("button", { name: /^取消：向你确认/ });
+    expect(cancel).toHaveTextContent("取消");
+    expect(cancel).toHaveAttribute("aria-label", "取消：向你确认 前一段\n后一段");
+    const field = screen.getByRole("textbox", { name: /^你的回答：前一段/ });
+    expect(field).toHaveAttribute("aria-label", "你的回答：前一段\n后一段");
+    expect(
+      document.querySelector("[data-approval-card='ap-ask'] .whitespace-pre-wrap")?.textContent,
+    ).toBe(question);
+
+    const blank = screen.getByRole("button", { name: "批准" });
+    expect(blank).not.toHaveAttribute("aria-label");
+    expect(blank).toHaveTextContent("批准");
+
+    const unknown = screen.getByRole("button", { name: /^批准：mcp shell/ });
+    expect(unknown).toHaveAttribute("aria-label", "批准：mcp shell  run custom tool");
+    expect(unknown.getAttribute("aria-label")).not.toContain("_");
   });
 });
