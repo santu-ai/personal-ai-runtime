@@ -167,6 +167,54 @@ describe("QuickCaptureDialog", () => {
     expect(screen.getByText("保存")).toBeDisabled();
   });
 
+  it("reads 已保存 when capture succeeds and leaves focus in the field", async () => {
+    mockCreateMemory.mockResolvedValue({ id: "mem-1", status: "ok" });
+    renderWithRouter(<QuickCaptureDialog />);
+    openDialog();
+    const textarea = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByText("⌘/Ctrl + Enter 保存")).toBeInTheDocument();
+    fireEvent.change(textarea, { target: { value: "重要想法" } });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("已保存");
+    expect(status).toHaveClass("sr-only");
+    const shown = screen.getByText("已保存 ✓");
+    expect(shown).toHaveAttribute("aria-hidden", "true");
+    expect(textarea).toHaveFocus();
+    expect(screen.getByRole("button", { name: "已保存" })).not.toHaveFocus();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("reads 已保存 when the save button is used and leaves focus on that button", async () => {
+    mockCreateMemory.mockResolvedValue({ id: "mem-1", status: "ok" });
+    renderWithRouter(<QuickCaptureDialog />);
+    openDialog();
+    const textarea = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    fireEvent.change(textarea, { target: { value: "点保存" } });
+    const save = screen.getByRole("button", { name: "保存" });
+    save.focus();
+    fireEvent.click(save);
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("已保存");
+    expect(screen.getByRole("button", { name: "已保存" })).toHaveFocus();
+    expect(textarea).not.toHaveFocus();
+  });
+
+  it("does not read a second result when capture fails", async () => {
+    mockCreateMemory.mockRejectedValue(new MockApiError("保存失败", 500));
+    renderWithRouter(<QuickCaptureDialog />);
+    openDialog();
+    const textarea = await screen.findByPlaceholderText("想到什么，立刻记下来...");
+    fireEvent.change(textarea, { target: { value: "会失败" } });
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("保存失败", "记忆"));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText("已保存 ✓")).not.toBeInTheDocument();
+    expect(textarea).toHaveFocus();
+    expect(textarea).toHaveValue("会失败");
+  });
+
   it("saves memory on button click", async () => {
     mockCreateMemory.mockResolvedValue({ id: "mem-1", status: "ok" });
     renderWithRouter(<QuickCaptureDialog />);
