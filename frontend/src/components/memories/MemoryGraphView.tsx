@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { MemoryGraph } from "../../api/client";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
 
 /**
  * Simple deterministic force-directed graph layout.
@@ -96,6 +97,22 @@ function useForceLayout(
   return positions;
 }
 
+function escapeAttr(value: string): string {
+  return typeof CSS !== "undefined" && typeof CSS.escape === "function"
+    ? CSS.escape(value)
+    : value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/** 沿着图谱给出的顺序移动。到头就停住，不绕回另一头。 */
+function nextGraphIndex(index: number, count: number, key: string): number | null {
+  if (index < 0 || count === 0) return null;
+  if (key === "ArrowDown" || key === "ArrowRight") return Math.min(count - 1, index + 1);
+  if (key === "ArrowUp" || key === "ArrowLeft") return Math.max(0, index - 1);
+  if (key === "Home") return 0;
+  if (key === "End") return count - 1;
+  return null;
+}
+
 const CATEGORY_COLORS: Record<string, string> = {
   fact: "#10b981", // success — 关于你的事实（已验证）
   preference: "#6366f1", // insight — 偏好（AI 洞察）
@@ -106,10 +123,36 @@ const CATEGORY_COLORS: Record<string, string> = {
 export default function MemoryGraphView({ graph }: { graph: MemoryGraph }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+  const [focusedNode, setFocusedNode] = useState<string | null>(null);
+  const [tabId, setTabId] = useState<string | null>(null);
   const width = 700;
   const height = 500;
 
   const positions = useForceLayout(graph.nodes, graph.edges, width, height);
+  const tabTarget =
+    tabId && graph.nodes.some((node) => node.id === tabId) ? tabId : (graph.nodes[0]?.id ?? null);
+
+  const focusNode = (id: string) => {
+    setTabId(id);
+    svgRef.current?.querySelector<SVGGElement>(`[data-memory-node="${escapeAttr(id)}"]`)?.focus();
+  };
+
+  const onNodeKeyDown = (nodeId: string) => (event: ReactKeyboardEvent<SVGGElement>) => {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    // 组字或输入法处理键时不移动，也不拦住这一下。
+    if (isImeKeyboardEvent(event.nativeEvent)) return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      return;
+    }
+    const index = graph.nodes.findIndex((node) => node.id === nodeId);
+    const next = nextGraphIndex(index, graph.nodes.length, event.key);
+    if (next == null) return;
+    event.preventDefault();
+    const target = graph.nodes[next];
+    if (!target || target.id === nodeId) return;
+    focusNode(target.id);
+  };
 
   return (
     <div className="relative">
@@ -117,6 +160,8 @@ export default function MemoryGraphView({ graph }: { graph: MemoryGraph }) {
         ref={svgRef}
         width={width}
         height={height}
+        role="group"
+        aria-label="记忆图谱"
         className="mx-auto"
         style={{ background: "#111827" }}
       >
@@ -125,7 +170,11 @@ export default function MemoryGraphView({ graph }: { graph: MemoryGraph }) {
           const source = positions[edge.source];
           const target = positions[edge.target];
           if (!source || !target) return null;
-          const isHighlighted = hoveredNode === edge.source || hoveredNode === edge.target;
+          const isHighlighted =
+            hoveredNode === edge.source ||
+            hoveredNode === edge.target ||
+            focusedNode === edge.source ||
+            focusedNode === edge.target;
           return (
             <line
               key={i}
@@ -146,22 +195,35 @@ export default function MemoryGraphView({ graph }: { graph: MemoryGraph }) {
           if (!pos) return null;
           const color = CATEGORY_COLORS[node.category] || "#6b7280";
           const isHovered = hoveredNode === node.id;
+          const isFocused = focusedNode === node.id;
+          const revealed = isHovered || isFocused;
           return (
             <g
               key={node.id}
+              role="button"
+              tabIndex={node.id === tabTarget ? 0 : -1}
+              data-memory-node={node.id}
+              aria-label={node.content}
               onMouseEnter={() => setHoveredNode(node.id)}
               onMouseLeave={() => setHoveredNode(null)}
-              className="cursor-pointer"
+              onFocus={() => {
+                setFocusedNode(node.id);
+                setTabId(node.id);
+              }}
+              onBlur={() => setFocusedNode((current) => (current === node.id ? null : current))}
+              onKeyDown={onNodeKeyDown(node.id)}
+              // 组的外框会画成大方块。焦点环画在圆点上，颜色与时间线相同。
+              className="cursor-pointer focus-visible:outline-none"
             >
               <circle
                 cx={pos.x}
                 cy={pos.y}
-                r={isHovered ? 12 : 8}
+                r={revealed ? 12 : 8}
                 fill={color}
-                stroke={isHovered ? "#f3f4f6" : "none"}
+                stroke={isFocused ? "var(--color-focus-ring)" : isHovered ? "#f3f4f6" : "none"}
                 strokeWidth={2}
               />
-              {isHovered && (
+              {revealed && (
                 <text
                   x={pos.x}
                   y={pos.y - 20}
