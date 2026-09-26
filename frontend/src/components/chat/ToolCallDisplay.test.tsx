@@ -263,4 +263,111 @@ describe("ToolCallDisplay", () => {
     expect(screen.getByText(new RegExp(jsonNote)).closest("[data-tool-result-preview]")).toBeNull();
     expect(screen.getByText(new RegExp(jsonNote)).textContent).not.toContain("[truncated]");
   });
+
+  it("writes the full arguments when a line is long, and leaves a short block alone", () => {
+    const wide = "x".repeat(81);
+    const exact = "y".repeat(80);
+    const longPath = "p".repeat(81);
+    const wideJson = JSON.stringify({ path: longPath });
+    const wideText = JSON.stringify({ path: longPath }, null, 2);
+    const tall = JSON.stringify({ a: "1", b: "2", c: "3", d: "4" });
+    const tallText = JSON.stringify({ a: "1", b: "2", c: "3", d: "4" }, null, 2);
+    expect(wideText.split("\n").some((line) => line.length > 80)).toBe(true);
+    expect(tallText.split("\n")).toHaveLength(6);
+    expect(tallText.split("\n").every((line) => line.length <= 80)).toBe(true);
+
+    render(
+      <ToolCallDisplay
+        toolCalls={[
+          {
+            index: 0,
+            id: "tc-wide",
+            function_name: "read_file",
+            arguments: wide,
+          },
+          {
+            index: 1,
+            id: "tc-exact",
+            function_name: "web_search",
+            arguments: exact,
+          },
+          {
+            index: 2,
+            id: "tc-json",
+            function_name: "shell_exec",
+            arguments: wideJson,
+          },
+          {
+            index: 3,
+            id: "tc-tall",
+            function_name: "list_directory",
+            arguments: tall,
+          },
+        ]}
+        toolResults={[]}
+      />,
+    );
+
+    expect(document.querySelector("[data-panel-args-preview]")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /读取文件/ }));
+    const box = document.querySelector("[data-panel-args-preview]");
+    if (!box) throw new Error("missing panel args preview");
+    expect(box).toHaveAttribute("title", wide);
+    expect(box).toHaveAttribute("data-panel-args-preview", "");
+    expect(box).toHaveAttribute("tabindex", "0");
+    expect(box).toHaveClass(
+      "group",
+      "focus-visible:outline-none",
+      "focus-visible:ring-2",
+      "focus-visible:ring-focus-ring",
+    );
+    expect(box.className).not.toContain("max-h-");
+    expect(box.className).not.toContain("group-hover:");
+    expect(box.closest("button")).toBeNull();
+    const step = screen.getByRole("button", { name: /读取文件/ });
+    expect(step).toHaveAttribute("aria-expanded", "true");
+    const body = box.querySelector("pre");
+    expect(body).toHaveTextContent(wide);
+    expect(body).toHaveClass(
+      "overflow-x-auto",
+      "group-focus-visible:overflow-visible",
+      "group-focus-visible:whitespace-pre-wrap",
+      "group-focus-visible:break-all",
+    );
+    expect(body?.className).not.toContain("group-hover:");
+    expect(body?.className).not.toContain("group-focus-visible:hidden");
+
+    expect(fireEvent.keyDown(box, { key: " " })).toBe(false);
+    expect(fireEvent.keyDown(box, { key: "Enter" })).toBe(false);
+    expect(step).toHaveAttribute("aria-expanded", "true");
+    expect(fireEvent.keyDown(box, { key: "Enter", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "Enter", keyCode: 229 })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "Process" })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: " ", keyCode: 229 })).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: /搜索网页/ }));
+    expect(document.querySelector("[data-panel-args-preview]")).toBeNull();
+    const exactPre = screen.getByText(exact);
+    expect(exactPre.tagName).toBe("PRE");
+    expect(exactPre).not.toHaveAttribute("tabindex");
+    expect(exactPre).toHaveClass("overflow-x-auto");
+    expect(exactPre.className).not.toContain("group-focus-visible:");
+
+    fireEvent.click(screen.getByRole("button", { name: /执行命令/ }));
+    const jsonBox = document.querySelector("[data-panel-args-preview]");
+    expect(jsonBox).toHaveAttribute("title", wideText);
+    expect(jsonBox).toHaveAttribute("tabindex", "0");
+    expect(jsonBox?.querySelector("pre")?.textContent).toBe(wideText);
+    expect(jsonBox?.className).not.toContain("group-hover:");
+    expect(jsonBox?.closest("button")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /列出目录内容/ }));
+    expect(document.querySelector("[data-panel-args-preview]")).toBeNull();
+    const tallPre = screen.getByText(/"a"/).closest("pre");
+    expect(tallPre?.textContent).toBe(tallText);
+    expect(tallPre).not.toHaveAttribute("tabindex");
+    expect(tallPre?.className).not.toContain("max-h-");
+    expect(tallPre?.className).not.toContain("group-focus-visible:");
+  });
 });
