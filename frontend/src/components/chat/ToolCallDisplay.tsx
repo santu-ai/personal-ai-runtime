@@ -4,6 +4,7 @@ import { isImeKeyboardEvent } from "../../utils/imeKey";
 import { matchResultsByCallId } from "./matchToolResult";
 import { detectOutcome } from "./detectToolFailure";
 import { formatArgs } from "./formatArgs";
+import ToolResultBody from "./ToolResultBody";
 import type { ToolCall, ToolResult } from "./types";
 
 interface EmailItem {
@@ -170,19 +171,7 @@ function formatResult(content: string, toolName: string): ReactNode {
     const inbox = parseInboxResult(content);
     if (inbox) return <InboxResultView data={inbox} />;
   }
-  try {
-    const parsed = JSON.parse(content);
-    return (
-      <pre className="bg-surface-sunken p-2 rounded text-fg-primary overflow-x-auto">
-        {JSON.stringify(parsed, null, 2)}
-      </pre>
-    );
-  } catch {
-    const text = content.length > 500 ? content.slice(0, 500) + "\n... [truncated]" : content;
-    return (
-      <pre className="bg-surface-sunken p-2 rounded text-fg-primary overflow-x-auto">{text}</pre>
-    );
-  }
+  return <ToolResultBody content={content} frame="panel" />;
 }
 
 export default function ToolCallDisplay({
@@ -287,9 +276,7 @@ export default function ToolCallDisplay({
                 {result && (
                   <div>
                     <div className="text-fg-tertiary mb-1">结果</div>
-                    <div className="max-h-64 overflow-y-auto">
-                      {formatResult(result.content, tc.function_name)}
-                    </div>
+                    {formatResult(result.content, tc.function_name)}
                   </div>
                 )}
               </div>
