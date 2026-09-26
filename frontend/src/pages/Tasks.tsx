@@ -401,6 +401,25 @@ function findingKindLabel(kind: string | undefined): string {
 /** 正在读的来源 id。同一封还在读时，这一来源上的按钮标为忙碌，但不禁用。 */
 const OpeningMailSourceContext = createContext<string | null>(null);
 
+/** 来源编号超过这么多个字，平时只占一行。键盘落到时写出整句。 */
+const SOURCE_ID_PREVIEW = 40;
+/** 来源行把编号、标题和位置合起来，超过这么多个字同样只占一行。 */
+const SOURCE_LINE_PREVIEW = 80;
+
+const sourceChipReveal =
+  "max-w-full min-w-0 truncate text-left focus-visible:overflow-visible focus-visible:whitespace-normal focus-visible:text-clip focus-visible:break-all";
+const sourceLineReveal =
+  "block min-w-0 truncate group-focus-visible:overflow-visible group-focus-visible:whitespace-normal group-focus-visible:text-clip group-focus-visible:break-all";
+
+function sourceRowText(src: { id: string; title?: string; locator?: string }): string {
+  const parts = [src.id.trim()];
+  const title = src.title?.trim() ?? "";
+  if (title) parts.push(title);
+  const locator = src.locator?.trim() ?? "";
+  if (locator) parts.push(locator);
+  return parts.join(" ");
+}
+
 function SourceIdChips({
   ids,
   onCite,
@@ -421,25 +440,39 @@ function SourceIdChips({
     <span
       className={
         inline
-          ? "inline-flex flex-wrap items-center align-middle"
-          : "ml-2 inline-flex flex-wrap gap-1 align-middle"
+          ? "inline-flex max-w-full min-w-0 flex-wrap items-center align-middle"
+          : "ml-2 inline-flex max-w-full min-w-0 flex-wrap gap-1 align-middle"
       }
     >
       {clean.map((sourceId, index) => {
         const busy = openingId === sourceId;
+        const long = sourceId.length > SOURCE_ID_PREVIEW;
+        const plain = Boolean(linkable && !linkable(sourceId));
         return (
-          <span key={`${sourceId}-${index}`}>
+          <span
+            key={`${sourceId}-${index}`}
+            className="inline-flex max-w-full min-w-0 items-center"
+          >
             {inline && index > 0 ? "、" : null}
-            {linkable && !linkable(sourceId) ? (
-              sourceId
+            {plain ? (
+              long ? (
+                // 开不了的编号仍是纯文本。超过 40 个字时在句子里换行，不单独占一个焦点。
+                <span className="break-all">{sourceId}</span>
+              ) : (
+                sourceId
+              )
             ) : (
               <button
                 type="button"
-                className={`rounded-full border border-border-subtle bg-surface-overlay px-2 py-0.5 font-mono text-xs text-insight hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring${busy ? " opacity-50" : ""}`}
+                className={`rounded-full border border-border-subtle bg-surface-overlay px-2 py-0.5 font-mono text-xs text-insight hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring${
+                  long ? ` ${sourceChipReveal}` : ""
+                }${busy ? " opacity-50" : ""}`}
                 onClick={() => onCite(sourceId)}
                 aria-label={`来源 ${sourceId}`}
                 aria-busy={busy || undefined}
+                title={long ? sourceId : undefined}
               >
+                {/* 超过 40 个字时平时只占一行。键盘落到时写出整句。鼠标悬停仍是一行，整句在 title 里。 */}
                 {sourceId}
               </button>
             )}
@@ -493,6 +526,8 @@ function DeliverySources({
           const messageId = emailMessageId(src);
           const active = activeSourceId === src.id;
           const busy = openingId === src.id;
+          const line = sourceRowText(src);
+          const long = line.length > SOURCE_LINE_PREVIEW;
           const body = (
             <>
               <span className="font-mono text-xs text-fg-tertiary mr-2">{src.id}</span>
@@ -500,24 +535,46 @@ function DeliverySources({
               {src.locator ? ` · ${src.locator}` : ""}
             </>
           );
+          const revealed = long ? (
+            <span data-source-line="" className={sourceLineReveal}>
+              {body}
+            </span>
+          ) : (
+            body
+          );
           return (
             <li
               key={`${src.id}-${index}`}
               id={deliverySourceRowId(src.id, index)}
               data-delivery-source-id={src.id}
               data-testid={`delivery-source-${src.id}`}
-              className={active ? "rounded-md bg-insight/10 px-1 -mx-1" : undefined}
+              className={active ? "min-w-0 rounded-md bg-insight/10 px-1 -mx-1" : "min-w-0"}
             >
               {messageId ? (
                 <button
                   type="button"
-                  className={`text-left text-insight hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded${busy ? " opacity-50" : ""}`}
+                  className={`text-left text-insight hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded${
+                    long ? " group block max-w-full min-w-0" : ""
+                  }${busy ? " opacity-50" : ""}`}
                   aria-label={`打开邮件 ${src.title.trim() || src.id}`}
                   aria-busy={busy || undefined}
+                  title={long ? line : undefined}
                   onClick={() => onOpenEmail(src.id)}
                 >
-                  {body}
+                  {/* 超过 80 个字时平时只占一行。键盘落到时写出整句。鼠标悬停仍是一行。空格和回车仍打开。 */}
+                  {revealed}
                 </button>
+              ) : long ? (
+                <span
+                  tabIndex={0}
+                  data-source-reveal=""
+                  title={line}
+                  onKeyDown={keepOutputKeysFromScrolling}
+                  className="group block max-w-full min-w-0 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                >
+                  {/* 不是邮件的也可以落到。空格和回车不把页面滚走。组字时不拦住。 */}
+                  {revealed}
+                </span>
               ) : (
                 body
               )}
