@@ -19,6 +19,12 @@ import { notificationPreview } from "../../utils/notificationUtils";
 
 const NOTIFICATION_LIST_LIMIT = 15;
 
+/** 侧栏收起时键盘落到铃上写出的名字。有未读时带上这个数，和导航一样，超过 99 写成 99+。 */
+function bellLabel(unread: number): string {
+  if (unread <= 0) return "通知";
+  return `通知 ${unread > 99 ? "99+" : unread}`;
+}
+
 /** 绘制前通知。测试在「全部已读」卸下的同一轮读取焦点。 */
 export const notificationBellLayoutFocus = {
   notify: null as null | (() => void),
@@ -189,6 +195,7 @@ export default function NotificationBell({ compact = false }: Props) {
   });
 
   const unread = notifications.filter((n) => !n.read).length;
+  const compactLabel = bellLabel(unread);
 
   const handleOpenDetail = async (n: Notification) => {
     // 列表行会随下拉一起卸下。先把焦点放回铃，详情关闭时才能回到这里。
@@ -251,8 +258,8 @@ export default function NotificationBell({ compact = false }: Props) {
           }}
           className={`nav-item nav-item-idle ${compact ? "group justify-center px-0" : ""}`}
           data-notification-bell=""
-          aria-label="通知"
-          title={compact ? "通知" : undefined}
+          aria-label={compact ? compactLabel : "通知"}
+          title={compact ? compactLabel : undefined}
         >
           <span className={`relative ${compact ? "group-focus-visible:hidden" : ""}`}>
             <Bell size={16} strokeWidth={1.75} />
@@ -265,7 +272,7 @@ export default function NotificationBell({ compact = false }: Props) {
               data-rail-name=""
               className="hidden min-w-0 w-full truncate text-center text-[10px] leading-tight group-focus-visible:block"
             >
-              通知
+              {compactLabel}
             </span>
           ) : null}
           {!compact && (
