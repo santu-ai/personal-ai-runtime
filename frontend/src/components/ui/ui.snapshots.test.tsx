@@ -8,7 +8,14 @@ import EmptyState from "./EmptyState";
 describe("UI component snapshots", () => {
   it("Button primary", () => {
     const { container } = render(<Button>保存</Button>);
-    expect(container.firstChild).toMatchSnapshot();
+    const button = container.firstChild as HTMLButtonElement;
+    expect(button).toHaveClass(
+      "focus-visible:outline-none",
+      "focus-visible:ring-2",
+      "focus-visible:ring-focus-ring",
+    );
+    expect(button.className).not.toContain("ring-offset");
+    expect(button).toMatchSnapshot();
   });
 
   it("Button danger sm", () => {

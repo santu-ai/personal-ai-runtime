@@ -16,8 +16,8 @@ const variantClasses: Record<Variant, string> = {
     "bg-danger hover:bg-danger/90 text-fg-on-accent shadow-sm disabled:bg-surface-overlay disabled:text-fg-disabled disabled:shadow-none",
 };
 
-const focusRing =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface-app";
+/** 与时间线相同的焦点环。不留页面底色空隙，卡片和对话框里才和旁边的控件对齐。 */
+const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
