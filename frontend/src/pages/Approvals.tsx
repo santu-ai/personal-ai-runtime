@@ -47,6 +47,11 @@ type ResolveFocus = "approve" | "reject";
 
 type FocusAfter = { type: "action"; id: string; which: ResolveFocus } | { type: "refresh" };
 
+/** 空队列上已经写着的两句。读屏只在用户刚处理完最后一张时读，字和页面上相同。 */
+const EMPTY_QUEUE_SPOKEN = "暂无待审批项 所有高风险操作已处理完毕";
+
+type SpokenEmptyQueue = { id: number; text: string };
+
 /** 绘制前通知。测试在最后一张卸下的同一轮读取焦点。 */
 export const approvalPageLayoutFocus = {
   notify: null as null | (() => void),
@@ -129,6 +134,10 @@ export default function ApprovalsPage() {
   const refreshLock = useRef(false);
   const [refreshBusy, setRefreshBusy] = useState(false);
   const focusAfter = useRef<FocusAfter | null>(null);
+  const emptyAnnounce = useRef(false);
+  const emptySpokenSeq = useRef(0);
+  const spokenEmptyLive = useRef<SpokenEmptyQueue | null>(null);
+  const [spokenEmpty, setSpokenEmpty] = useState<SpokenEmptyQueue | null>(null);
   const addError = useErrorStore((s) => s.addError);
   const loadErrorRef = useRef<HTMLDivElement>(null);
   // 首次失败时缓存里没有列表。重试一开始会把查询错误清掉，这里留住原因，按钮才不会被「加载中」换掉。
@@ -191,6 +200,30 @@ export default function ApprovalsPage() {
     refresh.focus();
   }, [approvals, resolving, isFetching, refreshBusy]);
 
+  // 最后一张处理成功、页面写出空队列时，同一轮读这两句。
+  // 打开、重试或「刷新」已经是空的不读。还有下一张不读。不把焦点抢过来。
+  useLayoutEffect(() => {
+    if (!emptyAnnounce.current) return;
+    if (shownError || loading || approvals.length !== 0) {
+      emptyAnnounce.current = false;
+      return;
+    }
+    emptyAnnounce.current = false;
+    emptySpokenSeq.current += 1;
+    const next = { id: emptySpokenSeq.current, text: EMPTY_QUEUE_SPOKEN };
+    spokenEmptyLive.current = next;
+    setSpokenEmpty(next);
+  }, [approvals, loading, shownError]);
+
+  // 空队列这两句已经不在页面上，就卸下，避免读屏还停在上一次。
+  useLayoutEffect(() => {
+    const live = spokenEmptyLive.current;
+    if (!live) return;
+    if (!shownError && !loading && approvals.length === 0) return;
+    spokenEmptyLive.current = null;
+    setSpokenEmpty(null);
+  }, [approvals.length, loading, shownError]);
+
   useLayoutEffect(() => {
     approvalPageLayoutFocus.notify?.();
   });
@@ -213,6 +246,7 @@ export default function ApprovalsPage() {
     const result = await refetch();
     const rows = result.data;
     if (result.isError || !rows || rows.some((row) => row.id === id)) return;
+    if (rows.length === 0) emptyAnnounce.current = true;
     const pending = focusAfter.current;
     const held =
       pending?.type === "action" && pending.id === id && activeIsAction(id, pending.which);
@@ -380,6 +414,12 @@ export default function ApprovalsPage() {
               <Check size={40} className="mx-auto mb-3 text-success" />
               <p className="text-lg font-medium text-fg-secondary">暂无待审批项</p>
               <p className="text-sm text-fg-disabled mt-1">所有高风险操作已处理完毕</p>
+              {spokenEmpty ? (
+                <span key={spokenEmpty.id} className="sr-only" role="status">
+                  {/* 最后一张处理完、写出这两句时读出来。等当前这一句说完。不把焦点抢过来。 */}
+                  {spokenEmpty.text}
+                </span>
+              ) : null}
             </div>
           </Card>
         ) : (
