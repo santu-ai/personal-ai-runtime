@@ -482,6 +482,22 @@ describe("MemoriesPage", () => {
     expect(opener).toHaveFocus();
   });
 
+  it("connects the edit dialog names to their fields", async () => {
+    renderWithRouter(<MemoriesPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
+    const dialog = await screen.findByRole("dialog", { name: "编辑记忆" });
+
+    const content = within(dialog).getByRole("textbox", { name: "内容" });
+    expect(content).toHaveAttribute("placeholder", "记忆内容");
+    expect(within(dialog).getByText("内容").tagName).toBe("LABEL");
+    expect(within(dialog).getByText("内容")).toHaveAttribute("for", content.id);
+
+    const category = within(dialog).getByRole("textbox", { name: "分类" });
+    expect(category).toHaveAttribute("placeholder", "如 fact, preference, habit");
+    expect(within(dialog).getByText("分类").tagName).toBe("LABEL");
+    expect(within(dialog).getByText("分类")).toHaveAttribute("for", category.id);
+  });
+
   it("closes the edit dialog on Escape and returns focus", async () => {
     renderWithRouter(<MemoriesPage />);
     const opener = await screen.findByRole("button", { name: "编辑" });
