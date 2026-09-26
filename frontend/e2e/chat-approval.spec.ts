@@ -367,7 +367,9 @@ test.describe("Chat approval flow", () => {
     await expect(page.getByText("需要你补充一点信息")).toBeVisible({ timeout: 10000 });
     await page.getByRole("button", { name: "取消" }).click();
     await expect(page.getByText("需要你补充一点信息")).not.toBeVisible({ timeout: 5000 });
-    await expect(page.getByText("已拒绝「向你确认」，没有执行该操作。")).toBeVisible();
+    await expect(
+      page.getByRole("paragraph").filter({ hasText: "已拒绝「向你确认」，没有执行该操作。" }),
+    ).toBeVisible();
     expect(resolveBody).toMatchObject({
       decision: "deny",
       tool_name: "ask_user",
