@@ -1,4 +1,12 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import {
@@ -38,6 +46,15 @@ import { Brain, ClipboardCheck, List, Network, User } from "lucide-react";
 type ViewMode = "list" | "graph" | "portrait" | "review";
 type ReviewOrder = "created_at_desc" | "created_at_asc";
 type RatifyScope = "proposed" | "rejected" | "list";
+
+/** 组字时的 Enter 交给输入法。空内容或这次写还没回来，确认函数自己会停住。 */
+function submitOnEnter(submit: () => void) {
+  return (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    submit();
+  };
+}
 
 type FocusAfter = {
   actedId: string;
@@ -1235,6 +1252,7 @@ export default function MemoriesPage() {
               maxLength={200}
               className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
               placeholder="例如：记错了、过时了"
+              onKeyDown={submitOnEnter(() => void confirmReject())}
             />
             <div className="flex gap-2 justify-end">
               <button
@@ -1294,6 +1312,7 @@ export default function MemoriesPage() {
                   }}
                   className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
                   placeholder="记忆内容"
+                  onKeyDown={submitOnEnter(() => void confirmEdit())}
                 />
               </div>
               <div>
@@ -1307,6 +1326,7 @@ export default function MemoriesPage() {
                   }}
                   className="w-full bg-surface-overlay rounded-lg px-3 py-2 text-sm text-fg-primary border border-border-strong placeholder:text-fg-tertiary focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50"
                   placeholder="如 fact, preference, habit"
+                  onKeyDown={submitOnEnter(() => void confirmEdit())}
                 />
               </div>
             </div>

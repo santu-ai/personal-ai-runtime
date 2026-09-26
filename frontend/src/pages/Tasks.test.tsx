@@ -2101,6 +2101,89 @@ describe("TasksPage", () => {
     expect(screen.getByTestId("scheduled-repeat-note")).toHaveTextContent("这一份任务");
   });
 
+  it("sets the repeat from Enter, and ignores IME, an empty delay, and a second press", async () => {
+    mockBriefList();
+    const pending = deferred<Awaited<ReturnType<typeof scheduleBriefRepeat>>>();
+    vi.mocked(scheduleBriefRepeat).mockImplementationOnce(() => pending.promise);
+    renderTasks("/tasks/brief_1");
+
+    fireEvent.click(await screen.findByRole("button", { name: "定时再次运行" }));
+    const dialog = await screen.findByRole("dialog", { name: "定时再次运行这一份简报" });
+    const hours = within(dialog).getByLabelText("小时");
+    const minutes = within(dialog).getByLabelText("分钟");
+    hours.focus();
+    fireEvent.keyDown(hours, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(hours, { key: "Enter" });
+    expect(scheduleBriefRepeat).not.toHaveBeenCalled();
+
+    fireEvent.change(minutes, { target: { value: "15" } });
+    minutes.focus();
+    fireEvent.keyDown(minutes, { key: "Enter" });
+    fireEvent.keyDown(minutes, { key: "Enter" });
+    await waitFor(() => expect(scheduleBriefRepeat).toHaveBeenCalledTimes(1));
+    expect(scheduleBriefRepeat).toHaveBeenCalledWith("brief_1", { hours: 0, minutes: 15 });
+    expect(minutes).toHaveFocus();
+    expect(within(dialog).getByRole("button", { name: "设定中..." })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+
+    pending.resolve({
+      work_id: "brief_1",
+      timer_id: "t_1",
+      fire_at: "2026-09-24T08:00:00Z",
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "定时再次运行这一份简报" }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it("creates a brief from Enter in a single-line field, and leaves textarea Enter as a newline", async () => {
+    const pending = deferred<WorkItem>();
+    vi.mocked(createProjectBrief).mockImplementationOnce(() => pending.promise);
+    renderTasks("/tasks");
+
+    fireEvent.click(screen.getByRole("button", { name: "新建简报" }));
+    const dialog = await screen.findByRole("dialog", { name: "新建项目资料简报" });
+    const title = within(dialog).getByPlaceholderText("项目 A 简报");
+    const objective = within(dialog).getByPlaceholderText(/整理最近三天的邮件/);
+    const days = within(dialog).getByPlaceholderText("最近天数");
+    const mailbox = within(dialog).getByRole("checkbox", { name: "读取已配置邮箱" });
+    fireEvent.change(title, { target: { value: "项目 A" } });
+    title.focus();
+    fireEvent.keyDown(title, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(title, { key: "Enter" });
+    expect(createProjectBrief).not.toHaveBeenCalled();
+
+    fireEvent.change(objective, { target: { value: "整理邮件" } });
+    objective.focus();
+    fireEvent.keyDown(objective, { key: "Enter" });
+    mailbox.focus();
+    fireEvent.keyDown(mailbox, { key: "Enter" });
+    expect(createProjectBrief).not.toHaveBeenCalled();
+
+    days.focus();
+    fireEvent.keyDown(days, { key: "Enter" });
+    fireEvent.keyDown(days, { key: "Enter" });
+    await waitFor(() => expect(createProjectBrief).toHaveBeenCalledTimes(1));
+    expect(createProjectBrief).toHaveBeenCalledWith({
+      title: "项目 A",
+      objective: "整理邮件",
+      source_scope: {
+        email: { enabled: true, query: "", days: 3 },
+        files: [],
+      },
+    });
+    expect(days).toHaveFocus();
+
+    pending.resolve(briefTask);
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "新建项目资料简报" })).not.toBeInTheDocument(),
+    );
+  });
+
   it("scrolls cited source ids to the source row and opens email detail", async () => {
     const cited = {
       ...currentDelivery,

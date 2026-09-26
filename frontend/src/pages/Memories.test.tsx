@@ -549,6 +549,97 @@ describe("MemoriesPage", () => {
     expect(createMemory).toHaveBeenCalledWith({ content: "喜欢喝茶", category: "fact" });
   });
 
+  it("rejects from Enter in the reason field, and ignores IME and a second press", async () => {
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "proposed") {
+        return {
+          memories: [
+            {
+              id: "p1",
+              content: "待确认的习惯",
+              origin: "claim",
+              claim_status: "proposed",
+              confidence: 0.7,
+            },
+          ],
+          total: 1,
+        };
+      }
+      return { memories: [], total: 0 };
+    });
+    let release: (value: { status: string; claim_status: string }) => void = () => {};
+    vi.mocked(rejectMemory).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
+    fireEvent.click(await screen.findByRole("button", { name: "拒绝" }));
+    const dialog = await screen.findByRole("dialog", { name: "拒绝这条记忆？" });
+    const field = within(dialog).getByPlaceholderText("例如：记错了、过时了");
+    fireEvent.change(field, { target: { value: "  过时了  " } });
+    field.focus();
+    fireEvent.keyDown(field, { key: "Enter", isComposing: true });
+    expect(rejectMemory).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(field, { key: "Enter" });
+    fireEvent.keyDown(field, { key: "Enter" });
+    await within(dialog).findByRole("button", { name: "拒绝中..." });
+    expect(field).toHaveFocus();
+    expect(rejectMemory).toHaveBeenCalledTimes(1);
+    expect(rejectMemory).toHaveBeenCalledWith("p1", "过时了");
+
+    release({ status: "ok", claim_status: "rejected" });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "拒绝这条记忆？" })).not.toBeInTheDocument(),
+    );
+  });
+
+  it("saves an edit from Enter, and ignores IME, a blank content, and a second press", async () => {
+    let release: (value: { status: string }) => void = () => {};
+    vi.mocked(updateMemory).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    renderWithRouter(<MemoriesPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
+    const dialog = await screen.findByRole("dialog", { name: "编辑记忆" });
+    const content = within(dialog).getByPlaceholderText("记忆内容");
+    const category = within(dialog).getByPlaceholderText("如 fact, preference, habit");
+    fireEvent.change(content, { target: { value: "   " } });
+    content.focus();
+    fireEvent.keyDown(content, { key: "Enter" });
+    expect(updateMemory).not.toHaveBeenCalled();
+
+    fireEvent.change(content, { target: { value: "  改为夜跑  " } });
+    fireEvent.change(category, { target: { value: "preference" } });
+    content.focus();
+    fireEvent.keyDown(content, { key: "Enter", isComposing: true });
+    expect(updateMemory).not.toHaveBeenCalled();
+
+    category.focus();
+    fireEvent.keyDown(category, { key: "Enter" });
+    fireEvent.keyDown(category, { key: "Enter" });
+    await within(dialog).findByRole("button", { name: "保存中..." });
+    expect(category).toHaveFocus();
+    expect(updateMemory).toHaveBeenCalledTimes(1);
+    expect(updateMemory).toHaveBeenCalledWith("m1", {
+      content: "改为夜跑",
+      category: "preference",
+    });
+
+    release({ status: "ok" });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "编辑记忆" })).not.toBeInTheDocument(),
+    );
+  });
+
   it("keeps the reject reason when reject fails and does not send or close again while it is in flight", async () => {
     vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
       const status = typeof opts === "string" ? opts : opts?.claimStatus;
