@@ -32,22 +32,47 @@ const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible
 const rowTitleClass =
   "min-w-0 flex-1 truncate group-focus-visible:overflow-visible group-focus-visible:whitespace-normal group-focus-visible:text-clip group-focus-visible:break-words";
 
+const kindIconClass = "shrink-0 group-focus-visible:hidden";
+
+/** 和收件箱同一套说法。空分类不另写一截。 */
+function emailCategoryLabel(category: string): string | null {
+  const value = category.trim();
+  if (!value) return null;
+  if (value === "important") return "重要";
+  if (value === "actionable") return "需跟进";
+  return value;
+}
+
+function decideKindName(item: TodayDecideItem): string {
+  if (item.kind === "approval") return "审批";
+  if (item.kind === "memory") return "记忆";
+  return "邮件";
+}
+
 function DecideRow({ item }: { item: TodayDecideItem }) {
-  const icon =
-    item.kind === "approval" ? (
-      <ShieldCheck size={14} className="text-warning shrink-0" />
-    ) : item.kind === "memory" ? (
-      <Sparkles size={14} className="text-insight shrink-0" />
-    ) : (
-      <Mail size={14} className="text-insight shrink-0" />
-    );
+  const category = item.kind === "email" ? emailCategoryLabel(item.category) : null;
   return (
     <Link
       to={item.href}
       className={`group w-full flex items-center gap-2 text-xs p-2 bg-warning/5 rounded-lg border border-warning/20 text-left hover:bg-warning/10 ${focusRing}`}
     >
-      {icon}
+      {item.kind === "approval" ? (
+        <ShieldCheck size={14} className={`text-warning ${kindIconClass}`} aria-hidden />
+      ) : item.kind === "memory" ? (
+        <Sparkles size={14} className={`text-insight ${kindIconClass}`} aria-hidden />
+      ) : (
+        <Mail size={14} className={`text-insight ${kindIconClass}`} aria-hidden />
+      )}
+      {/* 平时只画图标。键盘落到这一行时写出名字，图标让开。鼠标悬停仍是图标。 */}
+      <span
+        data-icon-name=""
+        aria-hidden="true"
+        className="hidden shrink-0 text-fg-tertiary group-focus-visible:inline"
+      >
+        {decideKindName(item)}
+      </span>
       <span className={`text-fg-primary ${rowTitleClass}`}>{item.title}</span>
+      {category ? <span className="shrink-0 text-fg-tertiary">{category}</span> : null}
     </Link>
   );
 }

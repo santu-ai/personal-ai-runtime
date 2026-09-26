@@ -53,7 +53,16 @@ describe("buildTodayBuckets", () => {
       ],
     });
     expect(buckets.decide.map((i) => i.kind)).toEqual(["approval", "memory", "email", "email"]);
+    expect(buckets.decide[0]).toMatchObject({ kind: "approval", title: "写入文件" });
     expect(buckets.handled.some((i) => i.kind === "ignored_mail" && i.count === 1)).toBe(true);
+  });
+
+  it("keeps a blank approval titled 待审批操作", () => {
+    const buckets = buildTodayBuckets({
+      now,
+      approvals: [{ id: "ap-blank", action: "  " }, { id: "ap-missing" }],
+    });
+    expect(buckets.decide.map((i) => i.title)).toEqual(["待审批操作", "待审批操作"]);
   });
 
   it("keeps deadline and stagnant goals in do, leftover as count", () => {

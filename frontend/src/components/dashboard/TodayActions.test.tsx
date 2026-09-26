@@ -56,7 +56,7 @@ describe("TodayActions", () => {
       "href",
       "/memories?tab=review",
     );
-    expect(screen.getByRole("link", { name: "请回复" })).toHaveAttribute("href", "/inbox");
+    expect(screen.getByRole("link", { name: "请回复重要" })).toHaveAttribute("href", "/inbox");
     const goal = screen.getByRole("link", { name: /交报告/ });
     expect(goal).toHaveAttribute("href", "/goals/g1");
     expect(goal).toHaveClass(focusRing);
@@ -64,6 +64,48 @@ describe("TodayActions", () => {
     const more = screen.getByRole("link", { name: /还有 2 个目标/ });
     expect(more).toHaveAttribute("href", "/goals");
     expect(more).toHaveClass(focusRing);
+  });
+
+  it("names decide icons for the keyboard and writes the mail category", () => {
+    renderWithRouter(
+      <TodayActions
+        buckets={buckets({
+          decide: [
+            { kind: "approval", id: "ap-1", title: "写入文件", href: "/approvals" },
+            {
+              kind: "memory",
+              id: "proposed",
+              title: "2 条记忆待确认",
+              href: "/memories?tab=review",
+              count: 2,
+            },
+            { kind: "email", id: "e-imp", title: "合同", href: "/inbox", category: "important" },
+            { kind: "email", id: "e-act", title: "跟进", href: "/inbox", category: "actionable" },
+            { kind: "email", id: "e-blank", title: "无分类", href: "/inbox", category: "  " },
+          ],
+        })}
+      />,
+    );
+
+    const approval = screen.getByRole("link", { name: "写入文件" });
+    expect(approval.querySelector("svg")).toHaveClass("group-focus-visible:hidden");
+    const approvalName = approval.querySelector("[data-icon-name]");
+    expect(approvalName).toHaveTextContent("审批");
+    expect(approvalName).toHaveAttribute("aria-hidden", "true");
+    expect(approvalName).toHaveClass("hidden", "group-focus-visible:inline");
+
+    expect(
+      screen.getByRole("link", { name: "2 条记忆待确认" }).querySelector("[data-icon-name]"),
+    ).toHaveTextContent("记忆");
+
+    const important = screen.getByRole("link", { name: "合同重要" });
+    expect(important.querySelector("[data-icon-name]")).toHaveTextContent("邮件");
+    expect(important).toHaveTextContent("重要");
+    expect(screen.getByRole("link", { name: "跟进需跟进" })).toHaveTextContent("需跟进");
+
+    const blank = screen.getByRole("link", { name: "无分类" });
+    expect(blank).not.toHaveTextContent("重要");
+    expect(blank).not.toHaveTextContent("需跟进");
   });
 
   it("writes the full column title when the row is keyboard focused", () => {

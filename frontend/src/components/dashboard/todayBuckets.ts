@@ -1,4 +1,5 @@
 import type { InboxEmail, Notification, WorkItem } from "../../api/types";
+import { toolLabel } from "../../utils/toolLabels";
 
 /** Reminder types that cannot be represented as a three-column entity. */
 export const REMINDER_ONLY_TYPES = new Set(["reminder", "url_monitor", "morning_brief_failed"]);
@@ -83,6 +84,13 @@ export function mergeLiveAndServerNotifications(
   return dedupeNotifications([...taggedLive, ...taggedServer]);
 }
 
+/** 和审批页同一套中文工具名。空白不写成原始函数名。 */
+function approvalTitle(action: string | undefined): string {
+  const name = action?.trim() ?? "";
+  if (!name) return "待审批操作";
+  return toolLabel(name);
+}
+
 function startOfLocalDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
@@ -132,7 +140,7 @@ export function buildTodayBuckets(input: TodayBucketInput): TodayBuckets {
   const decide: TodayDecideItem[] = approvals.map((a) => ({
     kind: "approval" as const,
     id: a.id,
-    title: a.action || "待审批操作",
+    title: approvalTitle(a.action),
     href: "/approvals" as const,
   }));
   if (proposedCount > 0) {
