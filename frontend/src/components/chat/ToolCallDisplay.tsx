@@ -101,6 +101,13 @@ const HEADER_SUMMARY_CHARS = 80;
 const headerSummaryReveal =
   "min-w-0 flex-1 truncate text-fg-tertiary group-focus-visible:overflow-visible group-focus-visible:whitespace-normal group-focus-visible:text-clip group-focus-visible:break-all";
 
+/**
+ * 卡片 `overflow-hidden` 会切掉贴边控件外面那一圈。
+ * 这一步和收件箱行把环画在里面。参数和结果仍画在外面。
+ */
+const clippedFocusRing =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring";
+
 const PANEL_ARGS_PRE = "bg-surface-sunken p-2 rounded text-fg-primary overflow-x-auto";
 
 function keepBareKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
@@ -161,9 +168,7 @@ function EmailRow({ em }: { em: EmailItem }) {
       tabIndex={focusable ? 0 : undefined}
       onKeyDown={focusable ? keepBareKeysFromScrolling : undefined}
       className={`group border-t border-border-strong/80 hover:bg-surface-overlay/50${
-        focusable
-          ? " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-          : ""
+        focusable ? ` ${clippedFocusRing}` : ""
       }`}
     >
       <td className="px-2 py-1.5 text-fg-tertiary whitespace-nowrap align-top">
@@ -274,8 +279,8 @@ export default function ToolCallDisplay({
               title={longSummary ? argsSummary : undefined}
               className={
                 longSummary
-                  ? "group flex w-full min-w-0 items-center gap-1.5 px-3 py-2 text-left text-xs text-fg-secondary hover:text-fg-primary transition-colors focus-visible:items-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-                  : "w-full text-left px-3 py-2 text-xs text-fg-secondary hover:text-fg-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                  ? `group flex w-full min-w-0 items-center gap-1.5 px-3 py-2 text-left text-xs text-fg-secondary hover:text-fg-primary transition-colors focus-visible:items-start ${clippedFocusRing}`
+                  : `w-full text-left px-3 py-2 text-xs text-fg-secondary hover:text-fg-primary transition-colors ${clippedFocusRing}`
               }
             >
               <Icon

@@ -115,6 +115,7 @@ describe("TaskTrack", () => {
     const line = screen.getByText(label);
     const button = line.closest("button");
     expect(button).toHaveClass("group", "focus-visible:ring-focus-ring");
+    expect(button?.className).not.toContain("ring-inset");
     expect(button).toHaveAttribute("aria-expanded", "false");
     expect(line).toHaveClass(
       "truncate",

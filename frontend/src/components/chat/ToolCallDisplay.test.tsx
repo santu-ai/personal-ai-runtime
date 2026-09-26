@@ -146,7 +146,15 @@ describe("ToolCallDisplay", () => {
     ];
     const swapped = screen.getByText("Alice Example").closest("tr");
     expect(swapped).toHaveAttribute("tabindex", "0");
-    expect(swapped).toHaveClass("group", "focus-visible:ring-focus-ring");
+    expect(swapped).toHaveClass(
+      "group",
+      "focus-visible:ring-inset",
+      "focus-visible:ring-focus-ring",
+    );
+    expect(swapped?.closest(".overflow-x-auto")).not.toBeNull();
+    const inboxStep = screen.getByRole("button", { name: /检查收件箱/ });
+    expect(inboxStep).toHaveClass("focus-visible:ring-inset", "focus-visible:ring-focus-ring");
+    expect(inboxStep.parentElement).toHaveClass("overflow-hidden");
     const shortFrom = swapped?.querySelector(".group-focus-visible\\:hidden");
     expect(shortFrom).toHaveTextContent("Alice Example");
     expect(shortFrom).toHaveClass("truncate", "group-focus-visible:hidden");
@@ -255,6 +263,7 @@ describe("ToolCallDisplay", () => {
       "focus-visible:ring-focus-ring",
     );
     expect(box.className).not.toContain("group-hover:");
+    expect(box.className).not.toContain("ring-inset");
     expect(box.closest("button")).toBeNull();
     const preview = `${long.slice(0, 500)}\n... [truncated]`;
     const short = box.querySelector(".group-focus-visible\\:hidden");
@@ -344,6 +353,7 @@ describe("ToolCallDisplay", () => {
     );
     expect(box.className).not.toContain("max-h-");
     expect(box.className).not.toContain("group-hover:");
+    expect(box.className).not.toContain("ring-inset");
     expect(box.closest("button")).toBeNull();
     const step = screen.getByRole("button", { name: /读取文件/ });
     expect(step).toHaveAttribute("aria-expanded", "true");
@@ -432,7 +442,13 @@ describe("ToolCallDisplay", () => {
 
     const longStep = screen.getByRole("button", { name: new RegExp(path) });
     expect(longStep).toHaveAttribute("title", path);
-    expect(longStep).toHaveClass("group", "focus-visible:items-start");
+    expect(longStep).toHaveClass(
+      "group",
+      "focus-visible:items-start",
+      "focus-visible:ring-inset",
+      "focus-visible:ring-focus-ring",
+    );
+    expect(longStep.parentElement).toHaveClass("overflow-hidden");
     const summary = longStep.querySelector("[data-tool-summary]");
     expect(summary).toHaveTextContent(path);
     expect(summary).toHaveClass(
@@ -466,5 +482,7 @@ describe("ToolCallDisplay", () => {
     expect(short.querySelector("[data-tool-summary]")).toBeNull();
     expect(short).toHaveTextContent("短查询");
     expect(short.className).not.toContain("group");
+    expect(short).toHaveClass("focus-visible:ring-inset");
+    expect(short.parentElement).toHaveClass("overflow-hidden");
   });
 });
