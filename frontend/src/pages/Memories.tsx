@@ -884,6 +884,8 @@ export default function MemoriesPage() {
   const editPanelRef = useRef<HTMLDivElement>(null);
   const rejectTitleId = useId();
   const editTitleId = useId();
+  const editContentId = useId();
+  const editCategoryId = useId();
   useOverlayDismiss(
     rejectTarget != null,
     rejectPanelRef,
@@ -1306,8 +1308,11 @@ export default function MemoriesPage() {
             <p className="text-xs text-fg-tertiary">更新会保留旧版本——可在"来源"查看完整版本演进</p>
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-fg-secondary mb-1 block">内容</label>
+                <label htmlFor={editContentId} className="text-xs text-fg-secondary mb-1 block">
+                  内容
+                </label>
                 <input
+                  id={editContentId}
                   value={editContent}
                   data-memory-dialog-field="edit"
                   onChange={(e) => {
@@ -1320,8 +1325,11 @@ export default function MemoriesPage() {
                 />
               </div>
               <div>
-                <label className="text-xs text-fg-secondary mb-1 block">分类</label>
+                <label htmlFor={editCategoryId} className="text-xs text-fg-secondary mb-1 block">
+                  分类
+                </label>
                 <input
+                  id={editCategoryId}
                   value={editCategory}
                   data-memory-dialog-field="edit"
                   onChange={(e) => {
