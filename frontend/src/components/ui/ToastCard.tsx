@@ -25,7 +25,7 @@ export default function ToastCard({
   const t = STATUS_TONE[tone];
   return (
     <div
-      className={`border rounded-lg p-3 shadow-lg relative ${t.surface}`}
+      className={`group border rounded-lg p-3 shadow-lg relative ${t.surface}`}
       data-testid={tone === "danger" ? "error-toast" : "notice-toast"}
       data-toast-id={toastId}
     >
@@ -53,7 +53,14 @@ export default function ToastCard({
         tabIndex={onClick ? 0 : undefined}
       >
         <div className={`text-sm font-medium ${t.title}`}>{title}</div>
-        {body && <div className={`text-xs ${t.body} mt-1 line-clamp-2`}>{body}</div>}
+        {/* 正文平时最多两行。键盘落到「关闭」或可以点开的那一块时写出整段。鼠标悬停仍是两行。 */}
+        {body && (
+          <div
+            className={`text-xs ${t.body} mt-1 line-clamp-2 group-has-[:focus-visible]:line-clamp-none group-has-[:focus-visible]:break-words`}
+          >
+            {body}
+          </div>
+        )}
       </div>
       {onDismiss && (
         <button

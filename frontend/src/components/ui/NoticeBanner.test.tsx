@@ -42,6 +42,37 @@ describe("ToastCard", () => {
     expect(onDismiss).toHaveBeenCalledOnce();
   });
 
+  it("writes the full body when keyboard focus lands on close or the open region", () => {
+    const body =
+      "同步失败：IMAP 在读取第 14 封之后超时，服务器把连接关掉了。重试之前先看这一段完整原因，不要只停在前两行。";
+    const { rerender } = render(
+      <ToastCard tone="danger" title="[收件箱] 错误" body={body} onDismiss={vi.fn()} />,
+    );
+    const errorCard = screen.getByTestId("error-toast");
+    const errorBody = errorCard.querySelector(".line-clamp-2");
+    expect(errorBody).toHaveTextContent(body);
+    expect(errorBody).toHaveClass(
+      "line-clamp-2",
+      "group-has-[:focus-visible]:line-clamp-none",
+      "group-has-[:focus-visible]:break-words",
+    );
+    expect(errorBody?.className).not.toContain("group-hover:");
+    expect(errorCard).toHaveClass("group");
+    expect(screen.getByRole("button", { name: "关闭" })).toBeInTheDocument();
+
+    rerender(
+      <ToastCard tone="insight" title="喝水" body={body} onClick={vi.fn()} onDismiss={vi.fn()} />,
+    );
+    const notice = screen.getByTestId("notice-toast");
+    const open = screen.getByRole("button", { name: /喝水/ });
+    const noticeBody = open.querySelector(".line-clamp-2");
+    expect(noticeBody).toHaveTextContent(body);
+    expect(noticeBody).toHaveClass("line-clamp-2", "group-has-[:focus-visible]:line-clamp-none");
+    expect(noticeBody?.className).not.toContain("group-hover:");
+    expect(notice).toHaveClass("group");
+    expect(open.contains(noticeBody)).toBe(true);
+  });
+
   it("gives a clickable notice the timeline focus ring", () => {
     render(<ToastCard tone="insight" title="待审批" body="需要确认" onClick={vi.fn()} />);
     expect(screen.getByRole("button", { name: /待审批/ })).toHaveClass(
