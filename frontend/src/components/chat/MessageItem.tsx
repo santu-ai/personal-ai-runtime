@@ -72,13 +72,23 @@ function InlineCode({ children }: { children: React.ReactNode }) {
   const handleCopy = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      navigator.clipboard.writeText(text).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      });
+      const write = navigator.clipboard?.writeText?.bind(navigator.clipboard);
+      if (!write) return;
+      // 失败时不写成已复制，也不让未接住的拒绝冒到控制台。
+      void write(text).then(
+        () => {
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 2000);
+        },
+        () => {
+          setCopied(false);
+        },
+      );
     },
     [text],
   );
+
+  const copyLabel = copied ? "已复制" : "复制";
 
   return (
     <code className="relative group bg-surface-overlay px-1.5 py-0.5 rounded text-sm text-insight">
@@ -86,8 +96,10 @@ function InlineCode({ children }: { children: React.ReactNode }) {
       <button
         type="button"
         onClick={handleCopy}
-        className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 bg-surface-overlay hover:bg-border-strong rounded p-0.5 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-        title="复制"
+        // 只在悬停时出现的话，键盘落到这一钮时整颗都是透明的，焦点环也看不见。
+        className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 bg-surface-overlay hover:bg-border-strong rounded p-0.5 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+        aria-label={copyLabel}
+        title={copyLabel}
       >
         {copied ? (
           <Check size={10} className="text-success" />

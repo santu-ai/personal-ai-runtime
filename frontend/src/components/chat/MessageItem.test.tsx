@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkBreaks from "remark-breaks";
@@ -179,5 +179,55 @@ describe("MessageItem", () => {
     );
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
     expect(screen.getByText("坏")).toBeInTheDocument();
+  });
+
+  it("shows the inline code copy button when keyboard focus lands on it", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(
+      <MessageItem
+        message={{
+          id: "m11",
+          role: "assistant",
+          content: "用 `echo hi` 试试",
+        }}
+      />,
+    );
+    const copy = screen.getByRole("button", { name: "复制" });
+    expect(copy.className.split(/\s+/)).toEqual(
+      expect.arrayContaining([
+        "opacity-0",
+        "group-hover:opacity-100",
+        "focus-visible:opacity-100",
+        "focus-visible:ring-focus-ring",
+      ]),
+    );
+    fireEvent.click(copy);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("echo hi"));
+    expect(screen.getByRole("button", { name: "已复制" })).toBe(copy);
+  });
+
+  it("does not mark inline code as copied when the clipboard write fails", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"));
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(
+      <MessageItem
+        message={{
+          id: "m12",
+          role: "assistant",
+          content: "用 `echo hi` 试试",
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "复制" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("echo hi"));
+    expect(screen.getByRole("button", { name: "复制" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "已复制" })).not.toBeInTheDocument();
   });
 });
