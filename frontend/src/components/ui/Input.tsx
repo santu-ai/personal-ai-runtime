@@ -17,6 +17,8 @@ interface PasswordInputProps extends InputHTMLAttributes<HTMLInputElement> {
   isSavedSecret?: boolean;
   /** Show invalid (error) styling — red border instead of focus-ring on focus. */
   invalid?: boolean;
+  /** 读屏把这一句接在「显示密码」或「隐藏密码」后面。字面上仍是这两句。 */
+  spokenName?: string;
 }
 
 export function Input({
@@ -74,6 +76,7 @@ export function PasswordInput({
   className = "",
   isSavedSecret = false,
   invalid = false,
+  spokenName,
   value,
   placeholder,
   type: _type,
@@ -112,6 +115,10 @@ export function PasswordInput({
     setVisible((current) => !current);
   };
 
+  const toggleLabel = visible ? "隐藏密码" : "显示密码";
+  const who = spokenName?.trim() ?? "";
+  const toggleName = who ? `${toggleLabel}：${who}` : toggleLabel;
+
   return (
     <div className="relative">
       <input
@@ -131,7 +138,7 @@ export function PasswordInput({
         onMouseDown={(e) => e.preventDefault()}
         onClick={toggleVisible}
         className="group absolute right-2 top-1/2 z-10 inline-flex max-w-full -translate-y-1/2 items-center justify-center rounded-md p-1.5 text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-        aria-label={visible ? "隐藏密码" : "显示密码"}
+        aria-label={toggleName}
         title={masked && !visible ? "已保存的密钥无法查看原文" : visible ? "隐藏" : "显示明文"}
       >
         {visible ? (
@@ -143,7 +150,7 @@ export function PasswordInput({
           data-icon-name=""
           className="hidden whitespace-nowrap text-center text-[10px] leading-tight group-focus-visible:block"
         >
-          {visible ? "隐藏密码" : "显示密码"}
+          {toggleLabel}
         </span>
       </button>
     </div>
