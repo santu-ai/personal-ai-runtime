@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, type FocusEvent } from "react";
 import { Zap, MailSearch, Target as TargetIcon, BrainCircuit, Lightbulb } from "lucide-react";
 import { type MemoryRow, type StreamEvent } from "../../api/client";
 import { listWorkItems } from "../../api/workItems";
@@ -59,6 +59,8 @@ export default function ChatView({ conversationId }: Props) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const sendLock = useRef(false);
   const generateFocusHeld = useRef(false);
+  /** 焦点在「↓ 新消息 / ↓ 待确认」上。卸下后才交出去；移到别的控件就清掉。 */
+  const jumpReturnRef = useRef(false);
   const prevMemoryTotalRef = useRef<number | null>(null);
 
   const addError = useErrorStore((s) => s.addError);
@@ -309,10 +311,18 @@ export default function ChatView({ conversationId }: Props) {
   }, []);
 
   const jumpToLatest = useCallback(() => {
+    jumpReturnRef.current = true;
     isAtBottomRef.current = true;
     setShowJumpToLatest(false);
     scrollToBottom("smooth");
   }, [scrollToBottom]);
+
+  const releaseJumpReturn = (event: FocusEvent<HTMLButtonElement>) => {
+    const next = event.relatedTarget;
+    if (!(next instanceof HTMLElement) || !next.isConnected) return;
+    if (next === document.body || next === document.documentElement) return;
+    jumpReturnRef.current = false;
+  };
 
   useEffect(() => {
     // 确认卡片长在记录下面，会把记录区挤矮。正跟在底部时再滚一次，刚才那一轮才不会被裁掉。
@@ -439,6 +449,25 @@ export default function ChatView({ conversationId }: Props) {
       field.setSelectionRange(end, end);
     }
   }, [promptPick]);
+
+  // 「↓ 新消息」或「↓ 待确认」卸下的同一轮交焦点。放到绘制前，不先停在页面空白。
+  // 已经移到别的控件上就不再抢。滚回底部但焦点不在这一钮上时也不抢。
+  useLayoutEffect(() => {
+    if (showJumpToLatest || !jumpReturnRef.current) return;
+    jumpReturnRef.current = false;
+    if (!focusIsBlank()) return;
+    if (pendingConfirmation) {
+      const root = confirmationRef.current;
+      const answer = root?.querySelector<HTMLTextAreaElement>("textarea:not([disabled])");
+      const button = root?.querySelector<HTMLButtonElement>("button:not([disabled])");
+      const target = answer ?? button;
+      if (target && document.activeElement !== target) target.focus();
+      return;
+    }
+    const composer = inputRef.current;
+    if (!composer || composer.disabled || document.activeElement === composer) return;
+    composer.focus();
+  }, [showJumpToLatest, pendingConfirmation]);
 
   useLayoutEffect(() => {
     chatViewLayoutFocus.notify?.();
@@ -589,7 +618,12 @@ export default function ChatView({ conversationId }: Props) {
           {showJumpToLatest && (
             <button
               type="button"
+              data-chat-jump=""
               onClick={jumpToLatest}
+              onFocus={() => {
+                jumpReturnRef.current = true;
+              }}
+              onBlur={releaseJumpReturn}
               className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 text-xs rounded-full bg-surface-raised border border-border-strong text-fg-secondary shadow-md hover:text-fg-primary hover:border-focus-ring transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             >
               {pendingConfirmation ? "↓ 待确认" : "↓ 新消息"}
