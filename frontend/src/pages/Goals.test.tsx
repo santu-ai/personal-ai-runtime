@@ -147,6 +147,62 @@ describe("GoalsPage", () => {
     expect(screen.getByText("选择一个目标")).toBeInTheDocument();
   });
 
+  it("writes the same status words as the detail on each list row", async () => {
+    const recent = new Date().toISOString();
+    vi.mocked(listGoals).mockResolvedValue([
+      { ...sampleGoal, id: "active", title: "正在做", last_activity_at: recent },
+      {
+        ...sampleGoal,
+        id: "stale",
+        title: "放下了",
+        last_activity_at: "2000-01-01T00:00:00Z",
+      },
+      {
+        ...sampleGoal,
+        id: "paused",
+        title: "先停一下",
+        status: "paused",
+        last_activity_at: "2000-01-01T00:00:00Z",
+      },
+      {
+        ...sampleGoal,
+        id: "done",
+        title: "做完了",
+        status: "completed",
+        last_activity_at: "2000-01-01T00:00:00Z",
+      },
+      {
+        ...sampleGoal,
+        id: "other",
+        title: "别的状态",
+        status: "queued",
+        last_activity_at: recent,
+      },
+    ]);
+    renderGoals("/goals");
+
+    const active = await screen.findByRole("link", { name: /正在做/ });
+    expect(active).toHaveAccessibleName(/正在做[\s\S]*进行中 30%/);
+    expect(active).not.toHaveAccessibleName(/已停滞/);
+    expect(active.querySelector("[aria-hidden='true']")).toHaveClass("rounded-full", "bg-success");
+
+    const stale = screen.getByRole("link", { name: /放下了/ });
+    expect(stale).toHaveAccessibleName(/进行中 · 已停滞 30%/);
+    expect(stale.querySelector("[aria-hidden='true']")).toHaveClass("ring-warning");
+
+    const paused = screen.getByRole("link", { name: /先停一下/ });
+    expect(paused).toHaveAccessibleName(/已暂停 30%/);
+    expect(paused).not.toHaveAccessibleName(/已停滞|进行中/);
+    expect(paused.querySelector("[aria-hidden='true']")).toHaveClass("bg-fg-tertiary");
+
+    const done = screen.getByRole("link", { name: /做完了/ });
+    expect(done).toHaveAccessibleName(/已完成 30%/);
+    expect(done).not.toHaveAccessibleName(/已停滞/);
+    expect(screen.getByText("已完成 (1)")).toBeInTheDocument();
+
+    expect(screen.getByRole("link", { name: /别的状态/ })).toHaveAccessibleName(/queued 30%/);
+  });
+
   it("writes the full goal title when the row is keyboard focused", async () => {
     const title = "把实验笔记、论文和还没回的邮件收成一个可以每周核对的目标";
     vi.mocked(listGoals).mockResolvedValue([{ ...sampleGoal, title }]);
