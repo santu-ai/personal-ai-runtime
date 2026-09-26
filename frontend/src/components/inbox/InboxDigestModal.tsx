@@ -48,10 +48,18 @@ export default function InboxDigestModal({ open, title, content, onClose }: Prop
             <button
               type="button"
               onClick={onClose}
-              className="text-fg-tertiary hover:text-fg-primary text-xl leading-none shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded"
+              className="group inline-flex max-w-full shrink-0 items-center justify-center rounded text-fg-tertiary hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               aria-label="关闭"
             >
-              ×
+              <span aria-hidden className="text-xl leading-none group-focus-visible:hidden">
+                ×
+              </span>
+              <span
+                data-icon-name=""
+                className="hidden whitespace-nowrap text-center text-[10px] leading-tight group-focus-visible:block"
+              >
+                关闭
+              </span>
             </button>
           </div>
         </div>

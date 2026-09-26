@@ -136,6 +136,16 @@ describe("Sidebar", () => {
     expect(onDeleteChat).toHaveBeenCalledWith("c1");
   });
 
+  it("writes 删除对话 when the keyboard lands on the trash icon", () => {
+    renderSidebar("/");
+    const button = screen.getAllByRole("button", { name: "删除对话" })[0];
+    expect(button).toHaveAttribute("title", "删除对话");
+    const name = button?.querySelector("[data-icon-name]");
+    expect(name).toHaveTextContent("删除对话");
+    expect(name).toHaveClass("hidden", "group-focus-visible:block");
+    expect(button?.querySelector("svg")).toHaveClass("group-focus-visible:hidden");
+  });
+
   it("keeps an icon rail on a narrow viewport and writes the name when the keyboard lands", () => {
     const original = window.matchMedia;
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({

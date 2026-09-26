@@ -205,9 +205,16 @@ describe("MessageItem", () => {
         "focus-visible:ring-focus-ring",
       ]),
     );
+    expect(copy.querySelector("[data-icon-name]")).toHaveTextContent("复制");
+    expect(copy.querySelector("[data-icon-name]")).toHaveClass(
+      "hidden",
+      "group-focus-visible:block",
+    );
+    expect(copy.querySelector("svg")).toHaveClass("group-focus-visible:hidden");
     fireEvent.click(copy);
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("echo hi"));
     expect(screen.getByRole("button", { name: "已复制" })).toBe(copy);
+    expect(copy.querySelector("[data-icon-name]")).toHaveTextContent("已复制");
   });
 
   it("copies inline code longer than 50 characters without turning it into a block", async () => {
@@ -282,9 +289,16 @@ describe("MessageItem", () => {
         "focus-visible:ring-focus-ring",
       ]),
     );
+    expect(copy.querySelector("[data-icon-name]")).toHaveTextContent("复制");
+    expect(copy.querySelector("[data-icon-name]")).toHaveClass(
+      "hidden",
+      "group-focus-visible:block",
+    );
+    expect(copy.querySelector("svg")).toHaveClass("group-focus-visible:hidden");
     fireEvent.click(copy);
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("const x = 1"));
     expect(screen.getByRole("button", { name: "已复制" })).toBe(copy);
+    expect(copy.querySelector("[data-icon-name]")).toHaveTextContent("已复制");
   });
 
   it("copies an unlabeled fenced block without the trailing newline", async () => {

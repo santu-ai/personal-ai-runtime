@@ -97,15 +97,29 @@ function InlineCode({ children }: { children: React.ReactNode }) {
         type="button"
         onClick={handleCopy}
         // 只在悬停时出现的话，键盘落到这一钮时整颗都是透明的，焦点环也看不见。
-        className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 bg-surface-overlay hover:bg-border-strong rounded p-0.5 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+        className="group absolute -top-1 -right-1 inline-flex max-w-full items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 bg-surface-overlay hover:bg-border-strong rounded p-0.5 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         aria-label={copyLabel}
         title={copyLabel}
       >
         {copied ? (
-          <Check size={10} className="text-success" />
+          <Check
+            size={10}
+            aria-hidden
+            className="shrink-0 text-success group-focus-visible:hidden"
+          />
         ) : (
-          <Copy size={10} className="text-fg-secondary" />
+          <Copy
+            size={10}
+            aria-hidden
+            className="shrink-0 text-fg-secondary group-focus-visible:hidden"
+          />
         )}
+        <span
+          data-icon-name=""
+          className="hidden whitespace-nowrap text-center text-[10px] leading-tight group-focus-visible:block"
+        >
+          {copyLabel}
+        </span>
       </button>
     </code>
   );

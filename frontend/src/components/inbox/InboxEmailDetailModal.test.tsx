@@ -130,6 +130,15 @@ describe("InboxEmailDetailModal", () => {
     );
     const dialog = screen.getByRole("dialog", { name: "请尽快回复" });
     await waitFor(() => expect(dialog).toHaveFocus());
+    const close = screen
+      .getAllByRole("button", { name: "关闭" })
+      .find((button) => button.querySelector("[data-icon-name]"));
+    expect(close?.querySelector("[data-icon-name]")).toHaveTextContent("关闭");
+    expect(close?.querySelector("[data-icon-name]")).toHaveClass(
+      "hidden",
+      "group-focus-visible:block",
+    );
+    expect(close?.querySelector("[aria-hidden]")).toHaveClass("group-focus-visible:hidden");
 
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalledOnce();

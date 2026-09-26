@@ -349,11 +349,21 @@ export default function Sidebar({
                         e.stopPropagation();
                         onDeleteChat(conv.id);
                       }}
-                      className="mr-1.5 opacity-0 group-hover:opacity-100 text-fg-tertiary hover:text-danger transition-all ml-1 shrink-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded-md p-0.5"
+                      className="group mr-1.5 inline-flex max-w-full items-center justify-center opacity-0 group-hover:opacity-100 text-fg-tertiary hover:text-danger transition-all ml-1 shrink-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded-md p-0.5"
                       title="删除对话"
                       aria-label="删除对话"
                     >
-                      <Trash2 size={13} />
+                      <Trash2
+                        size={13}
+                        aria-hidden
+                        className="shrink-0 group-focus-visible:hidden"
+                      />
+                      <span
+                        data-icon-name=""
+                        className="hidden whitespace-nowrap text-center text-[10px] leading-tight group-focus-visible:block"
+                      >
+                        删除对话
+                      </span>
                     </button>
                   </div>
                 );
