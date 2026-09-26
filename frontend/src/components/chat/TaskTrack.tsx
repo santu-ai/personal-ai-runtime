@@ -9,12 +9,54 @@
  * - 原始参数/日志默认折叠，点击节点展开
  */
 
-import { useState } from "react";
+import { useState, type KeyboardEvent } from "react";
 import { toolLabel, toolIcon } from "../../utils/toolLabels";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
 import { detectOutcome } from "./detectToolFailure";
 import { formatArgs } from "./formatArgs";
 import ToolResultBody from "./ToolResultBody";
 import type { ToolCall, ToolResult } from "./types";
+
+/** 超过这么多行，平时的限高会切掉后面。 */
+const TRACK_ARGS_LINE_LIMIT = 5;
+/** 某一行超过这么多个字，横向滚动条会把后面藏起来。 */
+const TRACK_ARGS_LINE_CHARS = 80;
+
+const ARGS_PRE = "bg-surface-sunken p-1.5 rounded text-fg-primary overflow-x-auto text-[11px]";
+
+function trackArgsNeedReveal(text: string): boolean {
+  const lines = text.split("\n");
+  if (lines.length > TRACK_ARGS_LINE_LIMIT) return true;
+  return lines.some((line) => line.length > TRACK_ARGS_LINE_CHARS);
+}
+
+/** 空格和回车不把页面滚走，也不收起这一步。组字或输入法处理键时这一下不拦住。 */
+function keepArgsKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
+  if (isImeKeyboardEvent(event.nativeEvent)) return;
+  if (event.key === "Enter" || event.key === " ") event.preventDefault();
+}
+
+function StepArgs({ text }: { text: string }) {
+  if (!trackArgsNeedReveal(text)) {
+    return <pre className={`${ARGS_PRE} max-h-24 overflow-y-auto`}>{text}</pre>;
+  }
+  return (
+    <div
+      tabIndex={0}
+      data-args-preview=""
+      title={text}
+      onKeyDown={keepArgsKeysFromScrolling}
+      className="group max-h-24 overflow-y-auto rounded-sm focus-visible:max-h-none focus-visible:overflow-visible focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+    >
+      {/* 平时限高。键盘落到时写出整段。鼠标悬停仍是限高，整段在 title 里。 */}
+      <pre
+        className={`${ARGS_PRE} group-focus-visible:overflow-visible group-focus-visible:whitespace-pre-wrap group-focus-visible:break-all`}
+      >
+        {text}
+      </pre>
+    </div>
+  );
+}
 
 interface TaskStage {
   toolCall: ToolCall;
@@ -111,9 +153,7 @@ export default function TaskTrack({ stages }: Props) {
                 <div className="ml-5 mt-2 space-y-2 text-xs" role="region">
                   <div>
                     <div className="text-fg-tertiary mb-0.5">参数</div>
-                    <pre className="bg-surface-sunken p-1.5 rounded text-fg-primary overflow-x-auto text-[11px] max-h-24 overflow-y-auto">
-                      {formatArgs(stage.toolCall.arguments)}
-                    </pre>
+                    <StepArgs text={formatArgs(stage.toolCall.arguments)} />
                   </div>
                   {stage.result && (
                     <div>
