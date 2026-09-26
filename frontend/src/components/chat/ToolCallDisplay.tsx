@@ -95,6 +95,11 @@ const revealLine =
 
 /** 某一行超过这么多个字，横向滚动会把后面藏起来。这一段没有高度限制。 */
 const PANEL_ARGS_LINE_CHARS = 80;
+/** 这一步旁边的路径、命令或问题超过这么多个字，平时只占一行。 */
+const HEADER_SUMMARY_CHARS = 80;
+
+const headerSummaryReveal =
+  "min-w-0 flex-1 truncate text-fg-tertiary group-focus-visible:overflow-visible group-focus-visible:whitespace-normal group-focus-visible:text-clip group-focus-visible:break-all";
 
 const PANEL_ARGS_PRE = "bg-surface-sunken p-2 rounded text-fg-primary overflow-x-auto";
 
@@ -251,6 +256,8 @@ export default function ToolCallDisplay({
           /* keep empty */
         }
         const Icon = toolIcon(tc.function_name);
+        const longSummary = argsSummary.length > HEADER_SUMMARY_CHARS;
+        const rail = longSummary ? "shrink-0" : "float-right mt-0.5";
 
         return (
           <div
@@ -264,17 +271,42 @@ export default function ToolCallDisplay({
               type="button"
               aria-expanded={isExpanded}
               onClick={() => setExpandedCall(isExpanded ? null : idx)}
-              className="w-full text-left px-3 py-2 text-xs text-fg-secondary hover:text-fg-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+              title={longSummary ? argsSummary : undefined}
+              className={
+                longSummary
+                  ? "group flex w-full min-w-0 items-center gap-1.5 px-3 py-2 text-left text-xs text-fg-secondary hover:text-fg-primary transition-colors focus-visible:items-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                  : "w-full text-left px-3 py-2 text-xs text-fg-secondary hover:text-fg-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+              }
             >
-              <Icon size={12} className="inline-block mr-1.5 align-text-bottom" />
-              <span className="text-fg-primary font-medium">{toolLabel(tc.function_name)}</span>
-              {argsSummary && <span className="text-fg-tertiary ml-1.5">{argsSummary}</span>}
+              <Icon
+                size={12}
+                className={longSummary ? "shrink-0" : "inline-block mr-1.5 align-text-bottom"}
+              />
+              <span
+                className={
+                  longSummary
+                    ? "shrink-0 text-fg-primary font-medium"
+                    : "text-fg-primary font-medium"
+                }
+              >
+                {toolLabel(tc.function_name)}
+              </span>
+              {argsSummary ? (
+                longSummary ? (
+                  // 超过 80 个字时平时只占一行。键盘落到这一步时写出整句。鼠标悬停仍是一行，整句在 title 里。空格和回车仍展开。
+                  <span data-tool-summary="" className={headerSummaryReveal}>
+                    {argsSummary}
+                  </span>
+                ) : (
+                  <span className="text-fg-tertiary ml-1.5">{argsSummary}</span>
+                )
+              ) : null}
               {outcome === "done" ? (
-                <span className="float-right text-success mt-0.5">✓ 完成</span>
+                <span className={`${rail} text-success`}>✓ 完成</span>
               ) : outcome === "failed" ? (
-                <span className="float-right text-danger mt-0.5">✗ 失败</span>
+                <span className={`${rail} text-danger`}>✗ 失败</span>
               ) : (
-                <span className="float-right flex items-center gap-1 mt-0.5">
+                <span className={`${rail} flex items-center gap-1`}>
                   <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
                     <circle
                       className="opacity-25"
@@ -295,7 +327,7 @@ export default function ToolCallDisplay({
                 </span>
               )}
               <svg
-                className={`float-right w-3 h-3 transition-transform mt-0.5 ml-1.5 ${isExpanded ? "rotate-180" : ""}`}
+                className={`${longSummary ? "h-3 w-3 shrink-0" : "float-right mt-0.5 ml-1.5 h-3 w-3"} transition-transform ${isExpanded ? "rotate-180" : ""}`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
