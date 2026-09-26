@@ -131,6 +131,37 @@ describe("MonitorsPanel", () => {
     }
   }
 
+  it("writes the full monitor name and url when a row button is keyboard focused", async () => {
+    const inboxName = "老板邮件规则的名字长到一行里放不下，键盘落到停用或删除时要写出整句";
+    const urlName = "发布说明监控的名字长到一行里放不下，键盘落到停用或删除时要写出整句";
+    const url = `https://example.com/${"release-notes/".repeat(6)}`;
+    await renderLoaded(
+      [inboxFilter("if_long", inboxName)],
+      [{ ...urlMonitor("um_long", urlName), url }],
+    );
+
+    const reveal = [
+      "truncate",
+      "group-has-[:focus-visible]:overflow-visible",
+      "group-has-[:focus-visible]:whitespace-normal",
+      "group-has-[:focus-visible]:text-clip",
+      "group-has-[:focus-visible]:break-words",
+    ];
+    const inboxLine = screen.getByText(inboxName);
+    expect(inboxLine).toHaveClass(...reveal);
+    expect(inboxLine.className).not.toContain("group-hover:");
+    const inboxRow = inboxLine.closest("li");
+    expect(inboxRow).toHaveClass("group");
+    expect(within(inboxRow!).getByRole("button", { name: "停用" })).toBeInTheDocument();
+
+    const urlLine = screen.getByText(url);
+    expect(urlLine).toHaveClass(...reveal);
+    expect(urlLine.className).not.toContain("group-hover:");
+    const urlRow = screen.getByText(urlName).closest("li");
+    expect(urlRow).toHaveClass("group");
+    expect(within(urlRow!).getByRole("button", { name: "删除" })).toBeInTheDocument();
+  });
+
   it("adds an inbox filter from Enter, and ignores IME and a second press", async () => {
     const inbox: InboxFilter[] = [];
     await renderLoaded(inbox);

@@ -161,6 +161,16 @@ describe("ChatHome", () => {
     expect(await screen.findByText(/我已经记住了 1 件关于你的事/)).toBeInTheDocument();
   });
 
+  it("writes the full continue summary when the card is keyboard focused", async () => {
+    renderWithRouter(<ChatHome />, { initialEntries: ["/"] });
+    const link = await screen.findByRole("link", { name: /上次对话/ });
+    const summary = screen.getByText("关于 Rust 的讨论");
+    expect(summary).toHaveClass("line-clamp-1", "group-focus-visible:line-clamp-none");
+    expect(summary.className).not.toContain("group-hover:");
+    expect(link).toHaveClass("group");
+    expect(summary.closest("a")).toBe(link);
+  });
+
   it("continues last conversation from a link", async () => {
     renderWithRouter(<ChatHome />, { initialEntries: ["/"] });
     const link = await screen.findByRole("link", { name: /上次对话/ });
