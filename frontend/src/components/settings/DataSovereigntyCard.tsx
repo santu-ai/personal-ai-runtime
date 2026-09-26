@@ -14,6 +14,14 @@ import Button from "../ui/Button";
 import Dialog from "../ui/Dialog";
 import { Input } from "../ui/Input";
 
+/**
+ * 文件框留在 Tab 顺序里。`hidden` 会把它拿掉，键盘落不上去，焦点也留不住。
+ * 环画在看得见的按钮上；文件框自己的环消掉，避免 1px 裁切后再冒出一个错位的框。
+ */
+const fileInputClass = "sr-only focus-visible:outline-none";
+const fileControlClass =
+  "relative inline-block rounded-lg focus-within:outline-none focus-within:ring-2 focus-within:ring-focus-ring";
+
 interface Props {
   /** Called after a successful import so the parent can refetch core settings. */
   onAfterImport?: () => void;
@@ -224,16 +232,16 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
           </p>
         ) : null}
         <label
-          className={`inline-block ${importing ? "opacity-50" : ""}`}
+          className={`${fileControlClass} ${importing ? "opacity-50" : ""}`}
           aria-busy={importing || undefined}
         >
-          <span className="inline-flex px-4 py-2 text-sm rounded-lg font-medium bg-surface-overlay hover:bg-border-strong text-fg-primary cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring">
+          <span className="inline-flex px-4 py-2 text-sm rounded-lg font-medium bg-surface-overlay hover:bg-border-strong text-fg-primary cursor-pointer transition-colors">
             {importing ? "导入中…" : "导入备份（只读）"}
           </span>
           <input
             type="file"
             accept=".json"
-            className="hidden"
+            className={fileInputClass}
             data-sovereignty-import="readonly"
             aria-busy={importing || undefined}
             onChange={(e) => void handleImportFile(e, false)}
@@ -249,7 +257,7 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
           className="flex-1 text-xs"
         />
         <label
-          className={`shrink-0 ${importing ? "opacity-50" : ""}`}
+          className={`${fileControlClass} shrink-0 ${importing ? "opacity-50" : ""}`}
           aria-busy={importing || undefined}
         >
           <span
@@ -264,7 +272,7 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
           <input
             type="file"
             accept=".json"
-            className="hidden"
+            className={fileInputClass}
             data-sovereignty-import="overwrite"
             disabled={importConfirm !== "DESTROY_AND_IMPORT"}
             aria-busy={importing || undefined}
@@ -298,18 +306,18 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
             </p>
           ) : null}
           <label
-            className={`inline-block ${encryptImporting ? "opacity-50" : ""}`}
+            className={`${fileControlClass} ${encryptImporting ? "opacity-50" : ""}`}
             aria-busy={encryptImporting || undefined}
           >
             <span
-              className={`inline-flex px-4 py-2 text-sm rounded-lg font-medium cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${!encryptPassword && !encryptImporting ? "bg-surface-overlay text-fg-disabled" : "bg-surface-overlay hover:bg-border-strong text-fg-primary"}`}
+              className={`inline-flex px-4 py-2 text-sm rounded-lg font-medium cursor-pointer transition-colors ${!encryptPassword && !encryptImporting ? "bg-surface-overlay text-fg-disabled" : "bg-surface-overlay hover:bg-border-strong text-fg-primary"}`}
             >
               {encryptImporting ? "导入中…" : "加密导入"}
             </span>
             <input
               type="file"
               accept=".json"
-              className="hidden"
+              className={fileInputClass}
               data-sovereignty-import="encrypted"
               disabled={!encryptPassword && !encryptImporting}
               aria-busy={encryptImporting || undefined}
