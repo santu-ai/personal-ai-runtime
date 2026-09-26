@@ -205,8 +205,12 @@ export default function ProposedMemoryBanner({ className = "", conversationId }:
           {items.map((m) => {
             const action = busy.get(m.id);
             return (
-              <li key={m.id} className="flex items-center gap-2 text-fg-primary">
-                <span className="flex-1 min-w-0 truncate" title={m.content}>
+              <li key={m.id} className="group flex items-center gap-2 text-fg-primary">
+                {/* 平时一行。键盘落到「确认」或「拒绝」时写出整句。鼠标悬停仍是一行。 */}
+                <span
+                  className="min-w-0 flex-1 truncate group-has-[:focus-visible]:overflow-visible group-has-[:focus-visible]:whitespace-normal group-has-[:focus-visible]:text-clip"
+                  title={m.content}
+                >
                   {m.content}
                   {typeof m.confidence === "number" && (
                     <span className="text-fg-tertiary"> · {Math.round(m.confidence * 100)}%</span>

@@ -100,6 +100,26 @@ describe("ProposedMemoryBanner", () => {
     expect(screen.getByText("本对话事实")).toBeInTheDocument();
   });
 
+  it("writes the whole memory when keyboard focus is on 确认 or 拒绝", async () => {
+    const content =
+      "我每周一三五早上七点在公园跑步，跑完会喝一杯不加糖的美式，然后回到工位把这周要做的事写成可以勾掉的清单";
+    mockList.mockResolvedValue({
+      memories: [{ id: "m-long", content, confidence: 0.8 }],
+      total: 1,
+    });
+    renderWithRouter(<ProposedMemoryBanner />);
+    const text = await screen.findByTitle(content);
+    expect(text).toHaveTextContent(content);
+    expect(text).toHaveClass(
+      "truncate",
+      "group-has-[:focus-visible]:overflow-visible",
+      "group-has-[:focus-visible]:whitespace-normal",
+      "group-has-[:focus-visible]:text-clip",
+    );
+    expect(text.closest("li")).toHaveClass("group");
+    expect(text.querySelector("[data-prompt-name]")).toBeNull();
+  });
+
   it("shows items and ratifies inline", async () => {
     renderWithRouter(<ProposedMemoryBanner />);
     expect(await screen.findByText(/2 条记忆待确认后才会进入对话/)).toBeInTheDocument();
