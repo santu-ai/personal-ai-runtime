@@ -339,6 +339,40 @@ describe("DataSovereigntyCard", () => {
     return input;
   }
 
+  function expectFileControl(input: HTMLInputElement) {
+    expect(input.className.split(/\s+/)).toContain("sr-only");
+    expect(input.className.split(/\s+/)).not.toContain("hidden");
+    expect(input.closest("label")?.className).toContain("focus-within:ring-focus-ring");
+  }
+
+  it("keeps import file inputs in the tab order and paints the ring on the visible control", () => {
+    renderWithRouter(<DataSovereigntyCard embedded />);
+    const readonly = importInput("readonly");
+    const overwrite = importInput("overwrite");
+    const encrypted = importInput("encrypted");
+    expectFileControl(readonly);
+    expectFileControl(overwrite);
+    expectFileControl(encrypted);
+    expect(readonly).toBeEnabled();
+    expect(overwrite).toBeDisabled();
+    expect(encrypted).toBeDisabled();
+    readonly.focus();
+    expect(readonly).toHaveFocus();
+
+    fireEvent.change(screen.getByPlaceholderText("写入导入请输入 DESTROY_AND_IMPORT"), {
+      target: { value: "DESTROY_AND_IMPORT" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("输入加密密码"), {
+      target: { value: "secret" },
+    });
+    expect(overwrite).toBeEnabled();
+    expect(encrypted).toBeEnabled();
+    overwrite.focus();
+    expect(overwrite).toHaveFocus();
+    encrypted.focus();
+    expect(encrypted).toHaveFocus();
+  });
+
   it("does not import a backup twice and keeps focus on the file input", async () => {
     let release: (() => void) | undefined;
     vi.mocked(importData).mockImplementationOnce(
