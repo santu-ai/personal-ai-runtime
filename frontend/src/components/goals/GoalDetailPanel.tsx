@@ -70,6 +70,11 @@ export default function GoalDetailPanel({
 }: GoalDetailPanelProps) {
   const [suggestedSteps, setSuggestedSteps] = useState<string[]>([]);
   const [decomposing, setDecomposing] = useState(false);
+  // 建议出现时读这一句。加上一条不改短，避免再读一遍剩下的。
+  const spokenSeq = useRef(0);
+  const [spokenSuggestions, setSpokenSuggestions] = useState<{ id: number; text: string } | null>(
+    null,
+  );
   const addError = useErrorStore((s) => s.addError);
   const invalidateGoals = useInvalidateGoals();
   const goalIdRef = useRef(goal.id);
@@ -158,6 +163,7 @@ export default function GoalDetailPanel({
     decomposeLock.current = false;
     focusAfter.current = null;
     setSuggestedSteps([]);
+    setSpokenSuggestions(null);
     setDecomposing(false);
     setAddingSteps(new Set());
     setAddingAll(false);
@@ -216,7 +222,18 @@ export default function GoalDetailPanel({
     try {
       const result = await decomposeGoal(goalId);
       if (goalIdRef.current !== goalId) return;
-      setSuggestedSteps(result.steps || []);
+      const steps = result.steps || [];
+      setSuggestedSteps(steps);
+      // 没有建议时不另读一句。失败不进这里，仍只走右下角提示。
+      if (steps.length > 0) {
+        spokenSeq.current += 1;
+        setSpokenSuggestions({
+          id: spokenSeq.current,
+          text: `AI 建议的行动步骤 ${steps.join(" ")}`,
+        });
+      } else {
+        setSpokenSuggestions(null);
+      }
     } catch (err) {
       if (goalIdRef.current !== goalId) return;
       const msg = err instanceof ApiError ? err.message : "AI 拆解失败";
@@ -383,6 +400,12 @@ export default function GoalDetailPanel({
         {/* AI Suggested Steps */}
         {suggestedSteps.length > 0 && (
           <div className="mb-4 p-3 bg-insight/10 border border-insight/30 rounded-lg">
+            {spokenSuggestions ? (
+              <p key={spokenSuggestions.id} className="sr-only" role="status">
+                {/* 出现时读出来，等当前这一句说完。不把焦点抢过来。 */}
+                {spokenSuggestions.text}
+              </p>
+            ) : null}
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-insight font-medium inline-flex items-center gap-1">
                 <Sparkles size={12} />
