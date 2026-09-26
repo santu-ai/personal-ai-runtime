@@ -35,14 +35,15 @@ export default function RemindersPanel({
               key={n.id}
               type="button"
               onClick={() => void onNotificationClick(n)}
-              className={`w-full text-left p-3 bg-surface-overlay/50 rounded-lg hover:bg-surface-overlay transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
+              className={`group w-full text-left p-3 bg-surface-overlay/50 rounded-lg hover:bg-surface-overlay transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
                 n.read ? "opacity-60" : ""
               }`}
             >
               <div className={`text-sm ${n.read ? "text-fg-secondary" : "text-fg-primary"}`}>
                 {n.title}
               </div>
-              <div className="text-xs text-fg-tertiary mt-1 line-clamp-2">
+              {/* 正文平时最多两行。键盘落到这一条时写出整段。鼠标悬停仍是两行。 */}
+              <div className="mt-1 line-clamp-2 text-xs text-fg-tertiary group-focus-visible:line-clamp-none group-focus-visible:break-words">
                 {notificationPreview(n.content)}
               </div>
             </button>

@@ -28,6 +28,10 @@ interface TodayActionsProps {
 
 const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
 
+/** 平时一行。键盘落到这一行时写出整句。鼠标悬停仍是一行。 */
+const rowTitleClass =
+  "min-w-0 flex-1 truncate group-focus-visible:overflow-visible group-focus-visible:whitespace-normal group-focus-visible:text-clip group-focus-visible:break-words";
+
 function DecideRow({ item }: { item: TodayDecideItem }) {
   const icon =
     item.kind === "approval" ? (
@@ -40,10 +44,10 @@ function DecideRow({ item }: { item: TodayDecideItem }) {
   return (
     <Link
       to={item.href}
-      className={`w-full flex items-center gap-2 text-xs p-2 bg-warning/5 rounded-lg border border-warning/20 text-left hover:bg-warning/10 ${focusRing}`}
+      className={`group w-full flex items-center gap-2 text-xs p-2 bg-warning/5 rounded-lg border border-warning/20 text-left hover:bg-warning/10 ${focusRing}`}
     >
       {icon}
-      <span className="text-fg-primary truncate flex-1">{item.title}</span>
+      <span className={`text-fg-primary ${rowTitleClass}`}>{item.title}</span>
     </Link>
   );
 }
@@ -52,10 +56,10 @@ function DoRow({ item }: { item: TodayDoItem }) {
   return (
     <Link
       to={item.href}
-      className={`w-full flex items-center gap-2 text-xs p-2 rounded-lg hover:bg-surface-overlay text-left ${focusRing}`}
+      className={`group w-full flex items-center gap-2 text-xs p-2 rounded-lg hover:bg-surface-overlay text-left ${focusRing}`}
     >
       <Target size={14} className="text-warning shrink-0" />
-      <span className="text-fg-primary truncate flex-1">{item.title}</span>
+      <span className={`text-fg-primary ${rowTitleClass}`}>{item.title}</span>
       <span className="text-fg-tertiary shrink-0">
         {item.reason === "deadline" ? "截止将近" : "已停滞"}
       </span>
@@ -67,10 +71,10 @@ function HandledRow({ item }: { item: TodayHandledItem }) {
   return (
     <Link
       to={item.href}
-      className={`w-full flex items-center gap-2 text-xs p-2 rounded-lg hover:bg-surface-overlay text-left ${focusRing}`}
+      className={`group w-full flex items-center gap-2 text-xs p-2 rounded-lg hover:bg-surface-overlay text-left ${focusRing}`}
     >
       <CheckCircle2 size={14} className="text-success shrink-0" />
-      <span className="text-fg-secondary truncate flex-1">{item.title}</span>
+      <span className={`text-fg-secondary ${rowTitleClass}`}>{item.title}</span>
     </Link>
   );
 }

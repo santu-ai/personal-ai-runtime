@@ -1701,14 +1701,17 @@ export default function TasksPage() {
                 to={taskPageHref(item.id)}
                 aria-current={active ? "page" : undefined}
                 data-task-current={active ? "" : undefined}
-                className={`block w-full rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                className={`group block w-full rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
                   active
                     ? "border-insight/40 bg-insight/10"
                     : "border-border-subtle bg-surface-raised shadow-sm hover:border-border-strong hover:bg-surface-hover/40"
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate text-sm text-fg-primary">{item.title}</span>
+                  {/* 平时一行。键盘落到这一行时写出整句。鼠标悬停仍是一行。 */}
+                  <span className="min-w-0 flex-1 truncate text-sm text-fg-primary group-focus-visible:overflow-visible group-focus-visible:whitespace-normal group-focus-visible:text-clip group-focus-visible:break-words">
+                    {item.title}
+                  </span>
                   <span className="flex shrink-0 items-center gap-1.5">
                     {isRerunnableFailed(item) ? (
                       <span className="rounded-full bg-danger/15 px-1.5 py-0.5 text-xs text-danger">

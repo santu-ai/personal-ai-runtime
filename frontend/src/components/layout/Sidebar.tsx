@@ -335,9 +335,12 @@ export default function Sidebar({
                       }}
                       className="min-w-0 flex-1 rounded-sm px-2.5 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                     >
-                      <span className="truncate text-sm block">{conv.title || "未命名"}</span>
+                      {/* 平时一行。键盘落到这一行或「删除对话」时写出整句。鼠标悬停仍是一行。 */}
+                      <span className="block truncate text-sm group-has-[:focus-visible]:overflow-visible group-has-[:focus-visible]:whitespace-normal group-has-[:focus-visible]:text-clip group-has-[:focus-visible]:break-words">
+                        {conv.title || "未命名"}
+                      </span>
                       {conv.summary && (
-                        <span className="truncate text-[11px] text-fg-disabled block">
+                        <span className="block truncate text-[11px] text-fg-disabled group-has-[:focus-visible]:overflow-visible group-has-[:focus-visible]:whitespace-normal group-has-[:focus-visible]:text-clip group-has-[:focus-visible]:break-words">
                           {conv.summary}
                         </span>
                       )}

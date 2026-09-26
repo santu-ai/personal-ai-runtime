@@ -147,6 +147,24 @@ describe("GoalsPage", () => {
     expect(screen.getByText("选择一个目标")).toBeInTheDocument();
   });
 
+  it("writes the full goal title when the row is keyboard focused", async () => {
+    const title = "把实验笔记、论文和还没回的邮件收成一个可以每周核对的目标";
+    vi.mocked(listGoals).mockResolvedValue([{ ...sampleGoal, title }]);
+    renderGoals("/goals");
+
+    const row = await screen.findByRole("link", { name: new RegExp(title) });
+    const line = row.querySelector(".truncate");
+    expect(line).toHaveTextContent(title);
+    expect(line).toHaveClass(
+      "truncate",
+      "group-focus-visible:overflow-visible",
+      "group-focus-visible:whitespace-normal",
+      "group-focus-visible:text-clip",
+    );
+    expect(line?.className).not.toContain("group-hover:");
+    expect(row).toHaveClass("group");
+  });
+
   it("opens the detail on narrow screens and shows ratio progress as a percent", async () => {
     vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
     renderGoals("/goals/g1");

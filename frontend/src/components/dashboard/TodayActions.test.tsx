@@ -66,6 +66,44 @@ describe("TodayActions", () => {
     expect(more).toHaveClass(focusRing);
   });
 
+  it("writes the full column title when the row is keyboard focused", () => {
+    const decide = "批准把这份还没发出的周报写进共享目录，并记下这次为什么要改截止日";
+    const doing = "在周五前把实验图表、结论和还没回的审稿意见收成可以勾掉的清单";
+    const handled = "晨报已经把昨天的三封重要邮件和两个停滞目标写进今天的安排";
+    renderWithRouter(
+      <TodayActions
+        buckets={buckets({
+          decide: [{ kind: "approval", id: "ap-long", title: decide, href: "/approvals" }],
+          do: [
+            {
+              kind: "goal",
+              id: "g-long",
+              title: doing,
+              href: "/goals/g-long",
+              reason: "deadline",
+              progress: 0.2,
+            },
+          ],
+          handled: [{ kind: "inbox_digest", id: "n-long", title: handled, href: "/inbox" }],
+        })}
+      />,
+    );
+
+    for (const title of [decide, doing, handled]) {
+      const row = screen.getByRole("link", { name: new RegExp(title) });
+      const line = row.querySelector(".truncate");
+      expect(line).toHaveTextContent(title);
+      expect(line).toHaveClass(
+        "truncate",
+        "group-focus-visible:overflow-visible",
+        "group-focus-visible:whitespace-normal",
+        "group-focus-visible:text-clip",
+      );
+      expect(line?.className).not.toContain("group-hover:");
+      expect(row).toHaveClass("group");
+    }
+  });
+
   it("links leftover goals from the empty day", () => {
     renderWithRouter(<TodayActions buckets={buckets({ leftoverGoalCount: 3 })} />);
     const link = screen.getByRole("link", { name: /查看全部目标/ });

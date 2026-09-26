@@ -480,6 +480,27 @@ describe("TasksPage", () => {
     expect(screen.getByText("选择一个任务")).toBeInTheDocument();
   });
 
+  it("writes the full task title when the row is keyboard focused", async () => {
+    const title = "把这周的实验记录、图表和还没写完的结论收成一份可以验收的交付";
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [{ ...sampleTask, title }];
+      return [];
+    });
+    renderTasks("/tasks");
+
+    const row = await screen.findByRole("link", { name: new RegExp(title) });
+    const line = row.querySelector(".truncate");
+    expect(line).toHaveTextContent(title);
+    expect(line).toHaveClass(
+      "truncate",
+      "group-focus-visible:overflow-visible",
+      "group-focus-visible:whitespace-normal",
+      "group-focus-visible:text-clip",
+    );
+    expect(line?.className).not.toContain("group-hover:");
+    expect(row).toHaveClass("group");
+  });
+
   it("opens the detail on narrow screens and keeps a way back to the list", async () => {
     renderTasks("/tasks/task_1");
 

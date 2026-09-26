@@ -326,14 +326,15 @@ export default function NotificationBell({ compact = false }: Props) {
                   type="button"
                   data-notification-row={n.id}
                   onClick={() => handleOpenDetail(n)}
-                  className={`w-full text-left px-3 py-2.5 hover:bg-surface-hover border-b border-border-subtle last:border-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring ${
+                  className={`group w-full text-left px-3 py-2.5 hover:bg-surface-hover border-b border-border-subtle last:border-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring ${
                     n.read ? "opacity-60" : ""
                   }`}
                 >
                   <p className={`text-sm ${n.read ? "text-fg-secondary" : "text-fg-primary"}`}>
                     {n.title}
                   </p>
-                  <p className="text-xs text-fg-tertiary mt-0.5 line-clamp-2">
+                  {/* 正文平时最多两行。键盘落到这一条时写出整段。鼠标悬停仍是两行。 */}
+                  <p className="mt-0.5 line-clamp-2 text-xs text-fg-tertiary group-focus-visible:line-clamp-none group-focus-visible:break-words">
                     {notificationPreview(n.content)}
                   </p>
                 </button>

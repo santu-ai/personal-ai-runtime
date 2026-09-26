@@ -67,6 +67,30 @@ describe("Sidebar", () => {
     expect(screen.getByText("周末计划")).toBeInTheDocument();
   });
 
+  it("writes the full conversation title when the row or delete is focused", () => {
+    const title = "把这周要读的论文、要回的邮件和还没做完的实验笔记放进同一条对话里";
+    const summary = "上次停在实验笔记的第三段，还没把图表和结论写完，下周一开始接着写";
+    renderSidebar("/", {
+      conversations: [{ id: "c-long", title, summary }],
+    });
+    const link = screen.getByRole("link", { name: new RegExp(title) });
+    const lines = link.querySelectorAll(".truncate");
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toHaveTextContent(title);
+    expect(lines[1]).toHaveTextContent(summary);
+    for (const line of lines) {
+      expect(line).toHaveClass(
+        "truncate",
+        "group-has-[:focus-visible]:overflow-visible",
+        "group-has-[:focus-visible]:whitespace-normal",
+        "group-has-[:focus-visible]:text-clip",
+      );
+      expect(line.className).not.toContain("group-hover:");
+    }
+    expect(link.parentElement).toHaveClass("group");
+    expect(link.parentElement?.querySelector("[data-conversation-delete]")).toBeTruthy();
+  });
+
   it("shows grouped nav labels", () => {
     renderSidebar();
     expect(screen.getByText("概览", { selector: "p" })).toBeInTheDocument();

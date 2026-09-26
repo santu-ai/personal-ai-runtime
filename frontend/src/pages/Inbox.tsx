@@ -468,13 +468,14 @@ export default function InboxPage() {
                         onClick={() => void handleViewDetail(em)}
                         aria-busy={detailLoadingId === em.id || undefined}
                         aria-label={`${unread ? "未读" : "已读"} ${em.subject || "（无主题）"} ${em.sender}`}
-                        className={`w-full rounded-lg border border-border-subtle bg-surface-raised p-3 text-left shadow-sm transition-colors hover:border-border-strong hover:bg-surface-hover/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
+                        className={`group w-full rounded-lg border border-border-subtle bg-surface-raised p-3 text-left shadow-sm transition-colors hover:border-border-strong hover:bg-surface-hover/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${
                           unread ? "" : "opacity-70"
                         }`}
                       >
-                        <div className="flex items-baseline gap-2 min-w-0">
+                        {/* 平时一行。键盘落到这一行时主题和发件人写出整句。鼠标悬停仍是一行。 */}
+                        <div className="flex min-w-0 items-baseline gap-2 group-focus-visible:flex-col group-focus-visible:items-stretch">
                           <span
-                            className={`text-sm truncate min-w-0 flex-1 ${
+                            className={`min-w-0 flex-1 truncate text-sm group-focus-visible:overflow-visible group-focus-visible:whitespace-normal group-focus-visible:text-clip group-focus-visible:break-words ${
                               unread
                                 ? "font-semibold text-fg-primary"
                                 : "font-normal text-fg-secondary"
@@ -483,7 +484,7 @@ export default function InboxPage() {
                             {em.subject || "（无主题）"}
                           </span>
                           <span
-                            className={`text-xs truncate shrink-0 max-w-[45%] ${
+                            className={`max-w-[45%] shrink-0 truncate text-xs group-focus-visible:max-w-none group-focus-visible:overflow-visible group-focus-visible:whitespace-normal group-focus-visible:text-clip group-focus-visible:break-words ${
                               unread ? "text-fg-secondary" : "text-fg-tertiary"
                             }`}
                           >
@@ -530,12 +531,15 @@ function TriageCard({
     writing ? "opacity-50" : ""
   }`;
   return (
-    <div className="p-3 bg-surface-sunken rounded-lg border border-border-subtle">
-      <div className="flex items-baseline gap-2 min-w-0">
-        <div className="text-sm font-medium text-fg-primary truncate min-w-0 flex-1">
+    <div className="group rounded-lg border border-border-subtle bg-surface-sunken p-3">
+      {/* 平时一行。键盘落到「查看」「标记已读」或「让 AI 处理」时写出整句。鼠标悬停仍是一行。 */}
+      <div className="flex min-w-0 items-baseline gap-2 group-has-[:focus-visible]:flex-col group-has-[:focus-visible]:items-stretch">
+        <div className="min-w-0 flex-1 truncate text-sm font-medium text-fg-primary group-has-[:focus-visible]:overflow-visible group-has-[:focus-visible]:whitespace-normal group-has-[:focus-visible]:text-clip group-has-[:focus-visible]:break-words">
           {email.subject}
         </div>
-        <div className="text-xs text-fg-tertiary truncate shrink-0 max-w-[45%]">{email.sender}</div>
+        <div className="max-w-[45%] shrink-0 truncate text-xs text-fg-tertiary group-has-[:focus-visible]:max-w-none group-has-[:focus-visible]:overflow-visible group-has-[:focus-visible]:whitespace-normal group-has-[:focus-visible]:text-clip group-has-[:focus-visible]:break-words">
+          {email.sender}
+        </div>
       </div>
       <div className="flex gap-3 mt-2">
         <button
