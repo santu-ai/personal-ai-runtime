@@ -603,8 +603,22 @@ function GoalGroupedList({ goals, selectedId }: { goals: WorkItem[]; selectedId?
   );
 }
 
+/** 和详情徽章同一套说法。列表上圆点只是颜色，这几个字才让这一行读得出来。 */
+const GOAL_STATUS_LABELS: Record<string, string> = {
+  active: "进行中",
+  paused: "已暂停",
+  completed: "已完成",
+};
+
+function goalRowStatus(goal: WorkItem): string {
+  const label = GOAL_STATUS_LABELS[goal.status] ?? goal.status.trim();
+  const stagnant = goal.status === "active" && isStagnant(goal.last_activity_at, goal.created_at);
+  return [label, stagnant ? "已停滞" : ""].filter(Boolean).join(" · ");
+}
+
 function GoalListItem({ goal, selected }: { goal: WorkItem; selected: boolean }) {
   const progressPct = Math.round(goalProgressPercent(goal.progress));
+  const statusText = goalRowStatus(goal);
 
   return (
     <Link
@@ -619,6 +633,7 @@ function GoalListItem({ goal, selected }: { goal: WorkItem; selected: boolean })
     >
       <div className="flex items-center gap-2">
         <span
+          aria-hidden="true"
           className={`h-2 w-2 shrink-0 rounded-full ${
             goal.status === "active"
               ? "bg-success"
@@ -635,7 +650,9 @@ function GoalListItem({ goal, selected }: { goal: WorkItem; selected: boolean })
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg-primary group-focus-visible:overflow-visible group-focus-visible:whitespace-normal group-focus-visible:text-clip group-focus-visible:break-words">
           {goal.title}
         </span>
-        <span className="shrink-0 text-[11px] tabular-nums text-fg-tertiary">{progressPct}%</span>
+        <span className="shrink-0 text-[11px] tabular-nums text-fg-tertiary">
+          {statusText ? `${statusText} ${progressPct}%` : `${progressPct}%`}
+        </span>
       </div>
       {goal.last_activity_at && (
         <div className="ml-4 mt-1 text-xs text-fg-disabled">
