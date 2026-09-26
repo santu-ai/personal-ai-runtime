@@ -32,6 +32,16 @@ const BLOCKED_LINK_PROTOCOLS = new Set(["javascript:", "data:", "vbscript:", "fi
 const focusRing =
   "rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
 
+/** 超过这么多个字，行内代码会把后面顶出气泡，只能横向滚。 */
+const INLINE_CODE_CHARS = 80;
+
+/** 空格和回车不把页面滚走，也不触发旁边的「复制」。组字或输入法处理键时这一下不拦住。 */
+function keepInlineCodeKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
+  if (event.target !== event.currentTarget) return;
+  if (isImeKeyboardEvent(event.nativeEvent)) return;
+  if (event.key === "Enter" || event.key === " ") event.preventDefault();
+}
+
 export function MarkdownLink({ href, children }: { href?: string; children?: React.ReactNode }) {
   if (!href) {
     return <span>{children}</span>;
@@ -90,10 +100,25 @@ function InlineCode({ children }: { children: React.ReactNode }) {
   );
 
   const copyLabel = copied ? "已复制" : "复制";
+  const reveal = text.length > INLINE_CODE_CHARS;
 
   return (
     <code className="relative group bg-surface-overlay px-1.5 py-0.5 rounded text-sm text-insight">
-      {children}
+      {reveal ? (
+        // 焦点落在正文上，不落在整颗 code 上，避免把「复制」当成这一段自己的焦点。
+        <span
+          tabIndex={0}
+          data-inline-code=""
+          title={text}
+          onKeyDown={keepInlineCodeKeysFromScrolling}
+          className="focus-visible:overflow-visible focus-visible:whitespace-pre-wrap focus-visible:break-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring group-has-[:focus-visible]:overflow-visible group-has-[:focus-visible]:whitespace-pre-wrap group-has-[:focus-visible]:break-all"
+        >
+          {/* 超过 80 个字时平时可能横向溢出。键盘落到时写出整段并换行。鼠标悬停仍不换行，整段在 title 里。 */}
+          {children}
+        </span>
+      ) : (
+        children
+      )}
       <button
         type="button"
         onClick={handleCopy}

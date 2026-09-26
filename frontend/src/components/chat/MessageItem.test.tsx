@@ -243,6 +243,77 @@ describe("MessageItem", () => {
     expect(screen.getByRole("button", { name: "已复制" })).toBe(copy);
   });
 
+  it("wraps inline code longer than 80 characters when the keyboard lands on it", () => {
+    const code = "a".repeat(81);
+    render(
+      <MessageItem
+        message={{
+          id: "m11c",
+          role: "assistant",
+          content: `令牌 \`${code}\` 在这`,
+        }}
+      />,
+    );
+
+    const box = document.querySelector("[data-inline-code]");
+    if (!box) throw new Error("missing inline code reveal");
+    expect(box).toHaveAttribute("tabindex", "0");
+    expect(box).toHaveAttribute("title", code);
+    expect(box.tagName).toBe("SPAN");
+    expect(box).toHaveTextContent(code);
+    expect(box).toHaveClass(
+      "focus-visible:whitespace-pre-wrap",
+      "focus-visible:break-all",
+      "focus-visible:outline-none",
+      "focus-visible:ring-2",
+      "focus-visible:ring-focus-ring",
+      "group-has-[:focus-visible]:whitespace-pre-wrap",
+      "group-has-[:focus-visible]:break-all",
+    );
+    expect(box.className).not.toContain("group-hover:");
+    expect(box.closest("button")).toBeNull();
+
+    const copy = screen.getByRole("button", { name: "复制" });
+    expect(copy.closest("[data-inline-code]")).toBeNull();
+    expect(box.parentElement).toContainElement(copy);
+
+    expect(fireEvent.keyDown(box, { key: " " })).toBe(false);
+    expect(fireEvent.keyDown(box, { key: "Enter" })).toBe(false);
+    expect(fireEvent.keyDown(box, { key: "Enter", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "Enter", keyCode: 229 })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "Process" })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: " ", keyCode: 229 })).toBe(true);
+    expect(fireEvent.keyDown(copy, { key: " " })).toBe(true);
+    expect(fireEvent.keyDown(copy, { key: "Enter" })).toBe(true);
+  });
+
+  it("does not add a focus stop when inline code is at most 80 characters", () => {
+    const exact = "b".repeat(80);
+    const { rerender } = render(
+      <MessageItem
+        message={{
+          id: "m11d",
+          role: "assistant",
+          content: `短的 \`${exact}\``,
+        }}
+      />,
+    );
+    expect(document.querySelector("[data-inline-code]")).toBeNull();
+    expect(screen.getByRole("button", { name: "复制" })).toBeInTheDocument();
+    expect(screen.getByText(exact).closest("span[data-inline-code]")).toBeNull();
+
+    rerender(
+      <MessageItem
+        message={{
+          id: "m11d",
+          role: "assistant",
+          content: "用 `echo hi` 试试",
+        }}
+      />,
+    );
+    expect(document.querySelector("[data-inline-code]")).toBeNull();
+  });
+
   it("does not mark inline code as copied when the clipboard write fails", async () => {
     const writeText = vi.fn().mockRejectedValue(new Error("denied"));
     Object.defineProperty(navigator, "clipboard", {
