@@ -108,6 +108,67 @@ describe("TodayActions", () => {
     expect(blank).not.toHaveTextContent("需跟进");
   });
 
+  it("names do and handled icons for the keyboard", () => {
+    renderWithRouter(
+      <TodayActions
+        buckets={buckets({
+          do: [
+            {
+              kind: "goal",
+              id: "g-due",
+              title: "交报告",
+              href: "/goals/g-due",
+              reason: "deadline",
+              progress: 0.2,
+            },
+            {
+              kind: "goal",
+              id: "g-stale",
+              title: "学 Rust",
+              href: "/goals/g-stale",
+              reason: "stagnant",
+              progress: 0.1,
+            },
+          ],
+          handled: [
+            { kind: "morning_brief", id: "mb", title: "早安简报", href: "/dashboard" },
+            { kind: "inbox_digest", id: "dg", title: "收件箱摘要", href: "/inbox" },
+            { kind: "goal_event", id: "gp", title: "目标有进展", href: "/goals/g1" },
+            {
+              kind: "ignored_mail",
+              id: "ignored",
+              title: "2 封可忽略邮件",
+              href: "/inbox",
+              count: 2,
+            },
+          ],
+        })}
+      />,
+    );
+
+    function expectKind(name: string | RegExp, kind: string) {
+      const row = screen.getByRole("link", { name });
+      const icon = row.querySelector("svg");
+      expect(icon).toHaveClass("group-focus-visible:hidden");
+      expect(icon?.getAttribute("class")).not.toContain("group-hover:");
+      const label = row.querySelector("[data-icon-name]");
+      expect(label).toHaveTextContent(kind);
+      expect(label).toHaveAttribute("aria-hidden", "true");
+      expect(label).toHaveClass("hidden", "group-focus-visible:inline");
+      expect(label?.className).not.toContain("group-hover:");
+      return row;
+    }
+
+    const due = expectKind(/交报告/, "目标");
+    expect(due).toHaveTextContent("截止将近");
+    const stale = expectKind(/学 Rust/, "目标");
+    expect(stale).toHaveTextContent("已停滞");
+    expectKind("早安简报", "晨报");
+    expectKind("收件箱摘要", "摘要");
+    expectKind("目标有进展", "目标");
+    expectKind("2 封可忽略邮件", "邮件");
+  });
+
   it("writes the full column title when the row is keyboard focused", () => {
     const decide = "批准把这份还没发出的周报写进共享目录，并记下这次为什么要改截止日";
     const doing = "在周五前把实验图表、结论和还没回的审稿意见收成可以勾掉的清单";
