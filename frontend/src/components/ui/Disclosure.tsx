@@ -29,12 +29,15 @@ export default function Disclosure({
       aria-expanded={open}
       aria-controls={panelId}
       onClick={() => setOpen((v) => !v)}
-      className="w-full flex items-start justify-between gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded-lg"
+      className="group w-full flex items-start justify-between gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded-lg"
     >
       <div className="min-w-0">
         <h3 className="text-sm font-medium text-fg-secondary">{title}</h3>
+        {/* 收起时说明平时只占一行。键盘落到这一栏时写出整句。鼠标悬停仍是一行。 */}
         {description && !open && (
-          <p className="text-xs text-fg-tertiary mt-1 line-clamp-1">{description}</p>
+          <p className="text-xs text-fg-tertiary mt-1 line-clamp-1 group-focus-visible:line-clamp-none group-focus-visible:break-words">
+            {description}
+          </p>
         )}
       </div>
       <ChevronDown
