@@ -13,7 +13,8 @@ function renderComposer(props: Partial<ComponentProps<typeof ChatComposer>> = {}
 describe("ChatComposer", () => {
   it("keeps the timeline focus ring on the field", () => {
     renderComposer();
-    const field = screen.getByPlaceholderText(/输入消息/);
+    const field = screen.getByRole("textbox", { name: "输入消息" });
+    expect(field).toHaveAttribute("aria-label", "输入消息");
     expect(field).toHaveClass("focus-visible:ring-2", "focus-visible:ring-focus-ring");
     expect(field.className.split(/\s+/)).not.toContain("outline-none");
   });
@@ -38,8 +39,9 @@ describe("ChatComposer", () => {
     expect(waiting).toBeDisabled();
     expect(waiting).toHaveAttribute("title", "先在上面确认或取消，才能继续发送");
     expect(waiting).not.toHaveAttribute("aria-busy");
-    const field = screen.getByPlaceholderText(/输入消息/);
+    const field = screen.getByRole("textbox", { name: "输入消息" });
     expect(field).toBeDisabled();
+    expect(field).toHaveAttribute("aria-label", "输入消息");
     expect(field).toHaveAttribute("placeholder", "先在上面确认或取消，暂不能输入消息");
     expect(screen.queryByRole("button", { name: "取消生成" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /思考中/ })).not.toBeInTheDocument();
@@ -49,9 +51,10 @@ describe("ChatComposer", () => {
   it("keeps the field enabled while a send is still in flight", () => {
     const onSend = vi.fn();
     renderComposer({ value: "首页这句", pending: true, onSend });
-    const field = screen.getByPlaceholderText(/输入消息/);
+    const field = screen.getByRole("textbox", { name: "输入消息" });
     const send = screen.getByRole("button", { name: "发送中" });
     expect(field).toBeEnabled();
+    expect(field).toHaveAttribute("aria-label", "输入消息");
     expect(field).toHaveAttribute("aria-busy", "true");
     expect(field).toHaveAttribute("placeholder", "正在发送…，输入消息仍可改");
     expect(send).toBeEnabled();
@@ -86,9 +89,10 @@ describe("ChatComposer", () => {
     const onCancel = vi.fn();
     const onSend = vi.fn();
     renderComposer({ value: "下一句", disabled: true, onSend, onCancel });
-    const field = screen.getByPlaceholderText(/输入消息/);
+    const field = screen.getByRole("textbox", { name: "输入消息" });
     const cancel = screen.getByRole("button", { name: "取消生成" });
     expect(field).toBeEnabled();
+    expect(field).toHaveAttribute("aria-label", "输入消息");
     expect(field).toHaveAttribute("aria-busy", "true");
     expect(field).toHaveAttribute("placeholder", "正在生成，输入消息可以先写下一条");
     expect(cancel).toBeEnabled();
