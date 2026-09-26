@@ -1,4 +1,5 @@
 import { useEffect, type RefObject } from "react";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
 
 const TABBABLE_SELECTOR = [
   "a[href]",
@@ -112,7 +113,7 @@ export function useConfirmFocusContainment<T extends HTMLElement>(
         moveTab(panel, event.shiftKey);
         return;
       }
-      if (event.key !== "Escape" || event.isComposing) return;
+      if (event.key !== "Escape" || isImeKeyboardEvent(event)) return;
       if (!focusIsInside(panel)) return;
       event.preventDefault();
       focusConfirmExit();

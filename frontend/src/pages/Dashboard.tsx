@@ -17,6 +17,7 @@ import TimerBriefPanel from "../components/dashboard/TimerBriefPanel";
 import RemindersPanel from "../components/dashboard/RemindersPanel";
 import HealthPanel from "../components/dashboard/HealthPanel";
 import MonitorsPanel from "../components/dashboard/MonitorsPanel";
+import { isImeKeyboardEvent } from "../utils/imeKey";
 import {
   buildTodayBuckets,
   mergeLiveAndServerNotifications,
@@ -300,7 +301,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (tab === "today") return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.isComposing) return;
+      if (event.key !== "Escape" || isImeKeyboardEvent(event)) return;
       if (isTypingTarget(event.target)) return;
       if (event.target instanceof Element && event.target.closest("[role='dialog']")) return;
       event.preventDefault();

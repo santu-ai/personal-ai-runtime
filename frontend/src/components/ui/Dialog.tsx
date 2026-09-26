@@ -1,6 +1,7 @@
 import { useId, useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import Button from "./Button";
 import { useOverlayDismiss } from "./useOverlayDismiss";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
 
 const SINGLE_LINE_INPUT_TYPES = new Set([
   "text",
@@ -62,8 +63,8 @@ export default function Dialog({
   useOverlayDismiss(open, panelRef, dismiss);
 
   const confirmFromEnter = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    // 组字时的 Enter 交给输入法。多行框仍换行，勾选仍留给空格。
-    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+    // 组字或输入法处理键时的 Enter 交给输入法。多行框仍换行，勾选仍留给空格。
+    if (event.key !== "Enter" || isImeKeyboardEvent(event.nativeEvent)) return;
     if (!isSingleLineTextInput(event.target)) return;
     if (confirmBusy || confirmDisabled) return;
     event.preventDefault();

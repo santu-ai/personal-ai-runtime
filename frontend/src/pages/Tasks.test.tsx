@@ -2113,6 +2113,7 @@ describe("TasksPage", () => {
     const minutes = within(dialog).getByLabelText("分钟");
     hours.focus();
     fireEvent.keyDown(hours, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(hours, { key: "Enter", keyCode: 229 });
     fireEvent.keyDown(hours, { key: "Enter" });
     expect(scheduleBriefRepeat).not.toHaveBeenCalled();
 
@@ -2158,6 +2159,7 @@ describe("TasksPage", () => {
     fireEvent.change(title, { target: { value: "项目 A" } });
     title.focus();
     fireEvent.keyDown(title, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(title, { key: "Enter", keyCode: 229 });
     fireEvent.keyDown(title, { key: "Enter" });
     expect(createProjectBrief).not.toHaveBeenCalled();
 

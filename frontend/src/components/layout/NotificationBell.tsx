@@ -12,6 +12,7 @@ import {
 } from "../../hooks/useNotificationsQuery";
 import { queryKeys } from "../../hooks/useWsInvalidationBridge";
 import { useErrorStore } from "../../stores/errorStore";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
 import NotificationDetailModal from "../notifications/NotificationDetailModal";
 import LoadErrorNotice, { queryErrorMessage, useHeldQueryError } from "../ui/LoadErrorNotice";
 import { notificationPreview } from "../../utils/notificationUtils";
@@ -162,8 +163,8 @@ export default function NotificationBell({ compact = false }: Props) {
         moveTab(current, event.shiftKey);
         return;
       }
-      // 组字时的 Esc 交给输入法。拦住的话，这一下会把下拉关掉。
-      if (event.key !== "Escape" || event.isComposing) return;
+      // 组字或输入法处理键时的 Esc 交给输入法。拦住的话，这一下会把下拉关掉。
+      if (event.key !== "Escape" || isImeKeyboardEvent(event)) return;
       event.preventDefault();
       setOpen(false);
       bellRef.current?.focus();

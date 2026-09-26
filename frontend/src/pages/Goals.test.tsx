@@ -278,6 +278,7 @@ describe("GoalsPage", () => {
     expect(input.className.split(/\s+/)).not.toContain("outline-none");
     fireEvent.change(input, { target: { value: "学习" } });
     fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
     expect(createGoal).not.toHaveBeenCalled();
     expect(input).toHaveValue("学习");
   });
@@ -537,6 +538,7 @@ describe("GoalsPage", () => {
     input.focus();
     fireEvent.change(input, { target: { value: "写测试" } });
     fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
     expect(createGoalAction).not.toHaveBeenCalled();
 
     fireEvent.keyDown(input, { key: "Enter" });

@@ -8,6 +8,7 @@ import Button from "../ui/Button";
 import { goalProgressPercent } from "../../utils/goalProgress";
 import { isStagnant } from "../../utils/timeUtils";
 import { Sparkles } from "lucide-react";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
 
 const statusLabels: Record<string, string> = {
   active: "进行中",
@@ -623,7 +624,7 @@ function NewActionInput({
           setValue(e.target.value);
         }}
         onKeyDown={(e) => {
-          if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+          if (e.key !== "Enter" || isImeKeyboardEvent(e.nativeEvent)) return;
           e.preventDefault();
           void handleSubmit();
         }}

@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
 
 type InitialFocus = "panel" | "field";
 
@@ -123,8 +124,8 @@ export function useOverlayDismiss<T extends HTMLElement>(
         moveTab(current, event.shiftKey);
         return;
       }
-      // 组字时的 Esc 交给输入法。拦住的话，这一下会把对话框关掉。
-      if (event.key !== "Escape" || event.isComposing) return;
+      // 组字或输入法处理键时的 Esc 交给输入法。拦住的话，这一下会把对话框关掉。
+      if (event.key !== "Escape" || isImeKeyboardEvent(event)) return;
       event.preventDefault();
       onDismissRef.current();
     };

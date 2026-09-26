@@ -392,6 +392,7 @@ describe("useOverlayDismiss", () => {
     field.focus();
 
     fireEvent.keyDown(field, { key: "Escape", isComposing: true });
+    fireEvent.keyDown(field, { key: "Escape", keyCode: 229 });
     expect(onDismiss).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog", { name: "面板" })).toBeInTheDocument();
 

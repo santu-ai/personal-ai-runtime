@@ -104,6 +104,7 @@ describe("ConfirmationDialog", () => {
     fireEvent.change(answer, { target: { value: "最近三天" } });
     fireEvent.keyDown(answer, { key: "Enter", metaKey: true, isComposing: true });
     fireEvent.keyDown(answer, { key: "Enter", ctrlKey: true, isComposing: true });
+    fireEvent.keyDown(answer, { key: "Enter", ctrlKey: true, keyCode: 229 });
     expect(onConfirm).not.toHaveBeenCalled();
     expect(answer).toHaveValue("最近三天");
 

@@ -3,6 +3,7 @@ import { Send, Square } from "lucide-react";
 import VoiceInput from "./VoiceInput";
 import Button from "../ui/Button";
 import Spinner from "../ui/Spinner";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
 
 interface ChatComposerProps {
   value: string;
@@ -52,7 +53,8 @@ export default function ChatComposer({
   const actionDisabled = holding ? false : Boolean(disabled) || !value.trim();
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+    // 组字或输入法处理键时的 Enter 交给输入法，不把还没上屏的字发出去。
+    if (e.key === "Enter" && !e.shiftKey && !isImeKeyboardEvent(e.nativeEvent)) {
       e.preventDefault();
       if (!generating && !disabled && !pending) onSend();
     }

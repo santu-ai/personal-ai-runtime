@@ -13,6 +13,7 @@ import LoadErrorNotice, {
   useHeldQueryError,
 } from "../components/ui/LoadErrorNotice";
 import PageHeader from "../components/ui/PageHeader";
+import { isImeKeyboardEvent } from "../utils/imeKey";
 import { goalProgressPercent } from "../utils/goalProgress";
 import { timeAgo, isStagnant } from "../utils/timeUtils";
 import GoalDetailPanel from "../components/goals/GoalDetailPanel";
@@ -406,7 +407,7 @@ export default function GoalsPage() {
                 setNewTitle(e.target.value);
               }}
               onKeyDown={(e) => {
-                if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+                if (e.key !== "Enter" || isImeKeyboardEvent(e.nativeEvent)) return;
                 e.preventDefault();
                 void handleCreateGoal();
               }}

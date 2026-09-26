@@ -433,6 +433,7 @@ describe("ChatView", () => {
     expect(sendAnswer).toBeDisabled();
 
     fireEvent.keyDown(answer, { key: "Escape", isComposing: true });
+    fireEvent.keyDown(answer, { key: "Escape", keyCode: 229 });
     expect(answer).toHaveFocus();
 
     fireEvent.keyDown(answer, { key: "Tab" });

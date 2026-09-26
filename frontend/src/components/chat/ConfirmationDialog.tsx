@@ -5,6 +5,7 @@ import RiskCard from "../approval/RiskCard";
 import { useCapabilityPolicyQuery } from "../../hooks/useSettingsQuery";
 import type { CapabilityPolicy } from "../../api/settings";
 import { getRiskLevelFromPolicy } from "../../utils/riskMeta";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
 import { toolLabel } from "../../utils/toolLabels";
 import type { ToolCall } from "./types";
 
@@ -166,10 +167,10 @@ export default function ConfirmationDialog({
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
                 if (busy) return;
-                // 和快速捕获一样：组字时的 Ctrl/Cmd+Enter 不把还没上屏的字发出去。
+                // 和快速捕获一样：组字或输入法处理键时的 Ctrl/Cmd+Enter 不把还没上屏的字发出去。
                 if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey) || !answer) return;
                 event.preventDefault();
-                if (event.nativeEvent.isComposing) return;
+                if (isImeKeyboardEvent(event.nativeEvent)) return;
                 press(() => onConfirm(answer));
               }}
             />

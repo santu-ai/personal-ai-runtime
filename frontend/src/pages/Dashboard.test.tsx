@@ -1342,6 +1342,7 @@ describe("DashboardPage", () => {
     name.focus();
     fireEvent.change(name, { target: { value: "老板" } });
     fireEvent.keyDown(name, { key: "Escape", isComposing: true });
+    fireEvent.keyDown(name, { key: "Escape", keyCode: 229 });
     fireEvent.keyDown(name, { key: "Escape" });
     expect(screen.getByRole("heading", { name: "监控" })).toBeInTheDocument();
     expect(name).toHaveValue("老板");
