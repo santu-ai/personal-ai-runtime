@@ -214,6 +214,53 @@ describe("MemoriesPage", () => {
     expect(rejectMemory).not.toHaveBeenCalled();
   });
 
+  it("switches the memory view with arrow keys", async () => {
+    renderWithRouter(<MemoriesPage />);
+    const list = await screen.findByRole("tab", { name: "列表" });
+    expect(list).toHaveAttribute("tabindex", "0");
+    expect(screen.getByRole("tab", { name: "待确认" })).toHaveAttribute("tabindex", "-1");
+    list.focus();
+    fireEvent.keyDown(list, { key: "ArrowRight", keyCode: 229 });
+    expect(list).toHaveFocus();
+    expect(
+      screen.queryByText("以下记忆由对话推断而来，确认后才会进入聊天上下文；拒绝则不会再被召回。"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.keyDown(list, { key: "ArrowRight" });
+    const review = screen.getByRole("tab", { name: "待确认" });
+    expect(review).toHaveFocus();
+    expect(review).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByText("以下记忆由对话推断而来，确认后才会进入聊天上下文；拒绝则不会再被召回。"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the view switcher focused while proposed memories are still loading", async () => {
+    let release: ((row: { memories: []; total: number }) => void) | undefined;
+    vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
+      const status = typeof opts === "string" ? opts : opts?.claimStatus;
+      if (status === "proposed") {
+        return new Promise((resolve) => {
+          release = resolve;
+        });
+      }
+      return { memories: [], total: 0 };
+    });
+    renderWithRouter(<MemoriesPage />);
+    const list = await screen.findByRole("tab", { name: "列表" });
+    list.focus();
+    fireEvent.keyDown(list, { key: "ArrowRight" });
+    const review = screen.getByRole("tab", { name: "待确认" });
+    expect(review).toHaveFocus();
+    expect(screen.getByText("加载中…")).toBeInTheDocument();
+    expect(screen.queryByText("没有待确认的记忆。")).not.toBeInTheDocument();
+
+    release?.({ memories: [], total: 0 });
+    expect(await screen.findByText("没有待确认的记忆。")).toBeInTheDocument();
+    expect(review).toHaveFocus();
+    expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
+  });
+
   it("shows the empty memory list after a successful read", async () => {
     vi.mocked(listMemoriesGrouped).mockResolvedValue({ memories: [], total: 0 });
     renderWithRouter(<MemoriesPage />);
