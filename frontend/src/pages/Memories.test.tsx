@@ -625,6 +625,131 @@ describe("MemoriesPage", () => {
     expect(createMemory).toHaveBeenCalledWith({ content: "喜欢喝茶", category: "fact" });
   });
 
+  it("reads 已记住 when remember succeeds and leaves focus in the field", async () => {
+    vi.mocked(createMemory).mockResolvedValue({ id: "m-new", status: "ok" });
+    renderWithRouter(<MemoriesPage />);
+    const input = await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住...");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    input.focus();
+    fireEvent.change(input, { target: { value: "  喜欢喝茶  " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("已记住 喜欢喝茶");
+    expect(status).toHaveClass("sr-only");
+    expect(status).not.toHaveFocus();
+    expect(input).toHaveFocus();
+    expect(input).toHaveValue("");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("does not read 记住中 or a failed remember", async () => {
+    let rejectCreate: (err: unknown) => void = () => {};
+    vi.mocked(createMemory).mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectCreate = reject;
+        }),
+    );
+    renderWithRouter(<MemoriesPage />);
+    const input = await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住...");
+    input.focus();
+    fireEvent.change(input, { target: { value: "喜欢喝茶" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(await screen.findByRole("button", { name: "记住中..." })).toHaveFocus();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    await act(async () => {
+      rejectCreate(new ApiError("创建记忆失败", 500));
+    });
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("创建记忆失败", "记忆"));
+    expect(input).toHaveFocus();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("reads the sentence that was saved when the draft changes during remember", async () => {
+    let release: (row: { id: string; status: string }) => void = () => {};
+    vi.mocked(createMemory).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<MemoriesPage />);
+    const input = await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住...");
+    input.focus();
+    fireEvent.change(input, { target: { value: "喜欢喝茶" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await screen.findByRole("button", { name: "记住中..." });
+    fireEvent.change(input, { target: { value: "喜欢喝茶，也喜欢咖啡" } });
+
+    await act(async () => {
+      release({ id: "m-new", status: "ok" });
+    });
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("已记住 喜欢喝茶");
+    expect(input).toHaveValue("喜欢喝茶，也喜欢咖啡");
+    expect(input).toHaveFocus();
+  });
+
+  it("reads 已记住 again when the same sentence is remembered twice", async () => {
+    vi.mocked(createMemory).mockResolvedValue({ id: "m-new", status: "ok" });
+    renderWithRouter(<MemoriesPage />);
+    const input = await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住...");
+    input.focus();
+    fireEvent.change(input, { target: { value: "喜欢喝茶" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    const first = await screen.findByRole("status");
+    expect(first).toHaveTextContent("已记住 喜欢喝茶");
+
+    fireEvent.change(input, { target: { value: "喜欢喝茶" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(screen.getByRole("status")).not.toBe(first));
+    expect(screen.getByRole("status")).toHaveTextContent("已记住 喜欢喝茶");
+    expect(input).toHaveFocus();
+  });
+
+  it("drops the remember announcement after leaving the list", async () => {
+    vi.mocked(createMemory).mockResolvedValue({ id: "m-new", status: "ok" });
+    renderWithRouter(<MemoriesPage />);
+    const input = await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住...");
+    fireEvent.change(input, { target: { value: "喜欢喝茶" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(await screen.findByRole("status")).toHaveTextContent("已记住 喜欢喝茶");
+
+    fireEvent.click(screen.getByRole("tab", { name: "待确认" }));
+    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("tab", { name: "列表" }));
+    expect(await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住...")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("does not read a remember that finishes after leaving the list", async () => {
+    let release: (row: { id: string; status: string }) => void = () => {};
+    vi.mocked(createMemory).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderWithRouter(<MemoriesPage />);
+    const input = await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住...");
+    fireEvent.change(input, { target: { value: "喜欢喝茶" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await screen.findByRole("button", { name: "记住中..." });
+
+    fireEvent.click(screen.getByRole("tab", { name: "待确认" }));
+    await act(async () => {
+      release({ id: "m-new", status: "ok" });
+    });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "列表" }));
+    expect(await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住...")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
   it("rejects from Enter in the reason field, and ignores IME and a second press", async () => {
     vi.mocked(listMemoriesGrouped).mockImplementation(async (opts) => {
       const status = typeof opts === "string" ? opts : opts?.claimStatus;

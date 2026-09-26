@@ -590,6 +590,9 @@ function NewActionInput({
   const goalIdRef = useRef(goalId);
   const valueRef = useRef("");
   const handoff = useRef<null | "success" | "failed">(null);
+  // 亲手添加成功时读这一句。从建议里点添加不走这里。换目标不再留着。
+  const spokenSeq = useRef(0);
+  const [spokenAdd, setSpokenAdd] = useState<{ id: number; text: string } | null>(null);
 
   useEffect(() => {
     goalIdRef.current = goalId;
@@ -598,6 +601,7 @@ function NewActionInput({
     valueRef.current = "";
     setSaving(false);
     setValue("");
+    setSpokenAdd(null);
   }, [goalId]);
 
   // 清掉步骤会禁用「添加」。放到绘制前，观察 DOM 的那一轮才不会停在已经禁用的按钮上。
@@ -629,9 +633,14 @@ function NewActionInput({
     } finally {
       if (goalIdRef.current === submittedFor) {
         savingRef.current = false;
-        if (ok && valueRef.current === submitted) {
-          valueRef.current = "";
-          setValue("");
+        if (ok) {
+          // 失败不进这里，仍只走右下角提示。「添加中...」仍只写在按钮上。
+          spokenSeq.current += 1;
+          setSpokenAdd({ id: spokenSeq.current, text: `已添加 ${title}` });
+          if (valueRef.current === submitted) {
+            valueRef.current = "";
+            setValue("");
+          }
         }
         handoff.current = ok ? "success" : "failed";
         setSaving(false);
@@ -641,6 +650,12 @@ function NewActionInput({
 
   return (
     <div className="flex gap-2">
+      {spokenAdd ? (
+        <p key={spokenAdd.id} className="sr-only" role="status">
+          {/* 出现时读出来，等当前这一句说完。不把焦点抢过来。 */}
+          {spokenAdd.text}
+        </p>
+      ) : null}
       <input
         value={value}
         data-goal-anchor="action"

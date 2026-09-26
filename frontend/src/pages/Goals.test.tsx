@@ -757,6 +757,95 @@ describe("GoalsPage", () => {
     observer.disconnect();
   });
 
+  it("reads 已添加 when a typed step succeeds and leaves focus in the field", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    vi.mocked(createGoalAction).mockResolvedValue(sampleGoal);
+    renderGoals("/goals/g1");
+    const input = await screen.findByPlaceholderText("添加行动步骤...");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    input.focus();
+    fireEvent.change(input, { target: { value: "  写测试  " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("已添加 写测试");
+    expect(status).toHaveClass("sr-only");
+    expect(status).not.toHaveFocus();
+    expect(input).toHaveFocus();
+    expect(input).toHaveValue("");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("does not read 添加中 or a failed step", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    let rejectCreate: (err: unknown) => void = () => {};
+    vi.mocked(createGoalAction).mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectCreate = reject;
+        }),
+    );
+    renderGoals("/goals/g1");
+    const input = await screen.findByPlaceholderText("添加行动步骤...");
+    input.focus();
+    fireEvent.change(input, { target: { value: "写测试" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(await screen.findByRole("button", { name: "添加中..." })).toHaveFocus();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    await act(async () => {
+      rejectCreate(new ApiError("创建行动步骤失败", 500));
+    });
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("创建行动步骤失败", "目标"));
+    expect(input).toHaveFocus();
+    expect(input).toHaveValue("写测试");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("reads the step that was saved when the draft changes during add", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    let release: (goal: WorkItem) => void = () => {};
+    vi.mocked(createGoalAction).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderGoals("/goals/g1");
+    const input = await screen.findByPlaceholderText("添加行动步骤...");
+    input.focus();
+    fireEvent.change(input, { target: { value: "写测试" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await screen.findByRole("button", { name: "添加中..." });
+    fireEvent.change(input, { target: { value: "写测试，再补文档" } });
+
+    await act(async () => {
+      release(sampleGoal);
+    });
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("已添加 写测试");
+    expect(input).toHaveValue("写测试，再补文档");
+    expect(input).toHaveFocus();
+  });
+
+  it("reads 已添加 again when the same step is added twice", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    vi.mocked(createGoalAction).mockResolvedValue(sampleGoal);
+    renderGoals("/goals/g1");
+    const input = await screen.findByPlaceholderText("添加行动步骤...");
+    input.focus();
+    fireEvent.change(input, { target: { value: "写测试" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    const first = await screen.findByRole("status");
+    expect(first).toHaveTextContent("已添加 写测试");
+
+    fireEvent.change(input, { target: { value: "写测试" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(screen.getByRole("status")).not.toBe(first));
+    expect(screen.getByRole("status")).toHaveTextContent("已添加 写测试");
+    expect(input).toHaveFocus();
+  });
+
   it("keeps text typed during an action save and does not pull focus back", async () => {
     vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
     let release: (goal: WorkItem) => void = () => {};
@@ -1809,6 +1898,7 @@ describe("GoalDetailPanel drafts", () => {
 
     expect(screen.queryByText("不该出现")).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText("添加行动步骤...")).toHaveValue("草稿B");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(createGoalAction).toHaveBeenCalledTimes(1);
     expect(createGoalAction).toHaveBeenCalledWith("g1", "草稿A");
   });
