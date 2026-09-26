@@ -67,6 +67,41 @@ describe("TimelinePage", () => {
     });
   });
 
+  it("writes the same actor names as the memory provenance sentence", async () => {
+    mockList.mockResolvedValue({
+      items: [
+        { ...makeEvent("e-brain", "记下一条", "2026-06-28T08:00:00Z"), actor: "brain" },
+        { ...makeEvent("e-plan", "发起规划", "2026-06-28T08:01:00Z"), actor: "agent:planner" },
+        { ...makeEvent("e-sched", "跑了一轮", "2026-06-28T08:02:00Z"), actor: "scheduler" },
+        { ...makeEvent("e-sys", "整理索引", "2026-06-28T08:03:00Z"), actor: "system" },
+        { ...makeEvent("e-api", "测了连接", "2026-06-28T08:04:00Z"), actor: "api" },
+        { ...makeEvent("e-user", "你写下的", "2026-06-28T08:05:00Z"), actor: "user" },
+        { ...makeEvent("e-bot", "外来的", "2026-06-28T08:06:00Z"), actor: "custom_bot" },
+      ],
+      total: 7,
+      page: 1,
+      page_size: 30,
+      has_more: false,
+      icons: {},
+    });
+    renderWithRouter(<TimelinePage />);
+    const rowOf = (description: string) => {
+      const row = screen.getByText(description).closest(".min-w-0");
+      if (!(row instanceof HTMLElement)) throw new Error(`missing row for ${description}`);
+      return row;
+    };
+
+    await waitFor(() => expect(screen.getByText("记下一条")).toBeInTheDocument());
+    expect(within(rowOf("记下一条")).getByText("AI")).toBeInTheDocument();
+    expect(within(rowOf("发起规划")).getByText("AI")).toBeInTheDocument();
+    expect(within(rowOf("跑了一轮")).getByText("定时")).toBeInTheDocument();
+    expect(within(rowOf("整理索引")).getByText("系统")).toBeInTheDocument();
+    expect(within(rowOf("测了连接")).getByText("本机")).toBeInTheDocument();
+    expect(within(rowOf("外来的")).getByText("custom_bot")).toBeInTheDocument();
+    expect(within(rowOf("你写下的")).queryByText("user")).not.toBeInTheDocument();
+    expect(within(rowOf("你写下的")).queryByText("你")).not.toBeInTheDocument();
+  });
+
   it("shows empty state", async () => {
     mockList.mockResolvedValue({
       items: [],

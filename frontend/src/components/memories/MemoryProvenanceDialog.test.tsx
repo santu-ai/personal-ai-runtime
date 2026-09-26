@@ -35,8 +35,8 @@ async function openChain(events: MemoryProvenanceEvent[]) {
 describe("MemoryProvenanceDialog provenance lines", () => {
   it("writes the full update when that line is keyboard focused", async () => {
     const content = `${"记".repeat(PROVENANCE_UPDATE_PREVIEW)}后面还有`;
-    const preview = `内容由 user 更新为「${"记".repeat(PROVENANCE_UPDATE_PREVIEW)}…」`;
-    const full = `内容由 user 更新为「${content}」`;
+    const preview = `内容由你更新为「${"记".repeat(PROVENANCE_UPDATE_PREVIEW)}…」`;
+    const full = `内容由你更新为「${content}」`;
     await openChain([
       row("MemoryUpdated", { content }),
       row("MemoryDerived", { confidence: 0.9 }, 2),
@@ -66,7 +66,7 @@ describe("MemoryProvenanceDialog provenance lines", () => {
     expect(fireEvent.keyDown(line!, { key: "Process" })).toBe(true);
     expect(fireEvent.keyDown(line!, { key: " ", keyCode: 229 })).toBe(true);
 
-    const derived = screen.getByText("由 user 抽取，置信度 0.90");
+    const derived = screen.getByText("由你抽取，置信度 0.90");
     expect(derived.closest("[data-provenance-preview]")).toBeNull();
     expect(derived).not.toHaveAttribute("tabindex");
   });
@@ -92,7 +92,7 @@ describe("MemoryProvenanceDialog provenance lines", () => {
     const shortRepair = screen.getByText("向量索引修复失败：索引锁住了");
     expect(shortRepair.closest("[data-provenance-preview]")).toBeNull();
     expect(shortRepair).not.toHaveAttribute("tabindex");
-    const shortUpdate = screen.getByText("内容由 user 更新为「短更新」");
+    const shortUpdate = screen.getByText("内容由你更新为「短更新」");
     expect(shortUpdate.closest("[data-provenance-preview]")).toBeNull();
   });
 });
