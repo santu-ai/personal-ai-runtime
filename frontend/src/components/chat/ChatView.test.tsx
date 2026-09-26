@@ -437,6 +437,49 @@ describe("ChatView", () => {
     expect(resolveApproval).not.toHaveBeenCalled();
   });
 
+  it("closes open approval details on Escape before leaving the card", async () => {
+    vi.mocked(sendMessage).mockImplementation(
+      async (_convId, _content, onEvent, _onError, onDone) => {
+        onEvent({
+          type: "confirmation_required",
+          tool_name: "write_file",
+          tool_args: { path: "/tmp/x", content: "data" },
+          approval_id: "ap-details-esc",
+          tool_call_id: "tc-details-esc",
+        });
+        onEvent({ type: "done" });
+        onDone();
+      },
+    );
+
+    renderChatView();
+    fireEvent.change(screen.getByPlaceholderText(/输入消息/), {
+      target: { value: "create a file" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    const argsSummary = await screen.findByText("查看详细参数");
+    const context = screen.getByRole("button", { name: "上下文" });
+    fireEvent.click(argsSummary);
+    const details = argsSummary.closest("details");
+    expect(details).toHaveProperty("open", true);
+    argsSummary.focus();
+    fireEvent.keyDown(argsSummary, { key: "Escape", isComposing: true });
+    fireEvent.keyDown(argsSummary, { key: "Escape", keyCode: 229 });
+    expect(details).toHaveProperty("open", true);
+    expect(context).not.toHaveFocus();
+
+    fireEvent.keyDown(argsSummary, { key: "Escape" });
+    expect(details).toHaveProperty("open", false);
+    expect(argsSummary).toHaveFocus();
+    expect(context).not.toHaveFocus();
+    expect(resolveApproval).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(argsSummary, { key: "Escape" });
+    expect(context).toHaveFocus();
+    expect(resolveApproval).not.toHaveBeenCalled();
+  });
+
   it("skips a disabled ask_user send button while cycling Tab", async () => {
     vi.mocked(sendMessage).mockImplementation(
       async (_convId, _content, onEvent, _onError, onDone) => {
@@ -1062,7 +1105,33 @@ describe("ChatView", () => {
       () => screen.queryByRole("button", { name: "关闭" }) == null,
     );
     close.focus();
+    fireEvent.keyDown(close, { key: "Escape", isComposing: true });
+    fireEvent.keyDown(close, { key: "Escape", keyCode: 229 });
+    expect(screen.getByText("待确认：喜欢喝茶")).toBeInTheDocument();
+    expect(close).toHaveFocus();
     fireEvent.click(close);
+
+    expect(screen.queryByText("待确认：喜欢喝茶")).not.toBeInTheDocument();
+    expect(field).toHaveFocus();
+    expect(document.body).not.toHaveFocus();
+    expect(seen.read()).toBe(field);
+  });
+
+  it("closes 待确认 on Escape and returns focus to the composer", async () => {
+    mockPlainReply("记下了。");
+    const view = mountChatView();
+    await sendFromComposer();
+    await waitFor(() => expect(screen.getByText("记下了。")).toBeInTheDocument());
+
+    growProposedMemory("喜欢喝茶");
+    view.rerenderChat();
+    const close = screen.getByRole("button", { name: "关闭" });
+    const field = screen.getByPlaceholderText(/输入消息/);
+    const seen = captureFocusWhenSettled(
+      () => screen.queryByRole("button", { name: "关闭" }) == null,
+    );
+    close.focus();
+    expect(fireEvent.keyDown(close, { key: "Escape" })).toBe(false);
 
     expect(screen.queryByText("待确认：喜欢喝茶")).not.toBeInTheDocument();
     expect(field).toHaveFocus();
@@ -1401,6 +1470,52 @@ describe("ChatView", () => {
     fireEvent.click(screen.getByRole("button", { name: "收起" }));
     expect(field).toHaveFocus();
     expect(screen.getByRole("button", { name: "上下文" })).not.toHaveFocus();
+  });
+
+  it("closes the context panel on Escape and returns focus to 上下文", async () => {
+    vi.mocked(listWorkItems).mockResolvedValue([
+      {
+        id: "g-esc",
+        title: "把实验笔记收成每周可以核对的目标",
+        status: "active",
+        last_activity_at: "2026-09-01T00:00:00Z",
+      } as WorkItem,
+    ]);
+    vi.mocked(getMessages).mockResolvedValue([
+      {
+        id: "u1",
+        conversation_id: "test-conv-1",
+        role: "user",
+        content: "hello",
+        tool_calls: null,
+        tool_call_id: null,
+        created_at: "2026-08-17T00:00:00Z",
+      },
+    ]);
+    renderChatView();
+    const open = await screen.findByRole("button", { name: "上下文" });
+    const field = screen.getByPlaceholderText(/输入消息/);
+    await waitFor(() => expect(field).toHaveFocus());
+    open.focus();
+    fireEvent.click(open);
+    const goal = await screen.findByRole("link", { name: "把实验笔记收成每周可以核对的目标" });
+    const collapse = screen.getByRole("button", { name: "收起" });
+    goal.focus();
+    fireEvent.keyDown(goal, { key: "Escape", isComposing: true });
+    fireEvent.keyDown(goal, { key: "Escape", keyCode: 229 });
+    expect(collapse).toBeInTheDocument();
+    expect(goal).toHaveFocus();
+
+    field.focus();
+    fireEvent.keyDown(field, { key: "Escape" });
+    expect(screen.getByRole("button", { name: "收起" })).toBeInTheDocument();
+    expect(field).toHaveFocus();
+
+    collapse.focus();
+    fireEvent.keyDown(collapse, { key: "Escape" });
+    expect(screen.queryByRole("button", { name: "收起" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上下文" })).toHaveFocus();
+    vi.mocked(listWorkItems).mockResolvedValue([]);
   });
 
   it("keeps the context toggle out of the proposed-memory banner", async () => {

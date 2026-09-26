@@ -25,6 +25,13 @@ function keepBareKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
   if (event.key === "Enter" || event.key === " ") event.preventDefault();
 }
 
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
 interface Props {
   lastUserMessage?: string;
   toolResults?: ToolResult[];
@@ -104,8 +111,18 @@ export default function ContextPanel({ lastUserMessage, toolResults = [], open, 
 
   if (!open) return null;
 
+  const dismissOnEscape = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key !== "Escape" || isImeKeyboardEvent(event.nativeEvent)) return;
+    if (event.defaultPrevented || isTypingTarget(event.target)) return;
+    event.preventDefault();
+    onToggle();
+  };
+
   return (
-    <aside className="w-72 border-l border-border-subtle bg-surface-raised/50 overflow-y-auto shrink-0 flex flex-col">
+    <aside
+      className="w-72 border-l border-border-subtle bg-surface-raised/50 overflow-y-auto shrink-0 flex flex-col"
+      onKeyDown={dismissOnEscape}
+    >
       <div className="p-3 border-b border-border-subtle flex items-center justify-between">
         <h3 className="text-sm font-medium text-fg-primary">上下文</h3>
         <button

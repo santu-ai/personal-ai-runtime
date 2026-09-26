@@ -96,7 +96,7 @@ function focusConfirmExit() {
 /**
  * 待确认卡片不是对话框。焦点在卡片里时，Tab 与 Shift+Tab 留在卡片里。
  * 焦点已经在别的控件上时不拉回来。焦点掉到页面空白处、且没有别的对话框时，Tab 回到卡片。
- * Esc 离开卡片，不确认也不取消。
+ * Esc 离开卡片，不确认也不取消。卡片里已经展开的详情先自己收起，这一下到不了这里。
  */
 export function useConfirmFocusContainment<T extends HTMLElement>(
   active: boolean,

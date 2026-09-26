@@ -238,6 +238,48 @@ describe("RiskCard", () => {
     expect(screen.getByText(/"path"/)).toBeInTheDocument();
   });
 
+  it("closes the open details on Escape and leaves the summary focused", () => {
+    renderWithRouter(
+      <RiskCard
+        action="write_file"
+        args={JSON.stringify({ path: "/tmp/a.txt", content: "y".repeat(401) })}
+        riskLevel="medium"
+        variant="inline"
+      />,
+    );
+    const argsSummary = screen.getByText("查看详细参数");
+    fireEvent.click(argsSummary);
+    const argsDetails = argsSummary.closest("details");
+    expect(argsDetails).toHaveProperty("open", true);
+    argsSummary.focus();
+    fireEvent.keyDown(argsSummary, { key: "Escape", isComposing: true });
+    fireEvent.keyDown(argsSummary, { key: "Escape", keyCode: 229 });
+    expect(argsDetails).toHaveProperty("open", true);
+
+    expect(fireEvent.keyDown(argsSummary, { key: "Escape" })).toBe(false);
+    expect(argsDetails).toHaveProperty("open", false);
+    expect(argsSummary).toHaveFocus();
+    expect(fireEvent.keyDown(argsSummary, { key: "Escape" })).toBe(true);
+
+    const writeSummary = screen.getByText("查看写入内容");
+    fireEvent.click(writeSummary);
+    const writeDetails = writeSummary.closest("details");
+    expect(writeDetails).toHaveProperty("open", true);
+    const full = screen.getByText("查看完整内容");
+    fireEvent.click(full);
+    const fullDetails = full.closest("details");
+    expect(fullDetails).toHaveProperty("open", true);
+    expect(fullDetails).not.toBe(writeDetails);
+    full.focus();
+    fireEvent.keyDown(full, { key: "Escape" });
+    expect(fullDetails).toHaveProperty("open", false);
+    expect(full).toHaveFocus();
+    expect(writeDetails).toHaveProperty("open", true);
+    fireEvent.keyDown(writeSummary, { key: "Escape" });
+    expect(writeDetails).toHaveProperty("open", false);
+    expect(writeSummary).toHaveFocus();
+  });
+
   it("writes the full detailed args when the keyboard lands, and leaves a short block alone", () => {
     const wide = JSON.stringify({ k: "x".repeat(72) }, null, 2);
     const exact = JSON.stringify({ k: "x".repeat(71) }, null, 2);

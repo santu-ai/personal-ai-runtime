@@ -19,6 +19,7 @@ import LoadErrorNotice from "../ui/LoadErrorNotice";
 import { readComposerDraft, writeComposerDraft } from "./composerDraft";
 import PromptChipFace from "./PromptChipFace";
 import { useConfirmFocusContainment } from "./confirmFocus";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
 
 const SUGGESTION_PREVIEW = 50;
 const MEMORY_NOTICE_PREVIEW = 40;
@@ -635,6 +636,12 @@ export default function ChatView({ conversationId }: Props) {
           ref={memoryNoticeRef}
           data-memory-notice=""
           className="group px-4 py-2 bg-insight/10 border-b border-insight/30 flex items-center gap-2 text-xs text-insight animate-pulse"
+          onKeyDown={(event) => {
+            if (event.key !== "Escape" || isImeKeyboardEvent(event.nativeEvent)) return;
+            if (event.defaultPrevented) return;
+            event.preventDefault();
+            dismissMemoryNotice();
+          }}
         >
           <BrainCircuit size={14} className="shrink-0" />
           <span
