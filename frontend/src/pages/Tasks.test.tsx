@@ -2447,6 +2447,132 @@ describe("TasksPage", () => {
     }
   });
 
+  it("reveals a long delivery source when the keyboard lands, and leaves a short one alone", async () => {
+    const chipExact = "c".repeat(40);
+    const chipLong = "c".repeat(41);
+    const plainExact = "u".repeat(40);
+    const plainLong = "u".repeat(41);
+    const fileExact = "f".repeat(80);
+    const fileLong = "f".repeat(81);
+    const emailEdgeTitle = "边".repeat(69);
+    const emailLongTitle = "题".repeat(70);
+    const cited = {
+      ...currentDelivery,
+      findings: [{ text: "排期推迟", kind: "risk", source_ids: ["email:m1", chipExact, chipLong] }],
+      sources: [
+        { id: "email:m1", type: "email", title: "延期邮件", locator: "a@example.com" },
+        { id: "email:edge", type: "email", title: emailEdgeTitle },
+        { id: "email:long", type: "email", title: emailLongTitle, locator: "b@example.com" },
+        { id: fileExact, type: "file", title: "" },
+        { id: "file:abc", type: "file", title: "纪要", locator: "C:\\notes\\a.md" },
+        { id: fileLong, type: "file", title: "很长的纪要", locator: "C:\\notes\\long.md" },
+      ],
+      changes_from_previous: {
+        previous_delivery_id: "d1",
+        previous_version: 1,
+        summary_changed: false,
+        content_changed: false,
+        findings_added: [],
+        findings_removed: [{ text: "旧结论", kind: "change", source_ids: [plainExact, plainLong] }],
+        findings_changed: [],
+        sources_added: [],
+        sources_removed: [],
+        sources_changed: [],
+        limitations_added: [],
+        limitations_removed: [],
+        actions_added: [],
+        actions_removed: [],
+        actions_changed: [],
+      },
+    };
+    const task: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        ...briefTask.delivery_bundle!,
+        current: cited,
+        deliveries: [historySummary, { ...currentSummary, ...cited }],
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [task];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(task);
+    renderTasks("/tasks/brief_1");
+
+    const longChip = await screen.findByRole("button", { name: `来源 ${chipLong}` });
+    expect(longChip).toHaveAttribute("title", chipLong);
+    expect(longChip).toHaveClass(
+      "truncate",
+      "focus-visible:overflow-visible",
+      "focus-visible:whitespace-normal",
+      "focus-visible:break-all",
+    );
+    expect(longChip.className).not.toContain("group-hover:");
+    expect(fireEvent.keyDown(longChip, { key: "Enter" })).toBe(true);
+    expect(fireEvent.keyDown(longChip, { key: " " })).toBe(true);
+
+    for (const id of ["email:m1", chipExact]) {
+      const chip = screen.getByRole("button", { name: `来源 ${id}` });
+      expect(chip).not.toHaveAttribute("title");
+      expect(chip.className).not.toContain("truncate");
+    }
+
+    const plain = screen.getByText(plainLong);
+    expect(plain).toHaveClass("break-all");
+    expect(plain.closest("button")).toBeNull();
+    expect(plain).not.toHaveAttribute("tabindex");
+    const plainShort = screen.getByText(plainExact);
+    expect(plainShort.className ?? "").not.toContain("break-all");
+    expect(plainShort.closest("[tabindex]")).toBeNull();
+
+    const emailLong = screen.getByRole("button", { name: `打开邮件 ${emailLongTitle}` });
+    const emailLine = `email:long ${emailLongTitle} b@example.com`;
+    expect(emailLong).toHaveAttribute("title", emailLine);
+    const emailReveal = emailLong.querySelector("[data-source-line]");
+    expect(emailReveal).toHaveClass(
+      "truncate",
+      "group-focus-visible:whitespace-normal",
+      "group-focus-visible:break-all",
+    );
+    expect(emailReveal?.className).not.toContain("group-hover:");
+    expect(fireEvent.keyDown(emailLong, { key: "Enter" })).toBe(true);
+    expect(fireEvent.keyDown(emailLong, { key: " " })).toBe(true);
+
+    const emailEdge = screen.getByRole("button", { name: `打开邮件 ${emailEdgeTitle}` });
+    expect(emailEdge).not.toHaveAttribute("title");
+    expect(emailEdge.querySelector("[data-source-line]")).toBeNull();
+    const emailShort = screen.getByRole("button", { name: "打开邮件 延期邮件" });
+    expect(emailShort).not.toHaveAttribute("title");
+    expect(emailShort.querySelector(".truncate")).toBeNull();
+
+    const fileRow = screen.getByTestId(`delivery-source-${fileLong}`);
+    const fileReveal = within(fileRow).getByTitle(`${fileLong} 很长的纪要 C:\\notes\\long.md`);
+    expect(fileReveal).toHaveAttribute("data-source-reveal", "");
+    expect(fileReveal).toHaveAttribute("tabindex", "0");
+    expect(fileReveal).toHaveClass(
+      "focus-visible:outline-none",
+      "focus-visible:ring-2",
+      "focus-visible:ring-focus-ring",
+    );
+    expect(fileReveal.className).not.toContain("group-hover:");
+    expect(fileReveal.closest("button")).toBeNull();
+    expect(fileReveal.querySelector("[data-source-line]")).toHaveClass("truncate");
+    expect(fireEvent.keyDown(fileReveal, { key: " " })).toBe(false);
+    expect(fireEvent.keyDown(fileReveal, { key: "Enter" })).toBe(false);
+    expect(fireEvent.keyDown(fileReveal, { key: " ", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(fileReveal, { key: "Enter", keyCode: 229 })).toBe(true);
+    expect(fireEvent.keyDown(fileReveal, { key: "Process" })).toBe(true);
+
+    const fileEdge = screen.getByTestId(`delivery-source-${fileExact}`);
+    expect(within(fileEdge).queryByRole("button")).not.toBeInTheDocument();
+    expect(fileEdge.querySelector("[data-source-reveal]")).toBeNull();
+    expect(fileEdge.querySelector("[tabindex]")).toBeNull();
+    const fileShort = screen.getByTestId("delivery-source-file:abc");
+    expect(fileShort.querySelector("[data-source-reveal]")).toBeNull();
+    expect(within(fileShort).queryByRole("button")).not.toBeInTheDocument();
+  });
+
   it("navigates current, previous, removed, and body source ids", async () => {
     const cited = {
       ...currentDelivery,
