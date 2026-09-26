@@ -1279,6 +1279,7 @@ describe("SettingsPage", () => {
     expect(install).toBeEnabled();
     expect(install).toHaveFocus();
     expect(install).toHaveTextContent("安装中…");
+    expect(install).toHaveAttribute("aria-label", "安装：brave");
     expect(other).toBeEnabled();
     expect(other).not.toHaveAttribute("aria-busy");
     expect(installMcpConnector).toHaveBeenCalledTimes(1);
@@ -1293,6 +1294,7 @@ describe("SettingsPage", () => {
     );
     expect(install).toBeDisabled();
     expect(install).toHaveTextContent("已安装");
+    expect(install).toHaveAttribute("aria-label", "已安装：brave");
     await waitFor(() => expect(other).toHaveFocus());
     expect(alertSpy).not.toHaveBeenCalled();
     alertSpy.mockRestore();
@@ -1312,7 +1314,7 @@ describe("SettingsPage", () => {
     vi.mocked(installMcpConnector).mockResolvedValue({ ok: true, message: "installed" });
     renderWithRouter(<SettingsPage />);
     await expandSection("MCP 市场");
-    const installed = await screen.findByRole("button", { name: "已安装" });
+    const installed = await screen.findByRole("button", { name: "已安装：brave" });
     expect(installed).toBeDisabled();
     const previous = mcpInstallButton("tavily");
     const install = mcpInstallButton("context7");
@@ -1331,7 +1333,7 @@ describe("SettingsPage", () => {
     vi.mocked(installMcpConnector).mockResolvedValue({ ok: true, message: "installed" });
     renderWithRouter(<SettingsPage />);
     await expandSection("MCP 市场");
-    const install = await screen.findByRole("button", { name: "安装" });
+    const install = await screen.findByRole("button", { name: "安装：brave" });
     install.focus();
     let focusWhenNoticeAppeared: Element | null = null;
     const observer = new MutationObserver(() => {
