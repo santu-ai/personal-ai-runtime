@@ -383,7 +383,7 @@ export default function MemoriesPage() {
     "加载已拒绝记忆失败",
     "rejected",
   );
-  // First visit only — filter changes keep placeholderData so the page stays up.
+  // 第一次打开待确认、还没有数据时为真。筛选再读会带着已有数据，页面留着。
   const reviewInitialLoading = viewMode === "review" && proposedLoading && !proposedData;
   const addError = useErrorStore((s) => s.addError);
   const quickChat = useQuickChat();
@@ -907,11 +907,10 @@ export default function MemoriesPage() {
     memoryPageLayoutFocus.notify?.();
   });
 
-  // 列表或待确认重试一开始会把 isLoading 再置上。已经写出的失败要留在页面上。
-  if (
-    (loading && !shownListError && !shownReviewError) ||
-    (reviewInitialLoading && !shownReviewError)
-  ) {
+  // 列表还没读到时整页还没有视图。待确认第一次还在读时，视图留着，
+  // 否则刚落到「待确认」的焦点会跟着整页「加载中…」卸到空白处。
+  // 列表重试一开始会把 isLoading 再置上。已经写出的失败要留在页面上。
+  if (loading && !shownListError && !shownReviewError) {
     return <div className="flex-1 flex items-center justify-center text-fg-tertiary">加载中…</div>;
   }
 
@@ -957,146 +956,115 @@ export default function MemoriesPage() {
         {viewMode === "portrait" ? (
           <PortraitPanel compact />
         ) : viewMode === "review" ? (
-          <>
-            <p className="text-sm text-fg-secondary">
-              以下记忆由对话推断而来，确认后才会进入聊天上下文；拒绝则不会再被召回。
-            </p>
-            {claimStats && (
-              <p className="text-xs text-fg-tertiary" data-testid="claim-conversion-stats">
-                近 {claimStats.days} 天：确认 {claimStats.ratified} · 拒绝 {claimStats.rejected}
-                {claimStats.auto_expired > 0 && ` · 系统清理 ${claimStats.auto_expired}`}
-                {claimStats.conversion_rate != null &&
-                  ` · 转化率 ${Math.round(claimStats.conversion_rate * 100)}%`}
-                {claimStats.false_positive_rate != null &&
-                  ` · 误报率 ${Math.round(claimStats.false_positive_rate * 100)}%`}
-                {` · 待确认 ${claimStats.proposed_open}`}
+          reviewInitialLoading ? (
+            <p className="py-12 text-center text-sm text-fg-tertiary">加载中…</p>
+          ) : (
+            <>
+              <p className="text-sm text-fg-secondary">
+                以下记忆由对话推断而来，确认后才会进入聊天上下文；拒绝则不会再被召回。
               </p>
-            )}
+              {claimStats && (
+                <p className="text-xs text-fg-tertiary" data-testid="claim-conversion-stats">
+                  近 {claimStats.days} 天：确认 {claimStats.ratified} · 拒绝 {claimStats.rejected}
+                  {claimStats.auto_expired > 0 && ` · 系统清理 ${claimStats.auto_expired}`}
+                  {claimStats.conversion_rate != null &&
+                    ` · 转化率 ${Math.round(claimStats.conversion_rate * 100)}%`}
+                  {claimStats.false_positive_rate != null &&
+                    ` · 误报率 ${Math.round(claimStats.false_positive_rate * 100)}%`}
+                  {` · 待确认 ${claimStats.proposed_open}`}
+                </p>
+              )}
 
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="text-xs text-fg-secondary flex items-center gap-1.5">
-                分类
-                <select
-                  value={reviewCategory}
-                  onChange={(e) => setReviewCategory(e.target.value)}
-                  className="bg-surface-raised border border-border-subtle rounded px-2 py-1 text-sm text-fg-primary focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-                >
-                  <option value="">全部</option>
-                  {Object.entries(CATEGORY_LABELS).map(([key, meta]) => (
-                    <option key={key} value={key}>
-                      {meta.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-xs text-fg-secondary flex items-center gap-1.5">
-                排序
-                <select
-                  value={reviewOrder}
-                  onChange={(e) => setReviewOrder(e.target.value as ReviewOrder)}
-                  className="bg-surface-raised border border-border-subtle rounded px-2 py-1 text-sm text-fg-primary focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-                >
-                  <option value="created_at_desc">最新优先</option>
-                  <option value="created_at_asc">最早优先</option>
-                </select>
-              </label>
-              <span className="text-xs text-fg-tertiary">
-                显示 {proposedMemories.length}
-                {filteredTotal > proposedMemories.length ? ` / 筛选共 ${filteredTotal}` : ""}
-                {proposedTotal !== filteredTotal ? `（全部待确认 ${proposedTotal}）` : ""}
-                {proposedFetching && !proposedLoading ? " · 更新中…" : ""}
-              </span>
-            </div>
-
-            {proposedMemories.length > 0 && (
-              <div className="flex flex-wrap items-center gap-3 py-2 border-y border-border-subtle">
-                <label className="text-sm text-fg-secondary flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={allPageSelected}
-                    onChange={toggleSelectAllPage}
-                    className="rounded border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-                  />
-                  全选当前页（{proposedMemories.length}）
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="text-xs text-fg-secondary flex items-center gap-1.5">
+                  分类
+                  <select
+                    value={reviewCategory}
+                    onChange={(e) => setReviewCategory(e.target.value)}
+                    className="bg-surface-raised border border-border-subtle rounded px-2 py-1 text-sm text-fg-primary focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                  >
+                    <option value="">全部</option>
+                    {Object.entries(CATEGORY_LABELS).map(([key, meta]) => (
+                      <option key={key} value={key}>
+                        {meta.title}
+                      </option>
+                    ))}
+                  </select>
                 </label>
-                <button
-                  type="button"
-                  data-memory-bulk="ratify"
-                  disabled={selectedIds.size === 0}
-                  aria-busy={bulkAction === "ratify" || undefined}
-                  onClick={() => void handleBulk("ratify")}
-                  className={`px-3 py-1.5 text-sm rounded-lg bg-success/15 text-success hover:bg-success/25 disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring${bulkAction === "ratify" ? " opacity-50" : ""}`}
-                >
-                  批量确认（{selectedIds.size}）
-                </button>
-                <button
-                  type="button"
-                  data-memory-bulk="reject"
-                  disabled={selectedIds.size === 0}
-                  aria-busy={bulkAction === "reject" || undefined}
-                  onClick={() => void handleBulk("reject")}
-                  className={`px-3 py-1.5 text-sm rounded-lg bg-surface-overlay text-fg-secondary hover:text-fg-primary disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring${bulkAction === "reject" ? " opacity-50" : ""}`}
-                >
-                  批量拒绝（{selectedIds.size}）
-                </button>
+                <label className="text-xs text-fg-secondary flex items-center gap-1.5">
+                  排序
+                  <select
+                    value={reviewOrder}
+                    onChange={(e) => setReviewOrder(e.target.value as ReviewOrder)}
+                    className="bg-surface-raised border border-border-subtle rounded px-2 py-1 text-sm text-fg-primary focus:border-focus-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                  >
+                    <option value="created_at_desc">最新优先</option>
+                    <option value="created_at_asc">最早优先</option>
+                  </select>
+                </label>
+                <span className="text-xs text-fg-tertiary">
+                  显示 {proposedMemories.length}
+                  {filteredTotal > proposedMemories.length ? ` / 筛选共 ${filteredTotal}` : ""}
+                  {proposedTotal !== filteredTotal ? `（全部待确认 ${proposedTotal}）` : ""}
+                  {proposedFetching && !proposedLoading ? " · 更新中…" : ""}
+                </span>
               </div>
-            )}
 
-            {shownReviewError ? (
-              <LoadErrorNotice
-                message={shownReviewError}
-                busy={proposedFetching}
-                onRetry={() => void refetchReview()}
-                testId="memories-review-load-error"
-              />
-            ) : proposedMemories.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-fg-tertiary text-sm">
-                  {reviewCategory ? "该分类下没有待确认的记忆。" : "没有待确认的记忆。"}
-                </p>
-              </div>
-            ) : (
-              <ul className="space-y-2">
-                {proposedMemories.map((m) => (
-                  <MemoryListItem
-                    key={m.id}
-                    memory={m}
-                    selected={selectedIds.has(m.id)}
-                    onToggleSelect={toggleSelect}
-                    ratifying={ratifying.has(m.id)}
-                    onRatify={handleRatify}
-                    onReject={handleReject}
-                    onEdit={handleEdit}
-                    onDelete={(row) => setDeleteTarget(row)}
-                    chatting={chattingId === m.id}
-                    onContinueChat={handleContinueChat}
-                    onShowProvenance={setProvenanceTarget}
-                  />
-                ))}
-              </ul>
-            )}
+              {proposedMemories.length > 0 && (
+                <div className="flex flex-wrap items-center gap-3 py-2 border-y border-border-subtle">
+                  <label className="text-sm text-fg-secondary flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={allPageSelected}
+                      onChange={toggleSelectAllPage}
+                      className="rounded border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                    />
+                    全选当前页（{proposedMemories.length}）
+                  </label>
+                  <button
+                    type="button"
+                    data-memory-bulk="ratify"
+                    disabled={selectedIds.size === 0}
+                    aria-busy={bulkAction === "ratify" || undefined}
+                    onClick={() => void handleBulk("ratify")}
+                    className={`px-3 py-1.5 text-sm rounded-lg bg-success/15 text-success hover:bg-success/25 disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring${bulkAction === "ratify" ? " opacity-50" : ""}`}
+                  >
+                    批量确认（{selectedIds.size}）
+                  </button>
+                  <button
+                    type="button"
+                    data-memory-bulk="reject"
+                    disabled={selectedIds.size === 0}
+                    aria-busy={bulkAction === "reject" || undefined}
+                    onClick={() => void handleBulk("reject")}
+                    className={`px-3 py-1.5 text-sm rounded-lg bg-surface-overlay text-fg-secondary hover:text-fg-primary disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring${bulkAction === "reject" ? " opacity-50" : ""}`}
+                  >
+                    批量拒绝（{selectedIds.size}）
+                  </button>
+                </div>
+              )}
 
-            {shownRejectedError ? (
-              <div className="pt-4">
+              {shownReviewError ? (
                 <LoadErrorNotice
-                  message={shownRejectedError}
-                  busy={rejectedFetching}
-                  onRetry={() => void refetchRejected()}
-                  testId="memories-rejected-load-error"
-                  autoFocus={false}
+                  message={shownReviewError}
+                  busy={proposedFetching}
+                  onRetry={() => void refetchReview()}
+                  testId="memories-review-load-error"
                 />
-              </div>
-            ) : rejectedMemories.length > 0 ? (
-              <section className="pt-4">
-                <h3 className="text-sm font-semibold text-fg-secondary mb-3">已拒绝</h3>
-                <p className="text-xs text-fg-tertiary mb-2">
-                  拒绝后不会进入对话。若判断有误，可恢复为已确认。
-                </p>
+              ) : proposedMemories.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-fg-tertiary text-sm">
+                    {reviewCategory ? "该分类下没有待确认的记忆。" : "没有待确认的记忆。"}
+                  </p>
+                </div>
+              ) : (
                 <ul className="space-y-2">
-                  {rejectedMemories.map((m) => (
+                  {proposedMemories.map((m) => (
                     <MemoryListItem
                       key={m.id}
                       memory={m}
+                      selected={selectedIds.has(m.id)}
+                      onToggleSelect={toggleSelect}
                       ratifying={ratifying.has(m.id)}
                       onRatify={handleRatify}
                       onReject={handleReject}
@@ -1108,9 +1076,44 @@ export default function MemoriesPage() {
                     />
                   ))}
                 </ul>
-              </section>
-            ) : null}
-          </>
+              )}
+
+              {shownRejectedError ? (
+                <div className="pt-4">
+                  <LoadErrorNotice
+                    message={shownRejectedError}
+                    busy={rejectedFetching}
+                    onRetry={() => void refetchRejected()}
+                    testId="memories-rejected-load-error"
+                    autoFocus={false}
+                  />
+                </div>
+              ) : rejectedMemories.length > 0 ? (
+                <section className="pt-4">
+                  <h3 className="text-sm font-semibold text-fg-secondary mb-3">已拒绝</h3>
+                  <p className="text-xs text-fg-tertiary mb-2">
+                    拒绝后不会进入对话。若判断有误，可恢复为已确认。
+                  </p>
+                  <ul className="space-y-2">
+                    {rejectedMemories.map((m) => (
+                      <MemoryListItem
+                        key={m.id}
+                        memory={m}
+                        ratifying={ratifying.has(m.id)}
+                        onRatify={handleRatify}
+                        onReject={handleReject}
+                        onEdit={handleEdit}
+                        onDelete={(row) => setDeleteTarget(row)}
+                        chatting={chattingId === m.id}
+                        onContinueChat={handleContinueChat}
+                        onShowProvenance={setProvenanceTarget}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+            </>
+          )
         ) : viewMode === "list" ? (
           <>
             <div className="flex gap-2">
