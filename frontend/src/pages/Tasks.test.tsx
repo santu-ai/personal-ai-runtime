@@ -1150,9 +1150,9 @@ describe("TasksPage", () => {
     expect(await screen.findByText("有进度风险")).toBeInTheDocument();
     expect(screen.getByText(/完整正文超过预览长度/)).toBeInTheDocument();
     expect(screen.getByText("email:m1")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "转为任务" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /转为任务/ })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "转为任务" }));
+    fireEvent.click(screen.getByRole("button", { name: /转为任务/ }));
     await waitFor(() => {
       expect(adoptSuggestedAction).toHaveBeenCalledWith(
         "brief_1",
@@ -1195,7 +1195,7 @@ describe("TasksPage", () => {
     vi.mocked(getWorkItem).mockResolvedValue(adopted);
     renderTasks("/tasks/brief_1");
 
-    const link = await screen.findByRole("link", { name: "已转为任务" });
+    const link = await screen.findByRole("link", { name: /已转为任务/ });
     expect(link).toHaveAttribute("href", "/tasks/task%2F2");
     expect(link).toHaveClass(
       "focus-visible:outline-none",
@@ -1210,7 +1210,56 @@ describe("TasksPage", () => {
         .getByText("已转为任务")
         .closest("a"),
     ).toBeNull();
-    expect(screen.getByRole("button", { name: "转为任务" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /转为任务/ })).toBeInTheDocument();
+  });
+
+  it("names 转为任务 with the suggestion and wraps the title in the row", async () => {
+    const title = `核对${"排".repeat(80)}期`;
+    const reason = `因为${"邮".repeat(40)}件`;
+    const named: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        ...briefTask.delivery_bundle!,
+        current: {
+          ...currentDelivery,
+          suggested_actions: [
+            { title, reason, source_ids: ["email:m1"] },
+            { title: "   ", reason: "  " },
+            { title: "核对排期", reason: "  邮件提到延期  ", adopted_work_id: "task/2" },
+            { title: "   ", adopted_work_id: "task/3" },
+          ],
+        },
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [named];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(named);
+    renderTasks("/tasks/brief_1");
+
+    const adopt = await screen.findByRole("button", { name: `转为任务：${title} — ${reason}` });
+    expect(adopt).toHaveTextContent(/^转为任务$/);
+    expect(adopt).toHaveClass("shrink-0");
+    const sentence = adopt.closest("li")?.querySelector(":scope > span");
+    expect(sentence).toHaveTextContent(title);
+    expect(sentence).toHaveTextContent(reason);
+    expect(sentence).toHaveClass("min-w-0", "flex-1", "break-words");
+    expect(sentence?.className).not.toContain("truncate");
+    expect(sentence).not.toHaveAttribute("tabindex");
+    expect(screen.getByRole("button", { name: "来源 email:m1" })).toBeInTheDocument();
+
+    const plain = screen.getByRole("button", { name: "转为任务" });
+    expect(plain).not.toHaveAttribute("aria-label");
+    expect(plain).toHaveTextContent("转为任务");
+
+    const link = screen.getByRole("link", { name: "已转为任务：核对排期 — 邮件提到延期" });
+    expect(link).toHaveAttribute("href", "/tasks/task%2F2");
+    expect(link).toHaveTextContent("已转为任务");
+    expect(link.textContent).not.toContain("核对排期");
+    const untitled = screen.getByRole("link", { name: "已转为任务" });
+    expect(untitled).toHaveAttribute("href", "/tasks/task%2F3");
+    expect(untitled).not.toHaveAttribute("aria-label");
   });
 
   it("sends a trimmed acceptance note", async () => {
@@ -3413,7 +3462,7 @@ describe("TasksPage", () => {
     renderTasks("/tasks/brief_1");
 
     expect(await screen.findByText("近 30 日简报")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "转为任务" }));
+    fireEvent.click(screen.getByRole("button", { name: /转为任务/ }));
     await waitFor(() => expect(addError).toHaveBeenCalledWith("指标暂时读不到", "任务"));
     expect(screen.getByText("近 30 日简报")).toBeInTheDocument();
     expect(screen.getByText("首版采纳 50%（1/2）")).toBeInTheDocument();
@@ -4518,7 +4567,7 @@ describe("TasksPage", () => {
         }),
     );
     renderTasks("/tasks/brief_1");
-    const adoptButtons = await screen.findAllByRole("button", { name: "转为任务" });
+    const adoptButtons = await screen.findAllByRole("button", { name: /转为任务/ });
     expect(adoptButtons).toHaveLength(2);
     const first = adoptButtons[0];
     const second = adoptButtons[1];
@@ -4537,16 +4586,16 @@ describe("TasksPage", () => {
     expect(adoptSuggestedAction).toHaveBeenCalledTimes(1);
 
     const focusWhenGone = captureFocusWhenGone(
-      () => screen.queryAllByRole("button", { name: "转为任务" }).length < 2,
+      () => screen.queryAllByRole("button", { name: /转为任务/ }).length < 2,
     );
     await act(async () => {
       release();
     });
-    const link = await screen.findByRole("link", { name: "已转为任务" });
+    const link = await screen.findByRole("link", { name: /已转为任务/ });
     expect(focusWhenGone.read()).toBe(link);
     expect(link).toHaveFocus();
     expect(link).toHaveAttribute("href", "/tasks/todo_1");
-    expect(screen.getByRole("button", { name: "转为任务" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /转为任务/ })).toBeInTheDocument();
     expect(adoptSuggestedAction).toHaveBeenCalledTimes(1);
   });
 
@@ -4570,9 +4619,9 @@ describe("TasksPage", () => {
     renderTasks("/tasks/brief_1");
     fireEvent.click(await screen.findByRole("button", { name: "验收" }));
     const dialog = await screen.findByRole("dialog", { name: "验收交付" });
-    fireEvent.click(screen.getByRole("button", { name: "转为任务" }));
+    fireEvent.click(screen.getByRole("button", { name: /转为任务/ }));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "转为任务" })).toHaveAttribute("aria-busy", "true"),
+      expect(screen.getByRole("button", { name: /转为任务/ })).toHaveAttribute("aria-busy", "true"),
     );
     fireEvent.click(within(dialog).getByRole("button", { name: "确认验收" }));
     expect(acceptWorkDelivery).not.toHaveBeenCalled();
@@ -4583,7 +4632,7 @@ describe("TasksPage", () => {
       release();
     });
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "转为任务" })).not.toHaveAttribute("aria-busy"),
+      expect(screen.getByRole("button", { name: /转为任务/ })).not.toHaveAttribute("aria-busy"),
     );
     fireEvent.click(within(dialog).getByRole("button", { name: "确认验收" }));
     await waitFor(() => expect(acceptWorkDelivery).toHaveBeenCalledTimes(1));
@@ -4619,7 +4668,7 @@ describe("TasksPage", () => {
         }),
     );
     renderTasks("/tasks/brief_1");
-    const adopt = await screen.findByRole("button", { name: "转为任务" });
+    const adopt = await screen.findByRole("button", { name: /转为任务/ });
     const accept = screen.getByRole("button", { name: "验收" });
     adopt.focus();
     fireEvent.click(adopt);
@@ -4628,7 +4677,7 @@ describe("TasksPage", () => {
       release();
     });
     await waitFor(() =>
-      expect(screen.queryByRole("button", { name: "转为任务" })).not.toBeInTheDocument(),
+      expect(screen.queryByRole("button", { name: /转为任务/ })).not.toBeInTheDocument(),
     );
     expect(screen.getByText("已转为任务").closest("a")).toBeNull();
     expect(accept).toHaveFocus();
@@ -4665,14 +4714,14 @@ describe("TasksPage", () => {
         }),
     );
     renderTasks("/tasks/brief_1");
-    const adopt = await screen.findByRole("button", { name: "转为任务" });
+    const adopt = await screen.findByRole("button", { name: /转为任务/ });
     adopt.focus();
     fireEvent.click(adopt);
     await act(async () => {
       release();
     });
     await waitFor(() =>
-      expect(screen.queryByRole("button", { name: "转为任务" })).not.toBeInTheDocument(),
+      expect(screen.queryByRole("button", { name: /转为任务/ })).not.toBeInTheDocument(),
     );
     await waitFor(() => expect(currentTaskLink()).toHaveFocus());
   });
@@ -4687,7 +4736,7 @@ describe("TasksPage", () => {
         }),
     );
     renderTasks("/tasks/brief_1");
-    const adopt = await screen.findByRole("button", { name: "转为任务" });
+    const adopt = await screen.findByRole("button", { name: /转为任务/ });
     adopt.focus();
     fireEvent.click(adopt);
     fireEvent.click(adopt);
@@ -4961,10 +5010,10 @@ describe("TasksPage", () => {
         bundle: box.item.delivery_bundle!,
       };
     });
-    fireEvent.click(screen.getByRole("button", { name: "转为任务" }));
-    expect(await screen.findByRole("link", { name: "已转为任务" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /转为任务/ }));
+    expect(await screen.findByRole("link", { name: /已转为任务/ })).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent(/^已验收$/);
-    expect(screen.queryByRole("status", { name: "已转为任务" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: /已转为任务/ })).not.toBeInTheDocument();
   });
 
   it("drops the last status when another task opens and does not read the one already there", async () => {
