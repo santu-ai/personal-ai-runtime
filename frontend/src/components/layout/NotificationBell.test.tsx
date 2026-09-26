@@ -177,6 +177,54 @@ describe("NotificationBell", () => {
     expect(body).toHaveClass("line-clamp-2", "group-focus-visible:line-clamp-none");
     expect(body?.className).not.toContain("group-hover:");
     expect(row).toHaveClass("group");
+    expect(row).toHaveAttribute("aria-label", `未读 待审批 ${content}`);
+    expect(row.textContent).not.toContain("未读");
+  });
+
+  it("names an unread row and a read row without the type or the id", async () => {
+    listNotifications.mockResolvedValue([
+      {
+        ...sample,
+        id: "n-unread",
+        title: "  前  后  ",
+        content: " \n 正文 \n ",
+        type: "approval",
+        read: 0,
+      },
+      {
+        ...sample,
+        id: "n-read",
+        title: "  前  后  ",
+        content: " \n 正文 \n ",
+        type: "approval",
+        read: 1,
+      },
+      {
+        ...sample,
+        id: "n-blank",
+        title: "   ",
+        content: "[[related:work_1]]   ",
+        type: "reminder",
+        read: 0,
+      },
+    ]);
+    renderWithRouter(<NotificationBell />);
+    fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
+    const unread = await screen.findByRole("button", { name: /未读 前\s+后 正文/ });
+    const read = screen.getByRole("button", { name: /已读 前\s+后 正文/ });
+    const blank = screen.getByRole("button", { name: "未读" });
+    expect(unread).toHaveAttribute("aria-label", "未读 前  后 正文");
+    expect(read).toHaveAttribute("aria-label", "已读 前  后 正文");
+    expect(unread.getAttribute("aria-label")).not.toContain("approval");
+    expect(unread.getAttribute("aria-label")).not.toContain("n-unread");
+    expect(unread.textContent).toContain("前  后");
+    expect(unread.textContent).toContain("正文");
+    expect(unread.textContent).not.toContain("未读");
+    expect(read).toHaveClass("opacity-60");
+    expect(read.textContent).not.toContain("已读");
+    expect(blank).toHaveAttribute("aria-label", "未读");
+    expect(blank.textContent?.replace(/\s/g, "")).toBe("");
+    expect(screen.getByRole("button", { name: /^通知/ })).toHaveAttribute("aria-label", "通知 2");
   });
 
   it("moves focus into the panel and returns it to the bell on Escape", async () => {

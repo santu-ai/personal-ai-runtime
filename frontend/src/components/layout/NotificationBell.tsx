@@ -15,7 +15,7 @@ import { useErrorStore } from "../../stores/errorStore";
 import { isImeKeyboardEvent } from "../../utils/imeKey";
 import NotificationDetailModal from "../notifications/NotificationDetailModal";
 import LoadErrorNotice, { queryErrorMessage, useHeldQueryError } from "../ui/LoadErrorNotice";
-import { notificationPreview } from "../../utils/notificationUtils";
+import { notificationPreview, notificationRowName } from "../../utils/notificationUtils";
 
 const NOTIFICATION_LIST_LIMIT = 15;
 
@@ -333,6 +333,7 @@ export default function NotificationBell({ compact = false }: Props) {
                   type="button"
                   data-notification-row={n.id}
                   onClick={() => handleOpenDetail(n)}
+                  aria-label={notificationRowName(n.title, n.content, n.read)}
                   className={`group w-full text-left px-3 py-2.5 hover:bg-surface-hover border-b border-border-subtle last:border-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus-ring ${
                     n.read ? "opacity-60" : ""
                   }`}
