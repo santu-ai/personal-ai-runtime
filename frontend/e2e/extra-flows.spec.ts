@@ -112,7 +112,7 @@ test.describe("Extra core flows", () => {
     });
 
     await page.goto("/");
-    await page.getByRole("button", { name: "通知" }).click();
+    await page.getByRole("button", { name: "通知 1", exact: true }).click();
     await expect(page.getByText("目标停滞提醒")).toBeVisible({ timeout: 5000 });
     await page.getByText("目标停滞提醒").click();
     await expect(page.getByRole("heading", { name: "目标停滞提醒" })).toBeVisible({
