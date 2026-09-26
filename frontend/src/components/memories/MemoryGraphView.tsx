@@ -1,6 +1,13 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import type { MemoryGraph } from "../../api/client";
 import { isImeKeyboardEvent } from "../../utils/imeKey";
+import { CATEGORY_LABELS, getCategoryMeta } from "./MemoryListItem";
 
 /**
  * Simple deterministic force-directed graph layout.
@@ -129,10 +136,11 @@ function graphCaptionFrame(
   content: string,
   canvasWidth: number,
   canvasHeight: number,
+  extraLines = 0,
 ): { x: number; y: number; width: number; height: number } {
   const width = Math.min(GRAPH_CAPTION_WIDTH, Math.max(32, canvasWidth - 16));
   const lineHeight = 16;
-  const lines = Math.max(1, Math.ceil(content.length / 18));
+  const lines = Math.max(1, Math.ceil(content.length / 18)) + extraLines;
   const needed = lines * lineHeight + 4;
   const maxHeight = Math.max(lineHeight + 4, canvasHeight - 16);
   const height = Math.min(needed, maxHeight);
@@ -152,9 +160,42 @@ const CATEGORY_COLORS: Record<string, string> = {
   event: "#f59e0b", // warning — 经历过的事件（需要回忆）
   goal: "#6366f1", // insight — 目标（AI 追踪）
 };
+const FALLBACK_NODE_COLOR = "#6b7280";
+
+/** 和列表同一套说法。没有分类时不另起名字。不认识的仍用原来的字。 */
+function categoryTitle(category: string): string | null {
+  const key = category.trim();
+  if (!key) return null;
+  const title = getCategoryMeta(key).title.trim();
+  return title || null;
+}
+
+function categoryColor(category: string): string {
+  return CATEGORY_COLORS[category] ?? FALLBACK_NODE_COLOR;
+}
+
+/** 只列这一张图里有的分类。顺序跟列表相同，不认识的排在后面。 */
+function legendCategories(nodes: MemoryGraph["nodes"]): string[] {
+  const order = Object.keys(CATEGORY_LABELS);
+  const seen = new Set<string>();
+  for (const node of nodes) {
+    const key = node.category.trim();
+    if (!categoryTitle(key)) continue;
+    seen.add(key);
+  }
+  return [...seen].sort((a, b) => {
+    const ia = order.indexOf(a);
+    const ib = order.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b);
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+}
 
 export default function MemoryGraphView({ graph }: { graph: MemoryGraph }) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const legendTitleId = useId();
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [focusedNode, setFocusedNode] = useState<string | null>(null);
   const [tabId, setTabId] = useState<string | null>(null);
@@ -226,13 +267,14 @@ export default function MemoryGraphView({ graph }: { graph: MemoryGraph }) {
         {graph.nodes.map((node) => {
           const pos = positions[node.id];
           if (!pos) return null;
-          const color = CATEGORY_COLORS[node.category] || "#6b7280";
+          const color = categoryColor(node.category);
+          const title = categoryTitle(node.category);
           const isHovered = hoveredNode === node.id;
           const isFocused = focusedNode === node.id;
           const revealed = isHovered || isFocused;
           const clipped = clippedGraphLabel(node.content);
           const caption = clipped
-            ? graphCaptionFrame(pos.x, pos.y, node.content, width, height)
+            ? graphCaptionFrame(pos.x, pos.y, node.content, width, height, title ? 1 : 0)
             : null;
           return (
             <g
@@ -240,7 +282,7 @@ export default function MemoryGraphView({ graph }: { graph: MemoryGraph }) {
               role="button"
               tabIndex={node.id === tabTarget ? 0 : -1}
               data-memory-node={node.id}
-              aria-label={node.content}
+              aria-label={title ? `${title}，${node.content}` : node.content}
               onMouseEnter={() => setHoveredNode(node.id)}
               onMouseLeave={() => setHoveredNode(null)}
               onFocus={() => {
@@ -277,6 +319,22 @@ export default function MemoryGraphView({ graph }: { graph: MemoryGraph }) {
                   {clipped ?? node.content}
                 </text>
               )}
+              {revealed && title ? (
+                <text
+                  x={pos.x}
+                  y={pos.y - 36}
+                  textAnchor="middle"
+                  fill="#9aa3b5"
+                  fontSize={11}
+                  className={
+                    clipped
+                      ? "pointer-events-none group-focus-visible:hidden"
+                      : "pointer-events-none"
+                  }
+                >
+                  {title}
+                </text>
+              ) : null}
               {revealed && caption && (
                 <foreignObject
                   x={caption.x}
@@ -288,7 +346,8 @@ export default function MemoryGraphView({ graph }: { graph: MemoryGraph }) {
                   className="pointer-events-none hidden overflow-visible group-focus-visible:block"
                 >
                   <div className="break-words text-center text-[11px] leading-snug text-[#f3f4f6]">
-                    {node.content}
+                    {title ? <div className="text-[#9aa3b5]">{title}</div> : null}
+                    <div>{node.content}</div>
                   </div>
                 </foreignObject>
               )}
@@ -297,15 +356,23 @@ export default function MemoryGraphView({ graph }: { graph: MemoryGraph }) {
         })}
       </svg>
 
-      {/* Legend */}
+      {/* 图例写出和列表相同的分类。这一张图里没有的不写。圆点只是颜色。 */}
       <div className="absolute top-4 right-4 bg-surface-overlay/80 rounded-lg p-3 text-xs">
-        <div className="font-medium text-fg-primary mb-2">类别</div>
-        {Object.entries(CATEGORY_COLORS).map(([cat, color]) => (
-          <div key={cat} className="flex items-center gap-2 text-fg-secondary">
-            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
-            {cat}
-          </div>
-        ))}
+        <div id={legendTitleId} className="font-medium text-fg-primary mb-2">
+          类别
+        </div>
+        <ul aria-labelledby={legendTitleId} data-memory-legend="" className="space-y-0.5">
+          {legendCategories(graph.nodes).map((cat) => (
+            <li key={cat} className="flex items-center gap-2 text-fg-secondary">
+              <span
+                aria-hidden="true"
+                className="w-3 h-3 rounded-full"
+                style={{ backgroundColor: categoryColor(cat) }}
+              />
+              <span data-memory-legend-name="">{categoryTitle(cat)}</span>
+            </li>
+          ))}
+        </ul>
       </div>
 
       {/* Stats */}
