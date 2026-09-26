@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import {
   updateEmailSettings,
   testEmailConnection,
@@ -12,6 +12,19 @@ import Badge from "../ui/Badge";
 import { Input, PasswordInput } from "../ui/Input";
 
 const MASKED_SECRET = "••••••••";
+
+/** 旁边已经写着的名字连到这一栏。点名字会进去，读屏也读出这个名字。 */
+function NamedField({ label, children }: { label: string; children: (id: string) => ReactNode }) {
+  const id = useId();
+  return (
+    <div>
+      <label htmlFor={id} className="text-xs text-fg-tertiary block mb-1">
+        {label}
+      </label>
+      {children(id)}
+    </div>
+  );
+}
 
 interface Props {
   email: EmailSettingsResponse;
@@ -103,33 +116,39 @@ export default function EmailConfigCard({ email, onSaved, embedded = false }: Pr
       </p>
 
       <div className="space-y-3">
-        <div>
-          <label className="text-xs text-fg-tertiary block mb-1">Gmail 地址</label>
-          <Input
-            type="email"
-            value={emailUser}
-            onChange={(e) => {
-              setEmailUser(e.target.value);
-              markDirty();
-            }}
-            placeholder="your-email@gmail.com"
-          />
-        </div>
-        <div>
-          <label className="text-xs text-fg-tertiary block mb-1">应用专用密码</label>
-          <PasswordInput
-            value={emailPass}
-            isSavedSecret={emailPass === MASKED_SECRET}
-            onChange={(e) => {
-              setEmailPass(e.target.value);
-              markDirty();
-            }}
-            placeholder="16 位应用专用密码"
-          />
-          {emailPass === MASKED_SECRET && (
-            <p className="text-xs text-fg-disabled mt-1">已保存密码，留空则不修改</p>
+        <NamedField label="Gmail 地址">
+          {(id) => (
+            <Input
+              id={id}
+              type="email"
+              value={emailUser}
+              onChange={(e) => {
+                setEmailUser(e.target.value);
+                markDirty();
+              }}
+              placeholder="your-email@gmail.com"
+            />
           )}
-        </div>
+        </NamedField>
+        <NamedField label="应用专用密码">
+          {(id) => (
+            <>
+              <PasswordInput
+                id={id}
+                value={emailPass}
+                isSavedSecret={emailPass === MASKED_SECRET}
+                onChange={(e) => {
+                  setEmailPass(e.target.value);
+                  markDirty();
+                }}
+                placeholder="16 位应用专用密码"
+              />
+              {emailPass === MASKED_SECRET && (
+                <p className="text-xs text-fg-disabled mt-1">已保存密码，留空则不修改</p>
+              )}
+            </>
+          )}
+        </NamedField>
       </div>
 
       {emailTestResult && (
