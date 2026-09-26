@@ -532,6 +532,7 @@ describe("TasksPage", () => {
 
     expect(await screen.findByText("最近一步输出（预览）")).toBeInTheDocument();
     expect(screen.getByText("wrote draft")).toBeInTheDocument();
+    expect(screen.getByText("wrote draft").closest("[data-output-preview]")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "执行" }));
     expect(await screen.findByText("确认执行计划")).toBeInTheDocument();
@@ -541,6 +542,60 @@ describe("TasksPage", () => {
     await waitFor(() => {
       expect(executeWorkItem).toHaveBeenCalledWith("task_1");
     });
+  });
+
+  it("writes the full step output when the keyboard lands, and keeps a short preview otherwise", async () => {
+    const raw = `  ${"字".repeat(200)}\n${"字".repeat(41)}  `;
+    const long = raw.replace(/\s+/g, " ").trim();
+    const exact = "字".repeat(240);
+    vi.mocked(getWorkItem).mockResolvedValue({
+      ...sampleTask,
+      execution: {
+        ...sampleTask.execution!,
+        previous_output: {
+          step_long: raw,
+          step_exact: exact,
+          step_short: "  hello \n world ",
+          step_object: { note: "ok" },
+        },
+      },
+    });
+    renderTasks("/tasks/task_1");
+
+    const box = await screen.findByTitle(long);
+    expect(box).toHaveAttribute("data-output-preview", "");
+    expect(box).toHaveAttribute("tabindex", "0");
+    expect(box).toHaveClass(
+      "group",
+      "focus-visible:outline-none",
+      "focus-visible:ring-2",
+      "focus-visible:ring-focus-ring",
+    );
+    expect(box.className).not.toContain("group-hover:");
+    expect(box.closest("button")).toBeNull();
+    const preview = `${long.slice(0, 239)}…`;
+    const short = box.querySelector(".group-focus-visible\\:hidden");
+    const full = box.querySelector(".group-focus-visible\\:block");
+    expect(short).toHaveTextContent(preview);
+    expect(short).toHaveClass("group-focus-visible:hidden");
+    expect(short?.className).not.toContain("group-hover:");
+    expect(full).toHaveTextContent(long);
+    expect(full).toHaveClass("hidden", "group-focus-visible:block");
+    expect(full?.textContent).toBe(long);
+    expect(long.includes("\n")).toBe(false);
+    expect(raw.includes("\n")).toBe(true);
+
+    expect(screen.getByText(exact)).not.toHaveAttribute("tabindex");
+    expect(screen.getByText(exact).closest("[data-output-preview]")).toBeNull();
+    expect(screen.getByText("hello world").closest("[data-output-preview]")).toBeNull();
+    expect(screen.getByText('{"note":"ok"}').closest("[data-output-preview]")).toBeNull();
+
+    expect(fireEvent.keyDown(box, { key: " " })).toBe(false);
+    expect(fireEvent.keyDown(box, { key: "Enter" })).toBe(false);
+    expect(fireEvent.keyDown(box, { key: "Enter", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "Enter", keyCode: 229 })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "Process" })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: " ", keyCode: 229 })).toBe(true);
   });
 
   it("shows the handler error already stored on the execution row", async () => {
