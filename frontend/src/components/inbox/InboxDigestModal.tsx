@@ -1,14 +1,56 @@
-import { useId, useRef } from "react";
+import { isValidElement, useId, useRef, type KeyboardEvent, type ReactNode } from "react";
 import type { Components } from "react-markdown";
 import Button from "../ui/Button";
 import { MarkdownLink } from "../chat/MessageItem";
 import { useOverlayDismiss } from "../ui/useOverlayDismiss";
 import { LazyMarkdown } from "../chat/LazyMarkdown";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
+
+/** 某一行超过这么多个字，摘要里的成段代码会横向滚动，后面藏起来。 */
+const DIGEST_CODE_LINE_CHARS = 80;
+
+function nodeText(node: ReactNode): string {
+  if (node == null || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(nodeText).join("");
+  if (isValidElement<{ children?: ReactNode }>(node)) return nodeText(node.props.children);
+  return "";
+}
+
+function digestCodeNeedsReveal(text: string): boolean {
+  return text.split("\n").some((line) => line.length > DIGEST_CODE_LINE_CHARS);
+}
+
+/** 空格和回车不把页面滚走。组字或输入法处理键时这一下不拦住。 */
+function keepDigestCodeKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
+  if (isImeKeyboardEvent(event.nativeEvent)) return;
+  if (event.key === "Enter" || event.key === " ") event.preventDefault();
+}
+
+function DigestPre({ children }: { children?: ReactNode }) {
+  const text = nodeText(children);
+  if (!digestCodeNeedsReveal(text)) {
+    return <pre>{children}</pre>;
+  }
+  return (
+    <pre
+      tabIndex={0}
+      data-digest-code=""
+      title={text}
+      onKeyDown={keepDigestCodeKeysFromScrolling}
+      // 平时横向滚动。键盘落到时写出整段并换行。鼠标悬停仍要横向滚动，整段在 title 里。
+      className="focus-visible:overflow-visible focus-visible:whitespace-pre-wrap focus-visible:break-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+    >
+      {children}
+    </pre>
+  );
+}
 
 const DIGEST_MARKDOWN_COMPONENTS: Components = {
   a({ href, children }) {
     return <MarkdownLink href={href}>{children}</MarkdownLink>;
   },
+  pre: DigestPre,
 };
 
 interface Props {
