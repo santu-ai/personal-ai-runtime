@@ -17,6 +17,26 @@ describe("ToolCallDisplay", () => {
     expect(screen.getByText(/读取文件/)).toBeInTheDocument();
   });
 
+  it("collapses an expanded step on Escape and leaves focus on that step", () => {
+    render(<ToolCallDisplay toolCalls={toolCalls} toolResults={[]} />);
+    const step = screen.getByRole("button", { name: /读取文件/ });
+    expect(fireEvent.keyDown(step, { key: "Escape" })).toBe(true);
+    expect(step).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(step);
+    expect(step).toHaveAttribute("aria-expanded", "true");
+    step.focus();
+    fireEvent.keyDown(step, { key: "Escape", isComposing: true });
+    fireEvent.keyDown(step, { key: "Escape", keyCode: 229 });
+    expect(step).toHaveAttribute("aria-expanded", "true");
+    expect(step).toHaveFocus();
+
+    const args = screen.getByText("参数");
+    fireEvent.keyDown(args, { key: "Escape" });
+    expect(step).toHaveAttribute("aria-expanded", "false");
+    expect(step).toHaveFocus();
+  });
+
   it("shows completed status when result present", () => {
     render(
       <ToolCallDisplay

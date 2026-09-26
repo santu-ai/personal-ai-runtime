@@ -36,6 +36,22 @@ function keepArgsKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
   if (event.key === "Enter" || event.key === " ") event.preventDefault();
 }
 
+/** 这一步已经展开时，Esc 收起，焦点留在这一步。组字时不收起。 */
+function collapseExpandedStep(
+  event: KeyboardEvent<HTMLElement>,
+  expanded: boolean,
+  collapse: () => void,
+) {
+  if (!expanded) return;
+  if (event.key !== "Escape" || isImeKeyboardEvent(event.nativeEvent)) return;
+  if (event.defaultPrevented) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const button = event.currentTarget.querySelector("button");
+  if (button instanceof HTMLElement && document.activeElement !== button) button.focus();
+  collapse();
+}
+
 function StepArgs({ text }: { text: string }) {
   if (!trackArgsNeedReveal(text)) {
     return <pre className={`${ARGS_PRE} max-h-24 overflow-y-auto`}>{text}</pre>;
@@ -99,7 +115,13 @@ export default function TaskTrack({ stages }: Props) {
           }[status];
 
           return (
-            <div key={stage.toolCall.id || idx} className="relative pb-2.5 last:pb-0">
+            <div
+              key={stage.toolCall.id || idx}
+              className="relative pb-2.5 last:pb-0"
+              onKeyDown={(event) =>
+                collapseExpandedStep(event, isExpanded, () => setExpandedStageIdx(null))
+              }
+            >
               {/* Dot */}
               <span
                 aria-hidden

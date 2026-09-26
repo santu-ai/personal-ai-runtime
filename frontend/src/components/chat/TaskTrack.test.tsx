@@ -144,6 +144,29 @@ describe("TaskTrack", () => {
     expect(screen.getByText(/"path"/)).toBeInTheDocument();
   });
 
+  it("collapses the expanded step on Escape and leaves focus on that step", () => {
+    renderWithRouter(<TaskTrack stages={multiToolCalls.map((tc) => ({ toolCall: tc }))} />);
+    const read = screen.getByRole("button", { name: /读取文件/ });
+    const search = screen.getByRole("button", { name: /搜索网页/ });
+    expect(fireEvent.keyDown(read, { key: "Escape" })).toBe(true);
+    expect(read).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(read);
+    fireEvent.click(search);
+    expect(read).toHaveAttribute("aria-expanded", "false");
+    expect(search).toHaveAttribute("aria-expanded", "true");
+    search.focus();
+    fireEvent.keyDown(search, { key: "Escape", isComposing: true });
+    fireEvent.keyDown(search, { key: "Escape", keyCode: 229 });
+    expect(search).toHaveAttribute("aria-expanded", "true");
+
+    const query = screen.getByText(/hello/);
+    fireEvent.keyDown(query, { key: "Escape" });
+    expect(search).toHaveAttribute("aria-expanded", "false");
+    expect(search).toHaveFocus();
+    expect(read).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("writes the full plain-text result when the keyboard lands, and keeps a short preview otherwise", () => {
     const long = `行\n${"字".repeat(600)}`;
     const exact = "b".repeat(500);

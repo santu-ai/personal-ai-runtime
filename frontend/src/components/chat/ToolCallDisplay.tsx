@@ -103,6 +103,22 @@ function keepBareKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
   if (event.key === "Enter" || event.key === " ") event.preventDefault();
 }
 
+/** 这一步已经展开时，Esc 收起，焦点留在这一步。组字时不收起。 */
+function collapseExpandedStep(
+  event: KeyboardEvent<HTMLElement>,
+  expanded: boolean,
+  collapse: () => void,
+) {
+  if (!expanded) return;
+  if (event.key !== "Escape" || isImeKeyboardEvent(event.nativeEvent)) return;
+  if (event.defaultPrevented) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const button = event.currentTarget.querySelector("button");
+  if (button instanceof HTMLElement && document.activeElement !== button) button.focus();
+  collapse();
+}
+
 function panelArgsNeedReveal(text: string): boolean {
   return text.split("\n").some((line) => line.length > PANEL_ARGS_LINE_CHARS);
 }
@@ -240,6 +256,9 @@ export default function ToolCallDisplay({
           <div
             key={tc.id || idx}
             className="bg-surface-raised/60 rounded-lg border border-border-strong overflow-hidden"
+            onKeyDown={(event) =>
+              collapseExpandedStep(event, isExpanded, () => setExpandedCall(null))
+            }
           >
             <button
               type="button"

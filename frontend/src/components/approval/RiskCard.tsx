@@ -39,6 +39,18 @@ function keepBareKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
   if (event.key === "Enter" || event.key === " ") event.preventDefault();
 }
 
+/** 已经展开的详情，Esc 先收起这一段并落到标题上。组字时不收起，也不拦住。 */
+function closeDetailsOnEscape(event: KeyboardEvent<HTMLDetailsElement>) {
+  if (event.key !== "Escape" || isImeKeyboardEvent(event.nativeEvent)) return;
+  const details = event.currentTarget;
+  if (!details.open) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const summary = details.querySelector("summary");
+  if (summary instanceof HTMLElement && document.activeElement !== summary) summary.focus();
+  details.open = false;
+}
+
 /** 详细参数平时限高。超过这么多行，或某一行超过这么多个字，键盘落到时写出整段。 */
 const ARGS_LINE_LIMIT = 5;
 const ARGS_LINE_CHARS = 80;
@@ -147,7 +159,7 @@ function ExpandableText({ text, className }: { text: string; className: string }
     <div className={className}>
       <div className="whitespace-pre-wrap break-all">{preview}</div>
       {isTruncated && (
-        <details className="mt-1">
+        <details className="mt-1" onKeyDown={closeDetailsOnEscape}>
           <summary className="cursor-pointer text-fg-tertiary hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded">
             查看完整内容
           </summary>
@@ -316,7 +328,7 @@ export default function RiskCard({
 
           {isPatch &&
             (variant === "inline" ? (
-              <details>
+              <details onKeyDown={closeDetailsOnEscape}>
                 <summary className="text-xs text-fg-tertiary cursor-pointer hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded">
                   查看变更
                 </summary>
@@ -329,7 +341,7 @@ export default function RiskCard({
             ))}
           {isWrite &&
             (variant === "inline" ? (
-              <details>
+              <details onKeyDown={closeDetailsOnEscape}>
                 <summary className="text-xs text-fg-tertiary cursor-pointer hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded">
                   查看写入内容
                 </summary>
@@ -341,7 +353,7 @@ export default function RiskCard({
               <WriteFilePreview args={parsedArgs} />
             ))}
 
-          <details>
+          <details onKeyDown={closeDetailsOnEscape}>
             <summary className="text-xs text-fg-tertiary cursor-pointer hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded">
               查看详细参数
             </summary>
