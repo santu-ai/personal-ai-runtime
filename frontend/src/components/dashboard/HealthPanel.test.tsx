@@ -14,7 +14,11 @@ function renderPanel() {
         avg_latency_ms: 12,
       }}
       tools={[{ tool_name: "web_search", total_calls: 2, failed_calls: 0, avg_latency_ms: 8 }]}
-      memory={{ total_memories: 3, recent_7d: 1, categories: { habit: 2 } }}
+      memory={{
+        total_memories: 3,
+        recent_7d: 1,
+        categories: { habit: 2, fact: 1, work: 4, "  ": 9 },
+      }}
       health={{ active_work_items: 1, tool_failure_rate_24h: 0 }}
       dashboard={{
         data_sovereignty: {
@@ -48,6 +52,10 @@ describe("HealthPanel", () => {
     expect(region).toHaveAttribute("id", button.getAttribute("aria-controls"));
     expect(screen.getByText("LLM 成功率")).toBeInTheDocument();
     expect(screen.getByText("我的数据")).toBeInTheDocument();
+    expect(screen.getByText("你的习惯: 2")).toBeInTheDocument();
+    expect(screen.getByText("关于你: 1")).toBeInTheDocument();
+    expect(screen.getByText("work: 4")).toBeInTheDocument();
+    expect(screen.queryByText(/:\s*9/)).not.toBeInTheDocument();
 
     button.focus();
     expect(fireEvent.keyDown(button, { key: "Escape", isComposing: true })).toBe(true);

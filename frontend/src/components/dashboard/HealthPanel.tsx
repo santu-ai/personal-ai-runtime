@@ -1,8 +1,17 @@
 import { useId, useRef, useState, type KeyboardEvent } from "react";
 import { Shield, ChevronDown, ChevronRight } from "lucide-react";
 import { type ToolSummaryItem } from "../../api/client";
+import { getCategoryMeta } from "../memories/MemoryListItem";
 import { isImeKeyboardEvent } from "../../utils/imeKey";
 import { toolLabel } from "../../utils/toolLabels";
+
+/** 和记忆列表同一套说法。不认识的仍写出原来的字。空白不单列。 */
+function memoryCategoryChip(category: string): string | null {
+  const key = category.trim();
+  if (!key) return null;
+  const title = getCategoryMeta(key).title.trim();
+  return title || key;
+}
 
 interface HealthPanelProps {
   cost: {
@@ -61,6 +70,10 @@ export default function HealthPanel({ cost, tools, memory, health, dashboard }: 
 
   const totalTokens = (cost?.total_prompt_tokens || 0) + (cost?.total_completion_tokens || 0);
   const totalCalls = cost?.total_calls || 0;
+  const categoryChips = Object.entries(memory?.categories || {}).flatMap(([cat, count]) => {
+    const name = memoryCategoryChip(cat);
+    return name ? [{ cat, name, count }] : [];
+  });
   const successRate =
     totalCalls > 0
       ? (((totalCalls - (cost?.failed_calls || 0)) / totalCalls) * 100).toFixed(1)
@@ -176,14 +189,14 @@ export default function HealthPanel({ cost, tools, memory, health, dashboard }: 
                   <div className="text-xs text-fg-tertiary mt-0.5">个分类</div>
                 </div>
               </div>
-              {Object.keys(memory.categories || {}).length > 0 && (
+              {categoryChips.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-border-subtle flex flex-wrap gap-1.5">
-                  {Object.entries(memory.categories || {}).map(([cat, count]) => (
+                  {categoryChips.map(({ cat, name, count }) => (
                     <span
                       key={cat}
                       className="px-2 py-0.5 bg-surface-overlay rounded text-xs text-fg-secondary"
                     >
-                      {cat}: {count}
+                      {name}: {count}
                     </span>
                   ))}
                 </div>
