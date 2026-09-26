@@ -1050,6 +1050,7 @@ describe("ChatView", () => {
     );
     expect(close.querySelector("[aria-hidden]")).toHaveClass("group-focus-visible:hidden");
     expect(screen.getByText("待确认：喜欢喝茶")).toBeInTheDocument();
+    expect(document.querySelector("[data-memory-notice] [data-prompt-name]")).toBeNull();
     const field = screen.getByPlaceholderText(/输入消息/);
     const seen = captureFocusWhenSettled(
       () => screen.queryByRole("button", { name: "关闭" }) == null,
@@ -1061,6 +1062,27 @@ describe("ChatView", () => {
     expect(field).toHaveFocus();
     expect(document.body).not.toHaveFocus();
     expect(seen.read()).toBe(field);
+  });
+
+  it("writes the whole pending memory when 关闭 is the keyboard target", async () => {
+    const content =
+      "我每周一三五早上七点在公园跑步，跑完会喝一杯不加糖的美式，然后回到工位把这周要做的事写成可以勾掉的清单";
+    mockPlainReply("记下了。");
+    const view = mountChatView();
+    await sendFromComposer();
+    await waitFor(() => expect(screen.getByText("记下了。")).toBeInTheDocument());
+
+    growProposedMemory(content);
+    view.rerenderChat();
+    const preview = `待确认：${content.slice(0, 40)}…`;
+    const full = `待确认：${content}`;
+    const short = screen.getByText(preview);
+    expect(short).toHaveClass("truncate", "group-has-[:focus-visible]:hidden");
+    expect(short).toHaveAttribute("title", full);
+    const name = screen.getByText(full);
+    expect(name).toHaveAttribute("data-prompt-name", "");
+    expect(name).toHaveClass("hidden", "whitespace-normal", "group-has-[:focus-visible]:block");
+    expect(short.closest("[data-memory-notice]")).toHaveClass("group");
   });
 
   it("moves focus to the composer when 待确认 times out while the close button is focused", async () => {

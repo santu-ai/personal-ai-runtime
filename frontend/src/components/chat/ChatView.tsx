@@ -21,6 +21,14 @@ import PromptChipFace from "./PromptChipFace";
 import { useConfirmFocusContainment } from "./confirmFocus";
 
 const SUGGESTION_PREVIEW = 50;
+const MEMORY_NOTICE_PREVIEW = 40;
+
+/** 顶上「待确认」平时只写前一段。整句留给键盘落到「关闭」时。 */
+function pendingMemoryNotice(content: string): { preview: string; full: string } {
+  const clipped = content.length > MEMORY_NOTICE_PREVIEW;
+  const shown = clipped ? `${content.slice(0, MEMORY_NOTICE_PREVIEW)}…` : content;
+  return { preview: `待确认：${shown}`, full: `待确认：${content}` };
+}
 
 interface Props {
   conversationId: string;
@@ -49,7 +57,7 @@ export default function ChatView({ conversationId }: Props) {
   const [input, setInput] = useState(() => readComposerDraft(conversationId));
   const [contextOpen, setContextOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [memoryNotice, setMemoryNotice] = useState<string | null>(null);
+  const [memoryNotice, setMemoryNotice] = useState<{ preview: string; full: string } | null>(null);
   const [initialLoad, setInitialLoad] = useState(true);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
 
@@ -279,9 +287,7 @@ export default function ChatView({ conversationId }: Props) {
     }
     if (proposedTotal > prevMemoryTotalRef.current && hasSentRef.current) {
       if (newestProposed) {
-        setMemoryNotice(
-          `待确认：${newestProposed.content.slice(0, 40)}${newestProposed.content.length > 40 ? "…" : ""}`,
-        );
+        setMemoryNotice(pendingMemoryNotice(newestProposed.content));
         const t = setTimeout(() => dismissMemoryNotice(), 6000);
         prevMemoryTotalRef.current = proposedTotal;
         return () => clearTimeout(t);
@@ -628,10 +634,25 @@ export default function ChatView({ conversationId }: Props) {
         <div
           ref={memoryNoticeRef}
           data-memory-notice=""
-          className="px-4 py-2 bg-insight/10 border-b border-insight/30 flex items-center gap-2 text-xs text-insight animate-pulse"
+          className="group px-4 py-2 bg-insight/10 border-b border-insight/30 flex items-center gap-2 text-xs text-insight animate-pulse"
         >
           <BrainCircuit size={14} className="shrink-0" />
-          <span className="flex-1 truncate">{memoryNotice}</span>
+          <span
+            className={`min-w-0 flex-1 truncate${
+              memoryNotice.preview === memoryNotice.full ? "" : " group-has-[:focus-visible]:hidden"
+            }`}
+            title={memoryNotice.preview === memoryNotice.full ? undefined : memoryNotice.full}
+          >
+            {memoryNotice.preview}
+          </span>
+          {memoryNotice.preview === memoryNotice.full ? null : (
+            <span
+              data-prompt-name=""
+              className="hidden min-w-0 flex-1 whitespace-normal group-has-[:focus-visible]:block"
+            >
+              {memoryNotice.full}
+            </span>
+          )}
           <button
             type="button"
             onClick={() => dismissMemoryNotice()}
