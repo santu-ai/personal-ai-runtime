@@ -390,4 +390,81 @@ describe("ToolCallDisplay", () => {
     expect(tallPre?.className).not.toContain("max-h-");
     expect(tallPre?.className).not.toContain("group-focus-visible:");
   });
+
+  it("writes the full step summary when the keyboard lands, and leaves a short one alone", () => {
+    const path = "p".repeat(81);
+    const exact = "e".repeat(80);
+    const question = `请确认${"这".repeat(78)}`;
+    expect(question.length).toBeGreaterThan(80);
+    expect("短查询".length).toBeLessThanOrEqual(80);
+
+    render(
+      <ToolCallDisplay
+        toolCalls={[
+          {
+            index: 0,
+            id: "tc-long",
+            function_name: "read_file",
+            arguments: JSON.stringify({ path }),
+          },
+          {
+            index: 1,
+            id: "tc-exact",
+            function_name: "read_file",
+            arguments: JSON.stringify({ path: exact }),
+          },
+          {
+            index: 2,
+            id: "tc-ask",
+            function_name: "ask_user",
+            arguments: JSON.stringify({ question }),
+          },
+          {
+            index: 3,
+            id: "tc-short",
+            function_name: "web_search",
+            arguments: JSON.stringify({ query: "短查询" }),
+          },
+        ]}
+        toolResults={[]}
+      />,
+    );
+
+    const longStep = screen.getByRole("button", { name: new RegExp(path) });
+    expect(longStep).toHaveAttribute("title", path);
+    expect(longStep).toHaveClass("group", "focus-visible:items-start");
+    const summary = longStep.querySelector("[data-tool-summary]");
+    expect(summary).toHaveTextContent(path);
+    expect(summary).toHaveClass(
+      "truncate",
+      "group-focus-visible:overflow-visible",
+      "group-focus-visible:whitespace-normal",
+      "group-focus-visible:text-clip",
+      "group-focus-visible:break-all",
+    );
+    expect(summary?.className).not.toContain("group-hover:");
+    expect(fireEvent.keyDown(longStep, { key: "Enter" })).toBe(true);
+    expect(fireEvent.keyDown(longStep, { key: " " })).toBe(true);
+    expect(longStep).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(longStep);
+    expect(longStep).toHaveAttribute("aria-expanded", "true");
+
+    const readSteps = screen.getAllByRole("button", { name: /读取文件/ });
+    const exactStep = readSteps[1];
+    expect(exactStep).not.toHaveAttribute("title");
+    expect(exactStep.querySelector("[data-tool-summary]")).toBeNull();
+    expect(exactStep).toHaveTextContent(exact);
+    expect(exactStep.className).not.toContain("truncate");
+
+    const ask = screen.getByRole("button", { name: new RegExp(question) });
+    expect(ask).toHaveAttribute("title", question);
+    expect(ask.querySelector("[data-tool-summary]")).toHaveTextContent(question);
+    expect(ask.querySelector("[data-tool-summary]")?.className).not.toContain("group-hover:");
+
+    const short = screen.getByRole("button", { name: /搜索网页/ });
+    expect(short).not.toHaveAttribute("title");
+    expect(short.querySelector("[data-tool-summary]")).toBeNull();
+    expect(short).toHaveTextContent("短查询");
+    expect(short.className).not.toContain("group");
+  });
 });
