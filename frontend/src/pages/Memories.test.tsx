@@ -493,10 +493,52 @@ describe("MemoriesPage", () => {
     expect(within(dialog).getByText("内容").tagName).toBe("LABEL");
     expect(within(dialog).getByText("内容")).toHaveAttribute("for", content.id);
 
-    const category = within(dialog).getByRole("textbox", { name: "分类" });
-    expect(category).toHaveAttribute("placeholder", "如 fact, preference, habit");
+    const category = within(dialog).getByRole("combobox", { name: "分类" });
+    expect(category).toHaveValue("habit");
+    expect(category).not.toHaveAttribute("placeholder");
+    const options = within(category).getAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual([
+      "你的偏好",
+      "你的习惯",
+      "关于你",
+      "你的目标",
+      "你经历过的事",
+      "其他",
+    ]);
+    expect(options.map((option) => option.getAttribute("value"))).toEqual([
+      "preference",
+      "habit",
+      "fact",
+      "goal",
+      "event",
+      "note",
+    ]);
+    expect(within(category).queryByRole("option", { name: "habit" })).not.toBeInTheDocument();
     expect(within(dialog).getByText("分类").tagName).toBe("LABEL");
     expect(within(dialog).getByText("分类")).toHaveAttribute("for", category.id);
+  });
+
+  it("keeps an unknown edit category in its original words after the known names", async () => {
+    vi.mocked(listMemoriesGrouped).mockResolvedValue({
+      memories: [{ id: "m1", content: "喜欢早起跑步", confidence: 0.9, category: "custom_kind" }],
+      total: 1,
+    });
+    renderWithRouter(<MemoriesPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
+    const category = await screen.findByRole("combobox", { name: "分类" });
+    const options = within(category).getAllByRole("option");
+    const unknown = options[options.length - 1];
+    expect(category).toHaveValue("custom_kind");
+    expect(unknown).toHaveTextContent("custom_kind");
+    expect(unknown).toHaveValue("custom_kind");
+    expect(options.map((option) => option.textContent).slice(0, -1)).toEqual([
+      "你的偏好",
+      "你的习惯",
+      "关于你",
+      "你的目标",
+      "你经历过的事",
+      "其他",
+    ]);
   });
 
   it("closes the edit dialog on Escape and returns focus", async () => {
@@ -506,7 +548,7 @@ describe("MemoriesPage", () => {
     fireEvent.click(opener);
     const field = await screen.findByPlaceholderText("记忆内容");
     expect(field).toHaveClass("focus-visible:ring-focus-ring");
-    expect(screen.getByPlaceholderText("如 fact, preference, habit")).toHaveClass(
+    expect(screen.getByRole("combobox", { name: "分类" })).toHaveClass(
       "focus-visible:ring-focus-ring",
     );
     await waitFor(() => expect(field).toHaveFocus());
@@ -819,7 +861,7 @@ describe("MemoriesPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
     const dialog = await screen.findByRole("dialog", { name: "编辑记忆" });
     const content = within(dialog).getByPlaceholderText("记忆内容");
-    const category = within(dialog).getByPlaceholderText("如 fact, preference, habit");
+    const category = within(dialog).getByRole("combobox", { name: "分类" });
     fireEvent.change(content, { target: { value: "   " } });
     content.focus();
     fireEvent.keyDown(content, { key: "Enter" });
@@ -928,7 +970,7 @@ describe("MemoriesPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
     const dialog = await screen.findByRole("dialog", { name: "编辑记忆" });
     const content = within(dialog).getByPlaceholderText("记忆内容");
-    const category = within(dialog).getByPlaceholderText("如 fact, preference, habit");
+    const category = within(dialog).getByRole("combobox", { name: "分类" });
     fireEvent.change(content, { target: { value: "  改为夜跑  " } });
     fireEvent.change(category, { target: { value: "habit" } });
     const save = within(dialog).getByRole("button", { name: "保存" });
@@ -1082,7 +1124,7 @@ describe("MemoriesPage", () => {
     fireEvent.click(open);
     const dialog = await screen.findByRole("dialog", { name: "编辑记忆" });
     const content = within(dialog).getByPlaceholderText("记忆内容");
-    const category = within(dialog).getByPlaceholderText("如 fact, preference, habit");
+    const category = within(dialog).getByRole("combobox", { name: "分类" });
     fireEvent.change(content, { target: { value: "改为夜跑" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
     await within(dialog).findByRole("button", { name: "保存中..." });
