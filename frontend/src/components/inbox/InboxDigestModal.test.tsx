@@ -56,6 +56,66 @@ describe("InboxDigestModal", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  it("wraps a fenced line longer than 80 characters when the keyboard lands on it", () => {
+    const line = "a".repeat(81);
+    const content = ["短的说明", "", "```", `short`, line, "```", ""].join("\n");
+    render(<InboxDigestModal open title="今日摘要" content={content} onClose={vi.fn()} />);
+
+    const box = document.querySelector("[data-digest-code]");
+    if (!box) throw new Error("missing digest code");
+    expect(box.tagName).toBe("PRE");
+    expect(box).toHaveAttribute("tabindex", "0");
+    expect(box).toHaveAttribute("title", box.textContent);
+    expect(box.textContent).toContain(line);
+    expect(box).toHaveClass(
+      "focus-visible:overflow-visible",
+      "focus-visible:whitespace-pre-wrap",
+      "focus-visible:break-all",
+      "focus-visible:outline-none",
+      "focus-visible:ring-2",
+      "focus-visible:ring-focus-ring",
+    );
+    expect(box.className).not.toContain("group-hover:");
+    expect(box.className).not.toContain("hover:whitespace");
+    expect(screen.queryByRole("button", { name: "复制" })).not.toBeInTheDocument();
+
+    expect(fireEvent.keyDown(box, { key: " " })).toBe(false);
+    expect(fireEvent.keyDown(box, { key: "Enter" })).toBe(false);
+    expect(fireEvent.keyDown(box, { key: "Enter", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "Enter", keyCode: 229 })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: "Process" })).toBe(true);
+    expect(fireEvent.keyDown(box, { key: " ", keyCode: 229 })).toBe(true);
+  });
+
+  it("does not give a long inline code span its own focus stop", () => {
+    const line = "c".repeat(81);
+    render(
+      <InboxDigestModal open title="今日摘要" content={`见 \`${line}\` 这里`} onClose={vi.fn()} />,
+    );
+    expect(document.querySelector("[data-digest-code]")).toBeNull();
+    expect(document.querySelector("pre")).toBeNull();
+    const code = screen.getByText(line).closest("code");
+    expect(code).not.toHaveAttribute("tabindex");
+    expect(screen.queryByRole("button", { name: "复制" })).not.toBeInTheDocument();
+  });
+
+  it("does not add a focus stop when every fenced line is at most 80 characters", () => {
+    const exact = "b".repeat(80);
+    const tall = Array.from({ length: 12 }, (_, index) => `line ${index}`).join("\n");
+    const content = ["```js", exact, "```", "", "```", tall, "```"].join("\n");
+    render(<InboxDigestModal open title="今日摘要" content={content} onClose={vi.fn()} />);
+
+    expect(document.querySelector("[data-digest-code]")).toBeNull();
+    const blocks = document.querySelectorAll("pre");
+    expect(blocks.length).toBe(2);
+    for (const block of blocks) {
+      expect(block).not.toHaveAttribute("tabindex");
+      expect(block).not.toHaveAttribute("title");
+      expect(block.className).not.toContain("focus-visible:whitespace-pre-wrap");
+    }
+    expect(screen.getByText(exact)).toBeInTheDocument();
+  });
+
   it("moves focus into the digest and returns it after close", async () => {
     const opener = document.createElement("button");
     opener.type = "button";
