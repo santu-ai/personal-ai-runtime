@@ -36,4 +36,34 @@ describe("PromptEditor field names", () => {
     expect(rules.labels?.[0]).toHaveAttribute("for", rules.id);
     expect(rules.labels?.[0]).not.toHaveTextContent("已自定义");
   });
+
+  it("names 保存 and 重置 with the field and leaves the visible words unchanged", () => {
+    renderEditor();
+
+    const saveIdentity = screen.getByRole("button", { name: "保存：身份定义" });
+    const resetIdentity = screen.getByRole("button", { name: "重置：身份定义" });
+    const saveRules = screen.getByRole("button", { name: "保存：代码规则" });
+    const resetRules = screen.getByRole("button", { name: "重置：代码规则" });
+
+    expect(saveIdentity).toHaveTextContent("保存");
+    expect(saveIdentity).not.toHaveTextContent("身份定义");
+    expect(saveIdentity).toHaveAttribute("aria-label", "保存：身份定义");
+    expect(saveIdentity.getAttribute("aria-label")).not.toContain("已自定义");
+
+    expect(resetIdentity).toHaveTextContent("重置");
+    expect(resetIdentity).toBeEnabled();
+    expect(resetIdentity).toHaveAttribute("aria-label", "重置：身份定义");
+    expect(resetIdentity.getAttribute("aria-label")).not.toContain("已自定义");
+
+    expect(saveRules).toHaveTextContent("保存");
+    expect(saveRules).toHaveAttribute("aria-label", "保存：代码规则");
+    expect(resetRules).toHaveTextContent("重置");
+    expect(resetRules).toBeDisabled();
+    expect(resetRules).toHaveAttribute("aria-label", "重置：代码规则");
+
+    expect(saveIdentity.getAttribute("aria-label")).not.toBe(saveRules.getAttribute("aria-label"));
+    expect(resetIdentity.getAttribute("aria-label")).not.toBe(
+      resetRules.getAttribute("aria-label"),
+    );
+  });
 });

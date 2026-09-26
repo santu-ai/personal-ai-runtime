@@ -870,6 +870,9 @@ describe("SettingsPage", () => {
     expect(save).toBeEnabled();
     expect(save).toHaveFocus();
     expect(save).toHaveTextContent("保存中…");
+    expect(save).toHaveAttribute("aria-label", "保存：身份定义");
+    expect(save.getAttribute("aria-label")).not.toContain("保存中");
+    expect(other).toHaveAttribute("aria-label", "保存：代码规则");
     expect(other).not.toHaveAttribute("aria-busy");
     expect(updatePromptConfig).toHaveBeenCalledTimes(1);
     expect(updatePromptConfig).toHaveBeenCalledWith({ identity: "test identity" });
