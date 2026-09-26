@@ -46,6 +46,7 @@ describe("Sidebar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     proposedCountState.data = 0;
+    localStorage.removeItem("sidebar_collapsed");
   });
 
   it("renders app title", () => {
@@ -135,7 +136,7 @@ describe("Sidebar", () => {
     expect(onDeleteChat).toHaveBeenCalledWith("c1");
   });
 
-  it("keeps an icon rail on a narrow viewport", () => {
+  it("keeps an icon rail on a narrow viewport and writes the name when the keyboard lands", () => {
     const original = window.matchMedia;
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({
       matches: String(query).includes("max-width"),
@@ -144,15 +145,52 @@ describe("Sidebar", () => {
       removeEventListener: vi.fn(),
     })) as unknown as typeof window.matchMedia;
     try {
+      proposedCountState.data = 2;
       renderSidebar();
       expect(screen.queryByText("Personal AI")).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "收起侧栏" })).not.toBeInTheDocument();
       const aside = document.querySelector("aside");
       expect(aside).toHaveAttribute("data-collapsed", "true");
       expect(aside).toHaveClass("w-[4.25rem]");
+
+      const goal = screen.getByRole("link", { name: "目标" });
+      expect(goal).toHaveAttribute("aria-label", "目标");
+      const goalName = goal.querySelector("[data-rail-name]");
+      expect(goalName).toHaveTextContent("目标");
+      expect(goalName).toHaveClass("hidden", "group-focus-visible:block");
+      expect(goal.querySelector("svg")).toHaveClass("group-focus-visible:hidden");
+      expect(
+        screen.getByRole("link", { name: "概览" }).querySelector("[data-rail-name]"),
+      ).toHaveTextContent("概览");
+      const memory = screen.getByRole("link", { name: "记忆 2" });
+      expect(memory).toHaveAttribute("aria-label", "记忆 2");
+      expect(memory).toHaveAttribute("href", "/memories?tab=review");
+      expect(memory.querySelector("[data-rail-name]")).toHaveTextContent("记忆 2");
+
+      const newer = screen.getByRole("button", { name: "新对话" });
+      expect(newer.querySelector("[data-rail-name]")).toHaveTextContent("新对话");
+      expect(newer.querySelector("svg")).toHaveClass("group-focus-visible:hidden");
     } finally {
       window.matchMedia = original;
     }
+  });
+
+  it("writes 收起侧栏 on the icon when the keyboard lands, and 展开侧栏 after collapsing", () => {
+    renderSidebar();
+    const collapse = screen.getByRole("button", { name: "收起侧栏" });
+    const collapseName = collapse.querySelector("[data-rail-name]");
+    expect(collapseName).toHaveTextContent("收起侧栏");
+    expect(collapseName).toHaveClass("hidden", "group-focus-visible:block");
+    expect(collapse.querySelector("svg")).toHaveClass("group-focus-visible:hidden");
+    expect(screen.getByRole("link", { name: "目标" })).not.toHaveAttribute("aria-label");
+    expect(screen.getByRole("link", { name: "目标" }).querySelector("[data-rail-name]")).toBeNull();
+    expect(screen.getByText("Rust学习讨论")).toBeInTheDocument();
+
+    fireEvent.click(collapse);
+    const expand = screen.getByRole("button", { name: "展开侧栏" });
+    expect(expand.querySelector("[data-rail-name]")).toHaveTextContent("展开侧栏");
+    expect(screen.getByRole("link", { name: "目标" })).toHaveAttribute("aria-label", "目标");
+    expect(screen.queryByText("Rust学习讨论")).not.toBeInTheDocument();
   });
 
   it("sends memories nav to the review tab when claims are pending", () => {

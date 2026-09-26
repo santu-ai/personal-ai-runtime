@@ -249,17 +249,25 @@ export default function NotificationBell({ compact = false }: Props) {
               return !wasOpen;
             });
           }}
-          className={`nav-item nav-item-idle ${compact ? "justify-center px-0" : ""}`}
+          className={`nav-item nav-item-idle ${compact ? "group justify-center px-0" : ""}`}
           data-notification-bell=""
           aria-label="通知"
           title={compact ? "通知" : undefined}
         >
-          <span className="relative">
+          <span className={`relative ${compact ? "group-focus-visible:hidden" : ""}`}>
             <Bell size={16} strokeWidth={1.75} />
             {compact && unread > 0 && (
               <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-insight" />
             )}
           </span>
+          {compact ? (
+            <span
+              data-rail-name=""
+              className="hidden min-w-0 w-full truncate text-center text-[10px] leading-tight group-focus-visible:block"
+            >
+              通知
+            </span>
+          ) : null}
           {!compact && (
             <>
               <span>通知</span>
