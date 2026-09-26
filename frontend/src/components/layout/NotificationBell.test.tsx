@@ -108,12 +108,69 @@ describe("NotificationBell", () => {
     expect(bell.querySelector(".rounded-full")).toBeNull();
   });
 
+  it("includes the unread count in the expanded bell name and keeps the badge", async () => {
+    listNotifications.mockResolvedValue([
+      sample,
+      { ...sample, id: "n2", read: 1 },
+      { ...sample, id: "n3", read: 0 },
+    ]);
+    renderWithRouter(<NotificationBell />);
+    const bell = await screen.findByRole("button", { name: "通知 2" });
+    expect(bell).toHaveAttribute("aria-label", "通知 2");
+    expect(bell).not.toHaveAttribute("title");
+    expect(bell.querySelector("[data-rail-name]")).toBeNull();
+    expect(bell.querySelector("svg")?.parentElement).not.toHaveClass("group-focus-visible:hidden");
+    const word = [...bell.querySelectorAll("span")].find((item) => item.textContent === "通知");
+    expect(word).toBeTruthy();
+    const badge = bell.querySelector(".rounded-full");
+    expect(badge).toHaveTextContent("2");
+    expect(badge).not.toHaveTextContent("通知");
+  });
+
+  it("caps the expanded unread count at 99+", async () => {
+    listNotifications.mockResolvedValue(
+      Array.from({ length: 100 }, (_, index) => ({ ...sample, id: `n${index}`, read: 0 })),
+    );
+    renderWithRouter(<NotificationBell />);
+    const bell = await screen.findByRole("button", { name: "通知 99+" });
+    expect(bell).not.toHaveAttribute("title");
+    expect(bell.querySelector(".rounded-full")).toHaveTextContent("99+");
+  });
+
+  it("keeps 通知 on the expanded bell when nothing is unread", async () => {
+    listNotifications.mockResolvedValue([{ ...sample, read: 1 }]);
+    renderWithRouter(<NotificationBell />);
+    await waitFor(() => expect(listNotifications).toHaveBeenCalled());
+    await waitFor(() => expect(listNotifications.mock.settledResults[0]?.type).toBe("fulfilled"));
+    const bell = screen.getByRole("button", { name: "通知" });
+    expect(bell).toHaveAttribute("aria-label", "通知");
+    expect(bell).not.toHaveAttribute("title");
+    expect(bell.querySelector(".rounded-full")).toBeNull();
+    expect(bell.querySelector("[data-rail-name]")).toBeNull();
+  });
+
+  it("drops the expanded unread count after every row is marked read", async () => {
+    const release = holdMarkAll();
+    renderWithRouter(<NotificationBell />);
+    const bell = await screen.findByRole("button", { name: "通知 1" });
+    fireEvent.click(bell);
+    const mark = await screen.findByRole("button", { name: "全部已读" });
+    fireEvent.click(mark);
+    listNotifications.mockResolvedValue([{ ...sample, read: 1 }]);
+    await act(async () => {
+      release();
+    });
+    await waitFor(() => expect(bell).toHaveAttribute("aria-label", "通知"));
+    expect(bell.querySelector(".rounded-full")).toBeNull();
+    expect(screen.getByRole("button", { name: "通知" })).toBe(bell);
+  });
+
   it("writes the full notification body when the row is keyboard focused", async () => {
     const content =
       "这份周报还没发出。需要你确认要把哪一版放进共享目录，以及这次改截止日是因为实验数据还没齐，还是因为审稿意见还没回。";
     listNotifications.mockResolvedValue([{ ...sample, content }]);
     renderWithRouter(<NotificationBell />);
-    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
     const row = await screen.findByRole("button", { name: /待审批/ });
     const body = row.querySelector(".line-clamp-2");
     expect(body).toHaveTextContent(content);
@@ -128,7 +185,7 @@ describe("NotificationBell", () => {
       focusAtLayout = document.activeElement;
     };
     renderWithRouter(<NotificationBell />);
-    const bell = screen.getByRole("button", { name: "通知" });
+    const bell = screen.getByRole("button", { name: /^通知/ });
     bell.focus();
     fireEvent.click(bell);
     const panel = screen.getByRole("dialog", { name: "最近通知" });
@@ -142,7 +199,7 @@ describe("NotificationBell", () => {
 
   it("stays open when Escape is pressed while an input method is composing", async () => {
     renderWithRouter(<NotificationBell />);
-    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
     const panel = await screen.findByRole("dialog", { name: "最近通知" });
     await waitFor(() => expect(panel).toHaveFocus());
 
@@ -163,13 +220,13 @@ describe("NotificationBell", () => {
         <NotificationBell />
       </>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
     const panel = await screen.findByRole("dialog", { name: "最近通知" });
     const mark = await screen.findByRole("button", { name: "全部已读" });
     const first = screen.getByRole("button", { name: /待审批/ });
     const otherRow = screen.getByRole("button", { name: /另一条/ });
     const outside = screen.getByRole("button", { name: "旁边" });
-    const bell = screen.getByRole("button", { name: "通知" });
+    const bell = screen.getByRole("button", { name: /^通知/ });
     await waitFor(() => expect(panel).toHaveFocus());
 
     const disabled = document.createElement("button");
@@ -226,7 +283,7 @@ describe("NotificationBell", () => {
         <NotificationBell />
       </>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
     const panel = await screen.findByRole("dialog", { name: "最近通知" });
     await screen.findByText("暂无通知");
     await waitFor(() => expect(panel).toHaveFocus());
@@ -257,7 +314,7 @@ describe("NotificationBell", () => {
         <NotificationBell />
       </>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
     const panel = screen.getByRole("dialog", { name: "最近通知" });
     expect(focusAtLayout).toBe(panel);
     const retry = await screen.findByRole("button", { name: "重试" });
@@ -268,7 +325,7 @@ describe("NotificationBell", () => {
     fireEvent.keyDown(retry, { key: "Tab", shiftKey: true });
     expect(retry).toHaveFocus();
     expect(screen.getByRole("button", { name: "旁边" })).not.toHaveFocus();
-    expect(screen.getByRole("button", { name: "通知" })).not.toHaveFocus();
+    expect(screen.getByRole("button", { name: /^通知/ })).not.toHaveFocus();
   });
 
   it("stops trapping Tab after the panel closes", async () => {
@@ -278,7 +335,7 @@ describe("NotificationBell", () => {
         <NotificationBell />
       </>,
     );
-    const bell = screen.getByRole("button", { name: "通知" });
+    const bell = screen.getByRole("button", { name: /^通知/ });
     fireEvent.click(bell);
     await screen.findByRole("dialog", { name: "最近通知" });
     fireEvent.keyDown(window, { key: "Escape" });
@@ -294,7 +351,7 @@ describe("NotificationBell", () => {
   it("keeps a busy mark-all button in the Tab cycle", async () => {
     const release = holdMarkAll();
     renderWithRouter(<NotificationBell />);
-    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
     const mark = await screen.findByRole("button", { name: "全部已读" });
     const row = screen.getByRole("button", { name: /待审批/ });
     mark.focus();
@@ -318,7 +375,7 @@ describe("NotificationBell", () => {
         <NotificationBell />
       </>,
     );
-    const bell = screen.getByRole("button", { name: "通知" });
+    const bell = screen.getByRole("button", { name: /^通知/ });
     fireEvent.click(bell);
     await screen.findByRole("dialog", { name: "最近通知" });
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -332,7 +389,7 @@ describe("NotificationBell", () => {
 
   it("returns focus to the bell after the opened detail closes", async () => {
     renderWithRouter(<NotificationBell />);
-    const bell = screen.getByRole("button", { name: "通知" });
+    const bell = screen.getByRole("button", { name: /^通知/ });
     fireEvent.click(bell);
     fireEvent.click(await screen.findByRole("button", { name: /待审批/ }));
 
@@ -349,7 +406,7 @@ describe("NotificationBell", () => {
 
   it("toggles the notification panel closed on a second bell click", async () => {
     renderWithRouter(<NotificationBell />);
-    const bell = screen.getByRole("button", { name: "通知" });
+    const bell = screen.getByRole("button", { name: /^通知/ });
     fireEvent.click(bell);
     expect(await screen.findByRole("dialog", { name: "最近通知" })).toBeInTheDocument();
     expect(await screen.findByText("待审批")).toBeInTheDocument();
@@ -360,7 +417,7 @@ describe("NotificationBell", () => {
   it("shows the empty copy only after a successful read", async () => {
     listNotifications.mockResolvedValue([]);
     renderWithRouter(<NotificationBell />);
-    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
     expect(await screen.findByText("暂无通知")).toBeInTheDocument();
     expect(screen.queryByTestId("notifications-load-error")).not.toBeInTheDocument();
   });
@@ -368,7 +425,7 @@ describe("NotificationBell", () => {
   it("shows a loading line instead of an empty notification list", async () => {
     listNotifications.mockReturnValue(new Promise(() => {}));
     renderWithRouter(<NotificationBell />);
-    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
     expect(await screen.findByText("加载中…")).toBeInTheDocument();
     expect(screen.queryByText("暂无通知")).not.toBeInTheDocument();
   });
@@ -376,7 +433,7 @@ describe("NotificationBell", () => {
   it("shows the notification read failure instead of an empty list", async () => {
     listNotifications.mockRejectedValue(new Error("通知暂时读不到"));
     renderWithRouter(<NotificationBell />);
-    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
     const alert = await screen.findByTestId("notifications-load-error");
     expect(alert).toHaveTextContent("通知暂时读不到");
     expect(addError).toHaveBeenCalledWith("通知暂时读不到", "通知");
@@ -389,7 +446,7 @@ describe("NotificationBell", () => {
   it("uses the bell fallback when the load error has no message", async () => {
     listNotifications.mockRejectedValue(new Error("   "));
     renderWithRouter(<NotificationBell />);
-    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
     expect(await screen.findByTestId("notifications-load-error")).toHaveTextContent("加载通知失败");
     expect(addError).toHaveBeenCalledWith("加载通知失败", "通知");
     expect(screen.queryByText("暂无通知")).not.toBeInTheDocument();
@@ -399,7 +456,7 @@ describe("NotificationBell", () => {
     let release: ((rows: unknown[]) => void) | undefined;
     listNotifications.mockRejectedValueOnce(new Error("通知暂时读不到"));
     renderWithRouter(<NotificationBell />);
-    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
     const retry = await screen.findByRole("button", { name: "重试" });
     await waitFor(() => expect(retry).toHaveFocus());
 
@@ -427,7 +484,7 @@ describe("NotificationBell", () => {
     renderWithRouter(<NotificationBell />);
     await waitFor(() => expect(listNotifications).toHaveBeenCalled());
     listNotifications.mockRejectedValueOnce(new Error("刷新失败"));
-    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
     expect(await screen.findByText("待审批")).toBeInTheDocument();
     expect(screen.queryByText("暂无通知")).not.toBeInTheDocument();
     expect(screen.queryByTestId("notifications-load-error")).not.toBeInTheDocument();
@@ -437,7 +494,7 @@ describe("NotificationBell", () => {
   it("does not send mark-all again while the first request is in flight", async () => {
     const release = holdMarkAll();
     renderWithRouter(<NotificationBell />);
-    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
     const mark = await screen.findByRole("button", { name: "全部已读" });
     mark.focus();
 
@@ -458,7 +515,7 @@ describe("NotificationBell", () => {
   it("keeps mark-all and reports the failure without dropping focus", async () => {
     markAllNotificationsRead.mockRejectedValueOnce(new Error("   "));
     renderWithRouter(<NotificationBell />);
-    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
     const mark = await screen.findByRole("button", { name: "全部已读" });
     mark.focus();
 
@@ -474,7 +531,7 @@ describe("NotificationBell", () => {
   it("moves focus in the same turn 全部已读 leaves after every row is read", async () => {
     const release = holdMarkAll();
     renderWithRouter(<NotificationBell />);
-    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
     const mark = await screen.findByRole("button", { name: "全部已读" });
     mark.focus();
     fireEvent.click(mark);
@@ -496,7 +553,7 @@ describe("NotificationBell", () => {
   it("focuses the panel in the same turn 全部已读 leaves no notifications", async () => {
     const release = holdMarkAll();
     renderWithRouter(<NotificationBell />);
-    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
     const mark = await screen.findByRole("button", { name: "全部已读" });
     mark.focus();
     fireEvent.click(mark);
@@ -519,7 +576,7 @@ describe("NotificationBell", () => {
     const second = { ...sample, id: "n2", title: "另一条", content: "还在" };
     listNotifications.mockResolvedValue([sample, second]);
     renderWithRouter(<NotificationBell />);
-    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
     const mark = await screen.findByRole("button", { name: "全部已读" });
     mark.focus();
     fireEvent.click(mark);
@@ -540,7 +597,7 @@ describe("NotificationBell", () => {
   it("keeps focus on mark-all when a later read still has unread rows", async () => {
     const release = holdMarkAll();
     renderWithRouter(<NotificationBell />);
-    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
     const mark = await screen.findByRole("button", { name: "全部已读" });
     mark.focus();
     fireEvent.click(mark);
@@ -554,7 +611,7 @@ describe("NotificationBell", () => {
   it("focuses the panel when mark-all leaves no notifications", async () => {
     const release = holdMarkAll();
     renderWithRouter(<NotificationBell />);
-    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
     const mark = await screen.findByRole("button", { name: "全部已读" });
     mark.focus();
     fireEvent.click(mark);
@@ -576,7 +633,7 @@ describe("NotificationBell", () => {
         <NotificationBell />
       </>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "通知" }));
+    fireEvent.click(screen.getByRole("button", { name: /^通知/ }));
     const mark = await screen.findByRole("button", { name: "全部已读" });
     mark.focus();
     fireEvent.click(mark);
@@ -595,7 +652,7 @@ describe("NotificationBell", () => {
   it("does not restore the panel after it was closed during mark-all", async () => {
     const release = holdMarkAll();
     renderWithRouter(<NotificationBell />);
-    const bell = screen.getByRole("button", { name: "通知" });
+    const bell = screen.getByRole("button", { name: /^通知/ });
     fireEvent.click(bell);
     const mark = await screen.findByRole("button", { name: "全部已读" });
     mark.focus();
