@@ -52,6 +52,7 @@ export default function ChatComposer({
   const fieldDisabled = Boolean(disabled) && !holding;
   const actionDisabled = holding ? false : Boolean(disabled) || !value.trim();
   // 这一栏仍是输入消息。占位先写出当前能不能发，再留着这几个字。
+  // 读屏名字固定，不跟着占位变成状态句；写了字、占位看不见时也还是这个名字。
   const statusPlaceholder = generating
     ? "正在生成，输入消息可以先写下一条"
     : pending
@@ -78,6 +79,7 @@ export default function ChatComposer({
         onChange={(e) => onChange(e.target.value)}
         onInput={adjustTextareaHeight}
         onKeyDown={handleKeyDown}
+        aria-label="输入消息"
         placeholder={statusPlaceholder}
         rows={1}
         disabled={fieldDisabled}
