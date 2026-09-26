@@ -596,6 +596,76 @@ describe("TasksPage", () => {
     });
   });
 
+  it("writes the full plan path when the keyboard lands, and leaves a short path in the row", async () => {
+    const path = `C:/notes/${"a".repeat(80)}.md`;
+    const exact = "b".repeat(80);
+    const short = "C:/notes/short.md";
+    const writePath = `D:/out/${"w".repeat(80)}.md`;
+    vi.mocked(getWorkItem).mockResolvedValue({
+      ...sampleTask,
+      execution: {
+        ...sampleTask.execution!,
+        steps: [
+          { tool: "read_file", params: { path } },
+          { tool: "read_file", params: { path: exact } },
+          { tool: "read_file", params: { path: short } },
+          { tool: "write_file", params: { path: writePath } },
+          { tool: "shell_exec", params: { command: "echo hi" } },
+          { tool: "shell_exec", params: {} },
+          { tool: "check_inbox", params: { limit: 30 } },
+          { tool: "read_file", params: {} },
+        ],
+      },
+    });
+    renderTasks("/tasks/task_1");
+
+    const reveal = await screen.findByTitle(path);
+    expect(reveal).toHaveAttribute("data-plan-step", "");
+    expect(reveal).toHaveAttribute("tabindex", "0");
+    expect(reveal).toHaveTextContent(path);
+    expect(reveal).toHaveClass(
+      "truncate",
+      "focus-visible:overflow-visible",
+      "focus-visible:whitespace-normal",
+      "focus-visible:text-clip",
+      "focus-visible:break-all",
+      "focus-visible:outline-none",
+      "focus-visible:ring-2",
+      "focus-visible:ring-focus-ring",
+    );
+    expect(reveal.className).not.toContain("group-hover:");
+    expect(reveal.closest("button")).toBeNull();
+    expect(fireEvent.keyDown(reveal, { key: " " })).toBe(false);
+    expect(fireEvent.keyDown(reveal, { key: "Enter" })).toBe(false);
+    expect(fireEvent.keyDown(reveal, { key: " ", isComposing: true })).toBe(true);
+    expect(fireEvent.keyDown(reveal, { key: "Enter", keyCode: 229 })).toBe(true);
+    expect(fireEvent.keyDown(reveal, { key: "Process" })).toBe(true);
+
+    const writeReveal = screen.getByTitle(writePath);
+    expect(writeReveal).toHaveAttribute("data-plan-step", "");
+    expect(writeReveal).toHaveTextContent(writePath);
+
+    expect(screen.getByText(exact).closest("[data-plan-step]")).toBeNull();
+    expect(screen.getByText(exact)).not.toHaveAttribute("tabindex");
+    expect(screen.getByText(short).closest("[data-plan-step]")).toBeNull();
+    expect(screen.getByText("$ echo hi").closest("[data-plan-step]")).toBeNull();
+    expect(screen.queryByText("$ ?")).not.toBeInTheDocument();
+    expect(screen.queryByText("?")).not.toBeInTheDocument();
+    expect(screen.getByText("检查收件箱")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "执行" }));
+    const dialog = await screen.findByRole("dialog", { name: "确认执行计划" });
+    const description = within(dialog).getByText(/将从第 1 \/ 8 步开始执行/);
+    expect(description).toHaveClass("whitespace-pre-wrap", "break-words");
+    expect(description).toHaveTextContent(path);
+    expect(description).toHaveTextContent(exact);
+    expect(description).toHaveTextContent(short);
+    expect(description).toHaveTextContent(writePath);
+    expect(description).toHaveTextContent("$ echo hi");
+    expect(description.textContent).not.toContain("$ ?");
+    expect(description).not.toHaveAttribute("tabindex");
+  });
+
   it("writes the full step output when the keyboard lands, and keeps a short preview otherwise", async () => {
     const raw = `  ${"字".repeat(200)}\n${"字".repeat(41)}  `;
     const long = raw.replace(/\s+/g, " ").trim();

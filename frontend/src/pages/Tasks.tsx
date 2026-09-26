@@ -59,12 +59,14 @@ import {
 import { isImeKeyboardEvent } from "../utils/imeKey";
 import { timeAgo } from "../utils/timeUtils";
 import { executionStatusLabel, handlerLabel } from "../utils/handlerLabels";
-import { toolLabel } from "../utils/toolLabels";
+import { describeToolAction, toolLabel } from "../utils/toolLabels";
 import { ListTodo } from "lucide-react";
 
 const ACTIVE_STATUSES = new Set(["pending", "running", "blocked", "waiting_approval"]);
 const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
 const OUTPUT_PREVIEW = 240;
+/** 执行计划旁边的路径、命令或问题超过这么多个字，平时只占一行。 */
+const PLAN_STEP_CHARS = 80;
 /** 与时间线相同的焦点环。返回链接和「已转为任务」看起来像按钮，环也不另留页面底色空隙。 */
 const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
 const backLinkClass = `inline-flex items-center justify-center rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${focusRing}`;
@@ -888,6 +890,43 @@ function formatStepLabel(step: Record<string, unknown>): string {
   return name === "step" ? "step" : toolLabel(name);
 }
 
+function stepArgs(step: Record<string, unknown>): Record<string, unknown> {
+  const raw = step.params ?? step.arguments ?? step.args;
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return {};
+    }
+    return {};
+  }
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  return {};
+}
+
+/** 和单步工具同一套说法。没有这套时，仍写出路径、命令、问题、搜索词或地址。占位的问号不写。 */
+function stepArgumentText(step: Record<string, unknown>): string {
+  const label = formatStepLabel(step);
+  const args = stepArgs(step);
+  const described = describeToolAction(stepToolName(step), args).replace(/\s+/g, " ").trim();
+  if (described && described !== label && described !== "?" && described !== "$ ?") {
+    return described;
+  }
+  for (const key of ["path", "command", "question", "query", "url"] as const) {
+    const value = args[key];
+    if (typeof value !== "string") continue;
+    const text = value.trim();
+    if (!text) continue;
+    return key === "command" ? `$ ${text}` : text;
+  }
+  return "";
+}
+
 function collapsedOutput(value: unknown): string {
   const text =
     typeof value === "string" ? value : value == null ? "" : JSON.stringify(value, null, 0);
@@ -936,7 +975,8 @@ function formatPlanConfirmDescription(
   }
   const lines = steps.map((step, idx) => {
     const mark = idx < resumeFrom ? "✓" : idx === resumeFrom ? "→" : "·";
-    return `${mark} ${idx + 1}. ${formatStepLabel(step)}`;
+    const detail = stepArgumentText(step);
+    return `${mark} ${idx + 1}. ${formatStepLabel(step)}${detail ? ` ${detail}` : ""}`;
   });
   const start = Math.min(resumeFrom, steps.length - 1) + 1;
   return `将从第 ${start} / ${steps.length} 步开始执行：\n${lines.join("\n")}`;
@@ -2720,10 +2760,12 @@ export default function TasksPage() {
                             {steps.map((step, idx) => {
                               const done = idx < resumeFrom;
                               const current = idx === resumeFrom && selected.status === "running";
+                              const detail = stepArgumentText(step);
+                              const long = detail.length > PLAN_STEP_CHARS;
                               return (
                                 <li
                                   key={idx}
-                                  className={`rounded-lg border px-3 py-2 text-sm ${
+                                  className={`min-w-0 rounded-lg border px-3 py-2 text-sm ${
                                     done
                                       ? "border-success/30 bg-success/5 text-fg-secondary"
                                       : current
@@ -2733,12 +2775,29 @@ export default function TasksPage() {
                                 >
                                   <span className="text-xs text-fg-tertiary mr-2">#{idx + 1}</span>
                                   <span className="font-medium">{formatStepLabel(step)}</span>
+                                  {detail && !long ? (
+                                    <span className="ml-1.5 break-all text-fg-tertiary">
+                                      {detail}
+                                    </span>
+                                  ) : null}
                                   {done && (
                                     <span className="ml-2 text-xs text-success">已完成</span>
                                   )}
                                   {current && (
                                     <span className="ml-2 text-xs text-insight">当前</span>
                                   )}
+                                  {long ? (
+                                    <span
+                                      tabIndex={0}
+                                      data-plan-step=""
+                                      title={detail}
+                                      onKeyDown={keepOutputKeysFromScrolling}
+                                      className="mt-1 block max-w-full min-w-0 truncate rounded-sm text-xs text-fg-tertiary focus-visible:overflow-visible focus-visible:whitespace-normal focus-visible:text-clip focus-visible:break-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                                    >
+                                      {/* 超过 80 个字时平时只占一行。键盘落到时写出整句。鼠标悬停仍是一行，整句在 title 里。 */}
+                                      {detail}
+                                    </span>
+                                  ) : null}
                                 </li>
                               );
                             })}
