@@ -153,9 +153,20 @@ export default function McpMarketplace() {
               className="group flex items-center justify-between bg-surface-overlay/50 rounded-lg p-2.5"
             >
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-fg-primary">{s.name}</span>
-                  <span className="text-xs px-1.5 py-0.5 bg-surface-overlay rounded text-fg-tertiary">
+                <div className="flex min-w-0 items-center gap-2">
+                  {/* 平时一行。键盘落到这一名称，或落到这一行的「安装」时写出整句。鼠标悬停仍是一行。 */}
+                  {s.name.trim() ? (
+                    <span
+                      tabIndex={0}
+                      onKeyDown={keepBareKeysFromScrolling}
+                      className={`min-w-0 rounded-sm text-xs font-medium text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${revealOnRowFocus}`}
+                    >
+                      {s.name}
+                    </span>
+                  ) : (
+                    <span className="min-w-0 text-xs font-medium text-fg-primary">{s.name}</span>
+                  )}
+                  <span className="shrink-0 text-xs px-1.5 py-0.5 bg-surface-overlay rounded text-fg-tertiary">
                     {CATEGORIES[s.category] || s.category}
                   </span>
                 </div>
