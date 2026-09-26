@@ -120,7 +120,10 @@ function focusOnNewGoal(): boolean {
 }
 
 type CreateHandoff =
-  { kind: "failed" } | { kind: "draft" } | { kind: "created"; id: string; updatedAt: number };
+  | { kind: "failed" }
+  | { kind: "draft" }
+  | { kind: "created"; id: string; updatedAt: number }
+  | { kind: "cancelled" };
 
 type GoalDeleteHandoff = { id: string; nextId: string | null };
 
@@ -268,12 +271,30 @@ export default function GoalsPage() {
     }
   };
 
+  const cancelCreate = () => {
+    if (creatingRef.current || loading) return;
+    titleRef.current = "";
+    showCreateRef.current = false;
+    createHandoff.current = { kind: "cancelled" };
+    createParkedOnNew.current = false;
+    setNewTitle("");
+    setShowCreate(false);
+  };
+
   // 收起表单会卸下「创建」，新的一行往往还要等列表。放到绘制前：
   // 这一轮先落到「+ 新建」，不把焦点留在页面空白。空草稿会禁用「创建」，同样这一轮回到名称框。
+  // 点「取消」或按 Esc 收起时，焦点还在这一栏或落在页面空白处，同样这一轮回到「+ 新建」。
   useLayoutEffect(() => {
     if (loading) return;
     const pending = createHandoff.current;
     if (!pending) return;
+
+    if (pending.kind === "cancelled") {
+      createHandoff.current = null;
+      createParkedOnNew.current = false;
+      if (focusIsBlank()) focusNewGoalButton();
+      return;
+    }
 
     if (pending.kind === "failed") {
       createHandoff.current = null;
@@ -397,7 +418,14 @@ export default function GoalsPage() {
         />
 
         {showCreate && (
-          <div className="mb-5 rounded-lg border border-border-subtle bg-surface-raised p-4">
+          <div
+            className="mb-5 rounded-lg border border-border-subtle bg-surface-raised p-4"
+            onKeyDown={(e) => {
+              if (e.key !== "Escape" || isImeKeyboardEvent(e.nativeEvent)) return;
+              e.preventDefault();
+              cancelCreate();
+            }}
+          >
             <Input
               autoFocus
               value={newTitle}
@@ -425,16 +453,7 @@ export default function GoalsPage() {
               >
                 {loading ? "创建中..." : "创建"}
               </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => {
-                  titleRef.current = "";
-                  showCreateRef.current = false;
-                  setShowCreate(false);
-                  setNewTitle("");
-                }}
-              >
+              <Button size="sm" variant="secondary" onClick={cancelCreate}>
                 取消
               </Button>
             </div>

@@ -529,6 +529,97 @@ describe("GoalsPage", () => {
     expect(createGoal).toHaveBeenCalledWith({ title: "学钢琴" });
   });
 
+  it("returns focus to 新建 in the same turn 取消 closes the form", () => {
+    renderGoals();
+    const opener = screen.getAllByRole("button", { name: "+ 新建" })[0];
+    fireEvent.click(opener);
+    fireEvent.change(screen.getByPlaceholderText("目标名称..."), { target: { value: "学钢琴" } });
+    const cancel = screen.getByRole("button", { name: "取消" });
+    cancel.focus();
+    const focusWhenGone = captureFocusWhenGone(() => !screen.queryByPlaceholderText("目标名称..."));
+    fireEvent.click(cancel);
+    expect(screen.queryByPlaceholderText("目标名称...")).not.toBeInTheDocument();
+    expect(focusWhenGone.read()).toBe(opener);
+    expect(opener).toHaveFocus();
+    expect(document.activeElement).not.toBe(document.body);
+
+    fireEvent.click(opener);
+    expect(screen.getByPlaceholderText("目标名称...")).toHaveValue("");
+  });
+
+  it("closes the create form on Escape and returns focus to 新建", () => {
+    renderGoals();
+    const opener = screen.getAllByRole("button", { name: "+ 新建" })[0];
+    fireEvent.click(opener);
+    const input = screen.getByPlaceholderText("目标名称...");
+    fireEvent.change(input, { target: { value: "学钢琴" } });
+    input.focus();
+    const focusWhenGone = captureFocusWhenGone(() => !screen.queryByPlaceholderText("目标名称..."));
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByPlaceholderText("目标名称...")).not.toBeInTheDocument();
+    expect(focusWhenGone.read()).toBe(opener);
+    expect(opener).toHaveFocus();
+    expect(document.activeElement).not.toBe(document.body);
+
+    fireEvent.click(opener);
+    expect(screen.getByPlaceholderText("目标名称...")).toHaveValue("");
+  });
+
+  it("does not close the create form on Escape while an input method is composing", () => {
+    renderGoals();
+    fireEvent.click(screen.getAllByText("+ 新建")[0]);
+    const input = screen.getByPlaceholderText("目标名称...");
+    fireEvent.change(input, { target: { value: "学习" } });
+    fireEvent.keyDown(input, { key: "Escape", isComposing: true });
+    fireEvent.keyDown(input, { key: "Escape", keyCode: 229 });
+    fireEvent.keyDown(input, { key: "Process" });
+    expect(screen.getByPlaceholderText("目标名称...")).toHaveValue("学习");
+    expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument();
+  });
+
+  it("does not close the create form while creating", async () => {
+    let release: (goal: WorkItem) => void = () => {};
+    vi.mocked(createGoal).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderGoals();
+    fireEvent.click(screen.getAllByText("+ 新建")[0]);
+    const input = screen.getByPlaceholderText("目标名称...");
+    fireEvent.change(input, { target: { value: "学钢琴" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    const pending = await screen.findByRole("button", { name: "创建中..." });
+    const cancel = screen.getByRole("button", { name: "取消" });
+    cancel.focus();
+    fireEvent.click(cancel);
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.getByPlaceholderText("目标名称...")).toBeInTheDocument();
+    expect(input).toHaveValue("学钢琴");
+    expect(pending).toBeEnabled();
+    expect(pending).toHaveAttribute("aria-busy", "true");
+    expect(cancel).toBeEnabled();
+    expect(createGoal).toHaveBeenCalledTimes(1);
+
+    release({ ...sampleGoal, id: "g-new", title: "学钢琴" });
+    await waitFor(() =>
+      expect(screen.queryByPlaceholderText("目标名称...")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("does not steal focus when 取消 closes the form after focus already moved", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    renderGoals();
+    const row = await screen.findByRole("link", { name: /学习 Rust/ });
+    fireEvent.click(screen.getAllByRole("button", { name: "+ 新建" })[0]);
+    const cancel = screen.getByRole("button", { name: "取消" });
+    row.focus();
+    fireEvent.click(cancel);
+    expect(screen.queryByPlaceholderText("目标名称...")).not.toBeInTheDocument();
+    expect(row).toHaveFocus();
+  });
+
   it("keeps an action step when create fails and ignores IME Enter", async () => {
     vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
     vi.mocked(createGoalAction).mockRejectedValueOnce(new ApiError("创建行动步骤失败", 500));
