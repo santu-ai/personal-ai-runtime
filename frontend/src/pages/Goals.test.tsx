@@ -1101,6 +1101,52 @@ describe("GoalsPage", () => {
     expect(screen.getByRole("checkbox", { name: "写测试" })).not.toHaveAttribute("aria-busy");
   });
 
+  it("toggles an action when its visible step name is clicked", async () => {
+    const step = {
+      ...sampleGoal,
+      id: "a1",
+      title: "写测试",
+      work_type: "action",
+      status: "pending",
+      parent_work_id: "g1",
+      actions: [],
+    } as WorkItem;
+    const goal = { ...sampleGoal, actions: [step] };
+    vi.mocked(listGoals).mockResolvedValue([goal]);
+    vi.mocked(getGoal).mockResolvedValue(goal);
+    vi.mocked(updateGoalAction).mockResolvedValue({ ...step, status: "completed" });
+    renderGoals("/goals/g1");
+
+    const box = await screen.findByRole("checkbox", { name: "写测试" });
+    const name = screen.getByText("写测试");
+    expect(name.closest("label")).toContainElement(box);
+    expect(box).not.toHaveAttribute("aria-label");
+    name.closest("label")?.click();
+    await waitFor(() =>
+      expect(updateGoalAction).toHaveBeenCalledWith("g1", "a1", { status: "completed" }),
+    );
+    expect(updateGoalAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("names a blank action step 行动步骤", async () => {
+    const step = {
+      ...sampleGoal,
+      id: "a1",
+      title: "   ",
+      work_type: "action",
+      status: "pending",
+      parent_work_id: "g1",
+      actions: [],
+    } as WorkItem;
+    const goal = { ...sampleGoal, actions: [step] };
+    vi.mocked(listGoals).mockResolvedValue([goal]);
+    vi.mocked(getGoal).mockResolvedValue(goal);
+    renderGoals("/goals/g1");
+
+    const box = await screen.findByRole("checkbox", { name: "行动步骤" });
+    expect(box).toHaveAttribute("aria-label", "行动步骤");
+  });
+
   it("does not decompose twice and keeps focus on AI 拆解", async () => {
     vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
     vi.mocked(getGoal).mockResolvedValue(sampleGoal);
