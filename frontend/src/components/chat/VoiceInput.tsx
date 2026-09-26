@@ -116,9 +116,13 @@ export default function VoiceInput({ onTranscript, disabled }: VoiceInputProps) 
   const voiceLabel = isListening ? "停止录音" : "语音输入";
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="group/voice flex items-center gap-1">
       {interimText && (
-        <span className="text-xs text-fg-secondary animate-pulse max-w-40 truncate">
+        // 平时截短，整句在悬停 title 里。键盘落到麦克风时写出整句。鼠标点上去仍是截短的。
+        <span
+          title={interimText}
+          className="max-w-40 truncate text-xs text-fg-secondary animate-pulse group-has-[:focus-visible]/voice:max-w-none group-has-[:focus-visible]/voice:overflow-visible group-has-[:focus-visible]/voice:whitespace-normal group-has-[:focus-visible]/voice:text-clip group-has-[:focus-visible]/voice:break-words"
+        >
           {interimText}
         </span>
       )}
