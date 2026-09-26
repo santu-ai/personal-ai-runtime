@@ -305,6 +305,8 @@ export default function MemoriesPage() {
         : tabParam === "review"
           ? "review"
           : "list";
+  const viewModeRef = useRef(viewMode);
+  viewModeRef.current = viewMode;
   const setViewMode = (mode: ViewMode) => {
     if (mode === "list") {
       setSearchParams({}, { replace: true });
@@ -322,6 +324,13 @@ export default function MemoriesPage() {
   const ratifyingRef = useRef(new Set<string>());
   const [ratifying, setRatifying] = useState<Set<string>>(() => new Set());
   const focusAfter = useRef<FocusAfter | null>(null);
+  // 记住成功时读这一句。按钮上的「记住中...」不另读。换走这一页就不再留着。
+  const spokenRememberSeq = useRef(0);
+  const [spokenRemember, setSpokenRemember] = useState<{ id: number; text: string } | null>(null);
+
+  useEffect(() => {
+    if (viewMode !== "list") setSpokenRemember(null);
+  }, [viewMode]);
 
   const {
     data,
@@ -477,6 +486,14 @@ export default function MemoriesPage() {
       ok = true;
       setNewContent((current) => (current === submitted ? "" : current));
       invalidateMemories();
+      // 已经换到别的视图就不再读。失败不进这里，仍只走右下角提示。
+      if (viewModeRef.current === "list") {
+        spokenRememberSeq.current += 1;
+        setSpokenRemember({
+          id: spokenRememberSeq.current,
+          text: `已记住 ${content}`,
+        });
+      }
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "创建记忆失败", "记忆");
     } finally {
@@ -1119,6 +1136,12 @@ export default function MemoriesPage() {
         ) : viewMode === "list" ? (
           <>
             <div className="flex gap-2">
+              {spokenRemember ? (
+                <p key={spokenRemember.id} className="sr-only" role="status">
+                  {/* 出现时读出来，等当前这一句说完。不把焦点抢过来。 */}
+                  {spokenRemember.text}
+                </p>
+              ) : null}
               <input
                 value={newContent}
                 data-memory-anchor="capture"
