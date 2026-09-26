@@ -102,6 +102,24 @@ function NavBadge({ count }: { count: number }) {
   );
 }
 
+/** 图标栏里平时不写字。键盘落到时才写出，鼠标点上去仍是图标。 */
+const railNameClass =
+  "hidden min-w-0 w-full truncate text-center text-[10px] leading-tight group-focus-visible:block";
+const railIconClass = "shrink-0 group-focus-visible:hidden";
+
+function railLabel(label: string, count: number): string {
+  if (count <= 0) return label;
+  return `${label} ${count > 99 ? "99+" : count}`;
+}
+
+function RailName({ children }: { children: string }) {
+  return (
+    <span data-rail-name="" className={railNameClass}>
+      {children}
+    </span>
+  );
+}
+
 function NavGroup({
   label,
   items,
@@ -126,20 +144,23 @@ function NavGroup({
         const to =
           item.badgeKey === "memories" && proposedCount > 0 ? "/memories?tab=review" : item.path;
         const chatActive = Boolean(item.chatActive && isChatRoute(pathname));
+        const collapsedName = railLabel(item.label, count);
         return (
           <NavLink
             key={item.path}
             to={to}
             end={item.path === "/"}
-            title={collapsed ? item.label : undefined}
+            title={collapsed ? collapsedName : undefined}
+            aria-label={collapsed ? collapsedName : undefined}
             className={({ isActive }) => {
               const active = item.chatActive ? chatActive : isActive;
-              return `nav-item relative mb-0.5 ${active ? "nav-item-active" : "nav-item-idle"} ${
+              return `nav-item group relative mb-0.5 ${active ? "nav-item-active" : "nav-item-idle"} ${
                 collapsed ? "justify-center px-0" : ""
               }`;
             }}
           >
-            <Icon size={16} className="shrink-0" strokeWidth={1.75} />
+            <Icon size={16} className={collapsed ? railIconClass : "shrink-0"} strokeWidth={1.75} />
+            {collapsed ? <RailName>{collapsedName}</RailName> : null}
             {!collapsed && (
               <>
                 <span className="truncate">{item.label}</span>
@@ -147,7 +168,7 @@ function NavGroup({
               </>
             )}
             {collapsed && count > 0 && (
-              <span className="absolute right-1.5 top-1 h-1.5 w-1.5 rounded-full bg-warning" />
+              <span className="absolute right-1.5 top-1 h-1.5 w-1.5 rounded-full bg-warning group-focus-visible:hidden" />
             )}
           </NavLink>
         );
@@ -227,11 +248,16 @@ export default function Sidebar({
           <button
             type="button"
             onClick={() => setCollapsed((v) => !v)}
-            className="rounded-md p-1.5 text-fg-tertiary hover:bg-surface-hover hover:text-fg-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+            className="group inline-flex max-w-full items-center justify-center rounded-md p-1.5 text-fg-tertiary hover:bg-surface-hover hover:text-fg-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             aria-label={compact ? "展开侧栏" : "收起侧栏"}
             title={compact ? "展开侧栏" : "收起侧栏"}
           >
-            {compact ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
+            {compact ? (
+              <PanelLeft size={16} className={railIconClass} />
+            ) : (
+              <PanelLeftClose size={16} className={railIconClass} />
+            )}
+            <RailName>{compact ? "展开侧栏" : "收起侧栏"}</RailName>
           </button>
         </div>
       )}
@@ -356,11 +382,12 @@ export default function Sidebar({
               data-new-chat=""
               aria-busy={newChatBusy || undefined}
               onClick={onNewChat}
-              className={`nav-item nav-item-idle justify-center px-0${newChatBusy ? " opacity-50" : ""}`}
+              className={`nav-item group nav-item-idle justify-center px-0${newChatBusy ? " opacity-50" : ""}`}
               title="新对话"
               aria-label="新对话"
             >
-              <Plus size={16} strokeWidth={1.75} />
+              <Plus size={16} className={railIconClass} strokeWidth={1.75} />
+              <RailName>新对话</RailName>
             </button>
           </div>
         )}

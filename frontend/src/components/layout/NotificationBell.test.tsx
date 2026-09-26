@@ -60,6 +60,15 @@ describe("NotificationBell", () => {
     markAllNotificationsRead.mockResolvedValue(undefined);
   });
 
+  it("writes 通知 on the icon when the rail is compact", () => {
+    renderWithRouter(<NotificationBell compact />);
+    const bell = screen.getByRole("button", { name: "通知" });
+    const name = bell.querySelector("[data-rail-name]");
+    expect(name).toHaveTextContent("通知");
+    expect(name).toHaveClass("hidden", "group-focus-visible:block");
+    expect(bell.querySelector("svg")?.parentElement).toHaveClass("group-focus-visible:hidden");
+  });
+
   it("moves focus into the panel and returns it to the bell on Escape", async () => {
     let focusAtLayout: Element | null = null;
     notificationBellLayoutFocus.notify = () => {
