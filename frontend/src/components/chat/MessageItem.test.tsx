@@ -210,6 +210,32 @@ describe("MessageItem", () => {
     expect(screen.getByRole("button", { name: "已复制" })).toBe(copy);
   });
 
+  it("copies inline code longer than 50 characters without turning it into a block", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const code = "a".repeat(50);
+    render(
+      <MessageItem
+        message={{
+          id: "m11b",
+          role: "assistant",
+          content: `运行 \`${code}\` 即可`,
+        }}
+      />,
+    );
+    const copy = screen.getByRole("button", { name: "复制" });
+    expect(copy).not.toHaveAttribute("data-code-block-copy");
+    expect(copy.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(["focus-visible:opacity-100", "focus-visible:ring-focus-ring"]),
+    );
+    fireEvent.click(copy);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(code));
+    expect(screen.getByRole("button", { name: "已复制" })).toBe(copy);
+  });
+
   it("does not mark inline code as copied when the clipboard write fails", async () => {
     const writeText = vi.fn().mockRejectedValue(new Error("denied"));
     Object.defineProperty(navigator, "clipboard", {

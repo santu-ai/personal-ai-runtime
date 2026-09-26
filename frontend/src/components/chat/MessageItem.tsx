@@ -176,7 +176,9 @@ const markdownComponents = {
       return <CodeBlock language={match?.[1] ?? "text"} code={codeStr} />;
     }
 
-    if (!className && raw.length < 50) {
+    // 没有语言标记、正文里也没有换行，不论长短都是行内代码。
+    // 长过 50 个字符的原先落回纯文本，键盘和鼠标都复制不了。
+    if (!className) {
       return <InlineCode>{children}</InlineCode>;
     }
 
