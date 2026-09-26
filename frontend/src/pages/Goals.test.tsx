@@ -1232,6 +1232,114 @@ describe("GoalsPage", () => {
     expect(screen.getByRole("button", { name: "AI 拆解" })).toHaveFocus();
   });
 
+  it("reads the suggestions when they appear and leaves focus on AI 拆解", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    vi.mocked(getGoal).mockResolvedValue(sampleGoal);
+    let release: (value: { steps: string[] }) => void = () => {};
+    vi.mocked(decomposeGoal).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderGoals("/goals/g1");
+    const button = await screen.findByRole("button", { name: "AI 拆解" });
+    button.focus();
+    fireEvent.click(button);
+    const busy = await screen.findByRole("button", { name: "AI 拆解中..." });
+    expect(busy).toHaveFocus();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    await act(async () => {
+      release({ steps: ["先写测试", "再补文档"] });
+    });
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("AI 建议的行动步骤 先写测试 再补文档");
+    expect(status).toHaveClass("sr-only");
+    expect(screen.getByRole("button", { name: "AI 拆解" })).toHaveFocus();
+    expect(status).not.toHaveFocus();
+  });
+
+  it("does not read 拆解中 or a failed decompose", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    vi.mocked(getGoal).mockResolvedValue(sampleGoal);
+    let rejectDecompose: (err: unknown) => void = () => {};
+    vi.mocked(decomposeGoal).mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectDecompose = reject;
+        }),
+    );
+    renderGoals("/goals/g1");
+    const button = await screen.findByRole("button", { name: "AI 拆解" });
+    button.focus();
+    fireEvent.click(button);
+    expect(await screen.findByRole("button", { name: "AI 拆解中..." })).toHaveFocus();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    await act(async () => {
+      rejectDecompose(new ApiError("拆解失败", 500));
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "AI 拆解" })).toHaveFocus());
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(addError).toHaveBeenCalledWith("拆解失败", "目标");
+  });
+
+  it("reads the replacement suggestions and does not shorten that line when one is added", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    vi.mocked(getGoal).mockResolvedValue(sampleGoal);
+    vi.mocked(createGoalAction).mockResolvedValue(sampleGoal);
+    vi.mocked(decomposeGoal).mockResolvedValueOnce({ steps: ["先写测试", "再补文档"] });
+    renderGoals("/goals/g1");
+    fireEvent.click(await screen.findByRole("button", { name: "AI 拆解" }));
+    const first = await screen.findByRole("status");
+    expect(first).toHaveTextContent("AI 建议的行动步骤 先写测试 再补文档");
+
+    let release: (value: { steps: string[] }) => void = () => {};
+    vi.mocked(decomposeGoal).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const again = screen.getByRole("button", { name: "AI 拆解" });
+    again.focus();
+    fireEvent.click(again);
+    expect(await screen.findByRole("button", { name: "AI 拆解中..." })).toHaveFocus();
+    expect(screen.getByRole("status")).toBe(first);
+    expect(first).toHaveTextContent("AI 建议的行动步骤 先写测试 再补文档");
+
+    await act(async () => {
+      release({ steps: ["先写测试", "再补文档"] });
+    });
+    const replaced = await screen.findByRole("status");
+    expect(replaced).not.toBe(first);
+    expect(replaced).toHaveTextContent("AI 建议的行动步骤 先写测试 再补文档");
+    expect(screen.getByRole("button", { name: "AI 拆解" })).toHaveFocus();
+
+    const row = screen.getByText("先写测试").parentElement as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "添加" }));
+    await waitFor(() => expect(screen.queryByText("先写测试")).not.toBeInTheDocument());
+    expect(screen.getByText("再补文档")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toBe(replaced);
+    expect(replaced).toHaveTextContent("AI 建议的行动步骤 先写测试 再补文档");
+  });
+
+  it("does not read an empty decompose result", async () => {
+    vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
+    vi.mocked(getGoal).mockResolvedValue(sampleGoal);
+    vi.mocked(decomposeGoal).mockResolvedValue({ steps: [] });
+    renderGoals("/goals/g1");
+    const button = await screen.findByRole("button", { name: "AI 拆解" });
+    button.focus();
+    fireEvent.click(button);
+    await waitFor(() => expect(decomposeGoal).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "AI 拆解" })).toHaveFocus());
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText("AI 建议的行动步骤")).not.toBeInTheDocument();
+  });
+
   it("keeps listed suggestions while another decompose is in flight and after it fails", async () => {
     vi.mocked(listGoals).mockResolvedValue([sampleGoal]);
     vi.mocked(getGoal).mockResolvedValue(sampleGoal);
@@ -1656,6 +1764,7 @@ describe("GoalDetailPanel drafts", () => {
     expect(screen.getByPlaceholderText("添加行动步骤...")).toHaveValue("");
     expect(screen.queryByText("只属于这个目标")).not.toBeInTheDocument();
     expect(screen.queryByText("还没发出")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("does not apply a decompose result or clear the next draft after switching goals", async () => {
