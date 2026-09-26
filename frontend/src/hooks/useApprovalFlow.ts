@@ -221,7 +221,6 @@ export function useApprovalFlow(conversationId: string) {
     ): Promise<string | null> => {
       if (!pendingConfirmation || !beginResolve("deny")) return null;
       const pc = pendingConfirmation;
-      let note: string | null = null;
 
       try {
         const res = await resolveApproval(
@@ -232,7 +231,7 @@ export function useApprovalFlow(conversationId: string) {
           conversationId,
           pc.toolCall.id,
         );
-        note = denialNoteFor(res, pc.toolCall.function_name);
+        const note = denialNoteFor(res, pc.toolCall.function_name);
         applyResolveToMessages(
           setMessages,
           pc.assistantMsgId,
@@ -242,6 +241,7 @@ export function useApprovalFlow(conversationId: string) {
           { denied: true },
         );
         setPendingConfirmation(null);
+        return note;
       } catch (err) {
         const msg =
           err instanceof ApiError
@@ -250,11 +250,10 @@ export function useApprovalFlow(conversationId: string) {
               ? err.message
               : "审批操作失败";
         onError?.(msg, "审批");
-        note = null;
+        return null;
       } finally {
         endResolve();
       }
-      return note;
     },
     [pendingConfirmation, conversationId],
   );
