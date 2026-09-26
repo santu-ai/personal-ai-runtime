@@ -22,15 +22,26 @@ export default function TelegramGatewayCard() {
   const [autoReply, setAutoReply] = useState(false);
   const [busyAction, setBusyAction] = useState<"save" | "poll" | null>(null);
   const [message, setMessage] = useState("");
+  const [messageFailed, setMessageFailed] = useState(false);
   const busyRef = useRef(false);
   const saveGen = useRef(0);
   const enabledRef = useRef(false);
   const focusAfterPoll = useRef(false);
   enabledRef.current = enabled;
 
+  const clearMessage = () => {
+    setMessage("");
+    setMessageFailed(false);
+  };
+
+  const showMessage = (text: string, failed = false) => {
+    setMessage(text);
+    setMessageFailed(failed);
+  };
+
   const touch = () => {
     saveGen.current += 1;
-    setMessage("");
+    clearMessage();
   };
 
   useEffect(() => {
@@ -81,13 +92,13 @@ export default function TelegramGatewayCard() {
     const gen = saveGen.current;
     busyRef.current = true;
     setBusyAction("save");
-    setMessage("");
+    clearMessage();
     try {
       const next = await updateTelegramGateway(enabled, autoReply);
       setStatus(next);
-      if (saveGen.current === gen) setMessage("已保存");
+      if (saveGen.current === gen) showMessage("已保存");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "保存失败");
+      showMessage(error instanceof Error ? error.message : "保存失败", true);
     } finally {
       busyRef.current = false;
       setBusyAction(null);
@@ -100,15 +111,15 @@ export default function TelegramGatewayCard() {
     setBusyAction("poll");
     try {
       const result = await pollTelegramGateway();
-      setMessage(
-        result.status === "ok"
-          ? `轮询完成，处理 ${result.processed} 条消息`
-          : result.error || "轮询失败",
-      );
+      if (result.status === "ok") {
+        showMessage(`轮询完成，处理 ${result.processed} 条消息`);
+      } else {
+        showMessage(result.error || "轮询失败", true);
+      }
       setStatus(await getTelegramGatewayStatus());
       if (!enabledRef.current) focusAfterPoll.current = true;
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "轮询失败");
+      showMessage(error instanceof Error ? error.message : "轮询失败", true);
       if (!enabledRef.current) focusAfterPoll.current = true;
     } finally {
       busyRef.current = false;
@@ -200,7 +211,11 @@ export default function TelegramGatewayCard() {
         >
           {busyAction === "poll" ? "轮询中…" : "立即轮询"}
         </Button>
-        {message && <span className="text-xs text-fg-tertiary">{message}</span>}
+        {message && (
+          <span className="text-xs text-fg-tertiary" role={messageFailed ? "alert" : "status"}>
+            {message}
+          </span>
+        )}
       </div>
     </div>
   );

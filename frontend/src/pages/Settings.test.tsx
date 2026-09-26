@@ -584,6 +584,7 @@ describe("SettingsPage", () => {
     const test = await screen.findByRole("button", { name: "测试" });
     fireEvent.click(test);
     expect(await screen.findByTestId("llm-test-ok-deepseek")).toHaveTextContent("连接正常");
+    expect(screen.getByTestId("llm-test-ok-deepseek")).toHaveAttribute("role", "status");
 
     fireEvent.change(screen.getByDisplayValue("deepseek-chat"), {
       target: { value: "deepseek-reasoner" },
@@ -676,6 +677,7 @@ describe("SettingsPage", () => {
       release?.({ ok: true, provider: "deepseek" });
     });
     expect(await screen.findByTestId("llm-test-ok-deepseek")).toHaveTextContent("连接正常");
+    expect(screen.getByTestId("llm-test-ok-deepseek")).toHaveAttribute("role", "status");
     expect(deepseek).toHaveFocus();
     expect(deepseek).not.toHaveAttribute("aria-busy");
   });
@@ -865,7 +867,7 @@ describe("SettingsPage", () => {
     await act(async () => {
       release({ ok: true });
     });
-    expect(await screen.findByText("已保存")).toBeInTheDocument();
+    expect(await screen.findByText("已保存")).toHaveAttribute("role", "status");
     expect(save).toHaveFocus();
     expect(save).not.toHaveAttribute("aria-busy");
   });
@@ -903,7 +905,7 @@ describe("SettingsPage", () => {
     const save = promptControl("identity", "save");
     save.focus();
     fireEvent.click(save);
-    expect(await screen.findByText("保存失败")).toBeInTheDocument();
+    expect(await screen.findByText("保存失败")).toHaveAttribute("role", "alert");
     expect(save).toBeEnabled();
     expect(save).toHaveFocus();
     expect(save).not.toHaveAttribute("aria-busy");
@@ -958,7 +960,7 @@ describe("SettingsPage", () => {
     });
     await waitFor(() => expect(field).toHaveValue("默认身份"));
     expect(focusWhenDisabled).toBe(field);
-    expect(screen.getByText("已重置为默认")).toBeInTheDocument();
+    expect(screen.getByText("已重置为默认")).toHaveAttribute("role", "status");
     expect(reset).toBeDisabled();
     expect(field).toHaveFocus();
     observer.disconnect();
@@ -1103,7 +1105,7 @@ describe("SettingsPage", () => {
     const save = await screen.findByRole("button", { name: "保存" });
     save.focus();
     fireEvent.click(save);
-    expect(await screen.findByText("写不进去")).toBeInTheDocument();
+    expect(await screen.findByText("写不进去")).toHaveAttribute("role", "alert");
     expect(save).toBeEnabled();
     expect(save).toHaveFocus();
   });
@@ -1145,7 +1147,7 @@ describe("SettingsPage", () => {
     await act(async () => {
       release({ status: "ok", processed: 2 });
     });
-    expect(await screen.findByText("轮询完成，处理 2 条消息")).toBeInTheDocument();
+    expect(await screen.findByText("轮询完成，处理 2 条消息")).toHaveAttribute("role", "status");
     expect(focusWhenDisabled).toBe(save);
     expect(poll).toBeDisabled();
     expect(save).toHaveFocus();
@@ -1208,6 +1210,24 @@ describe("SettingsPage", () => {
     expect(test).toBeEnabled();
     expect(test).toHaveFocus();
     expect(screen.getByText("IMAP 失败")).toBeInTheDocument();
+    expect(screen.getByTestId("email-test-result")).not.toHaveAttribute("role");
+  });
+
+  it("reads a successful mailbox test without moving focus", async () => {
+    vi.mocked(testEmailConnection).mockResolvedValueOnce({
+      ok: true,
+      imap_ok: true,
+      smtp_ok: true,
+    });
+    renderWithRouter(<SettingsPage />);
+    await expandSection("Gmail 邮箱配置");
+    const test = await screen.findByRole("button", { name: "测试连接" });
+    test.focus();
+    fireEvent.click(test);
+    expect(await screen.findByTestId("email-test-result")).toHaveAttribute("role", "status");
+    expect(screen.getByText("IMAP 正常")).toBeInTheDocument();
+    expect(screen.getByText("SMTP 正常")).toBeInTheDocument();
+    expect(test).toHaveFocus();
   });
 
   function mcpServer(name: string, installed = false) {

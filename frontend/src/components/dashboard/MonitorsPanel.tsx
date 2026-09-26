@@ -460,7 +460,11 @@ export default function MonitorsPanel() {
             添加网页监控
           </Button>
         </div>
-        {checkHint ? <p className="text-xs text-fg-tertiary">{checkHint}</p> : null}
+        {checkHint ? (
+          <p className="text-xs text-fg-tertiary" role="status">
+            {checkHint}
+          </p>
+        ) : null}
 
         {urlMonitors.length === 0 ? (
           <EmptyState

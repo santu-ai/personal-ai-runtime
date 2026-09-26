@@ -94,7 +94,7 @@ describe("DataSovereigntyCard", () => {
       expect(screen.queryByRole("dialog", { name: "销毁全部数据" })).not.toBeInTheDocument(),
     );
     expect(destroyAllData).toHaveBeenCalledTimes(2);
-    expect(screen.getByText("数据已销毁，请重新启动应用")).toBeInTheDocument();
+    expect(screen.getByText("数据已销毁，请重新启动应用")).toHaveAttribute("role", "status");
     expect(opener).toHaveFocus();
   });
 

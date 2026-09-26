@@ -270,7 +270,11 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
                 </div>
               </div>
               {connectedIds[provider.id] ? (
-                <p className="text-xs text-success" data-testid={`llm-test-ok-${provider.id}`}>
+                <p
+                  className="text-xs text-success"
+                  role="status"
+                  data-testid={`llm-test-ok-${provider.id}`}
+                >
                   连接正常
                 </p>
               ) : null}
