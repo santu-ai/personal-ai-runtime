@@ -14,6 +14,11 @@ import {
 import { getInboxEmailSummary } from "../api/inbox";
 import { RECENT_INBOX_LIMIT } from "../hooks/useInboxQuery";
 
+/** 字面上仍是这一句。有主题或发件人时，读屏名字以「动词：」开头。 */
+function triageControl(label: "查看" | "标记已读" | "让 AI 处理") {
+  return (name: string) => name === label || name.startsWith(`${label}：`);
+}
+
 const { addError, quickChat } = vi.hoisted(() => ({
   addError: vi.fn(),
   quickChat: vi.fn().mockResolvedValue(true),
@@ -178,7 +183,7 @@ describe("InboxPage", () => {
     );
     renderWithRouter(<InboxPage />);
 
-    const recent = await screen.findByRole("button", { name: new RegExp(subject) });
+    const recent = await screen.findByRole("button", { name: `未读 ${subject} ${sender}` });
     expect(recent).toHaveClass("group");
     const recentLines = recent.querySelectorAll(".truncate");
     expect(recentLines[0]).toHaveTextContent(subject);
@@ -192,7 +197,7 @@ describe("InboxPage", () => {
     expect(recentLines[1]).toHaveClass("group-focus-visible:max-w-none");
     expect(recent.querySelector("div")).toHaveClass("group-focus-visible:flex-col");
 
-    const view = screen.getByRole("button", { name: "查看" });
+    const view = screen.getByRole("button", { name: triageControl("查看") });
     const card = view.parentElement?.parentElement;
     expect(card).toHaveClass("group");
     const cardSubject = card?.querySelector(".truncate");
@@ -203,8 +208,99 @@ describe("InboxPage", () => {
       "group-has-[:focus-visible]:overflow-visible",
     );
     expect(cardSubject?.className).not.toContain("group-hover:");
-    expect(screen.getByRole("button", { name: "标记已读" }).closest(".group")).toBe(card);
-    expect(screen.getByRole("button", { name: "让 AI 处理" }).closest(".group")).toBe(card);
+    expect(screen.getByRole("button", { name: triageControl("标记已读") }).closest(".group")).toBe(
+      card,
+    );
+    expect(
+      screen.getByRole("button", { name: triageControl("让 AI 处理") }).closest(".group"),
+    ).toBe(card);
+  });
+
+  it("names triage actions with the subject and sender while the verb stays visible", async () => {
+    const subject = "  周五前确认\n周报目录  ";
+    const sender = "  boss@corp.com  ";
+    const spoken = `查看：${subject.trim()} ${sender.trim()}`;
+    const pending = [
+      {
+        id: "e-named",
+        sender,
+        subject,
+        preview: "预览不进名字",
+        received_at: "2026-08-17T01:00:00Z",
+        category: "important" as const,
+        importance: 0.9,
+        reason: "原因不进名字",
+        notified: 0,
+        digested: 0,
+        status: "pending" as const,
+        created_at: "2026-08-17T01:00:00Z",
+      },
+      {
+        id: "e-sender",
+        sender: "only@corp.com",
+        subject: "",
+        preview: "预览不进名字",
+        received_at: "2026-08-17T01:00:00Z",
+        category: "actionable" as const,
+        importance: 0.4,
+        reason: "原因不进名字",
+        notified: 0,
+        digested: 0,
+        status: "pending" as const,
+        created_at: "2026-08-17T01:00:00Z",
+      },
+      {
+        id: "e-blank",
+        sender: " \n ",
+        subject: "   ",
+        preview: "预览不进名字",
+        received_at: "2026-08-17T01:00:00Z",
+        category: "ignorable" as const,
+        importance: 0.1,
+        reason: "原因不进名字",
+        notified: 0,
+        digested: 0,
+        status: "pending" as const,
+        created_at: "2026-08-17T01:00:00Z",
+      },
+    ];
+    vi.mocked(listInboxEmails).mockImplementation(async (_category, status = "pending") =>
+      status === "pending" ? pending : [],
+    );
+    renderWithRouter(<InboxPage />);
+
+    const view = await screen.findByRole("button", { name: /^查看：周五前确认/ });
+    const card = view.closest(".group") as HTMLElement;
+    expect(view).toHaveAttribute("aria-label", spoken);
+    expect(view).toHaveTextContent("查看");
+    expect(view.textContent).not.toContain("周五前确认");
+    expect(within(card).getByRole("button", { name: /标记已读/ })).toHaveAttribute(
+      "aria-label",
+      spoken.replace(/^查看/, "标记已读"),
+    );
+    expect(within(card).getByRole("button", { name: /让 AI 处理/ })).toHaveTextContent(
+      "让 AI 处理",
+    );
+    expect(card.querySelector(".truncate")?.textContent).toBe(subject);
+
+    const senderOnly = screen.getByRole("button", { name: "查看：only@corp.com" });
+    expect(senderOnly).toHaveTextContent("查看");
+    expect(senderOnly).not.toHaveAttribute("aria-label", expect.stringContaining("预览不进名字"));
+    expect(senderOnly).not.toHaveAttribute("aria-label", expect.stringContaining("原因不进名字"));
+    expect(senderOnly.getAttribute("aria-label")).not.toMatch(/important|actionable|重要|需跟进/);
+
+    const blankView = screen.getByRole("button", { name: "查看" });
+    const blankCard = blankView.closest(".group") as HTMLElement;
+    expect(blankCard.querySelector(".truncate")?.textContent).toBe("   ");
+    expect(blankCard.querySelectorAll(".truncate")[1]?.textContent).toBe(" \n ");
+    expect(blankView).not.toHaveAttribute("aria-label");
+    expect(blankView).toHaveTextContent("查看");
+    expect(within(blankCard).getByRole("button", { name: "标记已读" })).not.toHaveAttribute(
+      "aria-label",
+    );
+    expect(within(blankCard).getByRole("button", { name: "让 AI 处理" })).not.toHaveAttribute(
+      "aria-label",
+    );
   });
 
   it("lists synced emails below the digest", async () => {
@@ -473,7 +569,9 @@ describe("InboxPage", () => {
     const secondCard = screen.getByText("另一封账单").closest("div.rounded-lg");
     expect(firstCard).toBeTruthy();
     expect(secondCard).toBeTruthy();
-    fireEvent.click(within(firstCard as HTMLElement).getByRole("button", { name: "查看" }));
+    fireEvent.click(
+      within(firstCard as HTMLElement).getByRole("button", { name: triageControl("查看") }),
+    );
 
     const alert = await screen.findByTestId("inbox-detail-load-error");
     expect(alert).toHaveTextContent("邮件暂时读不到");
@@ -482,12 +580,14 @@ describe("InboxPage", () => {
     expect(screen.getByText("另一封账单")).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
-    expect(within(firstCard as HTMLElement).getByRole("button", { name: "查看" })).toBeEnabled();
     expect(
-      within(firstCard as HTMLElement).getByRole("button", { name: "查看" }),
+      within(firstCard as HTMLElement).getByRole("button", { name: triageControl("查看") }),
+    ).toBeEnabled();
+    expect(
+      within(firstCard as HTMLElement).getByRole("button", { name: triageControl("查看") }),
     ).not.toHaveAttribute("aria-busy");
     expect(
-      within(secondCard as HTMLElement).getByRole("button", { name: "查看" }),
+      within(secondCard as HTMLElement).getByRole("button", { name: triageControl("查看") }),
     ).not.toHaveAttribute("aria-busy");
     await waitFor(() => expect(within(alert).getByRole("button", { name: "重试" })).toHaveFocus());
   });
@@ -506,7 +606,7 @@ describe("InboxPage", () => {
     );
     renderWithRouter(<InboxPage />);
     const card = (await screen.findByText("请尽快回复")).closest("div.rounded-lg") as HTMLElement;
-    const view = within(card).getByRole("button", { name: "查看" });
+    const view = within(card).getByRole("button", { name: triageControl("查看") });
     view.focus();
     fireEvent.click(view);
     fireEvent.click(view);
@@ -538,8 +638,8 @@ describe("InboxPage", () => {
     );
     renderWithRouter(<InboxPage />);
     const card = (await screen.findByText("请尽快回复")).closest("div.rounded-lg") as HTMLElement;
-    const view = within(card).getByRole("button", { name: "查看" });
-    const mark = within(card).getByRole("button", { name: "标记已读" });
+    const view = within(card).getByRole("button", { name: triageControl("查看") });
+    const mark = within(card).getByRole("button", { name: triageControl("标记已读") });
     view.focus();
     fireEvent.click(view);
     await waitFor(() => expect(view).toHaveAttribute("aria-busy", "true"));
@@ -562,7 +662,7 @@ describe("InboxPage", () => {
     vi.mocked(getInboxEmailDetail).mockRejectedValueOnce(new ApiError("邮件暂时读不到", 503));
     renderWithRouter(<InboxPage />);
     const card = (await screen.findByText("请尽快回复")).closest("div.rounded-lg") as HTMLElement;
-    fireEvent.click(within(card).getByRole("button", { name: "查看" }));
+    fireEvent.click(within(card).getByRole("button", { name: triageControl("查看") }));
     const retry = await screen.findByRole("button", { name: "重试" });
     await waitFor(() => expect(retry).toHaveFocus());
 
@@ -578,7 +678,10 @@ describe("InboxPage", () => {
     expect(retry).toHaveFocus();
     expect(screen.getByTestId("inbox-detail-load-error")).toHaveTextContent("邮件暂时读不到");
     expect(screen.queryByText("加载中...")).not.toBeInTheDocument();
-    expect(within(card).getByRole("button", { name: "查看" })).toHaveAttribute("aria-busy", "true");
+    expect(within(card).getByRole("button", { name: triageControl("查看") })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
     expect(screen.getByText("请尽快回复")).toBeInTheDocument();
 
     release?.(first);
@@ -602,17 +705,16 @@ describe("InboxPage", () => {
       "div.rounded-lg",
     ) as HTMLElement;
     const secondCard = screen.getByText("另一封账单").closest("div.rounded-lg") as HTMLElement;
-    fireEvent.click(within(firstCard).getByRole("button", { name: "查看" }));
+    fireEvent.click(within(firstCard).getByRole("button", { name: triageControl("查看") }));
     expect(await screen.findByTestId("inbox-detail-load-error")).toHaveTextContent(
       "邮件暂时读不到",
     );
 
-    fireEvent.click(within(secondCard).getByRole("button", { name: "查看" }));
+    fireEvent.click(within(secondCard).getByRole("button", { name: triageControl("查看") }));
     await waitFor(() =>
-      expect(within(secondCard).getByRole("button", { name: "查看" })).toHaveAttribute(
-        "aria-busy",
-        "true",
-      ),
+      expect(
+        within(secondCard).getByRole("button", { name: triageControl("查看") }),
+      ).toHaveAttribute("aria-busy", "true"),
     );
     expect(screen.queryByText("邮件暂时读不到")).not.toBeInTheDocument();
     expect(screen.queryByTestId("inbox-detail-load-error")).not.toBeInTheDocument();
@@ -649,7 +751,7 @@ describe("InboxPage", () => {
 
     const row = await screen.findByRole("button", { name: "已读 八月账单 billing@example.com" });
     expect(row).toHaveClass("focus-visible:ring-focus-ring");
-    expect(screen.queryByRole("button", { name: "查看" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: triageControl("查看") })).not.toBeInTheDocument();
     row.focus();
     fireEvent.click(row);
     fireEvent.click(row);
@@ -691,9 +793,9 @@ describe("InboxPage", () => {
     const card = triageCard(
       await screen.findByText("请尽快回复").then((node) => node.textContent!),
     );
-    const mark = within(card).getByRole("button", { name: "标记已读" });
-    const ai = within(card).getByRole("button", { name: "让 AI 处理" });
-    const view = within(card).getByRole("button", { name: "查看" });
+    const mark = within(card).getByRole("button", { name: triageControl("标记已读") });
+    const ai = within(card).getByRole("button", { name: triageControl("让 AI 处理") });
+    const view = within(card).getByRole("button", { name: triageControl("查看") });
     mark.focus();
     fireEvent.click(mark);
     fireEvent.click(mark);
@@ -712,7 +814,7 @@ describe("InboxPage", () => {
       release();
     });
     const nextCard = triageCard("另一封账单");
-    const next = within(nextCard).getByRole("button", { name: "标记已读" });
+    const next = within(nextCard).getByRole("button", { name: triageControl("标记已读") });
     await waitFor(() => expect(next).toHaveFocus());
     expect(screen.queryByText("请尽快回复")).not.toBeInTheDocument();
     expect(focusWhenGone.read()).toBe(next);
@@ -740,18 +842,20 @@ describe("InboxPage", () => {
     renderWithRouter(<InboxPage />);
     const mark = within(
       triageCard(await screen.findByText("请尽快回复").then((n) => n.textContent!)),
-    ).getByRole("button", { name: "标记已读" });
+    ).getByRole("button", { name: triageControl("标记已读") });
     mark.focus();
     fireEvent.click(mark);
     const focusWhenGone = captureFocusWhenGone(
-      () => !screen.queryByRole("button", { name: "标记已读" }),
+      () => !screen.queryByRole("button", { name: triageControl("标记已读") }),
     );
     await act(async () => {
       release();
     });
     const row = await screen.findByRole("button", { name: "已读 请尽快回复 boss@corp.com" });
     await waitFor(() => expect(row).toHaveFocus());
-    expect(screen.queryByRole("button", { name: "标记已读" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: triageControl("标记已读") }),
+    ).not.toBeInTheDocument();
     expect(focusWhenGone.read()).toBe(row);
   });
 
@@ -773,18 +877,20 @@ describe("InboxPage", () => {
     renderWithRouter(<InboxPage />);
     const mark = within(
       triageCard(await screen.findByText("请尽快回复").then((n) => n.textContent!)),
-    ).getByRole("button", { name: "标记已读" });
+    ).getByRole("button", { name: triageControl("标记已读") });
     mark.focus();
     fireEvent.click(mark);
     const focusWhenGone = captureFocusWhenGone(
-      () => !screen.queryByRole("button", { name: "标记已读" }),
+      () => !screen.queryByRole("button", { name: triageControl("标记已读") }),
     );
     await act(async () => {
       release();
     });
     const poll = screen.getByRole("button", { name: "立即轮询" });
     await waitFor(() => expect(poll).toHaveFocus());
-    expect(screen.queryByRole("button", { name: "标记已读" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: triageControl("标记已读") }),
+    ).not.toBeInTheDocument();
     expect(focusWhenGone.read()).toBe(poll);
   });
 
@@ -803,7 +909,7 @@ describe("InboxPage", () => {
     renderWithRouter(<InboxPage />);
     const mark = within(
       triageCard(await screen.findByText("请尽快回复").then((n) => n.textContent!)),
-    ).getByRole("button", { name: "标记已读" });
+    ).getByRole("button", { name: triageControl("标记已读") });
     mark.focus();
     fireEvent.click(mark);
     fireEvent.click(mark);
@@ -838,7 +944,7 @@ describe("InboxPage", () => {
     renderWithRouter(<InboxPage />);
     const mark = within(
       triageCard(await screen.findByText("请尽快回复").then((n) => n.textContent!)),
-    ).getByRole("button", { name: "标记已读" });
+    ).getByRole("button", { name: triageControl("标记已读") });
     const poll = screen.getByRole("button", { name: "立即轮询" });
     mark.focus();
     fireEvent.click(mark);
@@ -851,7 +957,7 @@ describe("InboxPage", () => {
     expect(poll).toHaveFocus();
     expect(focusWhenGone.read()).toBe(poll);
     expect(
-      within(triageCard("另一封账单")).getByRole("button", { name: "标记已读" }),
+      within(triageCard("另一封账单")).getByRole("button", { name: triageControl("标记已读") }),
     ).not.toHaveFocus();
   });
 
@@ -877,8 +983,8 @@ describe("InboxPage", () => {
     );
     renderWithRouter(<InboxPage />);
     const card = triageCard(await screen.findByText("请尽快回复").then((n) => n.textContent!));
-    const ai = within(card).getByRole("button", { name: "让 AI 处理" });
-    const mark = within(card).getByRole("button", { name: "标记已读" });
+    const ai = within(card).getByRole("button", { name: triageControl("让 AI 处理") });
+    const mark = within(card).getByRole("button", { name: triageControl("标记已读") });
     ai.focus();
     fireEvent.click(ai);
     fireEvent.click(ai);
@@ -891,7 +997,9 @@ describe("InboxPage", () => {
     expect(updateInboxEmailStatus).toHaveBeenCalledWith("e1", "handled");
     expect(quickChat).not.toHaveBeenCalled();
 
-    const other = within(triageCard("另一封账单")).getByRole("button", { name: "标记已读" });
+    const other = within(triageCard("另一封账单")).getByRole("button", {
+      name: triageControl("标记已读"),
+    });
     fireEvent.click(other);
     await waitFor(() => expect(updateInboxEmailStatus).toHaveBeenCalledTimes(2));
     expect(updateInboxEmailStatus).toHaveBeenLastCalledWith("e2", "read");
@@ -934,7 +1042,7 @@ describe("InboxPage", () => {
     renderWithRouter(<InboxPage />);
     const ai = within(
       triageCard(await screen.findByText("请尽快回复").then((n) => n.textContent!)),
-    ).getByRole("button", { name: "让 AI 处理" });
+    ).getByRole("button", { name: triageControl("让 AI 处理") });
     ai.focus();
     fireEvent.click(ai);
     fireEvent.click(ai);
@@ -967,7 +1075,7 @@ describe("InboxPage", () => {
     renderWithRouter(<InboxPage />);
     const ai = within(
       triageCard(await screen.findByText("请尽快回复").then((n) => n.textContent!)),
-    ).getByRole("button", { name: "让 AI 处理" });
+    ).getByRole("button", { name: triageControl("让 AI 处理") });
     ai.focus();
     const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("请尽快回复"));
     fireEvent.click(ai);
@@ -975,7 +1083,7 @@ describe("InboxPage", () => {
       await screen
         .findByText("另一封账单")
         .then((node) => node.closest("div.rounded-lg") as HTMLElement),
-    ).getByRole("button", { name: "标记已读" });
+    ).getByRole("button", { name: triageControl("标记已读") });
     await waitFor(() => expect(next).toHaveFocus());
     expect(focusWhenGone.read()).toBe(next);
     expect(quickChat).toHaveBeenCalledTimes(1);
@@ -990,7 +1098,7 @@ describe("InboxPage", () => {
     vi.mocked(getInboxEmailDetail).mockRejectedValue(new Error("   "));
     renderWithRouter(<InboxPage />);
     const card = (await screen.findByText("请尽快回复")).closest("div.rounded-lg") as HTMLElement;
-    fireEvent.click(within(card).getByRole("button", { name: "查看" }));
+    fireEvent.click(within(card).getByRole("button", { name: triageControl("查看") }));
     expect(await screen.findByTestId("inbox-detail-load-error")).toHaveTextContent(
       "加载邮件详情失败",
     );
