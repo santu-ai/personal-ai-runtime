@@ -14,6 +14,7 @@ import OnboardingWizard from "./components/onboarding/OnboardingWizard";
 import ErrorBoundary from "./components/ui/ErrorBoundary";
 import NoticeBanner from "./components/ui/NoticeBanner";
 import ToastCard from "./components/ui/ToastCard";
+import { captureToastDismissFocus, placeToastDismissFocus } from "./utils/toastDismissFocus";
 import QuickCaptureDialog from "./components/quickcapture/QuickCaptureDialog";
 import {
   HomeConversationGateProvider,
@@ -37,6 +38,11 @@ function focusNewChat(): void {
 
 /** 绘制前通知。测试在删除确认框卸下的同一轮读取焦点。 */
 export const layoutDeleteLayoutFocus = {
+  notify: null as null | (() => void),
+};
+
+/** 绘制前通知。测试在右下角提示卸下的同一轮读取焦点。 */
+export const toastStackLayoutFocus = {
   notify: null as null | (() => void),
 };
 
@@ -190,8 +196,14 @@ function LayoutFrame() {
     focusNewChat();
   }, [deleting, conversationRows]);
 
+  // 提示卸下的同一轮就把焦点交出去。放到绘制前，不把焦点留在页面空白。
+  useLayoutEffect(() => {
+    placeToastDismissFocus();
+  });
+
   useLayoutEffect(() => {
     layoutDeleteLayoutFocus.notify?.();
+    toastStackLayoutFocus.notify?.();
   });
 
   const handleSelectConversation = (id: string) => {
@@ -249,27 +261,34 @@ function LayoutFrame() {
             {errors.map((err) => (
               <ToastCard
                 key={err.id}
+                toastId={err.id}
                 tone="danger"
                 title={err.source ? `[${err.source}] 错误` : "错误"}
                 body={err.message}
-                onDismiss={() => dismissError(err.id)}
+                onDismiss={() => {
+                  captureToastDismissFocus(err.id);
+                  dismissError(err.id);
+                }}
               />
             ))}
             {toasts.map((t) => (
               <ToastCard
                 key={t.id}
+                toastId={t.id}
                 tone="insight"
                 title={t.title}
                 body={t.content}
-                onClick={() =>
+                onClick={() => {
+                  // 详情关掉时这条提示也卸下。返回目标记成铃，焦点才不会落到已经不在的提示上。
+                  document.querySelector<HTMLElement>("[data-notification-bell]")?.focus();
                   setToastDetail({
                     id: t.id,
                     type: t.type,
                     title: t.title,
                     content: t.content,
                     created_at: t.created_at,
-                  })
-                }
+                  });
+                }}
                 onDismiss={() => dismissToast(t.id)}
               />
             ))}

@@ -2,17 +2,28 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import Layout, { layoutDeleteLayoutFocus } from "./Layout";
+import Layout, { layoutDeleteLayoutFocus, toastStackLayoutFocus } from "./Layout";
 import ChatHome from "./components/chat/ChatHome";
 import { useChatStore } from "./stores/chatStore";
 import { useErrorStore } from "./stores/errorStore";
+import { clearToastDismissFocus } from "./utils/toastDismissFocus";
+
+const notificationState = vi.hoisted(() => ({
+  toasts: [] as {
+    id: string;
+    type: string;
+    title: string;
+    content: string;
+    created_at: string;
+  }[],
+}));
 
 vi.mock("./hooks/useNotifications", async () => {
   const React = await import("react");
   return {
     LiveNotificationContext: React.createContext<unknown[]>([]),
     useNotifications: () => ({
-      toasts: [],
+      toasts: notificationState.toasts,
       liveNotifications: [],
       dismissToast: () => {},
     }),
@@ -598,5 +609,123 @@ describe("Layout new chat", () => {
     });
     await waitFor(() => expect(send).not.toHaveAttribute("aria-busy"));
     expect(box).toHaveValue("首页这句");
+  });
+});
+
+describe("Layout toast focus", () => {
+  function renderLayout() {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={["/"]}>
+          <Layout />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  function captureFocusWhenGone(gone: () => boolean): { read: () => Element | null } {
+    let focusAtLayout: Element | null = null;
+    toastStackLayoutFocus.notify = () => {
+      if (!gone()) return;
+      focusAtLayout ??= document.activeElement;
+    };
+    return { read: () => focusAtLayout };
+  }
+
+  beforeEach(() => {
+    notificationState.toasts = [];
+    toastStackLayoutFocus.notify = null;
+    clearToastDismissFocus();
+    localStorage.setItem("onboarding_done", "1");
+    localStorage.removeItem("sidebar_collapsed");
+    useChatStore.setState({
+      conversations: [],
+      activeConversationId: null,
+      pendingPrompt: null,
+    });
+    useErrorStore.setState({ errors: [], backendUnavailable: false });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/chat/conversations")) return json([]);
+        if (url.includes("/notifications")) return json([]);
+        if (url.includes("/system/health")) return json({ auth_required: false });
+        if (url.includes("/approvals")) return json([]);
+        if (url.includes("/memory")) return json({ count: 0 });
+        if (url.includes("/inbox")) return json([]);
+        return json({});
+      }),
+    );
+  });
+
+  afterEach(() => {
+    toastStackLayoutFocus.notify = null;
+    notificationState.toasts = [];
+    clearToastDismissFocus();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    useErrorStore.setState({ errors: [], backendUnavailable: false });
+  });
+
+  it("moves error-toast focus to the next close button in the same layout turn", async () => {
+    renderLayout();
+    await screen.findByRole("button", { name: "通知" });
+    act(() => {
+      useErrorStore.getState().addError("先到", "收件箱");
+      useErrorStore.getState().addError("后到", "任务");
+    });
+    const close = screen.getAllByRole("button", { name: "关闭" })[0];
+    expect(close).toBeDefined();
+    close?.focus();
+    const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("后到"));
+    fireEvent.click(close!);
+    const remaining = screen.getByRole("button", { name: "关闭" });
+    expect(remaining).toHaveFocus();
+    expect(focusWhenGone.read()).toBe(remaining);
+    expect(screen.getByText("先到")).toBeInTheDocument();
+  });
+
+  it("moves the last error toast focus to the notification bell", async () => {
+    renderLayout();
+    const bell = await screen.findByRole("button", { name: "通知" });
+    act(() => {
+      useErrorStore.getState().addError("只有这条");
+    });
+    const close = screen.getByRole("button", { name: "关闭" });
+    close.focus();
+    const focusWhenGone = captureFocusWhenGone(() => !screen.queryByText("只有这条"));
+    fireEvent.click(close);
+    expect(bell).toHaveFocus();
+    expect(focusWhenGone.read()).toBe(bell);
+  });
+
+  it("returns focus to the notification bell when a live notice detail closes", async () => {
+    notificationState.toasts = [
+      {
+        id: "live-1",
+        type: "reminder",
+        title: "喝水",
+        content: "该喝了",
+        created_at: "2026-09-26T00:00:00.000Z",
+      },
+    ];
+    renderLayout();
+    const bell = await screen.findByRole("button", { name: "通知" });
+    fireEvent.click(screen.getByRole("button", { name: /喝水/ }));
+    expect(await screen.findByRole("dialog", { name: "喝水" })).toBeInTheDocument();
+    const focusWhenGone = captureFocusWhenGone(
+      () => !screen.queryByRole("dialog", { name: "喝水" }),
+    );
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "喝水" })).not.toBeInTheDocument(),
+    );
+    expect(bell).toHaveFocus();
+    expect(focusWhenGone.read()).toBe(bell);
   });
 });

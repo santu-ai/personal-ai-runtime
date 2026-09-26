@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { getAuthToken } from "../api/client";
+import { captureToastDismissFocus } from "../utils/toastDismissFocus";
 import { dispatchWsEvent } from "./useWsInvalidationBridge";
 
 export interface NotificationItem {
@@ -68,6 +69,8 @@ export function useNotifications() {
   const [liveNotifications, setLiveNotifications] = useState<NotificationItem[]>([]);
 
   const dismissToast = useCallback((id: string) => {
+    // 到点自己关掉时，焦点若还在这条上，先记下来，页面才能在卸下的同一轮交出去。
+    captureToastDismissFocus(id);
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
