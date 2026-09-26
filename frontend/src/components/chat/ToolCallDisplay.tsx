@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
 import { toolLabel, toolIcon, describeToolAction } from "../../utils/toolLabels";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
 import { matchResultsByCallId } from "./matchToolResult";
 import { detectOutcome } from "./detectToolFailure";
 import { formatArgs } from "./formatArgs";
@@ -87,6 +88,59 @@ function cleanPreview(text: string): string {
   return s.replace(/\s+/g, " ").trim();
 }
 
+/** 平时短。键盘落到这一行时写出整句。鼠标悬停仍是短的。 */
+const revealLine =
+  "truncate group-focus-visible:overflow-visible group-focus-visible:whitespace-normal group-focus-visible:text-clip group-focus-visible:break-words";
+
+function keepBareKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
+  if (isImeKeyboardEvent(event.nativeEvent)) return;
+  if (event.key === "Enter" || event.key === " ") event.preventDefault();
+}
+
+function EmailRow({ em }: { em: EmailItem }) {
+  const from = em.from ?? "";
+  const short = shortenFrom(from);
+  const preview = cleanPreview(em.preview);
+  const focusable = Boolean(from.trim() || preview);
+  const swapped = Boolean(from.trim()) && short !== from;
+  return (
+    <tr
+      tabIndex={focusable ? 0 : undefined}
+      onKeyDown={focusable ? keepBareKeysFromScrolling : undefined}
+      className={`group border-t border-border-strong/80 hover:bg-surface-overlay/50${
+        focusable
+          ? " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+          : ""
+      }`}
+    >
+      <td className="px-2 py-1.5 text-fg-tertiary whitespace-nowrap align-top">
+        {formatEmailDate(em.date)}
+      </td>
+      <td
+        className="px-2 py-1.5 text-fg-primary align-top max-w-[120px] group-focus-visible:max-w-none"
+        title={from.trim() ? from : undefined}
+      >
+        {swapped ? (
+          <>
+            <span className="block truncate group-focus-visible:hidden">{short}</span>
+            <span className="hidden break-words group-focus-visible:block">{from}</span>
+          </>
+        ) : (
+          <span className={from.trim() ? `block ${revealLine}` : "block"}>{short}</span>
+        )}
+      </td>
+      <td className="px-2 py-1.5 align-top">
+        <div className="text-fg-primary font-medium">{em.subject || "(无主题)"}</div>
+        {preview && (
+          <div className="text-fg-tertiary mt-0.5 line-clamp-2 group-focus-visible:line-clamp-none group-focus-visible:break-words">
+            {preview}
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+}
+
 function InboxResultView({ data }: { data: { count: number; emails: EmailItem[] } }) {
   return (
     <div className="space-y-2">
@@ -102,25 +156,7 @@ function InboxResultView({ data }: { data: { count: number; emails: EmailItem[] 
           </thead>
           <tbody>
             {data.emails.map((em, i) => (
-              <tr key={i} className="border-t border-border-strong/80 hover:bg-surface-overlay/50">
-                <td className="px-2 py-1.5 text-fg-tertiary whitespace-nowrap align-top">
-                  {formatEmailDate(em.date)}
-                </td>
-                <td
-                  className="px-2 py-1.5 text-fg-primary align-top max-w-[120px] truncate"
-                  title={em.from}
-                >
-                  {shortenFrom(em.from)}
-                </td>
-                <td className="px-2 py-1.5 align-top">
-                  <div className="text-fg-primary font-medium">{em.subject || "(无主题)"}</div>
-                  {em.preview && (
-                    <div className="text-fg-tertiary mt-0.5 line-clamp-2">
-                      {cleanPreview(em.preview)}
-                    </div>
-                  )}
-                </td>
-              </tr>
+              <EmailRow key={i} em={em} />
             ))}
           </tbody>
         </table>

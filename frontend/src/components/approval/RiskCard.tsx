@@ -12,10 +12,11 @@
  *   → {children} 操作按钮
  */
 
-import { type ReactNode } from "react";
+import { type KeyboardEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Timer } from "lucide-react";
 import { toolLabel, describeToolAction } from "../../utils/toolLabels";
+import { isImeKeyboardEvent } from "../../utils/imeKey";
 import {
   getRiskLevelFromPolicy,
   getRiskTone,
@@ -28,6 +29,15 @@ import type { CapabilityPolicy } from "../../api/settings";
 import Badge from "../ui/Badge";
 
 const PREVIEW_LIMIT = 400;
+
+/** 平时一行。键盘落到这一句时写出整句。鼠标悬停仍是一行。 */
+const revealOnFocus =
+  "truncate focus-visible:overflow-visible focus-visible:whitespace-normal focus-visible:text-clip focus-visible:break-words";
+
+function keepBareKeysFromScrolling(event: KeyboardEvent<HTMLElement>) {
+  if (isImeKeyboardEvent(event.nativeEvent)) return;
+  if (event.key === "Enter" || event.key === " ") event.preventDefault();
+}
 
 function parseArgs(args: string): Record<string, unknown> {
   try {
@@ -230,7 +240,12 @@ export default function RiskCard({
           )}
 
           {description && (
-            <p className={`${tone.desc} text-sm whitespace-pre-wrap truncate`} title={description}>
+            <p
+              tabIndex={0}
+              onKeyDown={keepBareKeysFromScrolling}
+              title={description}
+              className={`${tone.desc} min-w-0 rounded-sm text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring ${revealOnFocus}`}
+            >
               {description}
             </p>
           )}

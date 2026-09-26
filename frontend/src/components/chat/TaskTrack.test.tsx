@@ -94,6 +94,49 @@ describe("TaskTrack", () => {
     expect(screen.getByText("✗ 失败")).toBeInTheDocument();
   });
 
+  it("writes the full tool name when that step is keyboard focused", () => {
+    const name = "zzzz_quill_marker_blob_that_stays_clipped_on_one_line";
+    renderWithRouter(
+      <TaskTrack
+        stages={[
+          { toolCall: multiToolCalls[0] },
+          {
+            toolCall: {
+              index: 2,
+              id: "tc-long",
+              function_name: name,
+              arguments: "{}",
+            },
+          },
+        ]}
+      />,
+    );
+    const label = "zzzz quill marker blob that stays clipped on one line";
+    const line = screen.getByText(label);
+    const button = line.closest("button");
+    expect(button).toHaveClass("group", "focus-visible:ring-focus-ring");
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    expect(line).toHaveClass(
+      "truncate",
+      "group-focus-visible:overflow-visible",
+      "group-focus-visible:whitespace-normal",
+      "group-focus-visible:text-clip",
+      "group-focus-visible:break-words",
+    );
+    expect(line.className).not.toContain("group-hover:");
+    expect(line).not.toHaveAttribute("title");
+    expect(line).not.toHaveAttribute("tabindex");
+    expect(line.closest("button")).toBe(button);
+
+    const short = screen.getByText("读取文件");
+    expect(short).toHaveClass("truncate", "group-focus-visible:whitespace-normal");
+    expect(short.className).not.toContain("group-hover:");
+
+    expect(fireEvent.keyDown(button!, { key: " " })).toBe(true);
+    expect(fireEvent.keyDown(button!, { key: "Enter" })).toBe(true);
+    expect(button).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("expands details on click", () => {
     renderWithRouter(<TaskTrack stages={multiToolCalls.map((tc) => ({ toolCall: tc }))} />);
     fireEvent.click(screen.getByText("读取文件"));
