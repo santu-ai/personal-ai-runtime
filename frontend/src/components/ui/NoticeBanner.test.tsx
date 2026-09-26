@@ -33,7 +33,12 @@ describe("ToastCard", () => {
       />,
     );
     expect(screen.getByTestId("error-toast")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
+    const close = screen.getByRole("button", { name: "关闭" });
+    const name = close.querySelector("[data-icon-name]");
+    expect(name).toHaveTextContent("关闭");
+    expect(name).toHaveClass("hidden", "group-focus-visible:block");
+    expect(close.querySelector("svg")).toHaveClass("group-focus-visible:hidden");
+    fireEvent.click(close);
     expect(onDismiss).toHaveBeenCalledOnce();
   });
 

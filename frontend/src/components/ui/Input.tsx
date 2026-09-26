@@ -130,11 +130,21 @@ export function PasswordInput({
         type="button"
         onMouseDown={(e) => e.preventDefault()}
         onClick={toggleVisible}
-        className="absolute right-2 top-1/2 -translate-y-1/2 z-10 p-1.5 rounded-md text-fg-tertiary hover:text-fg-secondary hover:bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+        className="group absolute right-2 top-1/2 z-10 inline-flex max-w-full -translate-y-1/2 items-center justify-center rounded-md p-1.5 text-fg-tertiary transition-colors hover:bg-surface-hover hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         aria-label={visible ? "隐藏密码" : "显示密码"}
         title={masked && !visible ? "已保存的密钥无法查看原文" : visible ? "隐藏" : "显示明文"}
       >
-        {visible ? <EyeOff size={16} aria-hidden /> : <Eye size={16} aria-hidden />}
+        {visible ? (
+          <EyeOff size={16} aria-hidden className="shrink-0 group-focus-visible:hidden" />
+        ) : (
+          <Eye size={16} aria-hidden className="shrink-0 group-focus-visible:hidden" />
+        )}
+        <span
+          data-icon-name=""
+          className="hidden whitespace-nowrap text-center text-[10px] leading-tight group-focus-visible:block"
+        >
+          {visible ? "隐藏密码" : "显示密码"}
+        </span>
       </button>
     </div>
   );

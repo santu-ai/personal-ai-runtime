@@ -63,10 +63,16 @@ export default function ToastCard({
             e.stopPropagation();
             onDismiss();
           }}
-          className="absolute top-2 right-2 rounded-md p-0.5 text-fg-tertiary hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+          className="group absolute top-2 right-2 inline-flex max-w-full items-center justify-center rounded-md p-0.5 text-fg-tertiary hover:bg-surface-hover hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
           aria-label="关闭"
         >
-          <X size={14} />
+          <X size={14} aria-hidden className="shrink-0 group-focus-visible:hidden" />
+          <span
+            data-icon-name=""
+            className="hidden whitespace-nowrap text-center text-[10px] leading-tight group-focus-visible:block"
+          >
+            关闭
+          </span>
         </button>
       )}
     </div>

@@ -1040,6 +1040,12 @@ describe("ChatView", () => {
     growProposedMemory("喜欢喝茶");
     view.rerenderChat();
     const close = screen.getByRole("button", { name: "关闭" });
+    expect(close.querySelector("[data-icon-name]")).toHaveTextContent("关闭");
+    expect(close.querySelector("[data-icon-name]")).toHaveClass(
+      "hidden",
+      "group-focus-visible:block",
+    );
+    expect(close.querySelector("[aria-hidden]")).toHaveClass("group-focus-visible:hidden");
     expect(screen.getByText("待确认：喜欢喝茶")).toBeInTheDocument();
     const field = screen.getByPlaceholderText(/输入消息/);
     const seen = captureFocusWhenSettled(

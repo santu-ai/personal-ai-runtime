@@ -11,6 +11,29 @@ describe("PasswordInput", () => {
     passwordInputLayoutFocus.notify = null;
   });
 
+  it("writes 显示密码 when the keyboard lands, and 隐藏密码 after revealing", () => {
+    render(<PasswordInput value="sk-secret" onChange={vi.fn()} />);
+    const show = screen.getByRole("button", { name: "显示密码" });
+    expect(show).toHaveAttribute("title", "显示明文");
+    const showName = show.querySelector("[data-icon-name]");
+    expect(showName).toHaveTextContent("显示密码");
+    expect(showName).toHaveClass("hidden", "group-focus-visible:block");
+    expect(show.querySelector("svg")).toHaveClass("group-focus-visible:hidden");
+
+    fireEvent.click(show);
+    const hide = screen.getByRole("button", { name: "隐藏密码" });
+    expect(hide).toHaveAttribute("title", "隐藏");
+    expect(hide.querySelector("[data-icon-name]")).toHaveTextContent("隐藏密码");
+    expect(hide.querySelector("svg")).toHaveClass("group-focus-visible:hidden");
+  });
+
+  it("keeps the saved-secret hover hint while the keyboard name stays 显示密码", () => {
+    render(<PasswordInput value="••••••••" isSavedSecret onChange={vi.fn()} />);
+    const show = screen.getByRole("button", { name: "显示密码" });
+    expect(show).toHaveAttribute("title", "已保存的密钥无法查看原文");
+    expect(show.querySelector("[data-icon-name]")).toHaveTextContent("显示密码");
+  });
+
   it("toggles input type between password and text", () => {
     const { container } = render(<PasswordInput value="sk-secret" onChange={vi.fn()} />);
     const input = container.querySelector("input") as HTMLInputElement;

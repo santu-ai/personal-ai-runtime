@@ -48,7 +48,14 @@ describe("NotificationDetailModal", () => {
     renderWithRouter(
       <NotificationDetailModal notification={sampleNotification} onClose={onClose} />,
     );
-    fireEvent.click(screen.getByLabelText("关闭"));
+    const close = screen.getByLabelText("关闭");
+    expect(close.querySelector("[data-icon-name]")).toHaveTextContent("关闭");
+    expect(close.querySelector("[data-icon-name]")).toHaveClass(
+      "hidden",
+      "group-focus-visible:block",
+    );
+    expect(close.querySelector("[aria-hidden]")).toHaveClass("group-focus-visible:hidden");
+    fireEvent.click(close);
     expect(onClose).toHaveBeenCalledOnce();
   });
 

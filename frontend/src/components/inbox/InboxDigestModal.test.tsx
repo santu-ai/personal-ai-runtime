@@ -43,6 +43,15 @@ describe("InboxDigestModal", () => {
   it("closes on Escape", () => {
     const onClose = vi.fn();
     render(<InboxDigestModal open title="今日摘要" content="无新邮件" onClose={onClose} />);
+    const close = screen
+      .getAllByRole("button", { name: "关闭" })
+      .find((button) => button.querySelector("[data-icon-name]"));
+    expect(close?.querySelector("[data-icon-name]")).toHaveTextContent("关闭");
+    expect(close?.querySelector("[data-icon-name]")).toHaveClass(
+      "hidden",
+      "group-focus-visible:block",
+    );
+    expect(close?.querySelector("[aria-hidden]")).toHaveClass("group-focus-visible:hidden");
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalledOnce();
   });
