@@ -3,6 +3,45 @@ import { isImeKeyboardEvent } from "../../utils/imeKey";
 
 type InitialFocus = "panel" | "field";
 
+// 以打开顺序分配键盘事件；监听器的注册顺序不能决定哪个浮层拿到 Tab。
+const overlays: RefObject<HTMLElement | null>[] = [];
+
+export function hasActiveOverlay(): boolean {
+  return overlays.length > 0;
+}
+
+/** 通知下拉和对话框共用事件归属，但各自保留打开、关闭时的焦点策略。 */
+export function useOverlayKeyboard<T extends HTMLElement>(
+  open: boolean,
+  panelRef: RefObject<T | null>,
+  onDismiss: () => void,
+): void {
+  const dismissRef = useRef(onDismiss);
+  dismissRef.current = onDismiss;
+  useLayoutEffect(() => {
+    if (!open) return;
+    overlays.push(panelRef);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (overlays[overlays.length - 1] !== panelRef || event.defaultPrevented) return;
+      const panel = panelRef.current;
+      if (!panel || isImeKeyboardEvent(event)) return;
+      if (event.key === "Tab") {
+        event.preventDefault();
+        moveTab(panel, event.shiftKey);
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        dismissRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      const index = overlays.indexOf(panelRef);
+      if (index >= 0) overlays.splice(index, 1);
+    };
+  }, [open, panelRef]);
+}
+
 interface OverlayDismissOptions {
   /** panel：焦点进对话框。field：进第一个可用输入框，没有则进对话框。 */
   initialFocus?: InitialFocus;
@@ -105,9 +144,8 @@ export function useOverlayDismiss<T extends HTMLElement>(
   const initialFocus = options?.initialFocus ?? "panel";
   const hasFocusKey = options != null && "focusKey" in options;
   const focusKey = options?.focusKey ?? null;
-  const onDismissRef = useRef(onDismiss);
-  onDismissRef.current = onDismiss;
   const previouslyFocused = useRef<HTMLElement | null>(null);
+  useOverlayKeyboard(open, panelRef, onDismiss);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -116,21 +154,9 @@ export function useOverlayDismiss<T extends HTMLElement>(
     if (isReturnTarget(active, panel)) previouslyFocused.current = active;
     if (panel) focusInside(panel, initialFocus);
 
-    const onKeyDown = (event: KeyboardEvent) => {
-      const current = panelRef.current;
-      if (event.key === "Tab") {
-        if (!current) return;
-        event.preventDefault();
-        moveTab(current, event.shiftKey);
-        return;
-      }
-      // 组字或输入法处理键时的 Esc 交给输入法。拦住的话，这一下会把对话框关掉。
-      if (event.key !== "Escape" || isImeKeyboardEvent(event)) return;
-      event.preventDefault();
-      onDismissRef.current();
-    };
     // 连点的第二下 detail >= 2。它落在遮罩上时不关；面板里的连点照常。
     const onClick = (event: MouseEvent) => {
+      if (overlays[overlays.length - 1] !== panelRef) return;
       if (event.detail < 2) return;
       const current = panelRef.current;
       if (!current) return;
@@ -138,13 +164,14 @@ export function useOverlayDismiss<T extends HTMLElement>(
       if (target instanceof Node && current.contains(target)) return;
       event.stopPropagation();
     };
-    window.addEventListener("keydown", onKeyDown);
     window.addEventListener("click", onClick, true);
     return () => {
-      window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("click", onClick, true);
       const previous = previouslyFocused.current;
       previouslyFocused.current = null;
+      // 后打开的浮层仍在使用焦点时，底下的浮层卸载不能把它抢走。
+      const remaining = overlays[overlays.length - 1]?.current;
+      if (remaining && !remaining.contains(previous)) return;
       if (previous?.isConnected) previous.focus();
     };
   }, [open, panelRef, initialFocus]);
@@ -153,7 +180,7 @@ export function useOverlayDismiss<T extends HTMLElement>(
   // 避免把刚进入的输入框再换成面板。放到绘制前，不先停在外面的按钮或页面空白。
   // 失败「重试」仍在绘制之后才拿焦点，这里不会把它提前抢走。
   useLayoutEffect(() => {
-    if (!open || !hasFocusKey) return;
+    if (!open || !hasFocusKey || overlays[overlays.length - 1] !== panelRef) return;
     const panel = panelRef.current;
     if (!panel) return;
     const active = document.activeElement;

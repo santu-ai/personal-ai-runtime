@@ -1,3 +1,4 @@
+import LiveStatus from "../ui/LiveStatus";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { type WorkItem } from "../../api/client";
 import { useErrorStore } from "../../stores/errorStore";
@@ -327,12 +328,7 @@ export default function GoalDetailPanel({
         <div className="min-w-0">
           <h2 className="text-xl font-semibold tracking-tight text-fg-primary">{goal.title}</h2>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            {spokenStatus ? (
-              <p key={spokenStatus.id} className="sr-only" role="status">
-                {/* 徽章换成这一句时读出来，等当前这一句说完。不把焦点抢过来。 */}
-                {spokenStatus.text}
-              </p>
-            ) : null}
+            <LiveStatus message={spokenStatus?.text} announcementId={spokenStatus?.id} />
             <Badge
               tone={goal.status === "active" || goal.status === "completed" ? "success" : "default"}
             >
@@ -429,12 +425,7 @@ export default function GoalDetailPanel({
         {/* AI Suggested Steps */}
         {suggestedSteps.length > 0 && (
           <div className="mb-4 p-3 bg-insight/10 border border-insight/30 rounded-lg">
-            {spokenSuggestions ? (
-              <p key={spokenSuggestions.id} className="sr-only" role="status">
-                {/* 出现时读出来，等当前这一句说完。不把焦点抢过来。 */}
-                {spokenSuggestions.text}
-              </p>
-            ) : null}
+            <LiveStatus message={spokenSuggestions?.text} announcementId={spokenSuggestions?.id} />
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-insight font-medium inline-flex items-center gap-1">
                 <Sparkles size={12} />
@@ -680,12 +671,7 @@ function NewActionInput({
 
   return (
     <div className="flex gap-2">
-      {spokenAdd ? (
-        <p key={spokenAdd.id} className="sr-only" role="status">
-          {/* 出现时读出来，等当前这一句说完。不把焦点抢过来。 */}
-          {spokenAdd.text}
-        </p>
-      ) : null}
+      <LiveStatus message={spokenAdd?.text} announcementId={spokenAdd?.id} />
       <input
         value={value}
         data-goal-anchor="action"

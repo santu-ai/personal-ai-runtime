@@ -11,6 +11,12 @@
 - `import "./auth"` 在模块加载时跑 `initAuth()`。
 - 生产模式注册 Service Worker `/sw.js`（桌面构建跳过）。API 与 WebSocket 为 network-only，不读写 Cache Storage；静态资源 cache-first，HTML network-first。`CACHE_VERSION` 变更会在 activate 时清掉旧缓存。Vitest 用 `src/sw.test.ts` 校验 API 请求不碰 Cache Storage（该文件与 `viteConfig.test.ts` 因 Node API 不纳入 `tsc --noEmit`）。
 
+## 浮层与动态状态提示
+
+`useOverlayDismiss` 和通知下拉共用 `useOverlayKeyboard`，按打开顺序确定当前浮层。只有当前浮层处理 Tab、Shift+Tab 和 Esc；内层控件已处理的按键、输入法组字按键不再处理。关闭当前浮层后恢复下层的键盘操作，底层卸载不能抢走上层焦点。快速捕获可从全局快捷键打开，其显示层级高于普通对话框及首次引导。
+
+聊天、审批、任务、目标、记忆和设置操作的动态通知使用 `LiveStatus`：先挂载空的 `role="status"` / `aria-atomic="true"` 区域，约 100 ms 后填入消息；同文案的新事件通过 `announcementId` 清空再填入，保留状态节点，不通过 React `key` 重建。消息变更或组件卸载会取消尚未发布的内容。组件测试检查空区域、更新与重复消息，浏览器回归检查实际 Tab/Esc 及状态区域的 DOM 更新顺序；这些检查不能替代真实屏幕阅读器的播报验证。
+
 ## 路由
 
 [`frontend/src/router.tsx`](../../frontend/src/router.tsx) 用 `createBrowserRouter`，**所有页面组件懒加载**，嵌套在单个 `Layout` 下：

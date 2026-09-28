@@ -1,3 +1,4 @@
+import LiveStatus from "../components/ui/LiveStatus";
 import {
   createContext,
   useContext,
@@ -2340,14 +2341,16 @@ export default function TasksPage() {
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <h2 className="text-xl font-medium text-fg-primary">{selected.title}</h2>
-                        {spokenStatus &&
-                        spokenStatus.taskId === selected.id &&
-                        spokenStatus.text === statusLabel(selected.status).trim() ? (
-                          <span key={spokenStatus.id} className="sr-only" role="status">
-                            {/* 这一行换成新的字时读出来，等当前这一句说完。不把焦点抢过来。 */}
-                            {spokenStatus.text}
-                          </span>
-                        ) : null}
+                        <LiveStatus
+                          message={
+                            spokenStatus &&
+                            spokenStatus.taskId === selected.id &&
+                            spokenStatus.text === statusLabel(selected.status).trim()
+                              ? spokenStatus.text
+                              : null
+                          }
+                          announcementId={spokenStatus?.id}
+                        />
                         <p className="text-sm text-fg-tertiary mt-1">
                           {isProjectBrief(selected)
                             ? "项目资料简报"
@@ -2366,30 +2369,26 @@ export default function TasksPage() {
                               <span>{reviewLabel(bundle.current_review_status)}</span>
                             </>
                           ) : null}
-                          {spokenReview &&
-                          spokenReview.taskId === selected.id &&
-                          spokenReview.text === reviewVisible ? (
-                            <span
-                              key={`review-${spokenReview.id}`}
-                              className="sr-only"
-                              role="status"
-                            >
-                              {/* 评审换成新的字时读出来，等当前这一句说完。不把焦点抢过来。 */}
-                              {spokenReview.text}
-                            </span>
-                          ) : null}
-                          {spokenReviewNote &&
-                          spokenReviewNote.taskId === selected.id &&
-                          spokenReviewNote.text === reviewNoteVisible ? (
-                            <span
-                              key={`note-${spokenReviewNote.id}`}
-                              className="sr-only"
-                              role="status"
-                            >
-                              {/* 验收说明或返工理由写出来时再读这一句。空白不读。 */}
-                              {spokenReviewNote.text}
-                            </span>
-                          ) : null}
+                          <LiveStatus
+                            message={
+                              spokenReview &&
+                              spokenReview.taskId === selected.id &&
+                              spokenReview.text === reviewVisible
+                                ? spokenReview.text
+                                : null
+                            }
+                            announcementId={spokenReview?.id}
+                          />
+                          <LiveStatus
+                            message={
+                              spokenReviewNote &&
+                              spokenReviewNote.taskId === selected.id &&
+                              spokenReviewNote.text === reviewNoteVisible
+                                ? spokenReviewNote.text
+                                : null
+                            }
+                            announcementId={spokenReviewNote?.id}
+                          />
                           {handler?.dead_letter ? (
                             <span className="text-danger"> · 死信</span>
                           ) : null}

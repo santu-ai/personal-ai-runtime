@@ -1,3 +1,4 @@
+import LiveStatus from "../components/ui/LiveStatus";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Check, X, RefreshCw, MessageSquare } from "lucide-react";
@@ -470,12 +471,7 @@ export default function ApprovalsPage() {
               <Check size={40} className="mx-auto mb-3 text-success" />
               <p className="text-lg font-medium text-fg-secondary">暂无待审批项</p>
               <p className="text-sm text-fg-disabled mt-1">所有高风险操作已处理完毕</p>
-              {spokenEmpty ? (
-                <span key={spokenEmpty.id} className="sr-only" role="status">
-                  {/* 最后一张处理完、写出这两句时读出来。等当前这一句说完。不把焦点抢过来。 */}
-                  {spokenEmpty.text}
-                </span>
-              ) : null}
+              <LiveStatus message={spokenEmpty?.text} announcementId={spokenEmpty?.id} />
             </div>
           </Card>
         ) : (

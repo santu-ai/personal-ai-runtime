@@ -1,3 +1,4 @@
+import { announcements, queryAnnouncement, findAnnouncement } from "../test/liveStatus";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -262,7 +263,7 @@ function withReview(work: WorkItem, status: "accepted" | "changes_requested"): W
 }
 
 function spokenByText(text: string): HTMLElement | undefined {
-  return screen.getAllByRole("status").find((node) => node.textContent === text);
+  return announcements().find((node) => node.textContent === text);
 }
 
 function withReviewReason(
@@ -1883,7 +1884,7 @@ describe("TasksPage", () => {
     expect(await screen.findByText("有进度风险")).toBeInTheDocument();
     expect(screen.getAllByText("已要求返工").length).toBeGreaterThan(0);
     expect(screen.getByTestId("rework-reason")).toHaveTextContent(`返工理由：${reason}`);
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 
   it("does not present a withdrawn rework as in progress", async () => {
@@ -2008,7 +2009,7 @@ describe("TasksPage", () => {
     expect(screen.getAllByText("已验收").length).toBeGreaterThan(0);
     expect(screen.getByTestId("accept-reason")).toHaveTextContent(`验收说明：${reason}`);
     expect(screen.queryByTestId("rework-reason")).not.toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 
   it("shows a historical version's accept reason", async () => {
@@ -4786,19 +4787,19 @@ describe("TasksPage", () => {
     expect(
       within(detail).getByText("待执行", { selector: "span:not([role='status'])" }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     done.focus();
     fireEvent.click(done);
     expect(await screen.findByRole("button", { name: "完成" })).toHaveAttribute(
       "aria-busy",
       "true",
     );
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
 
     await act(async () => {
       release();
     });
-    const status = await screen.findByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent(/^已完成$/);
     expect(status).toHaveClass("sr-only");
     expect(status).not.toHaveFocus();
@@ -4827,7 +4828,7 @@ describe("TasksPage", () => {
     });
     renderTasks("/tasks/sug_1");
     fireEvent.click(await screen.findByRole("button", { name: "完成" }));
-    expect(await screen.findByRole("status")).toHaveTextContent(/^archived$/);
+    expect(await findAnnouncement()).toHaveTextContent(/^archived$/);
     expect(
       within(screen.getByRole("region", { name: "任务详情" })).getByText("archived", {
         selector: "span:not([role='status'])",
@@ -4850,7 +4851,7 @@ describe("TasksPage", () => {
     renderTasks("/tasks/sug_1");
     fireEvent.click(await screen.findByRole("button", { name: "完成" }));
     await waitFor(() => expect(addError).toHaveBeenCalledWith("完成任务失败", "任务"));
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "完成" })).toBeInTheDocument();
   });
 
@@ -4871,10 +4872,10 @@ describe("TasksPage", () => {
     });
     renderTasks("/tasks/job_1");
     const cancel = await screen.findByRole("button", { name: "取消" });
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     cancel.focus();
     fireEvent.click(cancel);
-    const status = await screen.findByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent(/^已取消$/);
     expect(status).toHaveClass("sr-only");
     expect(status).not.toHaveFocus();
@@ -4904,12 +4905,12 @@ describe("TasksPage", () => {
     expect(
       await within(dialog).findByRole("button", { name: "再次运行中..." }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
 
     await act(async () => {
       release();
     });
-    const status = await screen.findByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent(/^运行中$/);
     expect(status).not.toHaveFocus();
     expect(currentTaskLink()).toHaveFocus();
@@ -4925,7 +4926,7 @@ describe("TasksPage", () => {
     renderTasks("/tasks/task_1");
     fireEvent.click(await screen.findByRole("button", { name: "执行" }));
     fireEvent.click(await screen.findByRole("button", { name: "确认执行" }));
-    const status = await screen.findByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent(/^运行中$/);
     expect(status).toHaveClass("sr-only");
     expect(status).not.toHaveFocus();
@@ -4972,7 +4973,7 @@ describe("TasksPage", () => {
         selector: "span:not([role='status'])",
       }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 
   it("does not read a schedule note or 转为任务 after 已验收", async () => {
@@ -4989,13 +4990,13 @@ describe("TasksPage", () => {
     renderTasks("/tasks/brief_1");
     fireEvent.click(await screen.findByRole("button", { name: "验收" }));
     fireEvent.click(await screen.findByRole("button", { name: "确认验收" }));
-    expect(await screen.findByRole("status")).toHaveTextContent(/^已验收$/);
+    expect(await findAnnouncement()).toHaveTextContent(/^已验收$/);
 
     fireEvent.click(screen.getByRole("button", { name: "定时再次运行" }));
     fireEvent.change(screen.getByLabelText("小时"), { target: { value: "2" } });
     fireEvent.click(screen.getByRole("button", { name: "确认定时" }));
     expect(await screen.findByTestId("scheduled-repeat-note")).toHaveTextContent("再次运行");
-    expect(screen.getByRole("status")).toHaveTextContent(/^已验收$/);
+    expect(await findAnnouncement()).toHaveTextContent(/^已验收$/);
     expect(screen.queryByRole("status", { name: /再次运行/ })).not.toBeInTheDocument();
 
     vi.mocked(adoptSuggestedAction).mockImplementation(async () => {
@@ -5021,7 +5022,7 @@ describe("TasksPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /转为任务/ }));
     expect(await screen.findByRole("link", { name: /已转为任务/ })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(/^已验收$/);
+    expect(await findAnnouncement()).toHaveTextContent(/^已验收$/);
     expect(screen.queryByRole("status", { name: /已转为任务/ })).not.toBeInTheDocument();
   });
 
@@ -5053,7 +5054,7 @@ describe("TasksPage", () => {
     });
     renderTasks("/tasks/sug_1");
     fireEvent.click(await screen.findByRole("button", { name: "完成" }));
-    expect(await screen.findByRole("status")).toHaveTextContent(/^已完成$/);
+    expect(await findAnnouncement()).toHaveTextContent(/^已完成$/);
 
     fireEvent.click(screen.getByRole("link", { name: /另一件/ }));
     expect(await screen.findByRole("heading", { name: "另一件" })).toBeInTheDocument();
@@ -5062,7 +5063,7 @@ describe("TasksPage", () => {
         selector: "span:not([role='status'])",
       }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 
   it("reads 已完成 again after a refresh clears it and 完成 runs once more", async () => {
@@ -5082,7 +5083,7 @@ describe("TasksPage", () => {
     });
     const { client } = renderTasksWithClient("/tasks/sug_1");
     fireEvent.click(await screen.findByRole("button", { name: "完成" }));
-    const first = await screen.findByRole("status");
+    const first = await findAnnouncement();
     expect(first).toHaveTextContent(/^已完成$/);
 
     box.item = {
@@ -5099,11 +5100,11 @@ describe("TasksPage", () => {
         selector: "span:not([role='status'])",
       }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
 
     fireEvent.click(again);
-    const second = await screen.findByRole("status");
-    expect(second).not.toBe(first);
+    const second = await findAnnouncement();
+    expect(second).toBe(first);
     expect(second).toHaveTextContent(/^已完成$/);
     expect(second).not.toHaveFocus();
   });
@@ -5137,7 +5138,7 @@ describe("TasksPage", () => {
         }),
     );
     renderTasks("/tasks/brief_1");
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: "验收" }));
     const dialog = await screen.findByRole("dialog", { name: "验收交付" });
     fireEvent.change(within(dialog).getByPlaceholderText("例如：结论和来源都齐了。"), {
@@ -5145,12 +5146,16 @@ describe("TasksPage", () => {
     });
     fireEvent.click(within(dialog).getByRole("button", { name: "确认验收" }));
     expect(await within(dialog).findByRole("button", { name: "验收中..." })).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
 
     await act(async () => {
       release();
     });
-    const statuses = await screen.findAllByRole("status");
+    const statuses = await waitFor(() => {
+      const nodes = announcements();
+      expect(nodes).toHaveLength(2);
+      return nodes;
+    });
     expect(statuses.map((node) => node.textContent)).toEqual([
       "已验收",
       "验收说明：结论和来源都齐了",
@@ -5193,19 +5198,17 @@ describe("TasksPage", () => {
     });
     fireEvent.click(within(dialog).getByRole("button", { name: "确认返工" }));
     expect(await within(dialog).findByRole("button", { name: "返工中..." })).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
 
     await act(async () => {
       release();
     });
-    const status = await screen.findByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent(/^已要求返工$/);
     expect(status).toHaveClass("sr-only");
     expect(status).not.toHaveFocus();
     expect(currentTaskLink()).toHaveFocus();
-    expect(
-      screen.getAllByRole("status").some((node) => node.textContent?.includes("补上风险")),
-    ).toBe(false);
+    expect(announcements().some((node) => node.textContent?.includes("补上风险"))).toBe(false);
     expect(screen.queryByTestId("rework-reason")).not.toBeInTheDocument();
   });
 
@@ -5236,7 +5239,7 @@ describe("TasksPage", () => {
     renderTasks("/tasks/brief_1");
     fireEvent.click(await screen.findByRole("button", { name: "验收" }));
     fireEvent.click(await screen.findByRole("button", { name: "确认验收" }));
-    expect(await screen.findByRole("status")).toHaveTextContent(/^无交付$/);
+    expect(await findAnnouncement()).toHaveTextContent(/^无交付$/);
     expect(
       within(screen.getByRole("region", { name: "任务详情" })).getAllByText("无交付", {
         selector: ":not([role='status'])",
@@ -5251,7 +5254,7 @@ describe("TasksPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "验收" }));
     fireEvent.click(await screen.findByRole("button", { name: "确认验收" }));
     await waitFor(() => expect(addError).toHaveBeenCalledWith("验收失败", "任务"));
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "验收" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
@@ -5263,7 +5266,7 @@ describe("TasksPage", () => {
     });
     fireEvent.click(within(dialog).getByRole("button", { name: "确认返工" }));
     await waitFor(() => expect(addError).toHaveBeenCalledWith("返工失败", "任务"));
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "返工" })).toBeInTheDocument();
   });
 
@@ -5285,7 +5288,7 @@ describe("TasksPage", () => {
     expect(
       within(screen.getByRole("region", { name: "任务详情" })).getAllByText("待验收").length,
     ).toBeGreaterThan(0);
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 
   it("does not read a review word already on the page", async () => {
@@ -5293,7 +5296,7 @@ describe("TasksPage", () => {
     renderTasks("/tasks/brief_1");
     expect(await screen.findByRole("heading", { name: "项目 A 简报" })).toBeInTheDocument();
     expect(screen.getAllByText("已验收").length).toBeGreaterThan(0);
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 
   it("drops the last review word when another task opens and does not read the one already there", async () => {
@@ -5322,12 +5325,12 @@ describe("TasksPage", () => {
     renderTasks("/tasks/brief_1");
     fireEvent.click(await screen.findByRole("button", { name: "验收" }));
     fireEvent.click(await screen.findByRole("button", { name: "确认验收" }));
-    expect(await screen.findByRole("status")).toHaveTextContent(/^已验收$/);
+    expect(await findAnnouncement()).toHaveTextContent(/^已验收$/);
 
     fireEvent.click(screen.getByRole("link", { name: /另一份/ }));
     expect(await screen.findByRole("heading", { name: "另一份" })).toBeInTheDocument();
     expect(screen.getAllByText("已要求返工").length).toBeGreaterThan(0);
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 
   it("reads 已验收 again after a refresh clears it and 验收 runs once more", async () => {
@@ -5344,7 +5347,7 @@ describe("TasksPage", () => {
     const { client } = renderTasksWithClient("/tasks/brief_1");
     fireEvent.click(await screen.findByRole("button", { name: "验收" }));
     fireEvent.click(await screen.findByRole("button", { name: "确认验收" }));
-    const first = await screen.findByRole("status");
+    const first = await findAnnouncement();
     expect(first).toHaveTextContent(/^已验收$/);
 
     box.item = briefTask;
@@ -5353,12 +5356,12 @@ describe("TasksPage", () => {
     });
     const again = await screen.findByRole("button", { name: "验收" });
     expect(screen.getAllByText("待验收").length).toBeGreaterThan(0);
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
 
     fireEvent.click(again);
     fireEvent.click(await screen.findByRole("button", { name: "确认验收" }));
-    const second = await screen.findByRole("status");
-    expect(second).not.toBe(first);
+    const second = await findAnnouncement();
+    expect(second).toBe(first);
     expect(second).toHaveTextContent(/^已验收$/);
     expect(second).not.toHaveFocus();
   });
@@ -5377,14 +5380,14 @@ describe("TasksPage", () => {
     const { client } = renderTasksWithClient("/tasks/brief_1");
     fireEvent.click(await screen.findByRole("button", { name: "验收" }));
     fireEvent.click(await screen.findByRole("button", { name: "确认验收" }));
-    expect(await screen.findByRole("status")).toHaveTextContent(/^已验收$/);
+    expect(await findAnnouncement()).toHaveTextContent(/^已验收$/);
 
     box.item = withReview(box.item, "changes_requested");
     await act(async () => {
       await client.invalidateQueries({ queryKey: queryKeys.tasks });
     });
     await waitFor(() => expect(screen.getAllByText("已要求返工").length).toBeGreaterThan(0));
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 
   it("reads 返工理由 when that line appears and does not take focus", async () => {
@@ -5405,7 +5408,11 @@ describe("TasksPage", () => {
       target: { value: "补上风险" },
     });
     fireEvent.click(within(dialog).getByRole("button", { name: "确认返工" }));
-    const statuses = await screen.findAllByRole("status");
+    const statuses = await waitFor(() => {
+      const nodes = announcements();
+      expect(nodes).toHaveLength(2);
+      return nodes;
+    });
     expect(statuses.map((node) => node.textContent)).toEqual(["已要求返工", "返工理由：补上风险"]);
     expect(statuses[1]).toHaveClass("sr-only");
     expect(statuses[1]).not.toHaveFocus();
@@ -5427,10 +5434,10 @@ describe("TasksPage", () => {
     renderTasks("/tasks/brief_1");
     fireEvent.click(await screen.findByRole("button", { name: "验收" }));
     fireEvent.click(await screen.findByRole("button", { name: "确认验收" }));
-    const status = await screen.findByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent(/^已验收$/);
     expect(screen.queryByTestId("accept-reason")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(announcements()).toHaveLength(1);
   });
 
   it("does not read an accept note while the dialog stays open", async () => {
@@ -5467,7 +5474,7 @@ describe("TasksPage", () => {
       "验收说明：结论和来源都齐了",
     );
     expect(screen.getAllByText("已验收").length).toBeGreaterThan(0);
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 
   it("reads the same accept note again after a refresh clears it", async () => {
@@ -5499,7 +5506,7 @@ describe("TasksPage", () => {
       await client.invalidateQueries({ queryKey: queryKeys.tasks });
     });
     const again = await screen.findByRole("button", { name: "验收" });
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
 
     fireEvent.click(again);
     const next = await screen.findByRole("dialog", { name: "验收交付" });
@@ -5512,7 +5519,7 @@ describe("TasksPage", () => {
       second = spokenByText("验收说明：结论和来源都齐了");
       expect(second).toBeTruthy();
     });
-    expect(second).not.toBe(first);
+    expect(second).toBe(first);
     expect(second).toHaveClass("sr-only");
     expect(second).not.toHaveFocus();
   });
@@ -5553,9 +5560,7 @@ describe("TasksPage", () => {
       expect(screen.getByTestId("accept-reason")).toHaveTextContent("验收说明：改成另一句"),
     );
     expect(spokenByText("已验收")).toBeTruthy();
-    expect(
-      screen.getAllByRole("status").some((node) => node.textContent?.includes("验收说明")),
-    ).toBe(false);
+    expect(announcements().some((node) => node.textContent?.includes("验收说明"))).toBe(false);
   });
 
   it("drops the accept note when another task opens and does not read the one already there", async () => {
@@ -5590,6 +5595,6 @@ describe("TasksPage", () => {
     fireEvent.click(screen.getByRole("link", { name: /另一份/ }));
     expect(await screen.findByRole("heading", { name: "另一份" })).toBeInTheDocument();
     expect(screen.getByTestId("rework-reason")).toHaveTextContent("返工理由：补上风险");
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 });

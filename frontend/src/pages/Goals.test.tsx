@@ -1,3 +1,4 @@
+import { queryAnnouncement, findAnnouncement } from "../test/liveStatus";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen, fireEvent, waitFor, within, act } from "@testing-library/react";
 import { Route, Routes } from "react-router-dom";
@@ -765,11 +766,11 @@ describe("GoalsPage", () => {
     vi.mocked(createGoalAction).mockResolvedValue(sampleGoal);
     renderGoals("/goals/g1");
     const input = await screen.findByPlaceholderText("添加行动步骤...");
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     input.focus();
     fireEvent.change(input, { target: { value: "  写测试  " } });
     fireEvent.keyDown(input, { key: "Enter" });
-    const status = await screen.findByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent("已添加 写测试");
     expect(status).toHaveClass("sr-only");
     expect(status).not.toHaveFocus();
@@ -794,7 +795,7 @@ describe("GoalsPage", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     expect(await screen.findByRole("button", { name: "添加中..." })).toBeInTheDocument();
     expect(input).toHaveFocus();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
 
     await act(async () => {
       rejectCreate(new ApiError("创建行动步骤失败", 500));
@@ -802,7 +803,7 @@ describe("GoalsPage", () => {
     await waitFor(() => expect(addError).toHaveBeenCalledWith("创建行动步骤失败", "目标"));
     expect(input).toHaveFocus();
     expect(input).toHaveValue("写测试");
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -826,7 +827,7 @@ describe("GoalsPage", () => {
     await act(async () => {
       release(sampleGoal);
     });
-    const status = await screen.findByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent("已添加 写测试");
     expect(input).toHaveValue("写测试，再补文档");
     expect(input).toHaveFocus();
@@ -840,13 +841,13 @@ describe("GoalsPage", () => {
     input.focus();
     fireEvent.change(input, { target: { value: "写测试" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    const first = await screen.findByRole("status");
+    const first = await findAnnouncement();
     expect(first).toHaveTextContent("已添加 写测试");
 
     fireEvent.change(input, { target: { value: "写测试" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    await waitFor(() => expect(screen.getByRole("status")).not.toBe(first));
-    expect(screen.getByRole("status")).toHaveTextContent("已添加 写测试");
+    await waitFor(async () => expect(await findAnnouncement()).toBe(first));
+    expect(await findAnnouncement()).toHaveTextContent("已添加 写测试");
     expect(input).toHaveFocus();
   });
 
@@ -1188,7 +1189,7 @@ describe("GoalsPage", () => {
     expect(done).toHaveFocus();
     expect(done).not.toHaveAttribute("aria-busy");
     expect(screen.getByRole("button", { name: "暂停" })).toBeEnabled();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 
   it("reads 已暂停 when 暂停 succeeds and leaves focus on 恢复", async () => {
@@ -1208,17 +1209,17 @@ describe("GoalsPage", () => {
     renderGoals("/goals/g1");
     expect(await screen.findByText("进行中")).toBeInTheDocument();
     expect(screen.getByText("已停滞")).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
 
     const pause = screen.getByRole("button", { name: "暂停" });
     pause.focus();
     fireEvent.click(pause);
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
 
     await act(async () => {
       release({ ...current, status: "paused" });
     });
-    const status = await screen.findByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent(/^已暂停$/);
     expect(status).toHaveClass("sr-only");
     expect(status).not.toHaveFocus();
@@ -1249,7 +1250,7 @@ describe("GoalsPage", () => {
     await act(async () => {
       release({ ...current, status: "completed" });
     });
-    const status = await screen.findByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent(/^已完成$/);
     expect(status).not.toHaveFocus();
     expect(remove).toHaveFocus();
@@ -1271,13 +1272,13 @@ describe("GoalsPage", () => {
     );
     renderGoals("/goals/g1");
     const resume = await screen.findByRole("button", { name: "恢复" });
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     resume.focus();
     fireEvent.click(resume);
     await act(async () => {
       release({ ...current, status: "active" });
     });
-    const status = await screen.findByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent(/^进行中 · 已停滞$/);
     expect(screen.getByRole("button", { name: "暂停" })).toHaveFocus();
   });
@@ -1305,7 +1306,7 @@ describe("GoalsPage", () => {
     await act(async () => {
       release({ ...current, status: "active" });
     });
-    const status = await screen.findByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent(/^进行中$/);
   });
 
@@ -1328,7 +1329,7 @@ describe("GoalsPage", () => {
     await act(async () => {
       release({ ...current, status: "archived" });
     });
-    expect(await screen.findByRole("status")).toHaveTextContent(/^archived$/);
+    expect(await findAnnouncement()).toHaveTextContent(/^archived$/);
     expect(screen.getByText("archived", { selector: ":not([role='status'])" })).toBeInTheDocument();
   });
 
@@ -1351,24 +1352,26 @@ describe("GoalsPage", () => {
     await act(async () => {
       pending[0]({ ...current, status: "paused" });
     });
-    const first = await screen.findByRole("status");
+    const first = await findAnnouncement();
     expect(first).toHaveTextContent(/^已暂停$/);
 
     fireEvent.click(screen.getByRole("button", { name: "恢复" }));
     await act(async () => {
       pending[1]({ ...current, status: "active" });
     });
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/^进行中 · 已停滞$/));
-    const mid = screen.getByRole("status");
-    expect(mid).not.toBe(first);
+    await waitFor(async () =>
+      expect(await findAnnouncement()).toHaveTextContent(/^进行中 · 已停滞$/),
+    );
+    const mid = await findAnnouncement();
+    expect(mid).toBe(first);
 
     fireEvent.click(screen.getByRole("button", { name: "暂停" }));
     await act(async () => {
       pending[2]({ ...current, status: "paused" });
     });
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/^已暂停$/));
-    const again = screen.getByRole("status");
-    expect(again).not.toBe(mid);
+    await waitFor(async () => expect(await findAnnouncement()).toHaveTextContent(/^已暂停$/));
+    const again = await findAnnouncement();
+    expect(again).toBe(mid);
   });
 
   it("drops the previous status announcement when another goal opens", async () => {
@@ -1391,11 +1394,11 @@ describe("GoalsPage", () => {
     await act(async () => {
       release({ ...current, status: "paused" });
     });
-    expect(await screen.findByRole("status")).toHaveTextContent(/^已暂停$/);
+    expect(await findAnnouncement()).toHaveTextContent(/^已暂停$/);
 
     fireEvent.click(screen.getByRole("link", { name: /另一件事/ }));
     await screen.findByRole("heading", { name: "另一件事" });
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     expect(screen.getByText("已完成")).toBeInTheDocument();
   });
 
@@ -1550,12 +1553,12 @@ describe("GoalsPage", () => {
     fireEvent.click(button);
     const busy = await screen.findByRole("button", { name: "AI 拆解中..." });
     expect(busy).toHaveFocus();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
 
     await act(async () => {
       release({ steps: ["先写测试", "再补文档"] });
     });
-    const status = await screen.findByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent("AI 建议的行动步骤 先写测试 再补文档");
     expect(status).toHaveClass("sr-only");
     expect(screen.getByRole("button", { name: "AI 拆解" })).toHaveFocus();
@@ -1577,13 +1580,13 @@ describe("GoalsPage", () => {
     button.focus();
     fireEvent.click(button);
     expect(await screen.findByRole("button", { name: "AI 拆解中..." })).toHaveFocus();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
 
     await act(async () => {
       rejectDecompose(new ApiError("拆解失败", 500));
     });
     await waitFor(() => expect(screen.getByRole("button", { name: "AI 拆解" })).toHaveFocus());
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(addError).toHaveBeenCalledWith("拆解失败", "目标");
   });
@@ -1595,7 +1598,7 @@ describe("GoalsPage", () => {
     vi.mocked(decomposeGoal).mockResolvedValueOnce({ steps: ["先写测试", "再补文档"] });
     renderGoals("/goals/g1");
     fireEvent.click(await screen.findByRole("button", { name: "AI 拆解" }));
-    const first = await screen.findByRole("status");
+    const first = await findAnnouncement();
     expect(first).toHaveTextContent("AI 建议的行动步骤 先写测试 再补文档");
 
     let release: (value: { steps: string[] }) => void = () => {};
@@ -1609,14 +1612,14 @@ describe("GoalsPage", () => {
     again.focus();
     fireEvent.click(again);
     expect(await screen.findByRole("button", { name: "AI 拆解中..." })).toHaveFocus();
-    expect(screen.getByRole("status")).toBe(first);
+    expect(await findAnnouncement()).toBe(first);
     expect(first).toHaveTextContent("AI 建议的行动步骤 先写测试 再补文档");
 
     await act(async () => {
       release({ steps: ["先写测试", "再补文档"] });
     });
-    const replaced = await screen.findByRole("status");
-    expect(replaced).not.toBe(first);
+    const replaced = await findAnnouncement();
+    expect(replaced).toBe(first);
     expect(replaced).toHaveTextContent("AI 建议的行动步骤 先写测试 再补文档");
     expect(screen.getByRole("button", { name: "AI 拆解" })).toHaveFocus();
 
@@ -1624,7 +1627,7 @@ describe("GoalsPage", () => {
     fireEvent.click(within(row).getByRole("button", { name: "添加：先写测试" }));
     await waitFor(() => expect(screen.queryByText("先写测试")).not.toBeInTheDocument());
     expect(screen.getByText("再补文档")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toBe(replaced);
+    expect(await findAnnouncement()).toBe(replaced);
     expect(replaced).toHaveTextContent("AI 建议的行动步骤 先写测试 再补文档");
   });
 
@@ -1638,7 +1641,7 @@ describe("GoalsPage", () => {
     fireEvent.click(button);
     await waitFor(() => expect(decomposeGoal).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByRole("button", { name: "AI 拆解" })).toHaveFocus());
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     expect(screen.queryByText("AI 建议的行动步骤")).not.toBeInTheDocument();
   });
 
@@ -2115,7 +2118,7 @@ describe("GoalDetailPanel drafts", () => {
     expect(screen.getByPlaceholderText("添加行动步骤...")).toHaveValue("");
     expect(screen.queryByText("只属于这个目标")).not.toBeInTheDocument();
     expect(screen.queryByText("还没发出")).not.toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 
   it("does not apply a decompose result or clear the next draft after switching goals", async () => {
@@ -2160,7 +2163,7 @@ describe("GoalDetailPanel drafts", () => {
 
     expect(screen.queryByText("不该出现")).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText("添加行动步骤...")).toHaveValue("草稿B");
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     expect(createGoalAction).toHaveBeenCalledTimes(1);
     expect(createGoalAction).toHaveBeenCalledWith("g1", "草稿A");
   });

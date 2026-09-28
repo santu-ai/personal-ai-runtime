@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { useOverlayDismiss } from "./useOverlayDismiss";
+import { useOverlayDismiss, useOverlayKeyboard } from "./useOverlayDismiss";
 
 function Panel({
   open,
@@ -168,6 +168,90 @@ function RetryAfterOpen() {
 }
 
 describe("useOverlayDismiss", () => {
+  it("routes Tab and Escape to the last opened overlay, then restores the lower one", () => {
+    function Layers() {
+      const [upper, setUpper] = useState(false);
+      const [lower, setLower] = useState(true);
+      const lowerRef = useRef<HTMLDivElement>(null);
+      const upperRef = useRef<HTMLDivElement>(null);
+      useOverlayDismiss(lower, lowerRef, () => setLower(false));
+      useOverlayDismiss(upper, upperRef, () => setUpper(false));
+      return (
+        <>
+          {lower && (
+            <div ref={lowerRef} role="dialog" aria-label="lower" tabIndex={-1}>
+              <button onClick={() => setUpper(true)}>open upper</button>
+              <button>lower last</button>
+            </div>
+          )}
+          {upper && (
+            <div ref={upperRef} role="dialog" aria-label="upper" tabIndex={-1}>
+              <button>upper first</button>
+              <button>upper last</button>
+            </div>
+          )}
+        </>
+      );
+    }
+    render(
+      <StrictMode>
+        <Layers />
+      </StrictMode>,
+    );
+    const opener = screen.getByRole("button", { name: "open upper" });
+    opener.focus();
+    fireEvent.click(opener);
+    const first = screen.getByRole("button", { name: "upper first" });
+    const last = screen.getByRole("button", { name: "upper last" });
+    first.focus();
+    fireEvent.keyDown(first, { key: "Tab" });
+    expect(last).toHaveFocus();
+    fireEvent.keyDown(last, { key: "Tab" });
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
+    expect(last).toHaveFocus();
+    fireEvent.keyDown(last, { key: "Escape", isComposing: true });
+    expect(screen.getByRole("dialog", { name: "upper" })).toBeInTheDocument();
+    fireEvent.keyDown(last, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "upper" })).not.toBeInTheDocument();
+    expect(opener).toHaveFocus();
+    fireEvent.keyDown(opener, { key: "Tab" });
+    expect(screen.getByRole("button", { name: "lower last" })).toHaveFocus();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("does not let a dropdown or a lower layer steal focus from a dialog", () => {
+    function Layers({ lower }: { lower: boolean }) {
+      const dropdown = useRef<HTMLDivElement>(null);
+      const panel = useRef<HTMLDivElement>(null);
+      useOverlayKeyboard(lower, dropdown, () => {});
+      useOverlayDismiss(true, panel, () => {});
+      return (
+        <>
+          {lower && (
+            <div ref={dropdown}>
+              <button>notification</button>
+            </div>
+          )}
+          <div ref={panel} tabIndex={-1}>
+            <button>first</button>
+            <button>last</button>
+          </div>
+        </>
+      );
+    }
+    const view = render(<Layers lower />);
+    const first = screen.getByRole("button", { name: "first" });
+    first.focus();
+    fireEvent.keyDown(first, { key: "Tab" });
+    expect(screen.getByRole("button", { name: "last" })).toHaveFocus();
+    view.rerender(<Layers lower={false} />);
+    expect(screen.getByRole("button", { name: "last" })).toHaveFocus();
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(first).toHaveFocus();
+  });
+
   it("moves focus into the panel and returns it after Escape", async () => {
     const opener = document.createElement("button");
     opener.type = "button";

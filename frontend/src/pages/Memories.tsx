@@ -1,3 +1,4 @@
+import LiveStatus from "../components/ui/LiveStatus";
 import {
   useEffect,
   useId,
@@ -1216,12 +1217,10 @@ export default function MemoriesPage() {
               ) : proposedMemories.length === 0 ? (
                 <div className="text-center py-12">
                   <p className="text-fg-tertiary text-sm">{reviewEmptySentence(reviewCategory)}</p>
-                  {spokenReviewEmpty ? (
-                    <p key={spokenReviewEmpty.id} className="sr-only" role="status">
-                      {/* 最后一条离开、写出这一句时读出来。等当前这一句说完。不把焦点抢过来。 */}
-                      {spokenReviewEmpty.text}
-                    </p>
-                  ) : null}
+                  <LiveStatus
+                    message={spokenReviewEmpty?.text}
+                    announcementId={spokenReviewEmpty?.id}
+                  />
                 </div>
               ) : (
                 <ul className="space-y-2">
@@ -1283,12 +1282,7 @@ export default function MemoriesPage() {
         ) : viewMode === "list" ? (
           <>
             <div className="flex gap-2">
-              {spokenRemember ? (
-                <p key={spokenRemember.id} className="sr-only" role="status">
-                  {/* 出现时读出来，等当前这一句说完。不把焦点抢过来。 */}
-                  {spokenRemember.text}
-                </p>
-              ) : null}
+              <LiveStatus message={spokenRemember?.text} announcementId={spokenRemember?.id} />
               <input
                 value={newContent}
                 data-memory-anchor="capture"

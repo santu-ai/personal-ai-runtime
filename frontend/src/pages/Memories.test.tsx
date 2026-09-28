@@ -1,3 +1,4 @@
+import { queryAnnouncement, findAnnouncement } from "../test/liveStatus";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { act, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { renderWithRouter } from "../test-utils";
@@ -259,7 +260,7 @@ describe("MemoriesPage", () => {
     expect(await screen.findByText("没有待确认的记忆。")).toBeInTheDocument();
     expect(review).toHaveFocus();
     expect(screen.queryByText("加载中…")).not.toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 
   it("shows the empty memory list after a successful read", async () => {
@@ -680,11 +681,11 @@ describe("MemoriesPage", () => {
     vi.mocked(createMemory).mockResolvedValue({ id: "m-new", status: "ok" });
     renderWithRouter(<MemoriesPage />);
     const input = await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住...");
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     input.focus();
     fireEvent.change(input, { target: { value: "  喜欢喝茶  " } });
     fireEvent.keyDown(input, { key: "Enter" });
-    const status = await screen.findByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent("已记住 喜欢喝茶");
     expect(status).toHaveClass("sr-only");
     expect(status).not.toHaveFocus();
@@ -708,14 +709,14 @@ describe("MemoriesPage", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     expect(await screen.findByRole("button", { name: "记住中..." })).toBeInTheDocument();
     expect(input).toHaveFocus();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
 
     await act(async () => {
       rejectCreate(new ApiError("创建记忆失败", 500));
     });
     await waitFor(() => expect(addError).toHaveBeenCalledWith("创建记忆失败", "记忆"));
     expect(input).toHaveFocus();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -738,7 +739,7 @@ describe("MemoriesPage", () => {
     await act(async () => {
       release({ id: "m-new", status: "ok" });
     });
-    const status = await screen.findByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent("已记住 喜欢喝茶");
     expect(input).toHaveValue("喜欢喝茶，也喜欢咖啡");
     expect(input).toHaveFocus();
@@ -751,13 +752,13 @@ describe("MemoriesPage", () => {
     input.focus();
     fireEvent.change(input, { target: { value: "喜欢喝茶" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    const first = await screen.findByRole("status");
+    const first = await findAnnouncement();
     expect(first).toHaveTextContent("已记住 喜欢喝茶");
 
     fireEvent.change(input, { target: { value: "喜欢喝茶" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    await waitFor(() => expect(screen.getByRole("status")).not.toBe(first));
-    expect(screen.getByRole("status")).toHaveTextContent("已记住 喜欢喝茶");
+    await waitFor(async () => expect(await findAnnouncement()).toBe(first));
+    expect(await findAnnouncement()).toHaveTextContent("已记住 喜欢喝茶");
     expect(input).toHaveFocus();
   });
 
@@ -767,16 +768,16 @@ describe("MemoriesPage", () => {
     const input = await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住...");
     fireEvent.change(input, { target: { value: "喜欢喝茶" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(await screen.findByRole("status")).toHaveTextContent("已记住 喜欢喝茶");
+    expect(await findAnnouncement()).toHaveTextContent("已记住 喜欢喝茶");
 
     fireEvent.click(screen.getByRole("tab", { name: "待确认" }));
-    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+    await waitFor(() => expect(queryAnnouncement()).not.toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("tab", { name: "列表" }));
     expect(
       await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住..."),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 
   it("does not read a remember that finishes after leaving the list", async () => {
@@ -797,13 +798,13 @@ describe("MemoriesPage", () => {
     await act(async () => {
       release({ id: "m-new", status: "ok" });
     });
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: "列表" }));
     expect(
       await screen.findByPlaceholderText("告诉我一件关于你的事，我会记住..."),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 
   it("rejects from Enter in the reason field, and ignores IME and a second press", async () => {
@@ -1561,7 +1562,7 @@ describe("MemoriesPage", () => {
     expect(
       screen.getByText("没有待确认的记忆。", { selector: ":not([role=status])" }),
     ).toBeInTheDocument();
-    const status = screen.getByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent("没有待确认的记忆。");
     expect(status).toHaveClass("sr-only");
     expect(tab).toHaveFocus();
@@ -1572,7 +1573,7 @@ describe("MemoriesPage", () => {
     vi.mocked(listMemoriesGrouped).mockResolvedValue({ memories: [], total: 0 });
     renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
     expect(await screen.findByText("没有待确认的记忆。")).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 
   it("does not read the review empty state while confirm is still in flight", async () => {
@@ -1606,7 +1607,7 @@ describe("MemoriesPage", () => {
     fireEvent.click(confirm);
     await waitFor(() => expect(confirm).toHaveAttribute("aria-busy", "true"));
     expect(confirm).toHaveAccessibleName("确认：只剩这一条");
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     expect(screen.queryByText("没有待确认的记忆。")).not.toBeInTheDocument();
     release({ status: "ok", claim_status: "ratified" });
   });
@@ -1641,13 +1642,13 @@ describe("MemoriesPage", () => {
     fireEvent.click((await screen.findAllByRole("button", { name: /^确认：/ }))[0]);
     await waitFor(() => expect(screen.queryByText("第一条")).not.toBeInTheDocument());
     expect(screen.getByText("第二条")).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
 
     vi.mocked(ratifyMemory).mockRejectedValueOnce(new ApiError("确认记忆失败", 500));
     fireEvent.click(screen.getByRole("button", { name: /^确认：/ }));
     await waitFor(() => expect(addError).toHaveBeenCalledWith("确认记忆失败", "记忆"));
     expect(screen.getByText("第二条")).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     expect(screen.queryByText("没有待确认的记忆。")).not.toBeInTheDocument();
   });
 
@@ -1675,7 +1676,7 @@ describe("MemoriesPage", () => {
       target: { value: "fact" },
     });
     expect(await screen.findByText("该分类下没有待确认的记忆。")).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByRole("combobox", { name: "分类" }), {
       target: { value: "habit" },
@@ -1688,7 +1689,7 @@ describe("MemoriesPage", () => {
     const confirm = screen.getByRole("button", { name: /^确认：/ });
     confirm.focus();
     fireEvent.click(confirm);
-    const status = await screen.findByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent("该分类下没有待确认的记忆。");
     expect(status).toHaveClass("sr-only");
     expect(screen.getByRole("tab", { name: "待确认" })).toHaveFocus();
@@ -1717,7 +1718,7 @@ describe("MemoriesPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: /^拒绝：/ }));
     const dialog = await screen.findByRole("dialog", { name: "拒绝这条记忆？" });
     fireEvent.click(within(dialog).getByRole("button", { name: "拒绝" }));
-    const status = await screen.findByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent("没有待确认的记忆。");
     expect(status).toHaveClass("sr-only");
     expect(status).not.toHaveFocus();
@@ -1735,14 +1736,14 @@ describe("MemoriesPage", () => {
       target: { value: "created_at_asc" },
     });
     expect(await screen.findByText("又来一条")).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
 
     vi.mocked(ratifyMemory).mockImplementation(async () => {
       proposed = [];
       return { status: "ok", claim_status: "ratified" };
     });
     fireEvent.click(screen.getByRole("button", { name: /^确认：/ }));
-    expect(await screen.findByRole("status")).toHaveTextContent("没有待确认的记忆。");
+    expect(await findAnnouncement()).toHaveTextContent("没有待确认的记忆。");
   });
 
   it("reads the review empty state after bulk confirm and forget clear the last row", async () => {
@@ -1767,7 +1768,7 @@ describe("MemoriesPage", () => {
     renderWithRouter(<MemoriesPage />, { initialEntries: ["/memories?tab=review"] });
     fireEvent.click(await screen.findByRole("checkbox", { name: /全选当前页/ }));
     fireEvent.click(screen.getByRole("button", { name: /批量确认/ }));
-    const status = await screen.findByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent("没有待确认的记忆。");
     expect(screen.getByRole("tab", { name: "待确认" })).toHaveFocus();
 
@@ -1784,7 +1785,7 @@ describe("MemoriesPage", () => {
       target: { value: "created_at_asc" },
     });
     expect(await screen.findByText("忘掉这一条")).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     vi.mocked(deleteMemory).mockImplementation(async () => {
       proposed = [];
       return { status: "ok" };
@@ -1792,7 +1793,7 @@ describe("MemoriesPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /^忘掉：/ }));
     const dialog = await screen.findByRole("dialog", { name: "忘掉这条记忆？" });
     fireEvent.click(within(dialog).getByRole("button", { name: "忘掉" }));
-    const again = await screen.findByRole("status");
+    const again = await findAnnouncement();
     expect(again).toHaveTextContent("没有待确认的记忆。");
     expect(screen.getByRole("tab", { name: "待确认" })).toHaveFocus();
   });
@@ -1877,7 +1878,7 @@ describe("MemoriesPage", () => {
     await waitFor(() => expect(input).toHaveFocus());
     expect(screen.queryByRole("button", { name: /^确认：/ })).not.toBeInTheDocument();
     expect(focusWhenGone.read()).toBe(input);
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 
   it("does not send bulk confirm twice", async () => {

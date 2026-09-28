@@ -1,3 +1,4 @@
+import LiveStatus from "../ui/LiveStatus";
 /**
  * QuickCaptureDialog — listens for the desktop's `quick-capture` postMessage
  * (triggered by the Alt+Shift+I global shortcut in Electron) and surfaces a
@@ -235,7 +236,7 @@ export default function QuickCaptureDialog() {
 
   return (
     <div
-      className="fixed inset-0 bg-black/40 flex items-start justify-center z-[60] pt-[20vh]"
+      className="fixed inset-0 bg-black/40 flex items-start justify-center z-[210] pt-[20vh]"
       onClick={dismiss}
     >
       <div
@@ -255,9 +256,7 @@ export default function QuickCaptureDialog() {
           {saved ? (
             <span className="ml-auto">
               {/* 大约不到一秒就关掉。出现时读出来，等当前这一句说完。不把焦点抢过来。 */}
-              <span className="sr-only" role="status">
-                已保存
-              </span>
+              <LiveStatus message="已保存" />
               <span aria-hidden="true" className="text-xs text-fg-disabled">
                 已保存 ✓
               </span>

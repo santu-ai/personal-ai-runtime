@@ -1,3 +1,4 @@
+import LiveStatus from "../ui/LiveStatus";
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, type FocusEvent } from "react";
 import { Zap, MailSearch, Target as TargetIcon, BrainCircuit, Lightbulb } from "lucide-react";
 import { type MemoryRow, type StreamEvent } from "../../api/client";
@@ -693,9 +694,7 @@ export default function ChatView({ conversationId }: Props) {
         >
           <BrainCircuit size={14} className="shrink-0" aria-hidden />
           {/* 大约六秒就消失。出现时读整句，等当前这一句说完。不把焦点抢过来。 */}
-          <span className="sr-only" role="status">
-            {memoryNotice.full}
-          </span>
+          <LiveStatus message={memoryNotice.full} />
           <span
             aria-hidden="true"
             className={`min-w-0 flex-1 truncate${
@@ -757,18 +756,8 @@ export default function ChatView({ conversationId }: Props) {
             className="h-full overflow-y-auto px-4 py-4"
           >
             <div className="max-w-3xl mx-auto space-y-4">
-              {spokenDeny ? (
-                <p key={spokenDeny.id} className="sr-only" role="status">
-                  {/* 出现时读出来，等当前这一句说完。不把焦点抢过来。 */}
-                  {spokenDeny.text}
-                </p>
-              ) : null}
-              {spokenTool ? (
-                <p key={spokenTool.id} className="sr-only" role="status">
-                  {/* 出现时读出来，等当前这一句说完。不把焦点抢过来。 */}
-                  {spokenTool.text}
-                </p>
-              ) : null}
+              <LiveStatus message={spokenDeny?.text} announcementId={spokenDeny?.id} />
+              <LiveStatus message={spokenTool?.text} announcementId={spokenTool?.id} />
               {messages.map((msg) => (
                 <MessageItem key={msg.id} message={msg} />
               ))}

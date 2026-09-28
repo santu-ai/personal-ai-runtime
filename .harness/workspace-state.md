@@ -299,3 +299,4 @@
 - DLQ 人工重放：`python -m scripts.replay_dead_letters [--limit N] [--dry-run]`
 - 开发期 Alembic squash SOP：`.harness/task-recipes.md` §9
 - Windows 提交走 `git -c core.hooksPath=.githooks commit -F`
+- 2026-09-28：浮层按打开顺序接管 Tab/Esc（`useOverlayKeyboard`）；动态通知改用常驻 `LiveStatus`（先空再填，同文案靠 announcementId 重播）。组件测试与 e2e/accessibility-regressions 已补；真读屏仍待人工验。

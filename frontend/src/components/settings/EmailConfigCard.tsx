@@ -1,3 +1,4 @@
+import LiveStatus from "../ui/LiveStatus";
 import { useId, useRef, useState, type ReactNode } from "react";
 import {
   updateEmailSettings,
@@ -185,9 +186,12 @@ export default function EmailConfigCard({ email, onSaved, embedded = false }: Pr
           {testingEmail ? "测试中…" : "测试连接"}
         </Button>
         {saveNotice ? (
-          <p className="text-xs text-success" role="status" data-testid="email-save-notice">
-            {saveNotice}
-          </p>
+          <LiveStatus
+            as="p"
+            message={saveNotice}
+            className="text-xs text-success"
+            data-testid="email-save-notice"
+          />
         ) : null}
       </div>
     </>

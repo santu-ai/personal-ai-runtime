@@ -94,7 +94,7 @@ describe("DataSovereigntyCard", () => {
       expect(screen.queryByRole("dialog", { name: "销毁全部数据" })).not.toBeInTheDocument(),
     );
     expect(destroyAllData).toHaveBeenCalledTimes(2);
-    expect(screen.getByText("数据已销毁，请重新启动应用")).toHaveAttribute("role", "status");
+    expect(await screen.findByText("数据已销毁，请重新启动应用")).toHaveAttribute("role", "status");
     expect(opener).toHaveFocus();
   });
 
@@ -135,7 +135,9 @@ describe("DataSovereigntyCard", () => {
     await act(async () => {
       release?.();
     });
-    expect(await screen.findByTestId("export-notice")).toHaveTextContent("已导出");
+    await waitFor(async () =>
+      expect(await screen.findByTestId("export-notice")).toHaveTextContent("已导出"),
+    );
     expect(save).toHaveFocus();
     expect(save).not.toHaveAttribute("aria-busy");
   });
@@ -176,7 +178,9 @@ describe("DataSovereigntyCard", () => {
       release?.();
     });
     await waitFor(() => expect(save).not.toHaveAttribute("aria-busy"));
-    expect(screen.getByTestId("export-notice")).toHaveTextContent("已导出");
+    await waitFor(async () =>
+      expect(screen.getByTestId("export-notice")).toHaveTextContent("已导出"),
+    );
     expect(field).toHaveFocus();
   });
 
@@ -232,7 +236,9 @@ describe("DataSovereigntyCard", () => {
     const save = screen.getByRole("button", { name: "加密导出" });
     save.focus();
     fireEvent.click(save);
-    expect(await screen.findByTestId("encrypt-export-notice")).toHaveTextContent("已导出");
+    await waitFor(async () =>
+      expect(await screen.findByTestId("encrypt-export-notice")).toHaveTextContent("已导出"),
+    );
     expect(save).toHaveFocus();
     expect(save).toBeEnabled();
     expect(field).toHaveValue("secret");

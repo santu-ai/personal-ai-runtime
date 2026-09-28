@@ -1,3 +1,4 @@
+import LiveStatus from "../ui/LiveStatus";
 import { useEffect, useCallback } from "react";
 import { Send, Square } from "lucide-react";
 import VoiceInput from "./VoiceInput";
@@ -79,12 +80,7 @@ export default function ChatComposer({
   return (
     <div className="flex items-end gap-2 rounded-xl border border-border-subtle bg-surface-raised p-2.5 shadow-sm transition-colors focus-within:border-focus-ring">
       <VoiceInput onTranscript={handleVoiceTranscript} disabled={fieldDisabled} />
-      {spokenStatus ? (
-        <span className="sr-only" role="status">
-          {/* 出现时读出来，等当前这一句说完。不把焦点抢过来。 */}
-          {spokenStatus}
-        </span>
-      ) : null}
+      <LiveStatus message={spokenStatus} />
       <textarea
         ref={inputRef}
         data-chat-composer=""

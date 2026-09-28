@@ -1,3 +1,4 @@
+import LiveStatus from "../ui/LiveStatus";
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { installMcpConnector } from "../../api/connectors";
 import { useErrorStore } from "../../stores/errorStore";
@@ -137,15 +138,15 @@ export default function McpMarketplace() {
   return (
     <div className="space-y-2 max-h-60 overflow-y-auto">
       {notice ? (
-        <p
+        <LiveStatus
+          as="p"
+          message={notice}
           className="text-xs text-fg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-          role="status"
+
           tabIndex={-1}
           data-mcp-install-notice
           data-testid="mcp-install-notice"
-        >
-          {notice}
-        </p>
+        />
       ) : null}
       {servers.length === 0 ? (
         <p className="text-xs text-fg-disabled">暂无可用 MCP 服务器</p>

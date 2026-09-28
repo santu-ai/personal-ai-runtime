@@ -12,7 +12,7 @@ import {
 } from "../../hooks/useNotificationsQuery";
 import { queryKeys } from "../../hooks/useWsInvalidationBridge";
 import { useErrorStore } from "../../stores/errorStore";
-import { isImeKeyboardEvent } from "../../utils/imeKey";
+import { useOverlayKeyboard } from "../ui/useOverlayDismiss";
 import NotificationDetailModal from "../notifications/NotificationDetailModal";
 import LoadErrorNotice, { queryErrorMessage, useHeldQueryError } from "../ui/LoadErrorNotice";
 import { notificationPreview, notificationRowName } from "../../utils/notificationUtils";
@@ -47,54 +47,6 @@ function focusFirstNotification(panel: HTMLElement | null): boolean {
   if (!row) return false;
   row.focus();
   return document.activeElement === row;
-}
-
-const TABBABLE_SELECTOR = [
-  "a[href]",
-  "button:not([disabled])",
-  "input:not([disabled]):not([type='hidden'])",
-  "select:not([disabled])",
-  "textarea:not([disabled])",
-  "[tabindex]:not([tabindex='-1'])",
-].join(", ");
-
-function canTabTo(node: HTMLElement): boolean {
-  if (node.tabIndex < 0) return false;
-  if (node.hasAttribute("disabled")) return false;
-  if (node instanceof HTMLInputElement && node.type === "hidden") return false;
-  if (node.closest("[hidden], [aria-hidden='true']")) return false;
-  return true;
-}
-
-/** 下拉里按顺序可以 Tab 到的控件。禁用、隐藏和 tabindex=-1 跳过。 */
-function tabbableNodes(panel: HTMLElement): HTMLElement[] {
-  const seen = new Set<HTMLElement>();
-  const items: HTMLElement[] = [];
-  for (const node of panel.querySelectorAll<HTMLElement>(TABBABLE_SELECTOR)) {
-    if (seen.has(node)) continue;
-    seen.add(node);
-    if (!canTabTo(node)) continue;
-    items.push(node);
-  }
-  return items;
-}
-
-function moveTab(panel: HTMLElement, shiftKey: boolean) {
-  const items = tabbableNodes(panel);
-  if (items.length === 0) {
-    if (document.activeElement !== panel) panel.focus();
-    return;
-  }
-  const active = document.activeElement;
-  const index = active instanceof HTMLElement ? items.indexOf(active) : -1;
-  const next = shiftKey
-    ? index <= 0
-      ? items[items.length - 1]
-      : items[index - 1]
-    : index < 0 || index >= items.length - 1
-      ? items[0]
-      : items[index + 1];
-  if (document.activeElement !== next) next.focus();
 }
 
 interface Props {
@@ -158,26 +110,10 @@ export default function NotificationBell({ compact = false }: Props) {
     }
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Tab") {
-        const current = panelRef.current;
-        if (!current) return;
-        event.preventDefault();
-        moveTab(current, event.shiftKey);
-        return;
-      }
-      // 组字或输入法处理键时的 Esc 交给输入法。拦住的话，这一下会把下拉关掉。
-      if (event.key !== "Escape" || isImeKeyboardEvent(event)) return;
-      event.preventDefault();
-      setOpen(false);
-      bellRef.current?.focus();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open]);
+  useOverlayKeyboard(open, panelRef, () => {
+    setOpen(false);
+    bellRef.current?.focus();
+  });
 
   // 「全部已读」成功后这一钮才卸下。放到绘制前，不把焦点留在页面空白。
   // 已经移到别的控件上，或下拉已经关掉时，不再抢。

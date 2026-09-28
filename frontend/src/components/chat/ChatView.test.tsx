@@ -1,3 +1,4 @@
+import { announcements, queryAnnouncement, findAnnouncement } from "../../test/liveStatus";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -144,7 +145,7 @@ function captureFocusWhenSettled(settled: () => boolean): { read: () => Element 
 
 /** role=status 的可访问名称不含正文。读屏读的是这一段文字。 */
 function statusWithText(text: string): HTMLElement | undefined {
-  return screen.queryAllByRole("status").find((node) => node.textContent === text);
+  return announcements().find((node) => node.textContent === text);
 }
 
 function renderChatView() {
@@ -371,7 +372,7 @@ describe("ChatView", () => {
     const confirmBtn = await screen.findByRole("button", { name: "确认写入" });
     const composer = screen.getByPlaceholderText(/输入消息/);
     const waiting = screen.getByRole("button", { name: "待你确认" });
-    const status = screen.getByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent("建议：写入文件。高风险。");
     expect(status).toHaveClass("sr-only");
     expect(status).not.toHaveFocus();
@@ -724,7 +725,7 @@ describe("ChatView", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
     const answer = await screen.findByLabelText("你的回答");
-    const asked = screen.getByRole("status");
+    const asked = await findAnnouncement();
     expect(asked).toHaveTextContent("需要你补充一点信息。简报要覆盖最近几天？");
     expect(asked).toHaveClass("sr-only");
     expect(asked).not.toHaveFocus();
@@ -750,7 +751,7 @@ describe("ChatView", () => {
     await waitFor(() => expect(sendAnswer).not.toHaveAttribute("aria-busy"));
     expect(sendAnswer).toHaveFocus();
     expect(answer).toHaveValue("最近三天");
-    expect(screen.getByRole("status")).toBe(asked);
+    expect(await findAnnouncement()).toBe(asked);
     expect(asked).toHaveTextContent("需要你补充一点信息。简报要覆盖最近几天？");
     expect(screen.getByPlaceholderText(/输入消息/)).not.toHaveFocus();
   });
@@ -1069,7 +1070,7 @@ describe("ChatView", () => {
       );
     });
 
-    const status = await screen.findByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent("已拒绝「写入文件」，没有执行该操作。");
     expect(status).toHaveClass("sr-only");
     expect(status).not.toHaveFocus();
@@ -1109,7 +1110,7 @@ describe("ChatView", () => {
     const cancel = await screen.findByRole("button", { name: "取消" });
     fireEvent.click(cancel);
     expect(cancel).toHaveAttribute("aria-busy", "true");
-    expect(screen.getByRole("status")).toHaveTextContent("建议：写入文件。高风险。");
+    expect(await findAnnouncement()).toHaveTextContent("建议：写入文件。高风险。");
     expect(screen.queryByText(/已拒绝/)).not.toBeInTheDocument();
 
     await act(async () => {
@@ -1117,7 +1118,7 @@ describe("ChatView", () => {
     });
     await waitFor(() => expect(resolveApproval).toHaveBeenCalled());
     expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("建议：写入文件。高风险。");
+    expect(await findAnnouncement()).toHaveTextContent("建议：写入文件。高风险。");
     expect(screen.queryByText(/已拒绝/)).not.toBeInTheDocument();
   });
 
@@ -1148,7 +1149,7 @@ describe("ChatView", () => {
     fireEvent.click(await screen.findByRole("button", { name: "取消" }));
 
     expect(await screen.findByText("好，先不做。")).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     expect(screen.queryByText(/已拒绝/)).not.toBeInTheDocument();
   });
 
@@ -1179,7 +1180,7 @@ describe("ChatView", () => {
     fireEvent.click(await screen.findByRole("button", { name: "取消" }));
     const denied = "已拒绝「向你确认」，没有执行该操作。";
     const first = await waitFor(() => {
-      const notes = screen.getAllByRole("status").filter((node) => node.textContent === denied);
+      const notes = announcements().filter((node) => node.textContent === denied);
       expect(notes).toHaveLength(1);
       return notes[0];
     });
@@ -1190,11 +1191,11 @@ describe("ChatView", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
     fireEvent.click(await screen.findByRole("button", { name: "取消" }));
     await waitFor(() => {
-      const notes = screen.getAllByRole("status").filter((node) => node.textContent === denied);
+      const notes = announcements().filter((node) => node.textContent === denied);
       expect(notes).toHaveLength(1);
-      expect(notes[0]).not.toBe(first);
+      expect(notes[0]).toBe(first);
     });
-    expect(screen.getByRole("status")).not.toHaveFocus();
+    expect(await findAnnouncement()).not.toHaveFocus();
   });
 
   it("does not show 'I just remembered' toast on initial mount", () => {
@@ -1241,7 +1242,7 @@ describe("ChatView", () => {
       "group-focus-visible:block",
     );
     expect(close.querySelector("[aria-hidden]")).toHaveClass("group-focus-visible:hidden");
-    expect(screen.getByRole("status")).toHaveTextContent("待确认：喜欢喝茶");
+    expect(await findAnnouncement()).toHaveTextContent("待确认：喜欢喝茶");
     expect(document.querySelector("[data-memory-notice] [data-prompt-name]")).toBeNull();
     const field = screen.getByPlaceholderText(/输入消息/);
     const seen = captureFocusWhenSettled(
@@ -1250,7 +1251,7 @@ describe("ChatView", () => {
     close.focus();
     fireEvent.keyDown(close, { key: "Escape", isComposing: true });
     fireEvent.keyDown(close, { key: "Escape", keyCode: 229 });
-    expect(screen.getByRole("status")).toHaveTextContent("待确认：喜欢喝茶");
+    expect(await findAnnouncement()).toHaveTextContent("待确认：喜欢喝茶");
     expect(close).toHaveFocus();
     fireEvent.click(close);
 
@@ -1294,7 +1295,7 @@ describe("ChatView", () => {
     view.rerenderChat();
     const preview = `待确认：${content.slice(0, 40)}…`;
     const full = `待确认：${content}`;
-    const status = screen.getByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent(full);
     expect(status).toHaveClass("sr-only");
     const short = screen.getByText(preview);
@@ -1324,7 +1325,7 @@ describe("ChatView", () => {
 
     const full = `待确认：${content}`;
     const preview = `待确认：${content.slice(0, 40)}…`;
-    const status = screen.getByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent(full);
     expect(status).toHaveClass("sr-only");
     const shown = document.querySelector("[data-memory-notice] .truncate");
@@ -1735,7 +1736,7 @@ describe("ChatView", () => {
     expect(composer).toBeEnabled();
     expect(composer).toHaveAttribute("aria-busy", "true");
     expect(composer).toHaveAttribute("aria-label", "输入消息");
-    expect(screen.getByRole("status")).toHaveTextContent("正在生成，输入消息可以先写下一条");
+    expect(await findAnnouncement()).toHaveTextContent("正在生成，输入消息可以先写下一条");
     expect(composer).toHaveFocus();
     expect(cancel).toBeEnabled();
     expect(cancel).toHaveAttribute("aria-busy", "true");
@@ -1834,6 +1835,7 @@ describe("ChatView", () => {
         content: '{"ok":true,"body":"文件正文不读出来"}',
       });
     });
+    await waitFor(() => expect(statusWithText("「读取文件」完成。")).toBeTruthy());
     const status = statusWithText("「读取文件」完成。");
     expect(status).toBeTruthy();
     expect(status).toHaveClass("sr-only");
@@ -1881,6 +1883,9 @@ describe("ChatView", () => {
         content: '{"error":"nope"}',
       });
     });
+    await waitFor(() =>
+      expect(statusWithText("「读取文件」完成。「搜索网页」失败。")).toBeTruthy(),
+    );
     const joined = statusWithText("「读取文件」完成。「搜索网页」失败。");
     expect(joined).toBeTruthy();
     expect(joined).toHaveClass("sr-only");
@@ -1901,7 +1906,7 @@ describe("ChatView", () => {
         content: '{"count":1,"emails":[]}',
       });
     });
-    expect(statusWithText("「检查收件箱」完成。")).toBeTruthy();
+    await waitFor(() => expect(statusWithText("「检查收件箱」完成。")).toBeTruthy());
     expect(statusWithText("「读取文件」完成。「搜索网页」失败。")).toBeUndefined();
   });
 

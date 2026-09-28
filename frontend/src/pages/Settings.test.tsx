@@ -489,7 +489,9 @@ describe("SettingsPage", () => {
     const save = await screen.findByRole("button", { name: "保存 LLM 配置" });
     save.focus();
     fireEvent.click(save);
-    expect(await screen.findByTestId("llm-save-notice")).toHaveTextContent("已保存");
+    await waitFor(async () =>
+      expect(await screen.findByTestId("llm-save-notice")).toHaveTextContent("已保存"),
+    );
     expect(save).toHaveFocus();
 
     fireEvent.change(screen.getByDisplayValue("deepseek-chat"), {
@@ -546,7 +548,9 @@ describe("SettingsPage", () => {
         provider_types: {},
       });
     });
-    expect(await screen.findByTestId("llm-save-notice")).toHaveTextContent("已保存");
+    await waitFor(async () =>
+      expect(await screen.findByTestId("llm-save-notice")).toHaveTextContent("已保存"),
+    );
     expect(save).toHaveFocus();
     expect(save).not.toHaveAttribute("aria-busy");
   });
@@ -591,7 +595,9 @@ describe("SettingsPage", () => {
     renderWithRouter(<SettingsPage />);
     const test = await screen.findByRole("button", { name: "测试：DeepSeek" });
     fireEvent.click(test);
-    expect(await screen.findByTestId("llm-test-ok-deepseek")).toHaveTextContent("连接正常");
+    await waitFor(async () =>
+      expect(await screen.findByTestId("llm-test-ok-deepseek")).toHaveTextContent("连接正常"),
+    );
     expect(screen.getByTestId("llm-test-ok-deepseek")).toHaveAttribute("role", "status");
 
     fireEvent.change(screen.getByDisplayValue("deepseek-chat"), {
@@ -686,7 +692,9 @@ describe("SettingsPage", () => {
     await act(async () => {
       release?.({ ok: true, provider: "deepseek" });
     });
-    expect(await screen.findByTestId("llm-test-ok-deepseek")).toHaveTextContent("连接正常");
+    await waitFor(async () =>
+      expect(await screen.findByTestId("llm-test-ok-deepseek")).toHaveTextContent("连接正常"),
+    );
     expect(screen.getByTestId("llm-test-ok-deepseek")).toHaveAttribute("role", "status");
     expect(deepseek).toHaveFocus();
     expect(deepseek).not.toHaveAttribute("aria-busy");
@@ -734,7 +742,9 @@ describe("SettingsPage", () => {
     const save = await screen.findByRole("button", { name: "保存邮箱配置" });
     save.focus();
     fireEvent.click(save);
-    expect(await screen.findByTestId("email-save-notice")).toHaveTextContent("已保存");
+    await waitFor(async () =>
+      expect(await screen.findByTestId("email-save-notice")).toHaveTextContent("已保存"),
+    );
     expect(save).toHaveFocus();
 
     fireEvent.change(screen.getByDisplayValue("test@gmail.com"), {
@@ -795,7 +805,9 @@ describe("SettingsPage", () => {
         },
       });
     });
-    expect(await screen.findByTestId("email-save-notice")).toHaveTextContent("已保存");
+    await waitFor(async () =>
+      expect(await screen.findByTestId("email-save-notice")).toHaveTextContent("已保存"),
+    );
     expect(save).toHaveFocus();
     expect(save).not.toHaveAttribute("aria-busy");
   });
@@ -1292,8 +1304,10 @@ describe("SettingsPage", () => {
     await act(async () => {
       release({ ok: true, message: "installed" });
     });
-    expect(await screen.findByTestId("mcp-install-notice")).toHaveTextContent(
-      '"brave" 已安装。重启后端后生效。',
+    await waitFor(async () =>
+      expect(await screen.findByTestId("mcp-install-notice")).toHaveTextContent(
+        '"brave" 已安装。重启后端后生效。',
+      ),
     );
     expect(install).toBeDisabled();
     expect(install).toHaveTextContent("已安装");
@@ -1324,8 +1338,10 @@ describe("SettingsPage", () => {
     install.focus();
     fireEvent.click(install);
     fireEvent.click(installed);
-    expect(await screen.findByTestId("mcp-install-notice")).toHaveTextContent(
-      '"context7" 已安装。重启后端后生效。',
+    await waitFor(async () =>
+      expect(await screen.findByTestId("mcp-install-notice")).toHaveTextContent(
+        '"context7" 已安装。重启后端后生效。',
+      ),
     );
     expect(previous).toHaveFocus();
     expect(installMcpConnector).toHaveBeenCalledTimes(1);
@@ -1346,7 +1362,7 @@ describe("SettingsPage", () => {
     observer.observe(document.body, { childList: true, subtree: true, attributes: true });
     fireEvent.click(install);
     const notice = await screen.findByTestId("mcp-install-notice");
-    expect(notice).toHaveTextContent('"brave" 已安装。重启后端后生效。');
+    await waitFor(async () => expect(notice).toHaveTextContent('"brave" 已安装。重启后端后生效。'));
     expect(focusWhenNoticeAppeared).toBe(notice);
     expect(notice).toHaveFocus();
     expect(mcpInstallButton("brave")).toBeDisabled();

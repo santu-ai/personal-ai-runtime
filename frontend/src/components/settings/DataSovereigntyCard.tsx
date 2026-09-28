@@ -1,3 +1,4 @@
+import LiveStatus from "../ui/LiveStatus";
 import { useRef, useState } from "react";
 import {
   downloadExport,
@@ -217,9 +218,7 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
       {!embedded && <h3 className="text-sm font-medium text-fg-secondary mb-3">数据主权</h3>}
       <p className="text-sm text-fg-tertiary mb-4">导出完整个人数据快照，或从备份文件导入。</p>
       {statusMessage && (
-        <p className="text-xs text-success mb-3" role="status">
-          {statusMessage}
-        </p>
+        <LiveStatus as="p" message={statusMessage} className="text-xs text-success mb-3" />
       )}
       <div className="flex flex-wrap gap-3 items-center">
         <Button
@@ -231,9 +230,12 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
           {exporting ? "导出中…" : "导出全部数据"}
         </Button>
         {exportNotice ? (
-          <p className="text-xs text-success" role="status" data-testid="export-notice">
-            {exportNotice}
-          </p>
+          <LiveStatus
+            as="p"
+            message={exportNotice}
+            className="text-xs text-success"
+            data-testid="export-notice"
+          />
         ) : null}
         <label
           className={`${fileControlClass} ${importing ? "opacity-50" : ""}`}
@@ -305,9 +307,12 @@ export default function DataSovereigntyCard({ onAfterImport, embedded = false }:
             {encryptExporting ? "加密导出中…" : "加密导出"}
           </Button>
           {encryptExportNotice ? (
-            <p className="text-xs text-success" role="status" data-testid="encrypt-export-notice">
-              {encryptExportNotice}
-            </p>
+            <LiveStatus
+              as="p"
+              message={encryptExportNotice}
+              className="text-xs text-success"
+              data-testid="encrypt-export-notice"
+            />
           ) : null}
           <label
             className={`${fileControlClass} ${encryptImporting ? "opacity-50" : ""}`}

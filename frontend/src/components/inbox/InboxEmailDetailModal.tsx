@@ -1,3 +1,4 @@
+import LiveStatus from "../ui/LiveStatus";
 import { useState, useEffect, useId, useRef } from "react";
 import type { InboxEmail } from "../../api/client";
 import { getInboxEmailSummary } from "../../api/inbox";
@@ -159,17 +160,15 @@ export default function InboxEmailDetailModal({ email, onClose }: Props) {
                 testId="inbox-summary-load-error"
               />
             ) : summaryAnnouncement ? (
-              <p
+              <LiveStatus
+                as="p"
+                message={summaryAnnouncement}
                 className={
                   summarizing
                     ? "text-sm text-fg-tertiary animate-pulse"
                     : "text-sm text-fg-primary leading-relaxed bg-surface-overlay rounded-lg p-3"
                 }
-                role="status"
-              >
-                {/* 出现时读出来，等当前这一句说完。不把焦点抢过来。 */}
-                {summaryAnnouncement}
-              </p>
+              />
             ) : null}
           </div>
         </div>

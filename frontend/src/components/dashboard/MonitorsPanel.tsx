@@ -1,3 +1,4 @@
+import LiveStatus from "../ui/LiveStatus";
 import {
   useCallback,
   useEffect,
@@ -470,9 +471,7 @@ export default function MonitorsPanel() {
           </Button>
         </div>
         {checkHint ? (
-          <p className="text-xs text-fg-tertiary" role="status">
-            {checkHint}
-          </p>
+          <LiveStatus as="p" message={checkHint} className="text-xs text-fg-tertiary" />
         ) : null}
 
         {urlMonitors.length === 0 ? (

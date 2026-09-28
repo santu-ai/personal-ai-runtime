@@ -1,3 +1,4 @@
+import LiveStatus from "../ui/LiveStatus";
 import { useId, useRef, useState, type ReactNode } from "react";
 import {
   updateLlmSettings,
@@ -305,13 +306,13 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
                 </div>
               </div>
               {connectedIds[provider.id] ? (
-                <p
+                <LiveStatus
+                  as="p"
+                  message={"连接正常"}
                   className="text-xs text-success"
-                  role="status"
+
                   data-testid={`llm-test-ok-${provider.id}`}
-                >
-                  连接正常
-                </p>
+                />
               ) : null}
 
               <div className="flex gap-2 flex-wrap">
@@ -447,9 +448,12 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
           {savingLlm ? "保存中…" : "保存 LLM 配置"}
         </Button>
         {saveNotice ? (
-          <p className="text-xs text-success" role="status" data-testid="llm-save-notice">
-            {saveNotice}
-          </p>
+          <LiveStatus
+            as="p"
+            message={saveNotice}
+            className="text-xs text-success"
+            data-testid="llm-save-notice"
+          />
         ) : null}
       </div>
     </>

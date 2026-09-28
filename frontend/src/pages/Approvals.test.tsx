@@ -1,3 +1,4 @@
+import { queryAnnouncement, findAnnouncement } from "../test/liveStatus";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { act, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { renderWithRouter, MockApiError } from "../test-utils";
@@ -97,7 +98,7 @@ describe("ApprovalsPage", () => {
       expect(screen.getByText("暂无待审批项")).toBeInTheDocument();
     });
     expect(screen.getByText("所有高风险操作已处理完毕")).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 
   it("renders approval list", async () => {
@@ -190,7 +191,7 @@ describe("ApprovalsPage", () => {
     expect(await screen.findByText("暂无待审批项")).toBeInTheDocument();
     expect(screen.getByText("所有高风险操作已处理完毕")).toBeInTheDocument();
     expect(screen.queryByTestId("approvals-load-error")).not.toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 
   it("uses resolveApproval and navigates for chat-continuable approvals", async () => {
@@ -212,7 +213,7 @@ describe("ApprovalsPage", () => {
       expect(mockNavigate).toHaveBeenCalledWith("/chat/conv-9");
     });
     await waitFor(() => expect(screen.getByText("暂无待审批项")).toBeInTheDocument());
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 
   it("sends the typed answer for ask_user and cancels through resolve", async () => {
@@ -511,7 +512,7 @@ describe("ApprovalsPage", () => {
     expect(again).not.toHaveAttribute("aria-busy");
     expect(again).toHaveFocus();
     expect(mockList).toHaveBeenCalledTimes(2);
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 
   it("does not start another read when 刷新 is clicked during the first load", () => {
@@ -539,7 +540,7 @@ describe("ApprovalsPage", () => {
     await waitFor(() => expect(screen.getAllByRole("button", { name: /^批准：/ })).toHaveLength(1));
     expect(screen.getByRole("button", { name: /^批准：/ })).toHaveFocus();
     expect(mockReject).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
   });
 
   it("returns focus to refresh when the last approval is rejected", async () => {
@@ -566,7 +567,7 @@ describe("ApprovalsPage", () => {
     await waitFor(() => expect(refresh).toHaveFocus());
     expect(screen.getByText("暂无待审批项")).toBeInTheDocument();
     expect(focusWhenGone.read()).toBe(refresh);
-    const status = screen.getByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent("暂无待审批项 所有高风险操作已处理完毕");
     expect(status).toHaveClass("sr-only");
     expect(refresh).toHaveFocus();
@@ -608,7 +609,7 @@ describe("ApprovalsPage", () => {
       expect(addError).toHaveBeenCalledWith("llm down", "审批");
       expect(mockNavigate).not.toHaveBeenCalled();
     });
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     expect(screen.queryByText("暂无待审批项")).not.toBeInTheDocument();
   });
 
@@ -622,7 +623,7 @@ describe("ApprovalsPage", () => {
     fireEvent.click(approve);
     refresh.focus();
     await waitFor(() => expect(screen.getByText("暂无待审批项")).toBeInTheDocument());
-    const status = screen.getByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent("暂无待审批项 所有高风险操作已处理完毕");
     expect(status).toHaveClass("sr-only");
     expect(refresh).toHaveFocus();
@@ -643,14 +644,12 @@ describe("ApprovalsPage", () => {
     fireEvent.click(approve);
     await waitFor(() => expect(approve).toHaveAttribute("aria-busy", "true"));
     expect(approve).toHaveAccessibleName("批准：写入文件 /tmp/test.txt");
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     expect(screen.queryByText("暂无待审批项")).not.toBeInTheDocument();
 
     mockList.mockResolvedValue([]);
     release({ id: "ap-1", status: "approved" });
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "暂无待审批项 所有高风险操作已处理完毕",
-    );
+    expect(await findAnnouncement()).toHaveTextContent("暂无待审批项 所有高风险操作已处理完毕");
   });
 
   it("does not read the empty queue when the decision fails", async () => {
@@ -660,7 +659,7 @@ describe("ApprovalsPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: /^拒绝：/ }));
     await waitFor(() => expect(addError).toHaveBeenCalledWith("拒绝操作失败", "审批"));
     expect(screen.getByRole("button", { name: /^拒绝：/ })).toBeInTheDocument();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     expect(screen.queryByText("暂无待审批项")).not.toBeInTheDocument();
   });
 
@@ -675,7 +674,7 @@ describe("ApprovalsPage", () => {
     mockResolve.mockResolvedValue({ status: "denied" });
     renderWithRouter(<ApprovalsPage />);
     fireEvent.click(await screen.findByRole("button", { name: /^取消：/ }));
-    const status = await screen.findByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent("暂无待审批项 所有高风险操作已处理完毕");
     expect(screen.getByRole("button", { name: "刷新" })).toHaveFocus();
     expect(mockNavigate).not.toHaveBeenCalled();
@@ -690,15 +689,15 @@ describe("ApprovalsPage", () => {
     mockReject.mockResolvedValue({ id: "ap-1", status: "rejected" });
     renderWithRouter(<ApprovalsPage />);
     fireEvent.click(await screen.findByRole("button", { name: /^拒绝：/ }));
-    const first = await screen.findByRole("status");
+    const first = await findAnnouncement();
     expect(first).toHaveTextContent("暂无待审批项 所有高风险操作已处理完毕");
 
     fireEvent.click(screen.getByRole("button", { name: "刷新" }));
     await screen.findByRole("button", { name: /^拒绝：/ });
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /^拒绝：/ }));
-    const second = await screen.findByRole("status");
+    const second = await findAnnouncement();
     expect(second).toHaveTextContent("暂无待审批项 所有高风险操作已处理完毕");
     expect(second).not.toBe(first);
   });

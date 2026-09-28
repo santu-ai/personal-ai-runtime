@@ -1,3 +1,4 @@
+import { queryAnnouncement, findAnnouncement } from "../../test/liveStatus";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import ConfirmationDialog from "./ConfirmationDialog";
@@ -32,13 +33,13 @@ const toolCall = {
 };
 
 describe("ConfirmationDialog", () => {
-  it("renders suggestion framing and expandable arguments for write_file", () => {
+  it("renders suggestion framing and expandable arguments for write_file", async () => {
     renderWithRouter(
       <ConfirmationDialog toolCall={toolCall} onConfirm={vi.fn()} onDeny={vi.fn()} />,
     );
 
     expect(screen.getByRole("heading", { name: "建议：写入文件" })).toBeInTheDocument();
-    const status = screen.getByRole("status");
+    const status = await findAnnouncement();
     expect(status).toHaveTextContent("建议：写入文件。高风险。");
     expect(status).toHaveClass("sr-only");
     expect(status).not.toHaveFocus();
@@ -48,24 +49,24 @@ describe("ConfirmationDialog", () => {
     expect(screen.getByText(/"path"/)).toBeInTheDocument();
   });
 
-  it("waits for the capability policy before reading a tool card once", () => {
+  it("waits for the capability policy before reading a tool card once", async () => {
     policyQuery.isPending = true;
     const view = renderWithRouter(
       <ConfirmationDialog toolCall={toolCall} onConfirm={vi.fn()} onDeny={vi.fn()} />,
     );
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(queryAnnouncement()).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "建议：写入文件" })).toBeInTheDocument();
 
     policyQuery.isPending = false;
     view.rerender(<ConfirmationDialog toolCall={toolCall} onConfirm={vi.fn()} onDeny={vi.fn()} />);
-    expect(screen.getByRole("status")).toHaveTextContent("建议：写入文件。高风险。");
+    expect(await findAnnouncement()).toHaveTextContent("建议：写入文件。高风险。");
   });
 
-  it("keeps the same announcement while busy and reads the next card again", () => {
+  it("keeps the same announcement while busy and reads the next card again", async () => {
     const view = renderWithRouter(
       <ConfirmationDialog toolCall={toolCall} onConfirm={vi.fn()} onDeny={vi.fn()} />,
     );
-    const status = screen.getByRole("status");
+    const status = await findAnnouncement();
     view.rerender(
       <ConfirmationDialog
         toolCall={toolCall}
@@ -74,7 +75,7 @@ describe("ConfirmationDialog", () => {
         onDeny={vi.fn()}
       />,
     );
-    expect(screen.getByRole("status")).toBe(status);
+    expect(await findAnnouncement()).toBe(status);
     expect(status).toHaveTextContent("建议：写入文件。高风险。");
 
     view.rerender(
@@ -89,8 +90,8 @@ describe("ConfirmationDialog", () => {
         onDeny={vi.fn()}
       />,
     );
-    const next = screen.getByRole("status");
-    expect(next).not.toBe(status);
+    const next = await findAnnouncement();
+    expect(next).toBe(status);
     expect(next).toHaveTextContent("建议：修改文件。高风险。/tmp/a.md。");
     expect(next).not.toHaveFocus();
   });

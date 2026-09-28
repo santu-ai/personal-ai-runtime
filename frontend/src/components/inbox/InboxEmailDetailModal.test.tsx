@@ -53,7 +53,9 @@ describe("InboxEmailDetailModal", () => {
       summary: "",
     });
     render(<InboxEmailDetailModal email={mail("e1", "请尽快回复")} onClose={vi.fn()} />);
-    expect(await screen.findByRole("status")).toHaveTextContent("（无法生成摘要）");
+    await waitFor(async () =>
+      expect(await screen.findByRole("status")).toHaveTextContent("（无法生成摘要）"),
+    );
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.queryByText("AI 正在生成摘要...")).not.toBeInTheDocument();
   });
@@ -71,12 +73,14 @@ describe("InboxEmailDetailModal", () => {
     const dialog = screen.getByRole("dialog", { name: "请尽快回复" });
     await waitFor(() => expect(dialog).toHaveFocus());
     const status = await screen.findByRole("status");
-    expect(status).toHaveTextContent("AI 正在生成摘要...");
+    await waitFor(async () => expect(status).toHaveTextContent("AI 正在生成摘要..."));
     expect(dialog).toHaveFocus();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 
     release(summaryRow(openMail, "需要今天回复"));
-    expect(await screen.findByRole("status")).toHaveTextContent("需要今天回复");
+    await waitFor(async () =>
+      expect(await screen.findByRole("status")).toHaveTextContent("需要今天回复"),
+    );
     expect(screen.queryByText("AI 正在生成摘要...")).not.toBeInTheDocument();
     expect(dialog).toHaveFocus();
     expect(screen.getByRole("status")).not.toHaveFocus();
@@ -111,7 +115,9 @@ describe("InboxEmailDetailModal", () => {
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
 
     release(summaryRow(openMail, "需要今天回复"));
-    expect(await screen.findByRole("status")).toHaveTextContent("需要今天回复");
+    await waitFor(async () =>
+      expect(await screen.findByRole("status")).toHaveTextContent("需要今天回复"),
+    );
     expect(screen.queryByTestId("inbox-summary-load-error")).not.toBeInTheDocument();
     expect(screen.getByRole("status")).not.toHaveFocus();
   });
@@ -132,13 +138,17 @@ describe("InboxEmailDetailModal", () => {
         }),
     );
     rerender(<InboxEmailDetailModal email={nextMail} onClose={vi.fn()} />);
-    expect(await screen.findByRole("status")).toHaveTextContent("AI 正在生成摘要...");
+    await waitFor(async () =>
+      expect(await screen.findByRole("status")).toHaveTextContent("AI 正在生成摘要..."),
+    );
     expect(screen.queryByText("上一封读不到")).not.toBeInTheDocument();
     expect(screen.queryByTestId("inbox-summary-load-error")).not.toBeInTheDocument();
     expect(screen.getByText("另一封账单")).toBeInTheDocument();
 
     release(summaryRow(nextMail, "这封的摘要"));
-    expect(await screen.findByRole("status")).toHaveTextContent("这封的摘要");
+    await waitFor(async () =>
+      expect(await screen.findByRole("status")).toHaveTextContent("这封的摘要"),
+    );
     expect(screen.queryByText("AI 正在生成摘要...")).not.toBeInTheDocument();
   });
 

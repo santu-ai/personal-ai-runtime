@@ -1,4 +1,5 @@
 import { useEffect, type RefObject } from "react";
+import { hasActiveOverlay } from "../ui/useOverlayDismiss";
 import { isImeKeyboardEvent } from "../../utils/imeKey";
 
 const TABBABLE_SELECTOR = [
@@ -106,7 +107,7 @@ export function useConfirmFocusContainment<T extends HTMLElement>(
     if (!active) return;
     const onKeyDown = (event: KeyboardEvent) => {
       const panel = panelRef.current;
-      if (!panel || event.defaultPrevented) return;
+      if (!panel || event.defaultPrevented || hasActiveOverlay()) return;
       if (event.key === "Tab") {
         if (!shouldContainTab(panel)) return;
         event.preventDefault();

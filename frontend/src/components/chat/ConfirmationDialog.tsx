@@ -1,3 +1,4 @@
+import LiveStatus from "../ui/LiveStatus";
 import { useState } from "react";
 import Button from "../ui/Button";
 import { TextArea } from "../ui/Input";
@@ -183,11 +184,10 @@ export default function ConfirmationDialog({
   return (
     <>
       {/* 工具卡等能力策略回来再读，避免同一张先读一遍再补上高风险。向你确认不依赖策略，出现就读。等当前这一句说完。不把焦点抢过来。 */}
-      {isAskUser || !policyPending ? (
-        <p key={toolCall.id} className="sr-only" role="status">
-          {confirmationSpokenText(toolCall, policy)}
-        </p>
-      ) : null}
+      <LiveStatus
+        message={isAskUser || !policyPending ? confirmationSpokenText(toolCall, policy) : null}
+        announcementId={toolCall.id}
+      />
       <RiskCard
         action={toolCall.function_name}
         args={toolCall.arguments}
