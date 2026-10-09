@@ -1,0 +1,92 @@
+name: Desktop Windows
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "desktop/**"
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/desktop-windows.yml"
+      - ".github/workflows/release.yml"
+      - "docs/upgrade-plan.md"
+      - "docs/05-engineering/deployment.md"
+      - "docs/05-engineering/ci-cd.md"
+      - "docs/03-subsystems/desktop.md"
+      - "docs/README.md"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            desktop/package-lock.json
+            frontend/package-lock.json
+
+      - name: Pin reproducible build inputs
+        shell: pwsh
+        run: |
+          $epoch = git log -1 --format=%ct
+          if (-not $epoch) { throw "SOURCE_DATE_EPOCH is empty" }
+          "SOURCE_DATE_EPOCH=$epoch" >> $env:GITHUB_ENV
+          "CSC_IDENTITY_AUTO_DISCOVERY=false" >> $env:GITHUB_ENV
+          "DESKTOP_BUILD_OUTPUT=$env:RUNNER_TEMP\desktop-dist" >> $env:GITHUB_ENV
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build Windows installer
+        working-directory: desktop
+        run: npm run build
+
+      - name: Record artifact digests
+        shell: pwsh
+        run: |
+          $lines = Get-ChildItem -Path $env:DESKTOP_BUILD_OUTPUT -File |
+            Where-Object { $_.Extension -eq ".exe" } |
+            Sort-Object Name |
+            ForEach-Object {
+              $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLower()
+              "$hash  $($_.Name)"
+            }
+          if (-not $lines) { throw "No installer executables were produced" }
+          $lines | Tee-Object -FilePath (Join-Path $env:DESKTOP_BUILD_OUTPUT "SHA256SUMS")
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows-installer
+          path: |
+            ${{ runner.temp }}/desktop-dist/*.exe
+            ${{ runner.temp }}/desktop-dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+
+  verify:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-windows-installer
+          path: installer-artifact
+
+      - name: Install and launch on a clean runner
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File desktop/verify-windows-install.ps1 -ArtifactDir installer-artifact

@@ -35,16 +35,24 @@ push/PR 到 `main` 时触发，六个 job：
 
 **`real-backend-e2e` job**（Python 3.12 + Node 22）：安装 backend lock 与 frontend 依赖后，跑 `npm run test:e2e:real`（真后端 Playwright）；失败时上传 `frontend/test-results/` traces。
 
+### `workflows/desktop-windows.yml`
+
+`workflow_call`、`workflow_dispatch`，以及改到 `desktop/`、`backend/`、`frontend/` 或本工作流的 pull request。两个独立的 `windows-latest` job：
+
+1. **`build`**：`npm ci` 后 `npm run build`。`SOURCE_DATE_EPOCH` 取当前提交时间，`CSC_IDENTITY_AUTO_DISCOVERY=false`。产物是 `PersonalAIRuntime-Setup-*-x64.exe`、便携 exe 和 `SHA256SUMS`。
+2. **`verify`**：只下载上一步的 artifact，在新 runner 上运行 [`desktop/verify-windows-install.ps1`](../../desktop/verify-windows-install.ps1)。脚本静默安装 NSIS，启动安装后的 exe（`PAR_DESKTOP_SMOKE=1`），再从 job 自己请求 `http://127.0.0.1:8765/api/system/health` 和 `/api/system/live`。
+
 ### `workflows/release.yml`
 
 tag `v*.*.*` 触发：
 
-1. 提取版本号。
-2. 内联 Python 脚本从 `CHANGELOG.md` 切出对应版本段落。
-3. `softprops/action-gh-release@v3` 创建 GitHub Release。
-4. tag 含 `-` 标记为 prerelease。
+1. 调用 `desktop-windows.yml`，先构建并在干净环境验证 Windows 安装包。
+2. 提取版本号。
+3. 内联 Python 脚本从 `CHANGELOG.md` 切出对应版本段落。
+4. `softprops/action-gh-release@v3` 创建 GitHub Release，并上传验证过的 exe 与 `SHA256SUMS`。
+5. tag 含 `-` 标记为 prerelease。
 
-> `CHANGELOG.md` 位于仓库根目录（Keep a Changelog 格式），由 [`release.yml`](../../.github/workflows/release.yml) 切版本段落生成 GitHub Release notes。
+> `CHANGELOG.md` 位于仓库根目录（Keep a Changelog 格式），由 [`release.yml`](../../.github/workflows/release.yml) 切版本段落生成 GitHub Release notes。Windows 安装包只在上面的验证 job 通过后上传。
 
 ## Dependabot
 

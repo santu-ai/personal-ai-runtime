@@ -31,6 +31,7 @@
       "main.js",
       "preload.js",
       "runtimePaths.js",
+      "smokeMode.js",
       "run-backend.py",
       "icon.png",
       "generate_icon.py",
@@ -51,6 +52,15 @@
     "win": {
       "target": ["nsis", "portable"],
       "icon": "icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": false,
+      "artifactName": "PersonalAIRuntime-Setup-${version}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "PersonalAIRuntime-Portable-${version}-${arch}.${ext}"
     },
     "linux": {
       "target": ["AppImage", "deb"],

@@ -6,6 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { cleanDistOutput } = require("./clean-dist-utils");
+const { reproducibleBuildRequested } = require("./pinnedDownloads");
 
 const ROOT = __dirname;
 const DEFAULT_OUTPUT_DIR =
@@ -19,6 +20,13 @@ function resolveOutputDir() {
     cleanDistOutput(DEFAULT_OUTPUT_DIR, "[build-desktop]");
     return DEFAULT_OUTPUT_DIR;
   } catch (err) {
+    if (reproducibleBuildRequested()) {
+      console.error(
+        "[build-desktop] Refusing a timestamped output dir while CI or SOURCE_DATE_EPOCH is set:",
+        err.message,
+      );
+      process.exit(1);
+    }
     const fallback = path.join(path.dirname(DEFAULT_OUTPUT_DIR), `dist-${Date.now()}`);
     fs.mkdirSync(fallback, { recursive: true });
     console.warn("[build-desktop] Could not clean default output dir:", err.message);

@@ -32,7 +32,7 @@ Mem0（[memory overview](https://docs.mem0.ai/open-source/overview)）适合当�
 | 1 | `provider_is_local("ollama", "https://remote.example.invalid")` 为真，远程 Ollama 绕过云端个人上下文限制；普通邮件没有特殊标记时被分成 `general` | **确认。** 旧逻辑先看类型 `ollama` 就返回本地。`classify_llm_payload` 只认身份面、记忆标记和轨迹词，邮件正文和文件正文没有这些标记就是 `general`。切换模型和 fallback 都会调用 `provider_is_local`，所以修函数本身能覆盖这些路径，但仍要有测试锁住每个候选地址 | 阶段 1，本 PR |
 | 2 | 简报可能漏掉关键材料：先取最近 30 封再按关键词和时间过滤，只用预览，文件 500 行 | **确认，未改。** `build_project_brief_plan` 的 `check_inbox` 使用 `limit`（默认 30）；`collect_allowed_sources` 用 `preview` 做关键词匹配和正文；`read_file` 的 `max_lines` 为 500 | 阶段 2 |
 | 3 | 校验器只检查引用 ID 在允许集合里，看不到来源正文；合法 ID 配上编造结论也会 `qualified=True` | **确认，未改。** `validate_model_brief` 的 `qualified` 来自结构检查和 ID 集合，不对照来源文本 | 阶段 2 |
-| 4 | `needsFrontendBuild()` 只看产物在不在和资源路径，不看来源是否更新；发布工作流不打桌面包 | **前半确认并已修。** 新鲜度改为比较源码与两份产物的修改时间。**后半确认、本轮不做：** [`.github/workflows/release.yml`](../.github/workflows/release.yml) 仍只根据 tag 写 GitHub Release 说明，不构建或上传桌面安装包。Windows 嵌入式 Python 已存在 | 打包检查在本 PR；Windows 发布与干净安装验证另开 PR |
+| 4 | `needsFrontendBuild()` 只看产物在不在和资源路径，不看来源是否更新；发布工作流不打桌面包 | **前半在 #361。** 新鲜度改为比较源码与两份产物的修改时间。**后半在 #362 完成：** [`release.yml`](../.github/workflows/release.yml) 调用 [`desktop-windows.yml`](../.github/workflows/desktop-windows.yml)，构建 Windows 安装包，并在另一台干净 runner 上安装、确认应用和内嵌后端响应后再上传 | 打包检查在 #361；Windows 发布与干净安装验证在 #362 |
 | 5 | 引导停在「开始第一次对话」 | **确认，未改。** `OnboardingWizard` 的三步是连接后端、配置模型、开始第一次对话 | 阶段 3 |
 
 没有推翻的架构结论：事件溯源、统一能力治理、执行恢复、交付版本循环都还在，而且应该留着。没有发现评审所依据的出口函数或打包检查已经在 `4b11a82` 之后被修掉；本仓库当前 HEAD 就是这个提交。
@@ -53,7 +53,7 @@ Mem0（[memory overview](https://docs.mem0.ai/open-source/overview)）适合当�
 - 出口按实际目标地址判定，覆盖模型切换和 fallback。
 - 项目简报、收件分类、邮件摘要，以及 `check_inbox` / `read_inbox_email` / `read_file` 的工具结果（含历史回放和审批续写）带上 `email` 或 `file` 标签。
 - 桌面预构建比较源码时间与 `frontend/dist`、`desktop/frontend-dist`。
-- Windows 发布工作流和干净环境安装验证不在本 PR。
+- Windows 发布工作流做可复现构建，并在干净环境验证安装和启动（#362）。
 
 风险：已把远程 Ollama 当成「本地」来用的人，在默认禁止云端个人数据时，带记忆或带邮件/文件的回合会变成 `EgressDeniedError`。这是要的失败，不是静默外发。`ALLOW_CLOUD_PERSONAL_DATA_EGRESS=true` 仍可显式放开。回环上的 Ollama 行为不变。
 
@@ -89,10 +89,10 @@ Mem0（[memory overview](https://docs.mem0.ai/open-source/overview)）适合当�
 
 ### 阶段 1
 
-- [x] 远程 Ollama 按目标地址判定，回环仍为本地（本 PR）
-- [x] 邮件 / 文件显式数据源标签，模型切换与 fallback 各自复判（本 PR）
-- [x] 桌面打包发现过期前端源码（本 PR）
-- [ ] Windows 发布工作流：可复现构建，并在干净环境验证安装和启动
+- [x] 远程 Ollama 按目标地址判定，回环仍为本地（#361）
+- [x] 邮件 / 文件显式数据源标签，模型切换与 fallback 各自复判（#361）
+- [x] 桌面打包发现过期前端源码（#361）
+- [x] Windows 发布工作流：可复现构建，并在干净环境验证安装和启动（#362）
 
 ### 阶段 2
 

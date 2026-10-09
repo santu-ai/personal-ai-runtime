@@ -143,6 +143,14 @@ describe("Electron main process", () => {
     expect(source).not.toContain("setTimeout(startBackend");
   });
 
+  it("runs an unattended smoke launch that skips blocking dialogs", () => {
+    expect(source).toContain('require("./smokeMode")');
+    expect(source).toContain("isDesktopSmokeMode");
+    expect(source).toContain("finishDesktopSmoke");
+    expect(source).toContain("if (!smoke)");
+    expect(source).toContain("await finishDesktopSmoke(startStatus, backendReady)");
+  });
+
   it("packs every local require() from main.js in electron-builder files", () => {
     const pkg = JSON.parse(readFileSync(join(__dirname, "package.json"), "utf-8"));
     const files = pkg.build.files;

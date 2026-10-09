@@ -85,8 +85,8 @@ make desktop-build   # cd desktop && npm run build  (electron-builder)
 [`desktop/package.json`](../../desktop/package.json) 的 electron-builder 配置：
 
 - `appId: com.personalairuntime.desktop`、`productName: Personal AI Runtime`。
-- `files`：`main.js`、`preload.js`、`runtimePaths.js`、`run-backend.py`、`icon.png`、`generate_icon.py`、`frontend-dist/**/*`。
-- `extraResources`：把整个 `../backend` bundle 为 `backend`（排除 `__pycache__`、`*.pyc`、`data/**`）。**打包发行版包含 Python 源码，但运行时仍需系统 Python 3**（`main.js` spawn `python3`）。
+- `files`：`main.js`、`preload.js`、`runtimePaths.js`、`smokeMode.js`、`run-backend.py`、`icon.png`、`generate_icon.py`、`frontend-dist/**/*`。
+- `extraResources`：把整个 `../backend` bundle 为 `backend`（排除 `__pycache__`、`*.pyc`、`data/**`）。**打包发行版包含 Python 源码。** Windows 安装包再带一份校验过 sha256 的 embeddable CPython，运行时优先用它；macOS / Linux 仍需系统 Python 3。
 - Targets：
   - macOS：`dmg`、`zip`（category `public.app-category.productivity`）
   - Windows：`nsis`、`portable`
@@ -97,7 +97,11 @@ make desktop-build   # cd desktop && npm run build  (electron-builder)
 
 ## 发布
 
-GitHub Release 由 [`workflows/release.yml`](../../.github/workflows/release.yml) 在 `v*.*.*` tag 时创建（详见 [ci-cd.md](ci-cd.md)）。当前未见自动上传桌面端构建产物到 Release 的工作流配置——代码库中证据不足。
+`v*.*.*` tag 触发 [`workflows/release.yml`](../../.github/workflows/release.yml)。它先调用 [`workflows/desktop-windows.yml`](../../.github/workflows/desktop-windows.yml)：一台 `windows-latest` 构建 NSIS 与便携包，另一台全新的 `windows-latest` 只下载该产物、静默安装，并确认打包后的应用拉起内嵌后端。`/api/system/health` 与 `/api/system/live` 都要返回 `service=personal-ai-runtime`。验证通过后，Release 附上这两个 exe 和 `SHA256SUMS`。
+
+可复现输入：`npm ci`、`pip install --require-hashes`、embeddable CPython 与 `get-pip.py` 的 sha256（[`desktop/pinnedDownloads.js`](../../desktop/pinnedDownloads.js)）、提交时间作为 `SOURCE_DATE_EPOCH`、关闭签名自动发现。CI 里输出目录清不掉就失败，不用带时间戳的备用目录。NSIS 安装包本身不保证跨机器逐字节相同。
+
+同一工作流也会在改到桌面、后端、前端或该工作流的 pull request 上跑构建和干净安装，不创建 Release。无人值守启动认 `PAR_DESKTOP_SMOKE=1`：跳过开机自启对话框，不打开窗口，把结果写到 `PAR_DESKTOP_SMOKE_RESULT`，看到 `PAR_DESKTOP_SMOKE_DONE` 后退出。
 
 ## 数据持久化
 
