@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-10-09：项目简报先按日期和关键词检索邮箱，再读命中的正文；文件窗口默认 2000 行，交付写明检索范围、截断和缺口。结构是否通过、证据是否待核对、用户是否已验收分成三处。每条结论带位置和片段。摘录对不上来源时不把结构打成失败。固定评测覆盖漏召回、矛盾金额、截断、未知日期和缺失预算。未改 Kernel。
 - 2026-10-09：打包后的启动脚本放在 resources/run-backend.py，不放在 app.asar 里。内嵌 Python 读的是真实文件。烟雾结果带上后端退出码和最近输出。未改 Kernel。
 - 2026-10-09：Windows 发布在 tag 上构建 NSIS 与便携包，另一台干净 Windows runner 静默安装后用 `PAR_DESKTOP_SMOKE=1` 确认打包应用拉起内嵌后端，且 `/api/system/health` 与 `/live` 响应。构建锁定 embed Python 与 get-pip 的 sha256、`npm ci`、pip hash 和 `SOURCE_DATE_EPOCH`；CI 不用带时间戳的输出目录。`continue_after_tool_result` 在拒绝云端个人上下文时不调用客户端，空回复重试仍走已审计的同一客户端。未改 Kernel。
 - 2026-10-09：出口按目标地址判断是否本地，远程 Ollama 不再因为类型名放行；邮件和文件要显式 data_sources 才算个人数据。桌面预构建会在源码新于产物时重建前端。升级路线在 docs/upgrade-plan.md。未改 Kernel，未改 read_ports/work.py。

@@ -9,8 +9,10 @@ import pytest
 from app.core.harness.builtin_tools.email import (
     EmailServer,
     _format_date,
+    _imap_since_token,
     _stable_message_id,
 )
+from app.core.harness.mcp_hub import ToolInvokeError
 
 
 def test_format_date_converts_to_local_timezone():
@@ -262,6 +264,63 @@ def test_mark_inbox_email_read_by_mid_alias(monkeypatch):
     assert data["success"] is True
     assert data.get("method") == "imap_search"
     assert store_calls == [("100", "+FLAGS", "\\Seen")]
+
+
+def test_imap_since_token_uses_english_months():
+    assert _imap_since_token("2026-01-01") == "01-Jan-2026"
+    assert _imap_since_token("2026-10-09T00:00:00") == "09-Oct-2026"
+    with pytest.raises(ToolInvokeError, match="YYYY-MM-DD"):
+        _imap_since_token("01/01/2026")
+
+
+def test_check_inbox_scoped_search_keeps_body_and_reports_truncation(monkeypatch):
+    server = EmailServer()
+    seen: dict = {}
+
+    def search(_mail, *, query, since, unread_only):
+        seen["search"] = (query, since, unread_only)
+        return [b"1", b"2", b"3"]
+
+    def fetch(_mail, limit, unread_only, body_max=300, sequence_ids=None):
+        seen["fetch"] = (limit, body_max, sequence_ids)
+        return [
+            {
+                "message_id": "a",
+                "from": "a@b.c",
+                "subject": "预算",
+                "date": "d",
+                "preview": "p",
+                "body": "full body about 预算",
+            },
+            {
+                "message_id": "b",
+                "from": "b@b.c",
+                "subject": "其他",
+                "date": "d",
+                "preview": "p2",
+                "body": "other",
+            },
+        ]
+
+    monkeypatch.setattr(server, "_connect_inbox", lambda: object())
+    monkeypatch.setattr(server, "_mailbox_uid_validity", lambda _mail: "1")
+    monkeypatch.setattr(server, "_fetch_unread_emails_connected", lambda _mail: [])
+    monkeypatch.setattr(server, "_highest_uid_connected", lambda _mail: 9)
+    monkeypatch.setattr(server, "_search_scope_ids", search)
+    monkeypatch.setattr(server, "_fetch_sorted_emails_connected", fetch)
+
+    payload = json.loads(server.check_inbox(limit=2, query="预算", since="2026-01-01"))
+    assert payload["scoped"] is True
+    assert payload["search"]["matched"] == 3
+    assert payload["search"]["returned"] == 2
+    assert payload["search"]["truncated"] is True
+    assert payload["search"]["query"] == "预算"
+    assert payload["search"]["since"] == "2026-01-01"
+    assert payload["emails"][0]["body"] == "full body about 预算"
+    assert seen["search"] == ("预算", "2026-01-01", False)
+    assert seen["fetch"][0] == 2
+    assert seen["fetch"][1] == 8000
+    assert seen["fetch"][2] == [b"1", b"2", b"3"]
 
 
 def test_email_config_refresh_is_ttl_cached(monkeypatch):

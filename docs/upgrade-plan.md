@@ -30,8 +30,8 @@ Mem0（[memory overview](https://docs.mem0.ai/open-source/overview)）适合当�
 | # | 评审结论 | 代码复核 | 本轮 |
 |---|---|---|---|
 | 1 | `provider_is_local("ollama", "https://remote.example.invalid")` 为真，远程 Ollama 绕过云端个人上下文限制；普通邮件没有特殊标记时被分成 `general` | **确认。** 旧逻辑先看类型 `ollama` 就返回本地。`classify_llm_payload` 只认身份面、记忆标记和轨迹词，邮件正文和文件正文没有这些标记就是 `general`。切换模型和 fallback 都会调用 `provider_is_local`，所以修函数本身能覆盖这些路径，但仍要有测试锁住每个候选地址 | 阶段 1，本 PR |
-| 2 | 简报可能漏掉关键材料：先取最近 30 封再按关键词和时间过滤，只用预览，文件 500 行 | **确认，未改。** `build_project_brief_plan` 的 `check_inbox` 使用 `limit`（默认 30）；`collect_allowed_sources` 用 `preview` 做关键词匹配和正文；`read_file` 的 `max_lines` 为 500 | 阶段 2 |
-| 3 | 校验器只检查引用 ID 在允许集合里，看不到来源正文；合法 ID 配上编造结论也会 `qualified=True` | **确认，未改。** `validate_model_brief` 的 `qualified` 来自结构检查和 ID 集合，不对照来源文本 | 阶段 2 |
+| 2 | 简报可能漏掉关键材料：先取最近 30 封再按关键词和时间过滤，只用预览，文件 500 行 | **已改。** 计划把 `since` 和可选 `query` 交给 `check_inbox`，邮箱先检索再截断，命中封带正文。文件窗口默认 2000 行，交付写明截断 | 阶段 2 |
+| 3 | 校验器只检查引用 ID 在允许集合里，看不到来源正文；合法 ID 配上编造结论也会 `qualified=True` | **已改结构与证据分开。** `qualified` 仍只表示结构检查。摘录对不上来源时 `quality_evidence=unsupported`，不把结构打成失败；人还没核对前是 `pending` | 阶段 2 |
 | 4 | `needsFrontendBuild()` 只看产物在不在和资源路径，不看来源是否更新；发布工作流不打桌面包 | **前半在 #361。** 新鲜度改为比较源码与两份产物的修改时间。**后半在 #362 完成：** [`release.yml`](../.github/workflows/release.yml) 调用 [`desktop-windows.yml`](../.github/workflows/desktop-windows.yml)，构建 Windows 安装包，并在另一台干净 runner 上安装、确认应用和内嵌后端响应后再上传 | 打包检查在 #361；Windows 发布与干净安装验证在 #362 |
 | 5 | 引导停在「开始第一次对话」 | **确认，未改。** `OnboardingWizard` 的三步是连接后端、配置模型、开始第一次对话 | 阶段 3 |
 
@@ -96,12 +96,12 @@ Mem0（[memory overview](https://docs.mem0.ai/open-source/overview)）适合当�
 
 ### 阶段 2
 
-- [ ] 简报先限定检索范围，再读命中邮件的正文，而不是只拿最近 30 封的预览
-- [ ] 文件读取不再以固定 500 行作为唯一窗口；交付物写明截断
-- [ ] 交付物展示检索范围、截断和缺口
-- [ ] 质量状态拆成结构通过 / 证据待核对 / 用户已验收
-- [ ] 每条关键结论带上来源片段和位置
-- [ ] 不少于 30 例的固定评测：漏召回、矛盾、截断、未知日期或缺失预算
+- [x] 简报先限定检索范围，再读命中邮件的正文，而不是只拿最近 30 封的预览（#363）
+- [x] 文件读取不再以固定 500 行作为唯一窗口；交付物写明截断（#363）
+- [x] 交付物展示检索范围、截断和缺口（#363）
+- [x] 质量状态拆成结构通过 / 证据待核对 / 用户已验收（#363）
+- [x] 每条关键结论带上来源片段和位置（#363）
+- [x] 不少于 30 例的固定评测：漏召回、矛盾、截断、未知日期或缺失预算（#363）
 
 ### 阶段 3
 

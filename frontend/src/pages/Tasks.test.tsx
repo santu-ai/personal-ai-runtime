@@ -1924,6 +1924,51 @@ describe("TasksPage", () => {
     expect(screen.getByRole("button", { name: "返工" })).toBeInTheDocument();
   });
 
+  it("splits structure, evidence, and acceptance on the delivery", async () => {
+    const task: WorkItem = {
+      ...briefTask,
+      delivery_bundle: {
+        work_id: "brief_1",
+        current_review_status: "unreviewed",
+        current: {
+          ...currentDelivery,
+          quality_structure: "passed",
+          quality_evidence: "unsupported",
+          findings: [
+            {
+              text: "预算是一百",
+              kind: "risk",
+              source_ids: ["email:m1"],
+              evidence: [
+                {
+                  source_id: "email:m1",
+                  locator: "a@b.c",
+                  snippet: "本周预算 100元",
+                  quote_in_source: false,
+                },
+              ],
+            },
+          ],
+        },
+        deliveries: [currentSummary],
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [task];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(task);
+    renderTasks("/tasks/brief_1");
+
+    const quality = await screen.findByTestId("delivery-quality");
+    expect(within(quality).getByText("结构检查通过")).toBeInTheDocument();
+    expect(within(quality).getByText("证据未支持")).toBeInTheDocument();
+    expect(within(quality).getByText("待验收")).toBeInTheDocument();
+    const evidence = await screen.findByTestId("finding-evidence");
+    expect(evidence).toHaveTextContent("a@b.c");
+    expect(evidence).toHaveTextContent("本周预算 100元");
+  });
+
   it("shows a historical version's rework reason", async () => {
     const reason = "第一版缺少风险";
     const task: WorkItem = {

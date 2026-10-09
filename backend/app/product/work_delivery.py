@@ -253,6 +253,20 @@ def _decision_for(
     return latest
 
 
+def _quality_structure(row: dict[str, Any]) -> str:
+    explicit = str(row.get("quality_structure") or "")
+    if explicit in {"passed", "failed"}:
+        return explicit
+    return "passed" if bool(row.get("qualified", True)) else "failed"
+
+
+def _quality_evidence(row: dict[str, Any]) -> str:
+    explicit = str(row.get("quality_evidence") or "")
+    if explicit in {"pending", "unsupported"}:
+        return explicit
+    return "pending"
+
+
 def _public_delivery(
     row: dict[str, Any] | None,
     *,
@@ -277,6 +291,8 @@ def _public_delivery(
         "supersedes_delivery_id": row.get("supersedes_delivery_id"),
         "schema_version": int(row.get("schema_version") or DELIVERY_SCHEMA_VERSION),
         "qualified": bool(row.get("qualified", True)),
+        "quality_structure": _quality_structure(row),
+        "quality_evidence": _quality_evidence(row),
         "review_status": review_status,
         "latest_decision": dict(latest_decision) if latest_decision else None,
     }
@@ -285,6 +301,9 @@ def _public_delivery(
     else:
         content = str(row.get("content") or "")
         out["content_length"] = len(content)
+    retrieval = row.get("retrieval")
+    if isinstance(retrieval, dict):
+        out["retrieval"] = retrieval
     return out
 
 
@@ -603,6 +622,9 @@ def publish_delivery(
     contract_version: int = 1,
     execution_id: str | None = None,
     qualified: bool = True,
+    quality_structure: str | None = None,
+    quality_evidence: str | None = None,
+    retrieval: dict[str, Any] | None = None,
     actor: str = "system",
 ) -> dict[str, Any]:
     """Append an immutable delivery version. Same execution_id is idempotent."""
@@ -652,7 +674,16 @@ def publish_delivery(
             "supersedes_delivery_id": supersedes,
             "schema_version": DELIVERY_SCHEMA_VERSION,
             "qualified": bool(qualified),
+            "quality_structure": _quality_structure({
+                "quality_structure": quality_structure,
+                "qualified": qualified,
+            }),
+            "quality_evidence": _quality_evidence({
+                "quality_evidence": quality_evidence,
+            }),
         }
+        if isinstance(retrieval, dict):
+            payload_body["retrieval"] = retrieval
         kernel.emit_event(
             EVENT_WORK_ITEM_UPDATED,
             AGGREGATE_WORK_ITEM,
