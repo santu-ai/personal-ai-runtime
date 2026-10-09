@@ -9,7 +9,11 @@ permissions:
   contents: write
 
 jobs:
+  windows-desktop:
+    uses: ./.github/workflows/desktop-windows.yml
+
   release:
+    needs: windows-desktop
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -46,6 +50,11 @@ jobs:
           print(text[start:end].strip())
           PY
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-windows-installer
+          path: desktop-windows-installer
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
@@ -54,3 +63,6 @@ jobs:
           body_path: release_notes.md
           draft: false
           prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
+          files: |
+            desktop-windows-installer/*.exe
+            desktop-windows-installer/SHA256SUMS

@@ -12,6 +12,13 @@ const crypto = require("crypto");
 const { execFileSync, spawnSync } = require("child_process");
 const { createWriteStream } = require("fs");
 
+const {
+  GET_PIP_SHA256,
+  GET_PIP_URL,
+  assertSha256,
+  expectedEmbedSha256,
+} = require("./pinnedDownloads");
+
 const PYTHON_VERSION = "3.12.8";
 const ARCH = process.arch === "x64" ? "amd64" : "win32";
 const REPO_ROOT = path.resolve(__dirname, "..");
@@ -21,6 +28,23 @@ const REQUIREMENTS_LOCK = path.join(REPO_ROOT, "backend", "requirements.lock");
 const LOCK_DIGEST_FILE = path.join(OUTPUT_DIR, ".requirements-lock.sha256");
 const ZIP_NAME = `python-${PYTHON_VERSION}-embed-${ARCH}.zip`;
 const ZIP_URL = `https://www.python.org/ftp/python/${PYTHON_VERSION}/${ZIP_NAME}`;
+const ZIP_SHA256 = expectedEmbedSha256(ZIP_NAME);
+
+async function downloadVerified(url, dest, expectedSha256, label) {
+  if (fs.existsSync(dest)) {
+    try {
+      assertSha256(dest, expectedSha256, label);
+      return dest;
+    } catch (err) {
+      console.warn(`[bundle-python] ${err.message}; re-downloading`);
+      fs.unlinkSync(dest);
+    }
+  }
+  console.log(`[bundle-python] Downloading ${url}`);
+  await download(url, dest);
+  assertSha256(dest, expectedSha256, label);
+  return dest;
+}
 
 function download(url, dest) {
   return new Promise((resolve, reject) => {
@@ -82,10 +106,7 @@ async function main() {
 
   fs.mkdirSync(CACHE_DIR, { recursive: true });
   const zipPath = path.join(CACHE_DIR, ZIP_NAME);
-  if (!fs.existsSync(zipPath)) {
-    console.log(`[bundle-python] Downloading ${ZIP_URL}`);
-    await download(ZIP_URL, zipPath);
-  }
+  await downloadVerified(ZIP_URL, zipPath, ZIP_SHA256, ZIP_NAME);
 
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
   run("powershell", [
@@ -109,9 +130,7 @@ async function main() {
   );
 
   const getPipPath = path.join(CACHE_DIR, "get-pip.py");
-  if (!fs.existsSync(getPipPath)) {
-    await download("https://bootstrap.pypa.io/get-pip.py", getPipPath);
-  }
+  await downloadVerified(GET_PIP_URL, getPipPath, GET_PIP_SHA256, "get-pip.py");
 
   run(pythonExe, [getPipPath, "--no-warn-script-location"], { cwd: OUTPUT_DIR });
   run(pythonExe, [

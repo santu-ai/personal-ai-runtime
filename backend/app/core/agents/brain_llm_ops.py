@@ -86,6 +86,9 @@ async def continue_after_tool_result(
     if messages and messages[-1].get("role") == "user" and not messages[-1].get("content"):
         messages.pop()
 
+    # Audit before the try so EgressDeniedError is not swallowed. The empty
+    # reply retry stays on this already-audited client; a second host would
+    # need its own audit, so this path does not fail over.
     egress_messages, _egress_audit = audit_llm_egress(
         messages,
         purpose="chat_continue",

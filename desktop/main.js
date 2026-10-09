@@ -26,6 +26,21 @@ const {
   waitForProcessExit,
   inspectBackendHealth,
 } = require("./runtimePaths");
+const {
+  isDesktopSmokeMode,
+  smokeUserDataDir,
+  writeSmokeResult,
+  smokeShouldStop,
+} = require("./smokeMode");
+
+if (isDesktopSmokeMode()) {
+  app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch("disable-gpu");
+  const smokeUserData = smokeUserDataDir();
+  if (smokeUserData) {
+    app.setPath("userData", path.resolve(smokeUserData));
+  }
+}
 
 // Declare the app:// scheme as privileged BEFORE app is ready.
 // This must happen synchronously at module load time so the renderer can use
@@ -123,6 +138,10 @@ function showPythonSetupError() {
     process.platform === "win32"
       ? "未找到可用的 Python 3.12 或依赖未安装。\n请运行 install.bat，或从 README 查看安装说明。"
       : "Python 3.12+ with backend requirements is required.\nRun: bash install.sh";
+  if (isDesktopSmokeMode()) {
+    console.error(detail);
+    return;
+  }
   dialog.showErrorBox("Personal AI Runtime — 后端启动失败", detail);
 }
 
@@ -253,8 +272,19 @@ function installApiProxy() {
 
 let backendProcess = null;
 let backendStarting = false;
+let backendLog = "";
+let backendExitCode = null;
+
+function rememberBackendLog(chunk) {
+  backendLog = `${backendLog}${chunk}`.slice(-4000);
+}
 
 function resolveBackendLauncher() {
+  // Packaged main.js lives in app.asar. Python reads the real filesystem, so the
+  // launcher has to be the extraResources copy under resources/.
+  if (isPackaged) {
+    return path.join(process.resourcesPath, "run-backend.py");
+  }
   return path.join(__dirname, "run-backend.py");
 }
 
@@ -282,10 +312,13 @@ async function waitForBackendReady(maxWaitMs = 90000) {
 }
 
 function showPortConflictError() {
-  dialog.showErrorBox(
-    "Personal AI Runtime — 端口冲突",
-    `端口 ${BACKEND_PORT} 已被其他服务占用，且响应不是 Personal AI Runtime（service/version 不匹配）。\n请关闭占用该端口的程序，或设置 BACKEND_URL 使用其他端口。`,
-  );
+  const detail =
+    `端口 ${BACKEND_PORT} 已被其他服务占用，且响应不是 Personal AI Runtime（service/version 不匹配）。\n请关闭占用该端口的程序，或设置 BACKEND_URL 使用其他端口。`;
+  if (isDesktopSmokeMode()) {
+    console.error(detail);
+    return;
+  }
+  dialog.showErrorBox("Personal AI Runtime — 端口冲突", detail);
 }
 
 async function startBackend() {
@@ -329,6 +362,8 @@ async function startBackend() {
       return "failed";
     }
 
+    backendLog = "";
+    backendExitCode = null;
     backendProcess = spawn(pythonCmd.executable, [...pythonCmd.args, launcherPath], {
       cwd: backendDir,
       env: spawnEnv,
@@ -336,14 +371,17 @@ async function startBackend() {
     });
 
     backendProcess.stdout.on("data", (data) => {
+      rememberBackendLog(data.toString());
       console.log("[backend]", data.toString().trim());
     });
 
     backendProcess.stderr.on("data", (data) => {
+      rememberBackendLog(data.toString());
       console.log("[backend]", data.toString().trim());
     });
 
     backendProcess.on("close", (code) => {
+      backendExitCode = code;
       console.log("Backend exited with code", code);
       backendProcess = null;
     });
@@ -604,6 +642,60 @@ function showNotification(title, body) {
   }
 }
 
+async function probeLiveBackend() {
+  const url = `http://127.0.0.1:${BACKEND_PORT}/api/system/live`;
+  try {
+    const res = await electronNet.fetch(url);
+    let payload = null;
+    try {
+      payload = await res.json();
+    } catch {
+      payload = null;
+    }
+    return {
+      ok: Boolean(res && res.ok && payload && payload.service === "personal-ai-runtime"),
+      status: res && res.status,
+      service: payload && payload.service,
+    };
+  } catch (error) {
+    return { ok: false, error: String(error && error.message ? error.message : error) };
+  }
+}
+
+async function finishDesktopSmoke(startStatus, backendReady) {
+  const health = await probeLocalBackend();
+  const live = await probeLiveBackend();
+  const ok = startStatus !== "conflict"
+    && startStatus !== "failed"
+    && startStatus !== "busy"
+    && backendReady === true
+    && health.kind === "ours"
+    && live.ok === true;
+  writeSmokeResult(process.env, {
+    ok,
+    packaged: isPackaged,
+    startStatus,
+    backendReady,
+    health: {
+      kind: health.kind,
+      status: health.status,
+      service: health.payload && health.payload.service,
+      version: health.payload && health.payload.version,
+    },
+    live,
+    pid: process.pid,
+    backendExitCode,
+    backendLog: backendLog.trim().slice(-2000),
+  });
+  const started = Date.now();
+  while (!smokeShouldStop(process.env, started, Date.now())) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  isQuitting = true;
+  await stopBackend();
+  app.exit(ok ? 0 : 1);
+}
+
 // ── App Lifecycle ────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
@@ -611,32 +703,37 @@ app.whenReady().then(async () => {
   registerAppProtocol();
   installApiProxy();
 
+  const smoke = isDesktopSmokeMode();
+
   // First-run: ask for auto-launch consent (was previously forced).
-  try {
-    const settings = app.getLoginItemSettings();
-    if (!settings.openAtLogin && !settings.wasOpenedAtLogin) {
-      const result = await dialog.showMessageBox({
-        type: "question",
-        title: "Personal AI Runtime",
-        message: "是否允许开机自启？",
-        detail: "开机自启后，AI 可以在后台持续为你工作。你可以在托盘菜单中随时切换。",
-        buttons: ["允许", "暂不"],
-        defaultId: 0,
-        cancelId: 1,
-      });
-      if (result.response === 0) {
-        app.setLoginItemSettings({ openAtLogin: true });
+  if (!smoke) {
+    try {
+      const settings = app.getLoginItemSettings();
+      if (!settings.openAtLogin && !settings.wasOpenedAtLogin) {
+        const result = await dialog.showMessageBox({
+          type: "question",
+          title: "Personal AI Runtime",
+          message: "是否允许开机自启？",
+          detail: "开机自启后，AI 可以在后台持续为你工作。你可以在托盘菜单中随时切换。",
+          buttons: ["允许", "暂不"],
+          defaultId: 0,
+          cancelId: 1,
+        });
+        if (result.response === 0) {
+          app.setLoginItemSettings({ openAtLogin: true });
+        }
       }
+    } catch {
+      // login item settings not supported on this platform — skip silently
     }
-  } catch {
-    // login item settings not supported on this platform — skip silently
   }
 
   // Auto-start backend and wait until health responds (migrations can take a while).
   const startStatus = await startBackend();
+  let backendReady = false;
   if (startStatus !== "conflict") {
-    const backendReady = await waitForBackendReady();
-    if (!backendReady) {
+    backendReady = await waitForBackendReady(smoke ? 180000 : 90000);
+    if (!backendReady && !smoke) {
       dialog.showMessageBox({
         type: "warning",
         title: "Personal AI Runtime",
@@ -645,6 +742,11 @@ app.whenReady().then(async () => {
           "应用界面已打开，但暂时无法连接后端。请稍后在托盘菜单选择「重启后端」，或查看 README 中的安装说明。",
       });
     }
+  }
+
+  if (smoke) {
+    await finishDesktopSmoke(startStatus, backendReady);
+    return;
   }
 
   createMainWindow();

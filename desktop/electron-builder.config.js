@@ -9,6 +9,12 @@ const outputDir =
   path.join(os.homedir(), ".cache", "personal-ai-runtime-desktop", "dist");
 
 const extraResources = [...base.extraResources.filter((item) => item.to !== "python")];
+// Python cannot open scripts inside app.asar. Ship the launcher as its own
+// resource so it does not race the backend directory copy.
+extraResources.push({
+  from: "run-backend.py",
+  to: "run-backend.py",
+});
 if (fs.existsSync(bundledPython)) {
   extraResources.push({
     from: "bundled-python",

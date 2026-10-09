@@ -99,8 +99,10 @@ describe("Electron main process", () => {
 
   it("uses a backend launcher for embeddable Python sys.path", () => {
     expect(source).toContain("run-backend.py");
+    expect(source).toContain('path.join(process.resourcesPath, "run-backend.py")');
     expect(source).toContain("BACKEND_DIR");
     expect(source).toContain("waitForBackendReady");
+    expect(source).toContain("backendLog");
   });
 
   it("redirects desktop data to userData", () => {
@@ -141,6 +143,14 @@ describe("Electron main process", () => {
     expect(source).toContain('service/version 不匹配');
     expect(source).not.toContain("setTimeout(connectWebSocket");
     expect(source).not.toContain("setTimeout(startBackend");
+  });
+
+  it("runs an unattended smoke launch that skips blocking dialogs", () => {
+    expect(source).toContain('require("./smokeMode")');
+    expect(source).toContain("isDesktopSmokeMode");
+    expect(source).toContain("finishDesktopSmoke");
+    expect(source).toContain("if (!smoke)");
+    expect(source).toContain("await finishDesktopSmoke(startStatus, backendReady)");
   });
 
   it("packs every local require() from main.js in electron-builder files", () => {
