@@ -282,7 +282,8 @@ def collect_allowed_sources(
             email_ok = True
             raw_emails = payload.get("emails")
             emails = raw_emails if isinstance(raw_emails, list) else []
-            search = payload.get("search") if isinstance(payload.get("search"), dict) else {}
+            raw_search = payload.get("search")
+            search: dict[str, Any] = raw_search if isinstance(raw_search, dict) else {}
             email_scoped = bool(payload.get("scoped"))
             if email_scoped:
                 email_matched = search.get("matched")
@@ -532,7 +533,8 @@ def _quality_labels(structure: str, evidence: str) -> tuple[str, str]:
 def _retrieval_lines(coverage: dict[str, Any] | None) -> list[str]:
     if not coverage:
         return []
-    email = coverage.get("email") if isinstance(coverage.get("email"), dict) else {}
+    raw_email = coverage.get("email")
+    email: dict[str, Any] = raw_email if isinstance(raw_email, dict) else {}
     lines = ["", "## 检索范围"]
     if email.get("enabled"):
         query = str(email.get("query") or "") or "（无关键词）"
@@ -551,7 +553,8 @@ def _retrieval_lines(coverage: dict[str, Any] | None) -> list[str]:
         )
     else:
         lines.append("- 邮箱：未启用")
-    files = coverage.get("files") if isinstance(coverage.get("files"), list) else []
+    raw_files = coverage.get("files")
+    files: list[Any] = raw_files if isinstance(raw_files, list) else []
     if not files:
         lines.append("- 文件：未读取")
     for item in files:
