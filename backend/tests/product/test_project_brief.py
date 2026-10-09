@@ -66,7 +66,7 @@ def test_collect_sources_filters_query_and_keeps_file_hash():
             result='{"error":"not used"}',
         ),
     ]
-    sources, bodies, notes = collect_allowed_sources(
+    sources, bodies, notes, _coverage = collect_allowed_sources(
         contract={
             "source_scope": {
                 "timezone": "UTC",
@@ -93,7 +93,7 @@ def test_collect_sources_records_unconfigured_failure():
             result="Email credentials not configured",
         ),
     ]
-    sources, _bodies, notes = collect_allowed_sources(
+    sources, _bodies, notes, _coverage = collect_allowed_sources(
         contract={"source_scope": {"email": {"enabled": True, "days": 3}, "files": []}},
         step_results=results,
         retrieved_at="t0",
@@ -111,7 +111,7 @@ def test_collect_sources_maps_file_by_original_step_index():
             result="second file body",
         ),
     ]
-    sources, _bodies, _notes = collect_allowed_sources(
+    sources, _bodies, _notes, _coverage = collect_allowed_sources(
         contract={
             "source_scope": {
                 "files": [

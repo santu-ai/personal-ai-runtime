@@ -261,6 +261,17 @@ function reviewLabel(status: string | null | undefined): string {
   return "无交付";
 }
 
+function structureLabel(delivery: WorkDelivery): string {
+  if (delivery.quality_structure === "failed") return "结构检查未通过";
+  if (delivery.quality_structure === "passed") return "结构检查通过";
+  return delivery.qualified ? "结构检查通过" : "结构检查未通过";
+}
+
+function evidenceLabel(delivery: WorkDelivery): string {
+  if (delivery.quality_evidence === "unsupported") return "证据未支持";
+  return "证据待核对";
+}
+
 function deliveryDecisionReason(
   delivery: WorkDelivery | null | undefined,
   status: "accepted" | "changes_requested",
@@ -516,6 +527,16 @@ function DeliveryFindings({
           <li key={`${item.text}-${index}`}>
             <span className="text-fg-tertiary">[{findingKindLabel(item.kind)}]</span> {item.text}
             <SourceIdChips ids={item.source_ids} onCite={onCite} />
+            {(item.evidence ?? []).map((ev, evIndex) => (
+              <p
+                key={`${ev.source_id}-${evIndex}`}
+                className="mt-1 text-xs text-fg-tertiary"
+                data-testid="finding-evidence"
+              >
+                <span className="font-mono">{ev.locator || ev.source_id}</span>
+                {ev.snippet ? `：${ev.snippet}` : ""}
+              </p>
+            ))}
           </li>
         ))}
       </ul>
@@ -2531,9 +2552,15 @@ export default function TasksPage() {
                                 交付 v{shownDelivery.version}
                                 {viewingHistory ? "（历史版本）" : ""}
                               </h3>
-                              <p className="text-xs text-fg-tertiary mt-1">
-                                {reviewLabel(shownDelivery.review_status)}
-                                {shownDelivery.qualified ? "" : " · 非完整合格简报"}
+                              <p
+                                className="text-xs text-fg-tertiary mt-1"
+                                data-testid="delivery-quality"
+                              >
+                                <span>{structureLabel(shownDelivery)}</span>
+                                {" · "}
+                                <span>{evidenceLabel(shownDelivery)}</span>
+                                {" · "}
+                                <span>{reviewLabel(shownDelivery.review_status)}</span>
                               </p>
                               <DeliveryModelCost delivery={shownDelivery} />
                               {deliveryReworkReason(shownDelivery) ? (

@@ -265,10 +265,18 @@ export interface WorkDeliveryCheck {
   detail?: string;
 }
 
+export interface WorkDeliveryEvidence {
+  source_id: string;
+  locator?: string;
+  snippet?: string;
+  quote_in_source?: boolean;
+}
+
 export interface WorkDeliveryFinding {
   text: string;
   kind?: string;
   source_ids?: string[];
+  evidence?: WorkDeliveryEvidence[];
 }
 
 export interface WorkDeliveryAction {
@@ -350,6 +358,34 @@ export interface WorkDelivery {
   supersedes_delivery_id?: string | null;
   schema_version: number;
   qualified: boolean;
+  /** Structure check only. Missing on older deliveries; derive from qualified. */
+  quality_structure?: "passed" | "failed";
+  /** Evidence stays pending until a person checks the snippets. */
+  quality_evidence?: "pending" | "unsupported";
+  retrieval?: {
+    email?: {
+      enabled?: boolean;
+      query?: string;
+      days?: number;
+      since?: string;
+      limit?: number;
+      scoped?: boolean;
+      matched?: number | null;
+      truncated?: boolean;
+      included?: number;
+      full_body?: number;
+      preview_only?: number;
+      unknown_date?: number;
+    };
+    files?: Array<{
+      path?: string;
+      label?: string;
+      max_lines?: number;
+      truncated?: boolean;
+      note?: string;
+    }>;
+    gaps?: string[];
+  };
   review_status: WorkDeliveryReviewStatus;
   latest_decision?: WorkDeliveryDecision | null;
   changes_from_previous?: WorkDeliveryChanges | null;

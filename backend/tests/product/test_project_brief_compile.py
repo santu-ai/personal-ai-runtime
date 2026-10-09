@@ -56,8 +56,16 @@ async def test_compile_publishes_full_content(isolated_kernel):
     assert compiled["ok"] is True
     delivery = compiled["delivery"]
     assert "进度延期" in delivery["content"]
+    assert delivery["quality_structure"] == "passed"
+    assert delivery["quality_evidence"] == "pending"
+    assert delivery["retrieval"]["email"]["enabled"] is True
+    assert "检索范围" in delivery["content"]
+    evidence = delivery["findings"][0]["evidence"][0]
+    assert evidence["source_id"] == "email:m1"
+    assert "进度延期" in evidence["snippet"]
     folded = fold_delivery_history(item["id"])
     assert folded["current"]["content"] == delivery["content"]
+    assert folded["current"]["quality_structure"] == "passed"
     assert folded["current"]["sources"][0]["id"] == "email:m1"
     assert "进度延期" in delivery["content"]
     assert "`email:m1`" in delivery["content"]

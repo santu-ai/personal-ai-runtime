@@ -10,7 +10,7 @@ import os
 import re
 import smtplib
 import time
-from datetime import timezone
+from datetime import datetime, timezone
 from email.header import decode_header
 from email.mime.text import MIMEText
 from email.utils import parsedate_to_datetime
@@ -67,6 +67,24 @@ def _stable_message_id(msg: email.message.Message, from_raw: str, subject: str, 
         usedforsecurity=False,
     ).hexdigest()
     return f"sha1:{digest}"
+
+
+_IMAP_MONTHS = (
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+)
+
+
+def _imap_since_token(since: str) -> str:
+    """IMAP SINCE token from YYYY-MM-DD. Month names stay English."""
+    try:
+        dt = datetime.strptime(since[:10], "%Y-%m-%d")
+    except ValueError as exc:
+        raise ToolInvokeError(
+            OUTCOME_TOOL_EXECUTION_FAILURE,
+            f"since must be YYYY-MM-DD, got {since!r}",
+        ) from exc
+    return f"{dt.day:02d}-{_IMAP_MONTHS[dt.month - 1]}-{dt.year}"
 
 
 def _format_date(date_str: str | None) -> str:
@@ -327,11 +345,14 @@ class EmailServer:
         limit: int,
         unread_only: bool,
         body_max: int = 300,
+        sequence_ids: list[bytes] | None = None,
     ) -> list[dict]:
-        search_criteria = "UNSEEN" if unread_only else "ALL"
-        _status, message_ids = mail.search(None, search_criteria)
-
-        ids = message_ids[0].split() if message_ids[0] else []
+        if sequence_ids is None:
+            search_criteria = "UNSEEN" if unread_only else "ALL"
+            _status, message_ids = mail.search(None, search_criteria)
+            ids = message_ids[0].split() if message_ids[0] else []
+        else:
+            ids = list(sequence_ids)
         if not ids:
             return []
 
@@ -441,12 +462,38 @@ class EmailServer:
             except Exception:
                 logger.warning("Error during IMAP logout", exc_info=True)
 
+    def _search_scope_ids(
+        self,
+        mail: imaplib.IMAP4_SSL,
+        *,
+        query: str,
+        since: str,
+        unread_only: bool,
+    ) -> list[bytes]:
+        """IMAP SEARCH by date and text, before any latest-N cut."""
+        criteria: list[str] = ["UNSEEN" if unread_only else "ALL"]
+        if since:
+            criteria.extend(["SINCE", _imap_since_token(since)])
+        if query:
+            criteria.extend(["TEXT", query.replace('"', " ")])
+        status, data = mail.search(None, *criteria)
+        if status != "OK":
+            raise ToolInvokeError(
+                OUTCOME_TOOL_EXECUTION_FAILURE,
+                f"IMAP SEARCH failed: {status}",
+            )
+        if not data or not data[0]:
+            return []
+        return data[0].split()
+
     def check_inbox(
         self,
         limit: int = 10,
         unread_only: bool = False,
         after_uid: int | None = None,
         uid_validity: str | None = None,
+        query: str = "",
+        since: str = "",
     ) -> str:
         """Check inbox for recent emails (default: all mail, not unread-only)."""
         try:
@@ -478,7 +525,34 @@ class EmailServer:
                 # Unseen index is always needed so poll can sync read-state
                 # even when listing recent mail (unread_only=false).
                 all_unread_emails = self._fetch_unread_emails_connected(mail)
-                if can_increment:
+                scoped_query = str(query or "").strip()
+                scoped_since = str(since or "").strip()
+                use_scope = bool(scoped_query or scoped_since)
+                search_meta = None
+                if use_scope:
+                    matched_ids = self._search_scope_ids(
+                        mail,
+                        query=scoped_query,
+                        since=scoped_since,
+                        unread_only=unread_only,
+                    )
+                    emails = self._fetch_sorted_emails_connected(
+                        mail,
+                        limit,
+                        unread_only,
+                        body_max=8000,
+                        sequence_ids=matched_ids,
+                    )
+                    search_meta = {
+                        "query": scoped_query,
+                        "since": scoped_since,
+                        "limit": limit,
+                        "matched": len(matched_ids),
+                        "returned": len(emails),
+                        "truncated": len(matched_ids) > limit,
+                    }
+                    next_uid = self._highest_uid_connected(mail)
+                elif can_increment:
                     assert requested_after_uid is not None
                     emails, next_uid = self._fetch_sorted_emails_since_uid_connected(
                         mail, limit, unread_only, requested_after_uid,
@@ -494,8 +568,13 @@ class EmailServer:
                 except Exception:
                     logger.debug("Error during IMAP logout", exc_info=True)
 
+            keep_body = search_meta is not None
             slim = [
-                {k: v for k, v in em.items() if k not in ("body", "seq_num")}
+                {
+                    k: v
+                    for k, v in em.items()
+                    if k != "seq_num" and (keep_body or k != "body")
+                }
                 for em in emails
             ]
             # Unread index is ids-only: full headers for every UNSEEN message
@@ -514,6 +593,9 @@ class EmailServer:
                 "next_uid": next_uid,
                 "cursor_reset": cursor_reset,
             }
+            if search_meta is not None:
+                payload["scoped"] = True
+                payload["search"] = search_meta
             return json.dumps(payload, ensure_ascii=False)
         except imaplib.IMAP4.error as e:
             raise ToolInvokeError(

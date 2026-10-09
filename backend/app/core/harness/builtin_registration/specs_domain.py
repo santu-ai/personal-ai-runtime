@@ -103,6 +103,14 @@ def _email_specs() -> list[BuiltinToolSpec]:
                         "type": "boolean",
                         "description": "Only show unread emails (default false). Set true for 未读邮件 only.",
                     },
+                    "query": {
+                        "type": "string",
+                        "description": "Search the mailbox for this text before applying limit. Empty keeps the recent-mail list.",
+                    },
+                    "since": {
+                        "type": "string",
+                        "description": "YYYY-MM-DD. Search mail on or after this date before applying limit.",
+                    },
                 },
             },
             handler=email_server.check_inbox,
