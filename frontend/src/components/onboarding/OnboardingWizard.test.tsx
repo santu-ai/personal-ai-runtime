@@ -23,7 +23,7 @@ vi.mock("react-router-dom", async () => {
 vi.mock("../../api/client", () => ({
   getSystemHealth: vi.fn(),
   getLlmProviders: vi.fn(),
-  createConversation: vi.fn(),
+  createProjectBrief: vi.fn(),
   ApiError: MockApiError,
 }));
 
@@ -47,11 +47,11 @@ vi.mock("../../stores/errorStore", () => ({
     selector({ addError }),
 }));
 
-import { getSystemHealth, getLlmProviders, createConversation } from "../../api/client";
+import { getSystemHealth, getLlmProviders, createProjectBrief } from "../../api/client";
 
 const mockHealth = vi.mocked(getSystemHealth);
 const mockLlm = vi.mocked(getLlmProviders);
-const mockCreateConv = vi.mocked(createConversation);
+const mockCreateBrief = vi.mocked(createProjectBrief);
 
 function OnboardingHost() {
   const [open, setOpen] = useState(false);
@@ -103,7 +103,7 @@ describe("OnboardingWizard", () => {
     await waitFor(() => expect(screen.getByText("后端运行正常")).toHaveAttribute("role", "status"));
     fireEvent.click(screen.getByText("下一步"));
     await waitFor(() => {
-      expect(screen.getByText("开始第一次对话")).toBeInTheDocument();
+      expect(screen.getByText("生成第一份简报")).toBeInTheDocument();
     });
   });
 
@@ -145,7 +145,7 @@ describe("OnboardingWizard", () => {
     renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "下一步" }));
 
-    const prompt = "帮我设定一个这周想完成的目标，拆解成可执行的步骤";
+    const prompt = "读取最近三天的邮件，生成一份可以核对来源的简报";
     const line = await screen.findByText(prompt);
     expect(line).toHaveClass(
       "truncate",
@@ -159,16 +159,18 @@ describe("OnboardingWizard", () => {
     expect(line).not.toHaveAttribute("title");
     const topic = line.closest("button");
     expect(topic).toHaveClass("group", "focus-visible:ring-focus-ring");
-    expect(topic).toHaveAccessibleName(/帮我规划一个目标/);
+    expect(topic).toHaveAccessibleName(/整理最近邮件/);
     expect(line.closest("button")).toBe(topic);
 
     expect(fireEvent.keyDown(topic!, { key: " " })).toBe(true);
     expect(fireEvent.keyDown(topic!, { key: "Enter" })).toBe(true);
-    expect(mockCreateConv).not.toHaveBeenCalled();
+    expect(mockCreateBrief).not.toHaveBeenCalled();
 
-    const free = screen.getByRole("button", { name: "自由聊几句" });
-    expect(free.querySelector(".truncate")).toBeNull();
-    expect(free).toHaveClass("group");
+    const budget = screen.getByRole("button", { name: /核对预算邮件/ });
+    expect(budget.querySelector(".truncate")).toHaveTextContent(
+      "先按「预算」检索邮箱，再读命中的正文",
+    );
+    expect(budget).toHaveClass("group");
   });
 
   it("launches conversation from starter prompt", async () => {
@@ -177,43 +179,43 @@ describe("OnboardingWizard", () => {
       auth_required: false,
       startup: { checks: { llm: { configured: true } } },
     } as Awaited<ReturnType<typeof getSystemHealth>>);
-    mockCreateConv.mockResolvedValue({
-      id: "conv-new",
-      title: "目标规划",
-      summary: null,
-      created_at: "2026-06-28T10:00:00Z",
-      updated_at: "2026-06-28T10:00:00Z",
-    });
+    mockCreateBrief.mockResolvedValue({ id: "brief-1" } as Awaited<
+      ReturnType<typeof createProjectBrief>
+    >);
     const onComplete = vi.fn();
     renderWithRouter(<OnboardingWizard onComplete={onComplete} />);
     fireEvent.click(screen.getByText("运行检查"));
     await waitFor(() => expect(screen.getByText("后端运行正常")).toHaveAttribute("role", "status"));
     fireEvent.click(screen.getByText("下一步"));
-    await waitFor(() => expect(screen.getByText("帮我规划一个目标")).toBeInTheDocument());
-    fireEvent.click(screen.getByText("帮我规划一个目标"));
+    await waitFor(() => expect(screen.getByText("整理最近邮件")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("整理最近邮件"));
     await waitFor(() => {
-      expect(mockCreateConv).toHaveBeenCalledWith("目标规划");
-      expect(setPendingPrompt).toHaveBeenCalled();
-      expect(mockNavigate).toHaveBeenCalledWith("/chat/conv-new");
+      expect(mockCreateBrief).toHaveBeenCalledWith({
+        title: "最近邮件简报",
+        objective: "整理最近三天邮件里的变化、风险和待办，每条结论附上来源。",
+        source_scope: { email: { enabled: true, days: 3 } },
+      });
+      expect(setPendingPrompt).not.toHaveBeenCalled();
+      expect(mockNavigate).toHaveBeenCalledWith("/tasks/brief-1");
       expect(onComplete).toHaveBeenCalled();
     });
   });
 
-  it("calls addError when createConversation fails", async () => {
+  it("calls addError when creating a brief fails", async () => {
     mockHealth.mockResolvedValue({
       status: "ok",
       auth_required: false,
       startup: { checks: { llm: { configured: true } } },
     } as Awaited<ReturnType<typeof getSystemHealth>>);
-    mockCreateConv.mockRejectedValue(new MockApiError("创建失败", 500));
+    mockCreateBrief.mockRejectedValue(new MockApiError("创建失败", 500));
     renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
     fireEvent.click(screen.getByText("运行检查"));
     await waitFor(() => expect(screen.getByText("后端运行正常")).toHaveAttribute("role", "status"));
     fireEvent.click(screen.getByText("下一步"));
-    await waitFor(() => expect(screen.getByText("自由聊几句")).toBeInTheDocument());
-    fireEvent.click(screen.getByText("自由聊几句"));
+    await waitFor(() => expect(screen.getByText("核对预算邮件")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("核对预算邮件"));
     await waitFor(() => {
-      expect(addError).toHaveBeenCalledWith("创建失败", "对话");
+      expect(addError).toHaveBeenCalledWith("创建失败", "简报");
     });
   });
 
@@ -372,8 +374,8 @@ describe("OnboardingWizard", () => {
     const next = screen.getByRole("button", { name: "下一步" });
     next.focus();
     fireEvent.click(next);
-    const starter = await screen.findByRole("button", { name: /帮我规划一个目标/ });
-    expect(screen.getByText("开始第一次对话")).toBeInTheDocument();
+    const starter = await screen.findByRole("button", { name: /整理最近邮件/ });
+    expect(screen.getByText("生成第一份简报")).toBeInTheDocument();
     expect(mockHealth).toHaveBeenCalledTimes(1);
     expect(mockLlm).not.toHaveBeenCalled();
     expect(starter).toHaveFocus();
@@ -395,9 +397,9 @@ describe("OnboardingWizard", () => {
         startup: { checks: { llm: { configured: true } } },
       } as Awaited<ReturnType<typeof getSystemHealth>>);
     });
-    expect(await screen.findByText("开始第一次对话")).toBeInTheDocument();
+    expect(await screen.findByText("生成第一份简报")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "稍后再说" })).toHaveFocus();
-    expect(screen.getByRole("button", { name: /帮我规划一个目标/ })).not.toHaveFocus();
+    expect(screen.getByRole("button", { name: /整理最近邮件/ })).not.toHaveFocus();
   });
 
   it("moves focus to the first starter after the LLM check succeeds", async () => {
@@ -413,7 +415,7 @@ describe("OnboardingWizard", () => {
     const next = screen.getByRole("button", { name: "下一步" });
     next.focus();
     fireEvent.click(next);
-    const starter = await screen.findByRole("button", { name: /帮我规划一个目标/ });
+    const starter = await screen.findByRole("button", { name: /整理最近邮件/ });
     expect(starter).toHaveFocus();
   });
 
@@ -446,73 +448,65 @@ describe("OnboardingWizard", () => {
     fireEvent.click(screen.getByRole("button", { name: "运行检查" }));
     expect(await screen.findByText("后端运行正常")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "下一步" }));
-    expect(await screen.findByText("开始第一次对话")).toBeInTheDocument();
+    expect(await screen.findByText("生成第一份简报")).toBeInTheDocument();
   }
 
   it("does not launch twice and keeps focus on the starter", async () => {
-    const pending = defer<{
-      id: string;
-      title: string;
-      summary: null;
-      created_at: string;
-      updated_at: string;
-    }>();
-    mockCreateConv.mockImplementationOnce(() => pending.promise);
+    const pending = defer<Awaited<ReturnType<typeof createProjectBrief>>>();
+    mockCreateBrief.mockImplementationOnce(() => pending.promise);
     await openStarters();
-    const first = screen.getByRole("button", { name: /帮我规划一个目标/ });
-    const second = screen.getByRole("button", { name: /总结我的收件箱/ });
+    const first = screen.getByRole("button", { name: /整理最近邮件/ });
+    const second = screen.getByRole("button", { name: /核对预算邮件/ });
     first.focus();
     fireEvent.click(first);
     fireEvent.click(first);
     fireEvent.click(second);
     await waitFor(() => expect(first).toHaveAttribute("aria-busy", "true"));
-    expect(mockCreateConv).toHaveBeenCalledTimes(1);
-    expect(mockCreateConv).toHaveBeenCalledWith("目标规划");
+    expect(mockCreateBrief).toHaveBeenCalledTimes(1);
+    expect(mockCreateBrief).toHaveBeenCalledWith({
+      title: "最近邮件简报",
+      objective: "整理最近三天邮件里的变化、风险和待办，每条结论附上来源。",
+      source_scope: { email: { enabled: true, days: 3 } },
+    });
     expect(first).toBeEnabled();
     expect(first).toHaveFocus();
     expect(second).toBeEnabled();
     expect(second).not.toHaveAttribute("aria-busy");
-    expect(screen.getByText("正在开启对话…")).toBeInTheDocument();
+    expect(screen.getByText("正在生成简报…")).toBeInTheDocument();
 
     await act(async () => {
-      pending.release({
-        id: "conv-new",
-        title: "目标规划",
-        summary: null,
-        created_at: "2026-06-28T10:00:00Z",
-        updated_at: "2026-06-28T10:00:00Z",
-      });
+      pending.release({ id: "brief-1" } as Awaited<ReturnType<typeof createProjectBrief>>);
     });
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/chat/conv-new"));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/tasks/brief-1"));
     expect(first).not.toHaveAttribute("aria-busy");
     expect(first).toHaveFocus();
   });
 
   it("keeps focus on the starter when creating a conversation fails", async () => {
-    mockCreateConv.mockRejectedValue(new MockApiError("创建失败", 500));
+    mockCreateBrief.mockRejectedValue(new MockApiError("创建失败", 500));
     await openStarters();
-    const first = screen.getByRole("button", { name: /自由聊几句/ });
+    const first = screen.getByRole("button", { name: /核对预算邮件/ });
     first.focus();
     fireEvent.click(first);
-    await waitFor(() => expect(addError).toHaveBeenCalledWith("创建失败", "对话"));
-    expect(screen.getByText("开始第一次对话")).toBeInTheDocument();
+    await waitFor(() => expect(addError).toHaveBeenCalledWith("创建失败", "简报"));
+    expect(screen.getByText("生成第一份简报")).toBeInTheDocument();
     expect(first).toBeEnabled();
     expect(first).toHaveFocus();
     expect(first).not.toHaveAttribute("aria-busy");
-    expect(screen.queryByText("正在开启对话…")).not.toBeInTheDocument();
+    expect(screen.queryByText("正在生成简报…")).not.toBeInTheDocument();
   });
 
   it("does not steal focus when a starter launch fails", async () => {
     let fail: (err: unknown) => void = () => {};
-    mockCreateConv.mockImplementationOnce(
+    mockCreateBrief.mockImplementationOnce(
       () =>
         new Promise((_resolve, reject) => {
           fail = reject;
         }),
     );
     await openStarters();
-    const first = screen.getByRole("button", { name: /帮我规划一个目标/ });
-    const second = screen.getByRole("button", { name: /总结我的收件箱/ });
+    const first = screen.getByRole("button", { name: /整理最近邮件/ });
+    const second = screen.getByRole("button", { name: /核对预算邮件/ });
     first.focus();
     fireEvent.click(first);
     await waitFor(() => expect(first).toHaveAttribute("aria-busy", "true"));
@@ -521,7 +515,7 @@ describe("OnboardingWizard", () => {
       fail(new MockApiError("创建失败", 500));
     });
     await waitFor(() => expect(first).not.toHaveAttribute("aria-busy"));
-    expect(addError).toHaveBeenCalledWith("创建失败", "对话");
+    expect(addError).toHaveBeenCalledWith("创建失败", "简报");
     expect(second).toHaveFocus();
   });
 
@@ -607,13 +601,7 @@ describe("OnboardingWizard", () => {
   });
 
   it("keeps Tab on the starter buttons and does not leave on Escape while launching", async () => {
-    const pending = defer<{
-      id: string;
-      title: string;
-      summary: null;
-      created_at: string;
-      updated_at: string;
-    }>();
+    const pending = defer<Awaited<ReturnType<typeof createProjectBrief>>>();
     mockHealth.mockResolvedValue({
       status: "ok",
       auth_required: false,
@@ -627,10 +615,10 @@ describe("OnboardingWizard", () => {
       </>,
     );
     fireEvent.click(screen.getByRole("button", { name: "下一步" }));
-    const first = await screen.findByRole("button", { name: /帮我规划一个目标/ });
+    const first = await screen.findByRole("button", { name: /整理最近邮件/ });
     const last = screen.getByRole("button", { name: "稍后再说" });
     const outside = screen.getByRole("button", { name: "外面" });
-    expect(screen.getByRole("dialog", { name: "开始第一次对话" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "生成第一份简报" })).toBeInTheDocument();
     first.focus();
 
     fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
@@ -641,13 +629,13 @@ describe("OnboardingWizard", () => {
     fireEvent.keyDown(outside, { key: "Tab" });
     expect(first).toHaveFocus();
 
-    mockCreateConv.mockImplementationOnce(() => pending.promise);
+    mockCreateBrief.mockImplementationOnce(() => pending.promise);
     fireEvent.click(first);
     await waitFor(() => expect(first).toHaveAttribute("aria-busy", "true"));
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onComplete).not.toHaveBeenCalled();
     expect(localStorage.getItem("onboarding_done")).toBeNull();
-    expect(screen.getByRole("dialog", { name: "开始第一次对话" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "生成第一份简报" })).toBeInTheDocument();
     expect(first).toHaveFocus();
   });
 
