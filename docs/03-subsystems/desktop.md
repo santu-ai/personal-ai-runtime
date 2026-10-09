@@ -132,7 +132,7 @@ electron-builder 配置：
 - `files`：`main.js`、`preload.js`、`runtimePaths.js`、`smokeMode.js`、`run-backend.py`、`icon.png`、`generate_icon.py`、`frontend-dist/**/*`。
 - 主窗口与迷你窗口经 `installNavigationGuards`：仅允许 `app://` 与开发态 `http://127.0.0.1:5173` 内部导航；其他 `http(s)` 交给系统浏览器，危险 scheme 直接拦截。
 - `quickCapture()` 的 `postMessage` 目标 origin 为 `window.location.origin`（不再用 `'*'`）。
-- `extraResources`：把整个 `../backend` 目录 bundle 为 `backend`（排除 `__pycache__`、`*.pyc`、`data/**`），并把 `run-backend.py` 放到 `resources/run-backend.py`。打包后的 Python 读这份真实文件，不读 `app.asar` 里的副本。打包发行版包含 Python 源码和前端构建产物。Windows 安装包同时带捆绑的 `python.exe`；macOS / Linux 仍需系统 Python 3。
+- `extraResources`：把整个 `../backend` 目录 bundle 为 `backend`（排除 `__pycache__`、`*.pyc`、`data/**`），并把 [`desktop/run-backend.py`](../../desktop/run-backend.py) 单独放到安装包 resources 根目录。打包后的 Python 读这份真实文件，不读 app.asar 里的副本。打包发行版包含 Python 源码和前端构建产物。Windows 安装包同时带捆绑的 `python.exe`；macOS / Linux 仍需系统 Python 3。
 - NSIS 产物名为 `PersonalAIRuntime-Setup-${version}-${arch}.exe`，便携包为 `PersonalAIRuntime-Portable-${version}-${arch}.exe`。`PAR_DESKTOP_SMOKE=1` 时跳过开机自启对话框和窗口，写出启动结果后退出，供干净环境安装验证使用。
 - Targets：macOS（`dmg`、`zip`）、Windows（`nsis`、`portable`）、Linux（`AppImage`、`deb`）。
 - `desktop/vitest.config.js` — `globals: true`，包含 `**/*.test.js`。
