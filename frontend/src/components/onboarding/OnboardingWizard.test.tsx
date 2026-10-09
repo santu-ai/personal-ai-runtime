@@ -452,13 +452,7 @@ describe("OnboardingWizard", () => {
   }
 
   it("does not launch twice and keeps focus on the starter", async () => {
-    const pending = defer<{
-      id: string;
-      title: string;
-      summary: null;
-      created_at: string;
-      updated_at: string;
-    }>();
+    const pending = defer<Awaited<ReturnType<typeof createProjectBrief>>>();
     mockCreateBrief.mockImplementationOnce(() => pending.promise);
     await openStarters();
     const first = screen.getByRole("button", { name: /整理最近邮件/ });
@@ -607,13 +601,7 @@ describe("OnboardingWizard", () => {
   });
 
   it("keeps Tab on the starter buttons and does not leave on Escape while launching", async () => {
-    const pending = defer<{
-      id: string;
-      title: string;
-      summary: null;
-      created_at: string;
-      updated_at: string;
-    }>();
+    const pending = defer<Awaited<ReturnType<typeof createProjectBrief>>>();
     mockHealth.mockResolvedValue({
       status: "ok",
       auth_required: false,
