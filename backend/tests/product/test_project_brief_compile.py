@@ -159,3 +159,62 @@ async def test_compile_links_llm_call_to_execution(isolated_kernel, monkeypatch)
     assert seen[0]["caused_by"] == "exec-llm"
     assert seen[0]["correlation_id"] == "corr-llm"
     assert seen[0]["purpose"] == "project_brief"
+    assert seen[0]["data_sources"] is None
+
+
+@pytest.mark.asyncio
+async def test_compile_declares_email_and_file_sources(isolated_kernel, monkeypatch):
+    item = create_project_brief_work(
+        title="A",
+        objective="列出变化",
+        source_scope={
+            "email": {"enabled": True, "query": "", "days": 30},
+            "files": [{"path": "/tmp/notes.txt", "label": "笔记"}],
+        },
+    )
+    outcome = SimpleNamespace(results=[
+        SimpleNamespace(
+            tool="check_inbox",
+            status="success",
+            result=json.dumps({
+                "emails": [{
+                    "message_id": "m1",
+                    "subject": "项目变化",
+                    "from": "a@b.c",
+                    "date": "2099-01-01T00:00:00+00:00",
+                    "preview": "只是普通进度，没有特殊标记",
+                }],
+            }),
+        ),
+        SimpleNamespace(
+            tool="read_file",
+            status="success",
+            step=1,
+            result="本地笔记：下周三评审",
+        ),
+    ])
+    seen: list[dict] = []
+
+    async def fake_complete(messages, **kwargs):
+        seen.append({"messages": messages, **kwargs})
+        return json.dumps({
+            "summary": "有评审",
+            "content": "全文",
+            "findings": [{
+                "text": "下周三评审",
+                "kind": "change",
+                "source_ids": ["email:m1"],
+            }],
+            "suggested_actions": [],
+            "limitations": [],
+        }), "fake"
+
+    monkeypatch.setattr(
+        "app.core.agents.brain_llm_ops.complete_text_with_failover",
+        fake_complete,
+    )
+    await compile_project_brief_delivery(item["id"], outcome, execution_id="exec-src")
+    assert seen[0]["data_sources"] == ["email", "file"]
+    body = seen[0]["messages"][1]["content"]
+    assert "只是普通进度，没有特殊标记" in body
+    assert "本地笔记：下周三评审" in body

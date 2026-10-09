@@ -275,6 +275,7 @@ async def complete_text_with_failover(
     actor: str = "api",
     correlation_id: str | None = None,
     caused_by: str | None = None,
+    data_sources: list[str] | None = None,
 ) -> tuple[str, str]:
     """Text-only completion routed through primary + fallback providers.
 
@@ -319,6 +320,7 @@ async def complete_text_with_failover(
                 provider_local=provider_is_local(
                     provider.provider_type, provider.base_url,
                 ),
+                data_sources=data_sources,
             )
             content = (await _complete_text(
                 client, provider.model, audited_messages,

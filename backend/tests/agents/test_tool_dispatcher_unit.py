@@ -94,6 +94,8 @@ class TestToolDispatcherDispatch:
         assert len(events[-1]["results"]) == 1
         assert len(events[-1]["tool_messages"]) == 1
         assert events[-1]["tool_messages"][0]["role"] == "tool"
+        assert events[-1]["tool_messages"][0]["data_sources"] == ["file"]
+        assert events[-1]["tool_messages"][0]["content"] == '{"data": 1}'
         assert conv.saved == [("tc1", '{"data": 1}')]
 
     @pytest.mark.asyncio

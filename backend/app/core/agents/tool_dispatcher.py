@@ -11,6 +11,8 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any, AsyncIterator
 
+from app.core.runtime.egress.egress_gate import with_tool_data_sources
+
 if TYPE_CHECKING:
     from app.core.agents.conversation import ConversationManager
 
@@ -133,11 +135,11 @@ class ToolDispatcher:
                 tool_result, tc["id"], tool_name=tool_name,
             )
             llm_content = (row or {}).get("content") or tool_result
-            tool_messages.append({
+            tool_messages.append(with_tool_data_sources({
                 "role": "tool",
                 "tool_call_id": tc["id"],
                 "content": llm_content,
-            })
+            }, tool_name))
             yield {
                 "type": "tool_result",
                 "tool_name": tool_name,

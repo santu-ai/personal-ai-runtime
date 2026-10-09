@@ -562,7 +562,12 @@ def _correlation_for_execution(execution_id: str | None) -> str | None:
     return correlation or None
 
 
-async def _complete_brief_json(prompt: str, *, execution_id: str | None = None) -> str:
+async def _complete_brief_json(
+    prompt: str,
+    *,
+    execution_id: str | None = None,
+    data_sources: list[str] | None = None,
+) -> str:
     from app.core.agents.brain_llm_ops import complete_text_with_failover
 
     messages = [
@@ -583,6 +588,7 @@ async def _complete_brief_json(prompt: str, *, execution_id: str | None = None) 
         max_tokens=2500,
         correlation_id=_correlation_for_execution(execution_id),
         caused_by=execution_id or None,
+        data_sources=data_sources,
     )
     return content
 
@@ -754,7 +760,16 @@ async def compile_project_brief_delivery(
     complete = llm_complete or _complete_brief_json
     try:
         if complete is _complete_brief_json:
-            raw = await _complete_brief_json(prompt, execution_id=execution_id)
+            declared: list[str] = []
+            for src in sources:
+                kind = str(src.get("type") or "").strip().lower()
+                if kind in {"email", "file"} and kind not in declared:
+                    declared.append(kind)
+            raw = await _complete_brief_json(
+                prompt,
+                execution_id=execution_id,
+                data_sources=declared or None,
+            )
         else:
             raw = await complete(prompt)
         parsed = _extract_json(raw)

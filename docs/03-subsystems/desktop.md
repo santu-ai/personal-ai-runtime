@@ -124,7 +124,7 @@ stdio = ["ignore", "pipe", "pipe"]
 | `test` | `vitest run --config vitest.config.js` | smoke 测试 |
 | `postinstall` | `python3 generate_icon.py` | 生成图标 |
 
-[`desktop/prebuild.js`](../../desktop/prebuild.js)：检测 `frontend/dist` 是否新鲜，缺失则 `npm ci && npm run build`，然后递归复制到 `desktop/frontend-dist/`。该目录被 `.gitignore` 忽略（构建产物）。
+[`desktop/prebuild.js`](../../desktop/prebuild.js) 通过 [`desktop/frontendFreshness.js`](../../desktop/frontendFreshness.js) 判断要不要重建前端：产物缺失、`index.html` 不是相对资源路径、或 `frontend/src` 等源码新于 `frontend/dist` 与 `desktop/frontend-dist` 任一产物时执行 `npm ci && npm run build`，然后递归复制到 `desktop/frontend-dist/`。该目录被 `.gitignore` 忽略（构建产物）。
 
 electron-builder 配置：
 

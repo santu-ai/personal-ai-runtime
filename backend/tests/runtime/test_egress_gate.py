@@ -99,3 +99,96 @@ def test_audit_llm_egress_denies_personal_context_to_cloud(monkeypatch):
     payload = k.emit_event.call_args.kwargs["payload"]
     assert payload["allowed"] is False
     assert payload["personal_context_detected"] is True
+
+
+def test_provider_is_local_uses_target_address_not_type():
+    from app.core.runtime.egress.egress_gate import provider_is_local
+
+    assert provider_is_local("ollama", "https://remote.example.invalid") is False
+    assert provider_is_local("ollama", "http://192.168.1.8:11434/v1") is False
+    assert provider_is_local("ollama", "") is False
+    assert provider_is_local("ollama", "http://127.0.0.1:11434/v1") is True
+    assert provider_is_local("ollama", "http://127.0.0.2:11434") is True
+    assert provider_is_local("ollama", "http://[::1]:11434/v1") is True
+    assert provider_is_local("ollama", "localhost:11434") is True
+    assert provider_is_local("openai_compatible", "http://localhost:8080/v1") is True
+    assert provider_is_local("openai_compatible", "https://api.openai.com/v1") is False
+
+
+def test_unlabeled_email_prose_stays_general():
+    out = classify_llm_payload([
+        {"role": "user", "content": "周五的预算还没定，邮件里只写了延期。"},
+    ])
+    assert out["categories"] == ["general"]
+    assert out["data_sources"] == []
+
+
+def test_explicit_email_and_file_labels_are_restricted(monkeypatch):
+    k = MagicMock()
+    monkeypatch.setattr(
+        "app.core.runtime.egress.egress_gate.kernel_instance.kernel",
+        k,
+    )
+    monkeypatch.setattr(
+        "app.core.runtime.egress.egress_gate.settings.allow_cloud_personal_data_egress",
+        False,
+    )
+    messages = [{
+        "role": "user",
+        "content": "周五的预算还没定",
+        "data_sources": ["email", "file"],
+    }]
+    with pytest.raises(EgressDeniedError):
+        audit_llm_egress(
+            messages,
+            purpose="project_brief",
+            provider_name="ollama",
+            provider_local=False,
+        )
+    payload = k.emit_event.call_args.kwargs["payload"]
+    assert payload["classification"]["data_sources"] == ["email", "file"]
+    assert "email_source" in payload["classification"]["categories"]
+    assert "file_source" in payload["classification"]["categories"]
+    assert payload["allowed"] is False
+
+
+def test_declared_sources_are_stripped_before_the_provider_payload(monkeypatch):
+    monkeypatch.setattr(
+        "app.core.runtime.egress.egress_gate.kernel_instance.kernel",
+        MagicMock(),
+    )
+    original = [{
+        "role": "tool",
+        "tool_call_id": "tc",
+        "content": "file body",
+        "data_sources": ["file"],
+    }]
+    returned, audit = audit_llm_egress(
+        original,
+        purpose="chat_stream",
+        provider_local=True,
+    )
+    assert "data_sources" not in returned[0]
+    assert returned[0]["content"] == "file body"
+    assert original[0]["data_sources"] == ["file"]
+    assert audit["allowed"] is True
+    assert "file_source" in audit["classification"]["categories"]
+
+
+def test_cloud_opt_in_allows_labeled_email(monkeypatch):
+    monkeypatch.setattr(
+        "app.core.runtime.egress.egress_gate.kernel_instance.kernel",
+        MagicMock(),
+    )
+    monkeypatch.setattr(
+        "app.core.runtime.egress.egress_gate.settings.allow_cloud_personal_data_egress",
+        True,
+    )
+    _returned, audit = audit_llm_egress(
+        [{"role": "user", "content": "预算", "data_sources": ["email"]}],
+        purpose="inbox_summary",
+        provider_local=False,
+        data_sources=["email"],
+    )
+    assert audit["allowed"] is True
+    assert audit["personal_context_detected"] is True

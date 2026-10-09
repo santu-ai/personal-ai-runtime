@@ -10,6 +10,7 @@
 const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
+const { needsFrontendBuild } = require("./frontendFreshness");
 
 const repoRoot = path.resolve(__dirname, "..");
 const frontendDir = path.join(repoRoot, "frontend");
@@ -19,16 +20,6 @@ const desktopFrontendDist = path.join(__dirname, "frontend-dist");
 function run(cmd, cwd, env = {}) {
   console.log(`[prebuild] $ ${cmd}`);
   execSync(cmd, { cwd, stdio: "inherit", env: { ...process.env, ...env } });
-}
-
-function needsFrontendBuild() {
-  if (!fs.existsSync(frontendDist)) return true;
-  if (!fs.existsSync(path.join(frontendDist, "index.html"))) return true;
-  const indexHtml = fs.readFileSync(path.join(frontendDist, "index.html"), "utf8");
-  // Desktop build uses relative asset paths (base: "./").
-  if (!indexHtml.includes("./assets/")) return true;
-  if (!fs.existsSync(desktopFrontendDist)) return true;
-  return false;
 }
 
 function copyDir(src, dst) {
@@ -48,7 +39,7 @@ function copyDir(src, dst) {
 }
 
 try {
-  if (needsFrontendBuild()) {
+  if (needsFrontendBuild({ frontendDir, frontendDist, desktopFrontendDist })) {
     console.log("[prebuild] Building frontend for desktop (VITE_DESKTOP=1)...");
     run("npm ci --no-audit --no-fund", frontendDir);
     run("npm run build", frontendDir, { VITE_DESKTOP: "1" });

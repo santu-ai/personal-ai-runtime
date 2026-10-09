@@ -136,6 +136,7 @@ async def get_inbox_email_summary(email_id: str):
                 actor="api",
                 temperature=0.3,
                 max_tokens=300,
+                data_sources=["email"],
             ),
             timeout=EMAIL_SUMMARY_TIMEOUT,
         )
