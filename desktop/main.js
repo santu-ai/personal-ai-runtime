@@ -281,9 +281,9 @@ function rememberBackendLog(chunk) {
 
 function resolveBackendLauncher() {
   // Packaged main.js lives in app.asar. Python reads the real filesystem, so the
-  // launcher has to be the extraResources copy beside the backend tree.
+  // launcher has to be the extraResources copy under resources/.
   if (isPackaged) {
-    return path.join(process.resourcesPath, "backend", "run-backend.py");
+    return path.join(process.resourcesPath, "run-backend.py");
   }
   return path.join(__dirname, "run-backend.py");
 }

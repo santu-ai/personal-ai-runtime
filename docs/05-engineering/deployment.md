@@ -86,7 +86,7 @@ make desktop-build   # cd desktop && npm run build  (electron-builder)
 
 - `appId: com.personalairuntime.desktop`、`productName: Personal AI Runtime`。
 - `files`：`main.js`、`preload.js`、`runtimePaths.js`、`smokeMode.js`、`run-backend.py`、`icon.png`、`generate_icon.py`、`frontend-dist/**/*`。
-- `extraResources`：把整个 `../backend` bundle 为 `backend`（排除 `__pycache__`、`*.pyc`、`data/**`），并把 `run-backend.py` 放到 `resources/backend/`。**打包发行版包含 Python 源码。** 内嵌 Python 不能打开 `app.asar` 里的脚本，所以启动用这份副本。Windows 安装包再带一份校验过 sha256 的 embeddable CPython，运行时优先用它；macOS / Linux 仍需系统 Python 3。
+- `extraResources`：把整个 `../backend` bundle 为 `backend`（排除 `__pycache__`、`*.pyc`、`data/**`），并把 `run-backend.py` 放到 `resources/run-backend.py`。**打包发行版包含 Python 源码。** 内嵌 Python 不能打开 `app.asar` 里的脚本，所以启动用这份副本。Windows 安装包再带一份校验过 sha256 的 embeddable CPython，运行时优先用它；macOS / Linux 仍需系统 Python 3。
 - Targets：
   - macOS：`dmg`、`zip`（category `public.app-category.productivity`）
   - Windows：`nsis`、`portable`
