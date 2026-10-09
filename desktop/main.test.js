@@ -99,8 +99,10 @@ describe("Electron main process", () => {
 
   it("uses a backend launcher for embeddable Python sys.path", () => {
     expect(source).toContain("run-backend.py");
+    expect(source).toContain('path.join(process.resourcesPath, "backend", "run-backend.py")');
     expect(source).toContain("BACKEND_DIR");
     expect(source).toContain("waitForBackendReady");
+    expect(source).toContain("backendLog");
   });
 
   it("redirects desktop data to userData", () => {

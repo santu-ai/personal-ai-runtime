@@ -272,8 +272,19 @@ function installApiProxy() {
 
 let backendProcess = null;
 let backendStarting = false;
+let backendLog = "";
+let backendExitCode = null;
+
+function rememberBackendLog(chunk) {
+  backendLog = `${backendLog}${chunk}`.slice(-4000);
+}
 
 function resolveBackendLauncher() {
+  // Packaged main.js lives in app.asar. Python reads the real filesystem, so the
+  // launcher has to be the extraResources copy beside the backend tree.
+  if (isPackaged) {
+    return path.join(process.resourcesPath, "backend", "run-backend.py");
+  }
   return path.join(__dirname, "run-backend.py");
 }
 
@@ -351,6 +362,8 @@ async function startBackend() {
       return "failed";
     }
 
+    backendLog = "";
+    backendExitCode = null;
     backendProcess = spawn(pythonCmd.executable, [...pythonCmd.args, launcherPath], {
       cwd: backendDir,
       env: spawnEnv,
@@ -358,14 +371,17 @@ async function startBackend() {
     });
 
     backendProcess.stdout.on("data", (data) => {
+      rememberBackendLog(data.toString());
       console.log("[backend]", data.toString().trim());
     });
 
     backendProcess.stderr.on("data", (data) => {
+      rememberBackendLog(data.toString());
       console.log("[backend]", data.toString().trim());
     });
 
     backendProcess.on("close", (code) => {
+      backendExitCode = code;
       console.log("Backend exited with code", code);
       backendProcess = null;
     });
@@ -668,6 +684,8 @@ async function finishDesktopSmoke(startStatus, backendReady) {
     },
     live,
     pid: process.pid,
+    backendExitCode,
+    backendLog: backendLog.trim().slice(-2000),
   });
   const started = Date.now();
   while (!smokeShouldStop(process.env, started, Date.now())) {

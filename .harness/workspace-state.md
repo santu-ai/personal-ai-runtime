@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-10-09：打包后的启动脚本放在 resources/backend，不放在 app.asar 里。内嵌 Python 读的是真实文件。烟雾结果带上后端退出码和最近输出。未改 Kernel。
 - 2026-10-09：Windows 发布在 tag 上构建 NSIS 与便携包，另一台干净 Windows runner 静默安装后用 `PAR_DESKTOP_SMOKE=1` 确认打包应用拉起内嵌后端，且 `/api/system/health` 与 `/live` 响应。构建锁定 embed Python 与 get-pip 的 sha256、`npm ci`、pip hash 和 `SOURCE_DATE_EPOCH`；CI 不用带时间戳的输出目录。`continue_after_tool_result` 在拒绝云端个人上下文时不调用客户端，空回复重试仍走已审计的同一客户端。未改 Kernel。
 - 2026-10-09：出口按目标地址判断是否本地，远程 Ollama 不再因为类型名放行；邮件和文件要显式 data_sources 才算个人数据。桌面预构建会在源码新于产物时重建前端。升级路线在 docs/upgrade-plan.md。未改 Kernel，未改 read_ports/work.py。
 - 2026-09-26：设置里系统人设的「保存」和「重置」字面上仍是这两句。读屏把「身份定义」或「代码规则」接在后面。两边的空白会去掉。只有空白时仍只读这一句。「已自定义」不写进这一句。按钮上的「保存中…」和「重置中…」不另读。Telegram 的「保存」、邮箱和 LLM 的保存不改。不新增事件类型，未改 Kernel，未改 `read_ports/work.py`。
