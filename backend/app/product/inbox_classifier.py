@@ -75,6 +75,7 @@ async def classify_emails(emails: list[dict]) -> list[dict]:
             actor="inbox",
             temperature=0.2,
             max_tokens=settings.llm_max_tokens,
+            data_sources=["email"],
         )
     except Exception as exc:
         logger.error("Inbox classification failed: %s", exc)

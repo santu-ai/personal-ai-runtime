@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from app.core.agents.context_compaction import ensure_compacted
 from app.core.agents.tool_postprocess import compact_for_llm
 from app.core.agents.tool_spill import is_spilled_message
+from app.core.runtime.egress.egress_gate import with_tool_data_sources
 
 if TYPE_CHECKING:
     from app.core.agents.conversation import ConversationManager
@@ -100,11 +101,11 @@ def build_messages(
                 tool_name_guess = tool_name_by_id.get(msg.get("tool_call_id") or "", "")
                 if tool_name_guess and not is_spilled_message(msg):
                     tool_content = compact_for_llm(tool_name_guess, tool_content)
-                messages.append({
+                messages.append(with_tool_data_sources({
                     "role": "tool",
                     "tool_call_id": msg["tool_call_id"],
                     "content": tool_content,
-                })
+                }, tool_name_guess))
             continue
 
         item: dict = {"role": msg["role"], "content": msg["content"]}

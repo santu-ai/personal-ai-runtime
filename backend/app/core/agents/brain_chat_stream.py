@@ -21,6 +21,7 @@ from app.core.agents.brain_telemetry import record_llm_call
 from app.core.agents.conversation import ConversationManager
 from app.core.agents.tool_dispatcher import ToolDispatcher
 from app.core.agents.tool_postprocess import canned_summary
+from app.core.runtime.egress.egress_gate import with_tool_data_sources
 from app.core.runtime.governance.context_pipeline import get_sources
 from app.core.runtime.kernel_instance import kernel
 from app.core.runtime.plan_resume import (
@@ -375,11 +376,11 @@ def append_approved_tool_to_checkpoint(
     if not ckpt:
         return None
     messages = list(ckpt.get("messages") or [])
-    messages.append({
+    messages.append(with_tool_data_sources({
         "role": "tool",
         "tool_call_id": tool_call_id,
         "content": result_str,
-    })
+    }, tool_name))
     pending = [
         pid for pid in list(ckpt.get("pending_tool_call_ids") or [])
         if pid != tool_call_id

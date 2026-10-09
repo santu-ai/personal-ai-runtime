@@ -68,6 +68,7 @@
 | [testing.md](05-engineering/testing.md) | pytest 矩阵、verify 脚本、Playwright e2e、desktop smoke |
 | [ci-cd.md](05-engineering/ci-cd.md) | GitHub Actions、Conventional Commits 钩子、Dependabot |
 | [deployment.md](05-engineering/deployment.md) | Docker Compose、Dockerfile、桌面端打包、数据卷 |
+| [upgrade-plan.md](upgrade-plan.md) | 对照同类项目的分阶段升级路线（路线图，不替代架构文档） |
 | [security.md](05-engineering/security.md) | 认证、限流、SSRF 防护、出口审计、加密导出 |
 | [extending.md](05-engineering/extending.md) | 投影器、事件 handler、Fragment、MCP、工具、通道、Provider 扩展点 |
 

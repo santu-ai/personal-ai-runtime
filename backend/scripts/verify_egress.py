@@ -17,7 +17,11 @@ from scripts._bootstrap import ephemeral_kernel
 def main() -> int:
     violations: list[str] = []
     with ephemeral_kernel("verify_egress.db", install_singleton=True) as (_db, k):
-        from app.core.runtime.egress.egress_gate import audit_llm_egress
+        from app.core.runtime.egress.egress_gate import (
+            audit_llm_egress,
+            classify_llm_payload,
+            provider_is_local,
+        )
 
         messages = [
             {
@@ -48,6 +52,25 @@ def main() -> int:
             )
         if general[0]["content"] != "hello world":
             violations.append("egress: general content must pass through unchanged")
+
+        if provider_is_local("ollama", "https://remote.example.invalid"):
+            violations.append("egress: remote ollama must not be local")
+        if not provider_is_local("ollama", "http://127.0.0.1:11434/v1"):
+            violations.append("egress: loopback ollama must be local")
+        if not provider_is_local(None, "http://localhost:11434/v1"):
+            violations.append("egress: loopback host must be local without a provider type")
+        labeled = classify_llm_payload(
+            [{"role": "user", "content": "周五例会改到下午", "data_sources": ["email"]}],
+        )
+        if "email_source" not in labeled["categories"]:
+            violations.append("egress: declared email source was not classified")
+        unlabeled = classify_llm_payload(
+            [{"role": "user", "content": "周五例会改到下午"}],
+        )
+        if unlabeled["categories"] != ["general"]:
+            violations.append(
+                f"egress: unlabeled prose misclassified {unlabeled['categories']}"
+            )
 
     if violations:
         print("EGRESS VERIFICATION FAILED", file=sys.stderr)

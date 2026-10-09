@@ -133,6 +133,6 @@ Principal(principal_id, type ∈ {system, user}, actor, allowed_capabilities)
 
 ## 出口审计
 
-LLM 调用前的审计边界由 [`backend/app/core/runtime/egress/egress_gate.py`](../../backend/app/core/runtime/egress/egress_gate.py) 实现。`audit_llm_egress(messages, purpose, actor)` 返回 `(messages, audit_meta)`——**messages 原样通过，不做脱敏**——同时发出 `EgressAudited` 事件，分类为 `identity_surface` / `memory_context` / `trajectory_context` / `general`。Brain 与 BrainCompletionMixin 在每次 LLM 调用前调用。
+LLM 调用前的审计边界由 [`backend/app/core/runtime/egress/egress_gate.py`](../../backend/app/core/runtime/egress/egress_gate.py) 实现。`audit_llm_egress(messages, purpose, actor)` 返回 `(messages, audit_meta)`，发出 `EgressAudited`，并按 [security.md §出口审计](../05-engineering/security.md#出口审计) 做脱敏与云端拒绝。分类为 `identity_surface` / `memory_context` / `trajectory_context` / `email_source` / `file_source` / `general`。是否本地只看目标地址是否回环，不看 provider 类型。Brain 与文本补全（含 fallback）在每次 LLM 调用前调用。
 
 验证：[`scripts/verify_egress.py`](../../backend/scripts/verify_egress.py)。详见 [05-engineering/security.md](../05-engineering/security.md)。

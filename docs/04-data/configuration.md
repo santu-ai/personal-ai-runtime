@@ -103,7 +103,7 @@ flowchart LR
 | `running_lease_ttl_seconds` | `600` | `RUNNING_LEASE_TTL_SECONDS`（`0` 禁用 lease 回收） |
 | `handler_executions_retention_days` | `30` | `HANDLER_EXECUTIONS_RETENTION_DAYS`（`0` 禁用软清理） |
 
-`allow_cloud_personal_data_egress` 决定召回的记忆与身份上下文能否发往**云端** LLM。保持默认 `False` 时，个人上下文只能配合本地 provider（`ollama` 类型，或 base_url 指向 `localhost`/`127.0.0.1`/`::1`）使用；若 provider 是 DeepSeek / OpenAI 这类云服务，注入了记忆的那一轮会以 `EgressDeniedError` 失败而非静默外发。想用云模型 + 长期记忆，须显式设 `ALLOW_CLOUD_PERSONAL_DATA_EGRESS=true` 接受该隐私取舍。机制见 [security.md §出口审计](../05-engineering/security.md#出口审计)。
+`allow_cloud_personal_data_egress` 决定个人上下文能否发往**云端** LLM。个人上下文包括召回的记忆、身份面、轨迹，以及显式标成 `email` / `file` 的邮件和文件正文。保持默认 `False` 时，这些内容只能发往回环地址（`localhost`、`127.0.0.0/8`、`::1`）。provider 类型写成 `ollama` 不够：base URL 指向公网或局域网时仍按云端拒绝。DeepSeek / OpenAI 这类云服务遇到个人上下文会以 `EgressDeniedError` 失败，而不是静默外发。想用云模型携带这些数据，须显式设 `ALLOW_CLOUD_PERSONAL_DATA_EGRESS=true`。机制见 [security.md §出口审计](../05-engineering/security.md#出口审计)。
 
 ### 文件系统（agent coding）
 
