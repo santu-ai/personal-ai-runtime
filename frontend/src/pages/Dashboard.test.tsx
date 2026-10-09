@@ -1187,6 +1187,57 @@ describe("DashboardPage", () => {
     expect(screen.getByText(/相对上一版/)).toBeInTheDocument();
   });
 
+  it("links unreviewed briefs and failed briefs from today", () => {
+    mockDashboardData({
+      dashboard: {
+        generated_at: "2026-10-09T00:00:00Z",
+        data_sovereignty: {
+          total_events: 1,
+          total_memories: 0,
+          memories_self_report: 0,
+          memories_claim: 0,
+          total_goals: 0,
+          goals_active: 0,
+          goals_completed: 0,
+          total_conversations: 0,
+          total_messages: 0,
+          data_location: "本地",
+          last_belief_reflection: null,
+          export_supported: true,
+        },
+        active_goals: { count: 0, top: [] },
+        unreviewed_deliveries: [
+          {
+            work_id: "brief-review",
+            title: "预算简报",
+            delivery_id: "d-review",
+            version: 1,
+            summary: "待核对金额",
+          },
+        ],
+        recoverable_brief_failures: [
+          {
+            work_id: "brief-fail",
+            title: "最近邮件简报",
+            status: "failed",
+            error: "IMAP 登录失败",
+          },
+        ],
+      },
+    });
+    renderDashboard();
+    expect(screen.getByRole("heading", { name: "待验收" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /预算简报 · v1 · 待核对金额/ })).toHaveAttribute(
+      "href",
+      "/tasks/brief-review",
+    );
+    expect(screen.getByRole("heading", { name: "失败恢复" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /最近邮件简报 · IMAP 登录失败/ })).toHaveAttribute(
+      "href",
+      "/tasks/brief-fail",
+    );
+  });
+
   it("shows a retry when today sources fail and does not claim an empty day", async () => {
     mockUseApprovalsQuery.mockReturnValue({
       data: undefined,

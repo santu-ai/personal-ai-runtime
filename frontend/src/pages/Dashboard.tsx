@@ -14,6 +14,7 @@ import { AdoptionSummaryCard } from "../components/dashboard/AdoptionSummary";
 import { PeriodComparisonCard } from "../components/dashboard/PeriodComparison";
 import ExecutionTrustPanel from "../components/dashboard/ExecutionTrustPanel";
 import TimerBriefPanel from "../components/dashboard/TimerBriefPanel";
+import BriefFollowUpPanel from "../components/dashboard/BriefFollowUpPanel";
 import RemindersPanel from "../components/dashboard/RemindersPanel";
 import HealthPanel from "../components/dashboard/HealthPanel";
 import MonitorsPanel from "../components/dashboard/MonitorsPanel";
@@ -471,6 +472,11 @@ export default function DashboardPage() {
         />
 
         {dashboard?.execution_trust && <ExecutionTrustPanel trust={dashboard.execution_trust} />}
+
+        <BriefFollowUpPanel
+          unreviewed={dashboard?.unreviewed_deliveries ?? []}
+          failures={dashboard?.recoverable_brief_failures ?? []}
+        />
 
         <TimerBriefPanel
           timers={dashboard?.timer_status?.items ?? []}
