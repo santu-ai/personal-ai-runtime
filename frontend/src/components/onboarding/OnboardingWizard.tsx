@@ -1,11 +1,9 @@
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
-import { Brain, Mail, MessageSquare, Target } from "lucide-react";
-import { getSystemHealth, getLlmProviders, createConversation, ApiError } from "../../api/client";
-import { useChatStore } from "../../stores/chatStore";
+import { Mail, Target } from "lucide-react";
+import { getSystemHealth, getLlmProviders, createProjectBrief, ApiError } from "../../api/client";
 import { useErrorStore } from "../../stores/errorStore";
-import { useConversationCacheActions } from "../../hooks/useConversationsQuery";
 import Button from "../ui/Button";
 import Card from "../ui/Card";
 import { useOverlayDismiss } from "../ui/useOverlayDismiss";
@@ -13,34 +11,33 @@ import { useOverlayDismiss } from "../ui/useOverlayDismiss";
 const STEPS = [
   { title: "连接后端", description: "确认 Personal AI Runtime 后端已启动" },
   { title: "配置 AI 大脑", description: "设置 LLM 模型，让 AI 可以思考和对话" },
-  { title: "开始第一次对话", description: "选一个话题，立即体验 AI 能为你做什么" },
+  { title: "生成第一份简报", description: "选一个场景，接上邮箱，打开一份可以核对来源的交付" },
 ];
 
-const STARTER_PROMPTS: Array<{
+const BRIEF_SCENES: Array<{
   icon: LucideIcon;
   label: string;
-  prompt: string;
+  detail: string;
   title: string;
+  objective: string;
+  email: { enabled: boolean; query?: string; days: number };
 }> = [
   {
-    icon: Target,
-    label: "帮我规划一个目标",
-    prompt: "帮我设定一个这周想完成的目标，拆解成可执行的步骤",
-    title: "目标规划",
-  },
-  {
     icon: Mail,
-    label: "总结我的收件箱",
-    prompt: "帮我看看收件箱里有什么重要的邮件，总结一下需要我处理的",
-    title: "收件箱摘要",
+    label: "整理最近邮件",
+    detail: "读取最近三天的邮件，生成一份可以核对来源的简报",
+    title: "最近邮件简报",
+    objective: "整理最近三天邮件里的变化、风险和待办，每条结论附上来源。",
+    email: { enabled: true, days: 3 },
   },
   {
-    icon: Brain,
-    label: "记下关于我的事",
-    prompt: "我想让你记住一些关于我的事情：我的工作、兴趣和习惯，方便以后更好地帮助我",
-    title: "建立记忆",
+    icon: Target,
+    label: "核对预算邮件",
+    detail: "先按「预算」检索邮箱，再读命中的正文",
+    title: "预算简报",
+    objective: "找出最近邮件里的预算金额，标出缺失和互相矛盾的地方。",
+    email: { enabled: true, query: "预算", days: 7 },
   },
-  { icon: MessageSquare, label: "自由聊几句", prompt: "", title: "新对话" },
 ];
 
 type CheckAction = "check" | "next";
@@ -70,10 +67,7 @@ interface Props {
 
 export default function OnboardingWizard({ onComplete }: Props) {
   const navigate = useNavigate();
-  const setActiveConversation = useChatStore((s) => s.setActiveConversation);
-  const setPendingPrompt = useChatStore((s) => s.setPendingPrompt);
   const addError = useErrorStore((s) => s.addError);
-  const { upsert } = useConversationCacheActions();
 
   const [step, setStep] = useState(0);
   const [checkBusy, setCheckBusy] = useState<CheckAction | null>(null);
@@ -117,7 +111,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
     stepHandoff.current = null;
     if (!focusIsIdle("data-onboarding-action", "next")) return;
     if (step >= 2) {
-      focusMarked("data-onboarding-starter", STARTER_PROMPTS[0].label);
+      focusMarked("data-onboarding-starter", BRIEF_SCENES[0].label);
       return;
     }
     focusMarked("data-onboarding-action", "next");
@@ -218,25 +212,26 @@ export default function OnboardingWizard({ onComplete }: Props) {
     }
   };
 
-  const launchConversation = async (promptText: string, title: string, label: string) => {
+  const launchBrief = async (scene: (typeof BRIEF_SCENES)[number]) => {
     if (launchLock.current) return;
     launchLock.current = true;
-    setLaunchingLabel(label);
+    setLaunchingLabel(scene.label);
     launchFailFocus.current = null;
     let ok = false;
     try {
-      const conv = await createConversation(title);
-      upsert(conv);
-      setActiveConversation(conv.id);
-      if (promptText) setPendingPrompt(promptText);
+      const item = await createProjectBrief({
+        title: scene.title,
+        objective: scene.objective,
+        source_scope: { email: scene.email },
+      });
       ok = true;
-      navigate(`/chat/${conv.id}`);
+      navigate(`/tasks/${item.id}`);
       leave();
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : "创建对话失败";
-      addError(msg, "对话");
+      const msg = err instanceof ApiError ? err.message : "创建简报失败";
+      addError(msg, "简报");
     } finally {
-      if (!ok) launchFailFocus.current = label;
+      if (!ok) launchFailFocus.current = scene.label;
       launchLock.current = false;
       setLaunchingLabel(null);
     }
@@ -308,35 +303,33 @@ export default function OnboardingWizard({ onComplete }: Props) {
           {step === 2 && (
             <div className="mt-4 space-y-2">
               <p className="text-xs text-fg-tertiary mb-3">
-                一切就绪。选一个开始——你的 AI 会立即响应：
+                选一个场景。打开后可以执行、核对来源、验收，并预约下一次。
               </p>
-              {STARTER_PROMPTS.map((sp) => {
-                const Icon = sp.icon;
-                const busy = launchingLabel === sp.label;
+              {BRIEF_SCENES.map((scene) => {
+                const Icon = scene.icon;
+                const busy = launchingLabel === scene.label;
                 return (
                   <button
-                    key={sp.label}
+                    key={scene.label}
                     type="button"
-                    data-onboarding-starter={sp.label}
+                    data-onboarding-starter={scene.label}
                     aria-busy={busy || undefined}
-                    onClick={() => void launchConversation(sp.prompt, sp.title, sp.label)}
+                    onClick={() => void launchBrief(scene)}
                     className={`group w-full flex items-center gap-3 p-3 bg-surface-overlay/50 hover:bg-surface-overlay border border-border-subtle hover:border-border-strong rounded-lg text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring${busy ? " opacity-50" : ""}`}
                   >
                     <Icon size={18} className="text-insight shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm text-fg-primary">{sp.label}</div>
+                      <div className="text-sm text-fg-primary">{scene.label}</div>
                       {/* 说明平时只占一行。键盘落到这一题时写出整句。鼠标悬停仍是一行。 */}
-                      {sp.prompt && (
-                        <div className="text-xs text-fg-tertiary mt-0.5 truncate group-focus-visible:overflow-visible group-focus-visible:whitespace-normal group-focus-visible:text-clip group-focus-visible:break-words">
-                          {sp.prompt}
-                        </div>
-                      )}
+                      <div className="text-xs text-fg-tertiary mt-0.5 truncate group-focus-visible:overflow-visible group-focus-visible:whitespace-normal group-focus-visible:text-clip group-focus-visible:break-words">
+                        {scene.detail}
+                      </div>
                     </div>
                   </button>
                 );
               })}
               {launchingLabel && (
-                <p className="text-xs text-fg-secondary text-center pt-2">正在开启对话…</p>
+                <p className="text-xs text-fg-secondary text-center pt-2">正在生成简报…</p>
               )}
             </div>
           )}
