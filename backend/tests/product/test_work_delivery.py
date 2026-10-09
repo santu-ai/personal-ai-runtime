@@ -15,6 +15,7 @@ from app.product.work_delivery import (
     adopt_suggested_action,
     fold_delivery_history,
     get_delivery,
+    list_recoverable_brief_failures,
     list_rerunnable_briefs,
     list_unreviewed_deliveries,
     model_cost_for_delivery,
@@ -2013,3 +2014,26 @@ def test_list_rerunnable_briefs_keeps_completed_briefs_with_a_delivery(isolated_
     assert bare["id"] not in {row["work_id"] for row in rows}
     assert plain["id"] not in {row["work_id"] for row in rows}
     assert pending["id"] not in {row["work_id"] for row in rows}
+
+
+def test_list_recoverable_brief_failures_keeps_failed_project_briefs(isolated_kernel):
+    failed = _create_task("预算简报失败")
+    read_ports.update_work_item_status(failed["id"], "running")
+    read_ports.update_work_item_status(failed["id"], "failed")
+    plain = read_ports.create_work_item(
+        "普通失败任务",
+        work_type="task",
+        executable_plan='{"steps":[{"tool":"echo","params":{}}]}',
+        status="failed",
+    )
+    pending = _create_task("还在跑的简报")
+    running = _create_task("执行中的简报")
+    read_ports.update_work_item_status(running["id"], "running")
+    rows = list_recoverable_brief_failures()
+    assert [row["work_id"] for row in rows] == [failed["id"]]
+    assert rows[0]["title"] == "预算简报失败"
+    assert rows[0]["status"] == "failed"
+    assert rows[0]["error"] == ""
+    assert plain["id"] not in {row["work_id"] for row in rows}
+    assert pending["id"] not in {row["work_id"] for row in rows}
+    assert running["id"] not in {row["work_id"] for row in rows}

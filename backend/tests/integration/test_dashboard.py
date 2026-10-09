@@ -33,6 +33,8 @@ def test_dashboard_widget_shapes(client: TestClient):
     assert isinstance(timer["items"], list)
 
     assert isinstance(data["rerunnable_briefs"], list)
+    assert isinstance(data["unreviewed_deliveries"], list)
+    assert isinstance(data["recoverable_brief_failures"], list)
 
     gov = data["governance_status"]
     assert isinstance(gov["active_policies"], int)

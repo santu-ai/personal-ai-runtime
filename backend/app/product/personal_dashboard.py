@@ -17,6 +17,9 @@ Widgets:
     id and ``correlation_id`` are not work ids.
   - rerunnable_briefs: completed project briefs that already have a delivery.
     Re-running them stays on the same work item.
+  - unreviewed_deliveries: current project-brief deliveries still waiting for review.
+  - recoverable_brief_failures: failed project briefs, or running ones whose
+    current attempt already failed. Opening the task is the re-execute path.
   - governance_status: active policy + grant counts (Governance)
   - execution_trust: pending approvals, failed/retry/dead-letter executions, last result.
     Rows include work_id only when the trigger ExecuteRequested already names a
@@ -57,6 +60,8 @@ def generate_dashboard() -> dict:
         "recent_memories": _widget_recent_memories(),
         "timer_status": _widget_timer_status(),
         "rerunnable_briefs": _widget_rerunnable_briefs(),
+        "unreviewed_deliveries": _widget_unreviewed_deliveries(),
+        "recoverable_brief_failures": _widget_recoverable_brief_failures(),
         "governance_status": _widget_governance_status(),
         "execution_trust": _widget_execution_trust(),
     }
@@ -253,6 +258,28 @@ def _widget_rerunnable_briefs() -> list:
         return list_rerunnable_briefs(limit=5)
     except Exception:
         logger.warning("Dashboard: Failed to list rerunnable briefs", exc_info=True)
+        return []
+
+
+def _widget_unreviewed_deliveries() -> list:
+    """Project-brief deliveries still waiting for a review decision."""
+    try:
+        from app.product.work_delivery import list_unreviewed_deliveries
+
+        return list_unreviewed_deliveries(limit=5)
+    except Exception:
+        logger.warning("Dashboard: Failed to list unreviewed deliveries", exc_info=True)
+        return []
+
+
+def _widget_recoverable_brief_failures() -> list:
+    """Project briefs the task page can re-execute after a failed attempt."""
+    try:
+        from app.product.work_delivery import list_recoverable_brief_failures
+
+        return list_recoverable_brief_failures(limit=5)
+    except Exception:
+        logger.warning("Dashboard: Failed to list recoverable brief failures", exc_info=True)
         return []
 
 

@@ -537,6 +537,13 @@ export interface RerunnableBrief {
   delivery_id: string;
 }
 
+export interface RecoverableBriefFailure {
+  work_id: string;
+  title: string;
+  status: string;
+  error: string;
+}
+
 export interface DashboardData {
   generated_at: string;
   data_sovereignty: DataSovereignty;
@@ -554,6 +561,8 @@ export interface DashboardData {
     items: TimerStatusItem[];
   };
   rerunnable_briefs?: RerunnableBrief[];
+  unreviewed_deliveries?: UnreviewedDelivery[];
+  recoverable_brief_failures?: RecoverableBriefFailure[];
   execution_trust?: ExecutionTrust;
 }
 

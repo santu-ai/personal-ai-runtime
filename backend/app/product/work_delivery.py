@@ -1678,6 +1678,59 @@ def list_unreviewed_deliveries(*, limit: int = 20) -> list[dict[str, Any]]:
     return out
 
 
+def _attempt_failure(work_id: str, item: dict[str, Any]) -> tuple[bool, str]:
+    """Whether the current execute attempt failed, plus its stored reason."""
+    try:
+        snap = read_ports.work_item_execution_snapshot(work_id, item)
+    except Exception:
+        logger.warning("skip brief failure snapshot %s", work_id, exc_info=True)
+        return False, ""
+    handler = snap.get("handler_execution")
+    if not isinstance(handler, dict):
+        return False, ""
+    failed = handler.get("status") == "failed" or bool(handler.get("dead_letter"))
+    error = str(handler.get("error") or "").strip()
+    return failed, error
+
+
+def list_recoverable_brief_failures(*, limit: int = 5) -> list[dict[str, Any]]:
+    """Project briefs the task page can re-execute after a failed attempt.
+
+    ``failed`` briefs are included even when the handler row has no error text.
+    A ``running`` brief is included only when that current attempt already
+    failed or is dead-lettered. This list does not restart the work item.
+    """
+    limit = max(1, min(int(limit), 5))
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for status in ("failed", "running"):
+        rows = read_ports.query_work_items(
+            work_type="task",
+            status=status,
+            order="created_at_desc",
+            limit=_RERUN_SCAN,
+        )
+        for item in rows:
+            if len(out) >= limit:
+                return out
+            work_id = str(item.get("id") or "")
+            if not work_id or work_id in seen:
+                continue
+            seen.add(work_id)
+            if not is_project_brief_plan(item.get("executable_plan")):
+                continue
+            failed_attempt, error = _attempt_failure(work_id, item)
+            if status == "running" and not failed_attempt:
+                continue
+            out.append({
+                "work_id": work_id,
+                "title": item.get("title") or "",
+                "status": status,
+                "error": error,
+            })
+    return out
+
+
 def _metric_datetime(value: Any) -> datetime | None:
     text = str(value or "").strip()
     if not text:
