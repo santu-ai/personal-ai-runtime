@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from types import SimpleNamespace
 
@@ -474,6 +475,241 @@ CASES: list[dict] = [
 ]
 
 
+def _file_source_id(path: str) -> str:
+    return "file:" + hashlib.sha256(path.encode("utf-8")).hexdigest()[:12]
+
+
+_MEETING_NOTES = """# 北岸码头周会 2099-03-12
+
+出席：韩雪、梁秋、江澄、Mina
+缺席：无
+地点：三楼会议室
+议程：
+1. 上周回顾
+2. 护栏
+3. 涂料
+4. 其他
+
+上周回顾：灯塔修缮已经完成，不在本次范围。
+护栏还在等钢材。
+涂料供应商报价还没到。
+停车位维持现状。
+茶水还是自备。
+
+决定：样品柜钥匙交给江澄。
+
+下次会议 4月2日，仍在三楼。
+"""
+
+_CSV_EXPORT = """item,owner,status,due
+灯塔修缮,韩雪,done,2026-04-01
+航标电池,韩雪,open,2026-06-03
+栈桥涂料,梁秋,open,2026-05-01
+码头护栏,梁秋,open,2026-04-22
+潮汐表,江澄,open,2026-04-28
+访客证,韩雪,done,2026-03-30
+仓库锁,梁秋,open,2026-07-01
+夜班灯,江澄,open,2026-08-12
+消防栓,韩雪,open,2026-09-01
+沙袋,梁秋,done,2026-02-14
+警戒线,江澄,open,2026-10-03
+备用钥匙,韩雪,open,2026-11-11
+雨衣,江澄,open,2026-12-01
+对讲机,梁秋,open,2026-12-15
+"""
+
+_PIER_SPEC = """# 北岸码头接口
+
+错误码 409 表示泊位占用。
+超时重试 2 次。
+"""
+
+_LIGHT_SPEC = """# 北岸灯塔接口
+
+错误码 409 表示灯塔离线。
+超时重试 3 次。
+"""
+
+# Sealed tier. Facts here are not used to tune prompts or grounding.
+# fact_any / fact_all score whether the brief kept the newer or distinguishing
+# fact, which can fail even when some other real line was quoted.
+SEALED_CASES: list[dict] = [
+    {
+        "id": "sealed-thread-supersede",
+        "query": "验收",
+        "results": [_inbox([
+            _email(
+                "old",
+                subject="北岸码头周报",
+                date="2099-03-01T08:00:00+00:00",
+                body="北岸码头验收定在 4月3日。\n负责人暂时未定。",
+            ),
+            _email(
+                "new",
+                subject="Re: 北岸码头周报",
+                date="2099-03-08T08:00:00+00:00",
+                body=(
+                    "> 北岸码头验收定在 4月3日。\n"
+                    ">\n"
+                    "验收改到 4月18日，已经和现场确认。"
+                ),
+            ),
+        ], scoped=True, query="验收")],
+        "included": {"email:old", "email:new"},
+        "fact_any": ["4月18日"],
+    },
+    {
+        "id": "sealed-forward-chain",
+        "query": "",
+        "results": [_inbox([
+            _email(
+                "fwd",
+                subject="Fwd: 发版窗口",
+                body=(
+                    "请看下面的转发。\n"
+                    "\n"
+                    "---------- Forwarded message ----------\n"
+                    "From: old@pier.example\n"
+                    "原计划周五发版。\n"
+                    "\n"
+                    "补充：发版已改到下周二，窗口是 4月21日。"
+                ),
+            ),
+        ], scoped=True)],
+        "included": {"email:fwd"},
+        "fact_any": ["4月21日"],
+    },
+    {
+        "id": "sealed-mixed-language",
+        "query": "",
+        "results": [_inbox([
+            _email(
+                "mix",
+                subject="North Pier status",
+                body=(
+                    "接口冻结 freeze 定在 3月20日。\n"
+                    "Owner: Mina Chen.\n"
+                    "风险：API 契约还差 sign-off。"
+                ),
+            ),
+        ], scoped=True)],
+        "included": {"email:mix"},
+        "fact_any": ["sign-off"],
+    },
+    {
+        "id": "sealed-near-duplicate",
+        "query": "许可证",
+        "results": [_inbox([
+            _email(
+                "blocked",
+                subject="北岸码头进度",
+                date="2099-03-02T08:00:00+00:00",
+                body="北岸码头进度 80%，阻塞在许可证。",
+            ),
+            _email(
+                "cleared",
+                subject="北岸码头进度更新",
+                date="2099-03-09T08:00:00+00:00",
+                body="北岸码头进度 80% 已解除，许可证昨天批了。",
+            ),
+        ], scoped=True, query="许可证")],
+        "included": {"email:blocked", "email:cleared"},
+        "fact_any": ["许可证昨天批了"],
+    },
+    {
+        "id": "sealed-date-conflict",
+        "query": "",
+        "files": [{"path": "notes/review.md", "label": "评审记录"}],
+        "results": [
+            _inbox([
+                _email("mail", subject="评审日期", body="评审日期写成 5月2日。"),
+            ], scoped=True),
+            _file("# 评审\n会议记录把评审日期写成 5月9日。\n"),
+        ],
+        "included": {"email:mail", _file_source_id("notes/review.md")},
+        "has_file": True,
+        "fact_all": ["5月2日", "5月9日"],
+    },
+    {
+        "id": "sealed-meeting-notes",
+        "query": "",
+        "files": [{"path": "meetings/north-pier-2099-03-12.md", "label": "周会"}],
+        "results": [
+            _inbox([], scoped=True),
+            _file(_MEETING_NOTES),
+        ],
+        "included": {_file_source_id("meetings/north-pier-2099-03-12.md")},
+        "has_file": True,
+        "fact_any": ["样品柜钥匙交给江澄"],
+    },
+    {
+        "id": "sealed-csv-export",
+        "query": "",
+        "files": [{"path": "exports/pier-tasks.csv", "label": "任务表"}],
+        "results": [
+            _inbox([], scoped=True),
+            _file(_CSV_EXPORT),
+        ],
+        "included": {_file_source_id("exports/pier-tasks.csv")},
+        "has_file": True,
+        "fact_any": ["码头护栏,梁秋,open,2026-04-22"],
+    },
+    {
+        "id": "sealed-spec-distractor",
+        "query": "",
+        "files": [
+            {"path": "specs/north-pier-api.md", "label": "北岸码头接口"},
+            {"path": "specs/north-lighthouse-api.md", "label": "北岸灯塔接口"},
+        ],
+        "results": [
+            _inbox([], scoped=True),
+            _file(_PIER_SPEC),
+            _file(_LIGHT_SPEC),
+        ],
+        "included": {
+            _file_source_id("specs/north-pier-api.md"),
+            _file_source_id("specs/north-lighthouse-api.md"),
+        },
+        "has_file": True,
+        "fact_all": ["泊位占用", "灯塔离线"],
+    },
+    {
+        "id": "sealed-quoted-reply",
+        "query": "预算",
+        "results": [_inbox([
+            _email(
+                "reply",
+                subject="Re: 预算",
+                body=(
+                    "收到，我同意把预算改成 42万元。\n"
+                    "\n"
+                    "于 2099-03-01 写道：\n"
+                    "> 预算先按 18万元报。"
+                ),
+            ),
+        ], scoped=True, query="预算")],
+        "included": {"email:reply"},
+        "fact_any": ["42万元"],
+    },
+]
+
+CASES.extend(SEALED_CASES)
+
+DEV_CASES: list[dict] = [
+    {
+        "id": "dev-objective-wrapper",
+        "query": "值班",
+        "results": [_inbox([
+            _email("duty", subject="值班表", preview="本周", body="值班人 陈禾"),
+        ], scoped=True, query="值班")],
+        "included": {"email:duty"},
+        "fact_any": ["陈禾"],
+    },
+]
+
+CASES.extend(DEV_CASES)
+
+
 @pytest.mark.parametrize("case", CASES, ids=[item["id"] for item in CASES])
 def test_brief_retrieval_eval(case: dict):
     sources, notes, coverage = _collect(
@@ -516,6 +752,15 @@ def _rendered_scope(coverage: dict) -> str:
     return "\n".join(_retrieval_lines(coverage))
 
 
+def test_sealed_long_files_do_not_list_every_line():
+    notes = _source_block("File file:x (周会)", _MEETING_NOTES)
+    assert "Quotable lines" not in notes
+    assert "样品柜钥匙交给江澄" in notes
+    sheet = _source_block("File file:y (任务表)", _CSV_EXPORT)
+    assert "Quotable lines" not in sheet
+    assert "码头护栏,梁秋,open,2026-04-22" in sheet
+
+
 def test_eval_set_covers_required_themes():
     ids = [item["id"] for item in CASES]
     assert len(ids) >= 30
@@ -526,6 +771,9 @@ def test_eval_set_covers_required_themes():
     assert any(item.startswith("date-") for item in ids)
     assert any(item.startswith("budget-") for item in ids)
     assert any(item.startswith("holdout-") for item in ids)
+    assert any(item.startswith("sealed-") for item in ids)
+    assert len([item for item in ids if item.startswith("sealed-")]) >= 8
+    assert any(item.startswith("dev-") for item in ids)
 
 
 def test_plan_searches_mailbox_before_limit_and_widens_files():
@@ -1179,6 +1427,22 @@ def test_real_conclusion_quoting_the_subject_stays_unsupported():
     )
     assert result["quality_evidence"] == "unsupported"
     assert result["findings"][0]["text"] == "预算增加了"
+
+
+def test_wrapped_objective_uses_the_source_line():
+    wrapped = "该项目需要整理进度、风险和待办"
+    result = _echo_case(wrapped, wrapped, "值班人 陈禾")
+    assert result["quality_evidence"] == "pending"
+    assert result["findings"][0]["text"] == "值班人 陈禾"
+    assert result["findings"][0]["evidence"][0]["snippet"] == "值班人 陈禾"
+
+
+def test_objective_plus_a_real_claim_is_not_replaced():
+    text = "整理进度、风险和待办，另外样品已寄出"
+    result = _echo_case(text, text, "值班人 陈禾")
+    assert result["findings"][0]["text"] == text
+    assert result["quality_evidence"] == "unsupported"
+    assert result["findings"][0]["evidence"][0]["quote_in_source"] is False
 
 
 def test_instruction_echo_on_a_truncated_file_uses_the_real_line():

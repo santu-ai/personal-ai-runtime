@@ -24,8 +24,27 @@ from app.product.project_brief import (
     default_acceptance_criteria,
     validate_model_brief,
 )
-from tests.eval.brief_quality import brief_visible_text, score_case, summarize
+from tests.eval.brief_quality import brief_visible_text, summarize
 from tests.product.test_project_brief_eval import CASES, prepare_case
+
+
+def _selected_cases() -> list[dict]:
+    """Full set, or one tier such as sealed / dev / holdout."""
+    tier = os.environ.get("BRIEF_EVAL_TIER", "").strip()
+    if not tier:
+        return CASES
+    prefix = tier if tier.endswith("-") else f"{tier}-"
+    return [case for case in CASES if str(case["id"]).startswith(prefix)]
+
+
+def _score(case: dict, **kwargs):
+    from tests.eval.brief_quality import score_case
+
+    return score_case(
+        fact_any=list(case.get("fact_any") or []),
+        fact_all=list(case.get("fact_all") or []),
+        **kwargs,
+    )
 
 pytestmark = [
     pytest.mark.live_llm,
@@ -61,11 +80,14 @@ def _local_client():
 @pytest.mark.asyncio
 async def test_live_brief_eval_reports_quality_rates():
     client, model = _local_client()
+    cases = _selected_cases()
+    if not cases:
+        pytest.fail("BRIEF_EVAL_TIER did not match any case")
     rows: list[dict] = []
     try:
-        for index, case in enumerate(CASES):
+        for index, case in enumerate(cases):
             print(
-                f"BRIEF_EVAL_CASE {index + 1}/{len(CASES)} {case['id']}",
+                f"BRIEF_EVAL_CASE {index + 1}/{len(cases)} {case['id']}",
                 flush=True,
             )
             sources, bodies, notes, coverage = prepare_case(case)
@@ -118,7 +140,8 @@ async def test_live_brief_eval_reports_quality_rates():
                     )
                     if index == 0:
                         pytest.fail(f"local model unreachable: {type(exc).__name__}: {exc}")
-                    rows.append(score_case(
+                    rows.append(_score(
+                        case,
                         case_id=str(case["id"]),
                         source_text="\n".join(bodies),
                         collector_gaps=list(coverage.get("gaps") or []),
@@ -141,7 +164,8 @@ async def test_live_brief_eval_reports_quality_rates():
                 )
             except (ValueError, TypeError, KeyError) as exc:
                 print(f"BRIEF_EVAL_UNPARSED {case['id']}: {exc}", flush=True)
-                rows.append(score_case(
+                rows.append(_score(
+                    case,
                     case_id=str(case["id"]),
                     source_text=source_text,
                     collector_gaps=gaps,
@@ -149,7 +173,8 @@ async def test_live_brief_eval_reports_quality_rates():
                     parsed=False,
                 ))
                 continue
-            rows.append(score_case(
+            rows.append(_score(
+                case,
                 case_id=str(case["id"]),
                 source_text=source_text,
                 collector_gaps=gaps,
@@ -169,7 +194,7 @@ async def test_live_brief_eval_reports_quality_rates():
     if destination:
         Path(destination).write_text(line + "\n", encoding="utf-8")
 
-    assert report["cases"] >= 30
+    assert os.environ.get("BRIEF_EVAL_TIER", "").strip() or report["cases"] >= 30
     if os.environ.get("BRIEF_EVAL_STRICT", "").strip() in {"1", "true", "yes"}:
         min_support = float(os.environ.get("BRIEF_EVAL_MIN_SUPPORT", "0.5"))
         max_miss = float(os.environ.get("BRIEF_EVAL_MAX_MISS", "0.5"))

@@ -967,6 +967,30 @@ def _quote_candidates(quote: str) -> list[str]:
     return found
 
 
+def _objective_clauses(objective: str) -> list[str]:
+    clauses: list[str] = []
+    for part in re.split(r"[。！？!?]+", objective or ""):
+        clause = _collapsed(part)
+        if len(clause) >= 8 and clause not in clauses:
+            clauses.append(clause)
+    return clauses
+
+
+def _is_wrapped_objective(cleaned: str, objective: str) -> bool:
+    """A short prefix around one task sentence is still the task, not a finding.
+
+    A leftover of more than six characters can be a real claim. That stays
+    unsupported instead of being replaced by some other source line.
+    """
+    for clause in _objective_clauses(objective):
+        if clause not in cleaned:
+            continue
+        remainder = _strip_quote_edge(cleaned.replace(clause, "", 1))
+        if len(remainder) <= 6:
+            return True
+    return False
+
+
 def _is_prompt_echo(
     text: str,
     objective: str,
@@ -993,7 +1017,7 @@ def _is_prompt_echo(
             return True
         if len(cleaned) >= 8 and cleaned in phrase and len(cleaned) * 2 >= len(phrase):
             return True
-    return False
+    return _is_wrapped_objective(cleaned, objective)
 
 
 _SCAFFOLD_PREFIXES = (
