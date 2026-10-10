@@ -8,6 +8,7 @@ import {
   trialCostLabel,
   trialRecordDocument,
   trialSuccessLabel,
+  trialTimeSavedLabel,
 } from "./TrialRecordPanel";
 
 function metrics(partial: Partial<DeliveryMetrics> = {}): DeliveryMetrics {
@@ -49,6 +50,8 @@ describe("TrialRecordPanel", () => {
     expect(record).toHaveTextContent("1.5 小时");
     expect(record).toHaveTextContent("核对是否变短");
     expect(record).toHaveTextContent("次数不够，还看不出变快");
+    expect(record).toHaveTextContent("估计省下的时间（自报）");
+    expect(record).toHaveTextContent("尚无自报基线");
     expect(record).toHaveTextContent("每份被接受交付的成本");
     expect(record).toHaveTextContent("$0.1250");
   });
@@ -84,9 +87,11 @@ describe("TrialRecordPanel", () => {
     expect(doc.display.first_version_acceptance_rate).toBe("25%（1/4）");
     expect(doc.display.average_review_latency_hours).toBe("1.5 小时");
     expect(doc.display.review_time_trend).toBe("次数不够，还看不出变快");
+    expect(doc.display.self_reported_time_saved).toBe("尚无自报基线");
     expect(doc.display.cost_per_accepted_delivery).toBe("$0.1250");
     expect(doc.how_to_read.average_review_latency_hours).toContain("核对");
     expect(doc.how_to_read.review_time_trend).toContain("后半段");
+    expect(doc.how_to_read.self_reported_time_saved).toContain("自报");
     expect(doc.reviews).toEqual([]);
 
     const create = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:trial");
@@ -108,5 +113,33 @@ describe("TrialRecordPanel", () => {
     create.mockRestore();
     revoke.mockRestore();
     click.mockRestore();
+  });
+
+  it("labels estimated time saved as self-reported", () => {
+    const withGuess = metrics({
+      self_reported_time_saved: {
+        basis: "self_reported",
+        count: 2,
+        manual_minutes: 90,
+        assisted_minutes: 50.2,
+        estimated_saved_minutes: 39.8,
+      },
+    });
+    expect(trialTimeSavedLabel(withGuess)).toBe(
+      "自报约省 40 分钟（2 次：手工 90 分钟，核对 50 分钟）",
+    );
+    const slower = metrics({
+      self_reported_time_saved: {
+        basis: "self_reported",
+        count: 1,
+        manual_minutes: 10,
+        assisted_minutes: 30,
+        estimated_saved_minutes: -20,
+      },
+    });
+    expect(trialTimeSavedLabel(slower)).toContain("多花了 20 分钟");
+    const doc = trialRecordDocument(withGuess, "2026-10-11T00:00:00.000Z");
+    expect(doc.self_reported_time_saved).toEqual(withGuess.self_reported_time_saved);
+    expect(doc.display.self_reported_time_saved).toContain("自报");
   });
 });

@@ -137,7 +137,7 @@ export async function getWorkDelivery(itemId: string, deliveryId: string): Promi
 export async function acceptWorkDelivery(
   itemId: string,
   deliveryId: string,
-  body: { reason?: string; idempotency_key?: string } = {},
+  body: { reason?: string; idempotency_key?: string; manual_minutes?: number } = {},
 ): Promise<WorkDeliveryDecisionResult> {
   return request<WorkDeliveryDecisionResult>(
     `${API_BASE}/work-items/${itemId}/deliveries/${deliveryId}/accept`,
