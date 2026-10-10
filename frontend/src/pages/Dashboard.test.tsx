@@ -1195,7 +1195,13 @@ describe("DashboardPage", () => {
           ],
         },
         rerunnable_briefs: [
-          { work_id: "brief_9", title: "项目 A 简报", version: 2, delivery_id: "d2" },
+          {
+            work_id: "brief_9",
+            title: "项目 A 简报",
+            version: 2,
+            delivery_id: "d2",
+            changes_summary: "相对 v1：新增结论 1",
+          },
         ],
       },
     });
@@ -1209,6 +1215,7 @@ describe("DashboardPage", () => {
     expect(brief).toHaveAttribute("href", "/tasks/brief_9");
     expect(brief).toHaveClass("focus-visible:ring-focus-ring");
     expect(screen.getByText(/相对上一版/)).toBeInTheDocument();
+    expect(screen.getByTestId("brief-changes-summary")).toHaveTextContent("相对 v1：新增结论 1");
   });
 
   it("links unreviewed briefs and failed briefs from today", () => {

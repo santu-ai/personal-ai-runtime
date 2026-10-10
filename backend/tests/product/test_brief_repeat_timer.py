@@ -84,6 +84,7 @@ def test_schedule_brief_repeat_stores_the_same_work_id(isolated_kernel):
     payload = json.loads(read_ports.query_timer(scheduled["timer_id"])["payload_json"])
     assert payload["work_id"] == work_id
     assert scheduled["work_id"] == work_id
+    assert scheduled["changes_summary"] == "还没有上一版"
     assert read_ports.query_work_item(work_id)["status"] == "completed"
     assert fold_delivery_history(work_id)["current"]["delivery_id"] == published["delivery_id"]
     assert _work_ids() == {work_id}
@@ -115,6 +116,41 @@ def test_timer_fire_reruns_the_same_completed_brief(isolated_kernel):
     assert notes[0]["related_id"] == work_id
     assert notes[0]["related_type"] == "work_item"
     assert "已再次运行这一份任务" in notes[0]["content"]
+    assert "还没有上一版" in notes[0]["content"]
+
+
+def test_timer_fire_names_the_change_since_the_previous_delivery(isolated_kernel):
+    item = _completed_brief()
+    work_id = item["id"]
+    publish_delivery(
+        work_id,
+        content="第一期",
+        summary="第一期",
+        sources=[],
+        findings=[{"text": "进度正常", "source_ids": [], "kind": "change"}],
+        execution_id="fire-delta-v1",
+    )
+    publish_delivery(
+        work_id,
+        content="第二期",
+        summary="第二期",
+        sources=[],
+        findings=[
+            {"text": "进度正常", "source_ids": [], "kind": "change"},
+            {"text": "出现风险", "source_ids": [], "kind": "risk"},
+        ],
+        execution_id="fire-delta-v2",
+    )
+
+    asyncio.run(_handle_reminder(
+        {"message": "再次运行：项目简报", "work_id": work_id},
+        "t_delta",
+    ))
+
+    notes = read_ports.query_notifications(type="reminder", limit=10)
+    assert "已再次运行这一份任务" in notes[0]["content"]
+    assert "相对 v1：新增结论 1，摘要已更新" in notes[0]["content"]
+    assert "出现风险" not in notes[0]["content"]
 
 
 def test_timer_fire_keeps_completed_delivery_when_rerun_execute_fails(

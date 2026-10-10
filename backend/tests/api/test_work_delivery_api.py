@@ -333,6 +333,7 @@ def test_repeat_timer_stores_the_existing_brief_id(client):
     assert scheduled.status_code == 200, scheduled.text
     body = scheduled.json()
     assert body["work_id"] == work_id
+    assert body["changes_summary"] == "还没有上一版"
     timer = read_ports.query_timer(body["timer_id"])
     assert timer is not None
     payload = json.loads(timer["payload_json"])

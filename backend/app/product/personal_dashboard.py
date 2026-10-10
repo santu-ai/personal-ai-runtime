@@ -16,7 +16,8 @@ Widgets:
     when ``work_id`` is absent) and that work item still exists. The timer row
     id and ``correlation_id`` are not work ids.
   - rerunnable_briefs: completed project briefs that already have a delivery.
-    Re-running them stays on the same work item.
+    Re-running them stays on the same work item. Each row includes
+    ``changes_summary`` for that delivery.
   - unreviewed_deliveries: current project-brief deliveries still waiting for review.
   - recoverable_brief_failures: failed project briefs, or running ones whose
     current attempt already failed. Opening the task is the re-execute path.

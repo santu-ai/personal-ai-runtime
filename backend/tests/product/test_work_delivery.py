@@ -23,6 +23,7 @@ from app.product.work_delivery import (
     publish_delivery,
     request_rework,
     rerun_project_brief,
+    summarize_delivery_changes,
     summarize_delivery_metrics,
 )
 
@@ -2013,9 +2014,76 @@ def test_list_rerunnable_briefs_keeps_completed_briefs_with_a_delivery(isolated_
     assert rows[0]["title"] == "项目简报"
     assert rows[0]["version"] == 1
     assert rows[0]["delivery_id"] == published["delivery_id"]
+    assert rows[0]["changes_summary"] == "还没有上一版"
     assert bare["id"] not in {row["work_id"] for row in rows}
     assert plain["id"] not in {row["work_id"] for row in rows}
     assert pending["id"] not in {row["work_id"] for row in rows}
+
+
+def test_summarize_delivery_changes_counts_without_copying_bodies():
+    assert summarize_delivery_changes(None) == "还没有上一版"
+    empty = {
+        "previous_version": 1,
+        "summary_changed": False,
+        "content_changed": False,
+        "findings_added": [],
+        "findings_removed": [],
+        "findings_changed": [],
+        "sources_added": [],
+        "sources_removed": [],
+        "sources_changed": [],
+        "limitations_added": [],
+        "limitations_removed": [],
+        "actions_added": [],
+        "actions_removed": [],
+        "actions_changed": [],
+    }
+    assert summarize_delivery_changes(empty) == "相对 v1：与上一版相同"
+    body_only = {**empty, "content_changed": True}
+    assert summarize_delivery_changes(body_only) == "相对 v1：正文已更新"
+    text = summarize_delivery_changes({
+        **empty,
+        "previous_version": 2,
+        "summary_changed": True,
+        "content_changed": True,
+        "findings_added": [{"text": "预算增加"}],
+        "findings_changed": [{"text": "风险改写"}],
+        "sources_added": [{"title": "邮件甲"}],
+        "limitations_added": ["未知日期"],
+        "actions_removed": [{"title": "旧待办"}],
+    })
+    assert text == (
+        "相对 v2：新增结论 1，改写结论 1，新增来源 1，新增限制 1，去掉待办 1，摘要已更新"
+    )
+    assert "预算增加" not in text
+    assert "邮件甲" not in text
+
+
+def test_list_rerunnable_briefs_summarizes_the_latest_delta(isolated_kernel):
+    item = _brief_task_with_steps()
+    publish_delivery(
+        item["id"],
+        content="第一期",
+        summary="第一期",
+        sources=[],
+        findings=[{"text": "进度正常", "source_ids": [], "kind": "change"}],
+        execution_id="delta-v1",
+    )
+    publish_delivery(
+        item["id"],
+        content="第二期",
+        summary="第二期",
+        sources=[],
+        findings=[
+            {"text": "进度正常", "source_ids": [], "kind": "change"},
+            {"text": "预算未写", "source_ids": [], "kind": "risk"},
+        ],
+        execution_id="delta-v2",
+    )
+    rows = list_rerunnable_briefs()
+    assert rows[0]["work_id"] == item["id"]
+    assert rows[0]["version"] == 2
+    assert rows[0]["changes_summary"] == "相对 v1：新增结论 1，摘要已更新"
 
 
 def test_list_recoverable_brief_failures_keeps_failed_project_briefs(isolated_kernel):

@@ -1801,11 +1801,11 @@ export default function TasksPage() {
       } else {
         handoff = { kind: "kept", dialog: "schedule" };
       }
-      setScheduledRepeatNote(
-        scheduled.fire_at
-          ? `已设定，将在 ${scheduled.fire_at} 再次运行这一份任务。`
-          : "已设定，到点后再次运行这一份任务。",
-      );
+      const when = scheduled.fire_at
+        ? `已设定，将在 ${scheduled.fire_at} 再次运行这一份任务。`
+        : "已设定，到点后再次运行这一份任务。";
+      const summary = scheduled.changes_summary?.trim();
+      setScheduledRepeatNote(summary ? `${when}${summary}` : when);
     } catch (err) {
       addError(err instanceof ApiError ? err.message : "设定定时失败", "任务");
       handoff = { kind: "failed", dialog: "schedule" };

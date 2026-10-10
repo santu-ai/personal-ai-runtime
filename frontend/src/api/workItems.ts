@@ -95,7 +95,12 @@ export async function rerunProjectBrief(
 export async function scheduleBriefRepeat(
   itemId: string,
   body: { minutes?: number; hours?: number },
-): Promise<{ work_id: string; timer_id: string; fire_at: string }> {
+): Promise<{
+  work_id: string;
+  timer_id: string;
+  fire_at: string;
+  changes_summary?: string;
+}> {
   return request(`${API_BASE}/work-items/${itemId}/repeat-timer`, {
     method: "POST",
     body: JSON.stringify(body),

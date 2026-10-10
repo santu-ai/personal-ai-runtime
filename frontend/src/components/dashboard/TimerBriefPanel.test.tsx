@@ -109,4 +109,24 @@ describe("TimerBriefPanel", () => {
     expect(brief.className).not.toContain("truncate");
     expect(brief.querySelector(".truncate")).toBeNull();
   });
+
+  it("writes the stored change summary under the same brief", () => {
+    renderPanel(
+      [],
+      [
+        {
+          work_id: "brief_2",
+          title: "项目 B",
+          version: 3,
+          delivery_id: "d3",
+          changes_summary: "相对 v2：与上一版相同",
+        },
+      ],
+    );
+    expect(screen.getByRole("link", { name: /项目 B · 当前 v3/ })).toHaveAttribute(
+      "href",
+      "/tasks/brief_2",
+    );
+    expect(screen.getByTestId("brief-changes-summary")).toHaveTextContent("相对 v2：与上一版相同");
+  });
 });
