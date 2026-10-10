@@ -930,6 +930,34 @@ def _coerce_findings(obj: dict[str, Any]) -> list[Any]:
     raise ValueError("findings must be a list")
 
 
+def _first_finding_text(findings_raw: list[Any]) -> str:
+    for item in findings_raw:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("text") or item.get("quote") or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _brief_from_catalog_line(
+    catalog: dict[str, dict[str, str]],
+) -> tuple[str, list[dict[str, Any]]]:
+    """One real source line when the model returned an empty brief."""
+    for sid, entry in catalog.items():
+        lines = _quotable_lines(str(entry.get("text") or ""))
+        if not lines:
+            continue
+        line = lines[0]
+        return line, [{
+            "text": line,
+            "quote": line,
+            "kind": "change",
+            "source_ids": [sid],
+        }]
+    return "", []
+
+
 def _note_text(item: Any) -> str:
     if isinstance(item, dict):
         return str(item.get("text") or item.get("summary") or "").strip()
@@ -1126,6 +1154,10 @@ def validate_model_brief(
 ) -> dict[str, Any]:
     summary_raw = obj.get("summary")
     content_raw = obj.get("content")
+    if summary_raw is None:
+        summary_raw = ""
+    if content_raw is None:
+        content_raw = ""
     if not isinstance(summary_raw, str):
         raise ValueError("summary and content must be strings")
     summary = summary_raw.strip()
@@ -1133,10 +1165,20 @@ def validate_model_brief(
         content = content_raw.strip()
     elif isinstance(content_raw, list):
         content = _plain_from_parts(content_raw)
+    elif isinstance(content_raw, dict):
+        content = _plain_from_parts([content_raw])
     else:
         raise ValueError("summary and content must be strings")
+    findings_raw = _coerce_findings(obj)
+    if not summary:
+        summary = _first_finding_text(findings_raw)
     if not content:
         content = summary
+    if (not summary or not content) and not findings_raw and source_catalog:
+        line, synthetic = _brief_from_catalog_line(source_catalog)
+        if line:
+            summary = content = line
+            findings_raw = synthetic
     if not summary or not content:
         raise ValueError("model output missing summary or content")
 
@@ -1145,8 +1187,6 @@ def validate_model_brief(
     ]
     if unknown_in_body:
         raise ValueError(f"forged or out-of-scope source ids: {unknown_in_body[:8]}")
-
-    findings_raw = _coerce_findings(obj)
     blob = _catalog_blob(source_catalog)
     amounts_conflict = len(_amount_keys(blob)) >= 2
     dates_conflict = len(set(_DATE_TOKEN.findall(blob))) >= 2

@@ -840,3 +840,51 @@ def test_long_file_does_not_repeat_every_line_as_quotable():
     block = _source_block("File file:abc (笔记)", body)
     assert "Quotable lines" not in block
     assert "第1行进度正常" in block
+
+
+def test_blank_summary_uses_the_finding_text():
+    result = validate_model_brief(
+        {
+            "summary": "",
+            "content": "",
+            "findings": [{
+                "text": "本周预算 100元",
+                "source_ids": ["email:m1"],
+                "quote": "本周预算 100元",
+            }],
+        },
+        allowed_ids={"email:m1"},
+        criteria=default_acceptance_criteria(),
+        source_notes=[],
+        source_catalog={
+            "email:m1": {"text": "本周预算 100元", "locator": "a@b.c", "title": "周报"},
+        },
+    )
+    assert result["quality_evidence"] == "pending"
+    assert "本周预算 100元" in result["summary"]
+
+
+def test_blank_brief_uses_one_real_source_line():
+    result = validate_model_brief(
+        {"summary": "", "content": "", "findings": []},
+        allowed_ids={"email:m1"},
+        criteria=default_acceptance_criteria(),
+        source_notes=[],
+        source_catalog={
+            "email:m1": {"text": "本周预算 100元", "locator": "a@b.c", "title": "周报"},
+        },
+    )
+    assert result["quality_evidence"] == "pending"
+    assert result["findings"][0]["text"] == "本周预算 100元"
+    assert result["findings"][0]["evidence"][0]["quote_in_source"] is True
+
+
+def test_blank_brief_without_sources_still_fails():
+    with pytest.raises(ValueError, match="missing summary or content"):
+        validate_model_brief(
+            {"summary": "", "content": "", "findings": []},
+            allowed_ids=set(),
+            criteria=default_acceptance_criteria(),
+            source_notes=[],
+            source_catalog={},
+        )
