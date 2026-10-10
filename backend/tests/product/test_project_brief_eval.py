@@ -420,6 +420,24 @@ CASES: list[dict] = [
         "gaps": ["1 封命中邮件没有全文，简报只用了预览"],
         "absent": ["检索范围内没有看到预算金额"],
     },
+    {
+        "id": "holdout-owner-name",
+        "query": "负责人",
+        "results": [_inbox([
+            _email("m1", subject="分工", preview="本周安排", body="负责人 林晚"),
+        ], scoped=True, query="负责人")],
+        "included": {"email:m1"},
+        "gaps": [],
+    },
+    {
+        "id": "holdout-review-deadline",
+        "query": "截止",
+        "results": [_inbox([
+            _email("m1", subject="日程", preview="会议安排", body="材料截止 3月12日"),
+        ], scoped=True, query="截止")],
+        "included": {"email:m1"},
+        "gaps": [],
+    },
 ]
 
 
@@ -474,6 +492,7 @@ def test_eval_set_covers_required_themes():
     assert any(item.startswith("trunc-") for item in ids)
     assert any(item.startswith("date-") for item in ids)
     assert any(item.startswith("budget-") for item in ids)
+    assert any(item.startswith("holdout-") for item in ids)
 
 
 def test_plan_searches_mailbox_before_limit_and_widens_files():
@@ -562,3 +581,70 @@ def test_quote_found_stays_pending():
     assert evidence["snippet"] == "本周预算 100元"
     assert "证据待核对" in result["content"]
     assert "摘录对不上" not in "\n".join(result["limitations"])
+
+
+def _quote_case(quote: str, text: str) -> dict:
+    return validate_model_brief(
+        {
+            "summary": "有结论",
+            "content": "正文",
+            "findings": [{
+                "text": "来源里有这句话",
+                "source_ids": ["email:m1"],
+                "quote": quote,
+            }],
+        },
+        allowed_ids={"email:m1"},
+        criteria=["每条关键结论附来源"],
+        source_notes=[],
+        source_catalog={
+            "email:m1": {"text": text, "locator": "a@b.c", "title": "进度"},
+        },
+    )
+
+
+def test_wrapped_source_line_stays_pending_and_shows_the_line():
+    result = _quote_case("邮件写着本周预算 100元。", "本周预算 100元")
+    assert result["quality_evidence"] == "pending"
+    evidence = result["findings"][0]["evidence"][0]
+    assert evidence["quote_in_source"] is True
+    assert evidence["snippet"] == "本周预算 100元"
+
+
+def test_rewritten_amount_without_the_source_words_stays_unsupported():
+    result = _quote_case("在会上说预算为100元。", "预算 100元")
+    assert result["quality_evidence"] == "unsupported"
+    assert result["findings"][0]["evidence"][0]["quote_in_source"] is False
+
+
+def test_same_amount_in_a_different_sentence_stays_unsupported():
+    result = _quote_case("报价 100元", "确认 100元")
+    assert result["quality_evidence"] == "unsupported"
+    assert result["findings"][0]["evidence"][0]["quote_in_source"] is False
+
+
+def test_different_amount_does_not_inherit_a_shared_suffix():
+    result = _quote_case("报价 500元", "报价 100元")
+    assert result["quality_evidence"] == "unsupported"
+    evidence = result["findings"][0]["evidence"][0]
+    assert evidence["quote_in_source"] is False
+    assert "100元" in evidence["snippet"]
+
+
+def test_glued_digits_do_not_count_as_the_source_amount():
+    result = _quote_case("5100元", "100元")
+    assert result["quality_evidence"] == "unsupported"
+    assert result["findings"][0]["evidence"][0]["quote_in_source"] is False
+
+
+def test_two_character_overlap_stays_unsupported():
+    result = _quote_case("已经确定预算", "预算 100元")
+    assert result["quality_evidence"] == "unsupported"
+    assert result["findings"][0]["evidence"][0]["quote_in_source"] is False
+
+
+def test_full_source_line_wins_over_a_longer_partial_span():
+    text = "注意注意\n本周预算 100元请确认"
+    result = _quote_case("注意注意。本周预算 100元", text)
+    assert result["quality_evidence"] == "pending"
+    assert result["findings"][0]["evidence"][0]["snippet"] == "注意注意"

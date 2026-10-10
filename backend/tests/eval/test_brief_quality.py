@@ -124,3 +124,36 @@ def test_summary_rates_ignore_unparseable_rows():
     assert report["miss_rate"] == 0.0
     assert report["contradiction_handled_rate"] == 1.0
     assert report["contradiction_cases"] == 1
+    assert report["tracked_evidence_support_rate"] == 1.0
+    assert report["holdout_parsed"] == 0
+    assert report["holdout_evidence_support_rate"] is None
+
+
+def test_holdout_support_is_reported_apart_from_the_tracked_set():
+    tracked = score_case(
+        case_id="budget-present",
+        source_text="本周预算 100元",
+        collector_gaps=[],
+        included_empty=False,
+        parsed=True,
+        quality_evidence="unsupported",
+        brief_text="预算 100元",
+    )
+    held = score_case(
+        case_id="holdout-owner-name",
+        source_text="负责人 林晚",
+        collector_gaps=[],
+        included_empty=False,
+        parsed=True,
+        quality_evidence="pending",
+        brief_text="负责人 林晚",
+    )
+    report = summarize([tracked, held])
+    assert report["evidence_support_rate"] == 0.5
+    assert report["tracked_parsed"] == 1
+    assert report["tracked_evidence_support_rate"] == 0.0
+    assert report["tracked_unsupported_ids"] == ["budget-present"]
+    assert report["holdout_parsed"] == 1
+    assert report["holdout_evidence_support_rate"] == 1.0
+    assert report["holdout_unsupported_ids"] == []
+    assert report["miss_rate"] is None
