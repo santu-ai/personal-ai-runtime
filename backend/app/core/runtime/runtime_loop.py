@@ -159,12 +159,23 @@ class RuntimeLoop:
 
     # ── Timer scan ────────────────────────────────────────────────────
 
-    async def _check_timers(self) -> None:
-        """Scan timer_events projection, fire due timers (ex-timer_engine)."""
+    async def _check_timers(self, *, now=None) -> None:
+        """Scan timer_events and fire rows whose ``fire_at`` is due.
+
+        ``now`` defaults to the current UTC time. Tests pass a clock so a
+        sleep, a jump, or a new process can be checked without waiting.
+        A one-shot is not rescheduled. A cron row fires once, then its next
+        ``fire_at`` is the next slot after this scan, not each missed day.
+        """
         from datetime import UTC, datetime
 
         try:
-            now = datetime.now(UTC)
+            if now is None:
+                now = datetime.now(UTC)
+            elif now.tzinfo is None:
+                now = now.replace(tzinfo=UTC)
+            else:
+                now = now.astimezone(UTC)
             now_iso = now.isoformat().replace("+00:00", "Z")
             rows = read_ports.query_due_timers(now_iso=now_iso, limit=50)
             for row in rows:
