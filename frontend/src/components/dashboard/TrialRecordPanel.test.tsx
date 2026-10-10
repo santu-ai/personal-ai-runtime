@@ -1,8 +1,14 @@
-import { describe, expect, it } from "vitest";
-import { screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, screen } from "@testing-library/react";
 import { renderWithRouter } from "../../test-utils";
 import type { DeliveryMetrics } from "../../api/types";
-import { TrialRecordView, trialCostLabel, trialSuccessLabel } from "./TrialRecordPanel";
+import {
+  TrialRecordView,
+  downloadTrialRecord,
+  trialCostLabel,
+  trialRecordDocument,
+  trialSuccessLabel,
+} from "./TrialRecordPanel";
 
 function metrics(partial: Partial<DeliveryMetrics> = {}): DeliveryMetrics {
   return {
@@ -66,5 +72,36 @@ describe("TrialRecordPanel", () => {
   it("says the per-delivery cost is not separated when the read is unavailable", () => {
     expect(trialCostLabel(metrics({ cost_per_accepted_delivery: "unavailable" }))).toBe("未分开计");
     expect(trialCostLabel({ reviewed_tasks: 0 } as DeliveryMetrics)).toBe("尚无被接受的交付");
+  });
+
+  it("exports the four figures the panel is showing", async () => {
+    const doc = trialRecordDocument(metrics(), "2026-10-10T03:00:00.000Z");
+    expect(doc.kind).toBe("trial-record");
+    expect(doc.window_days).toBe(14);
+    expect(doc.display.success_rate).toBe("50%（2/4）");
+    expect(doc.display.first_version_acceptance_rate).toBe("25%（1/4）");
+    expect(doc.display.average_review_latency_hours).toBe("1.5 小时");
+    expect(doc.display.cost_per_accepted_delivery).toBe("$0.1250");
+    expect(doc.how_to_read.average_review_latency_hours).toContain("核对");
+
+    const create = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:trial");
+    const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const downloads: string[] = [];
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloads.push(this.download);
+    });
+    renderWithRouter(<TrialRecordView metrics={metrics()} />);
+    fireEvent.click(screen.getByRole("button", { name: "导出试用记录" }));
+    downloadTrialRecord(metrics(), "2026-10-10T03:00:00.000Z");
+    const blob = create.mock.calls[create.mock.calls.length - 1]?.[0] as Blob;
+    expect(await blob.text()).toContain("50%（2/4）");
+    expect(downloads[0]).toMatch(/^trial-record-\d{4}-\d{2}-\d{2}\.json$/);
+    expect(downloads[downloads.length - 1]).toBe("trial-record-2026-10-10.json");
+    expect(revoke).toHaveBeenCalled();
+    create.mockRestore();
+    revoke.mockRestore();
+    click.mockRestore();
   });
 });

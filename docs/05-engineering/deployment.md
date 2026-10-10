@@ -103,6 +103,8 @@ make desktop-build   # cd desktop && npm run build  (electron-builder)
 
 同一工作流也会在改到桌面、后端、前端或该工作流的 pull request 上跑构建和干净安装，不创建 Release。无人值守启动认 `PAR_DESKTOP_SMOKE=1`：跳过开机自启对话框，不打开窗口，把结果写到 `PAR_DESKTOP_SMOKE_RESULT`，看到 `PAR_DESKTOP_SMOKE_DONE` 后退出。
 
+主人在 Windows 上开始 14 天试用时，按 [trial-guide.md](trial-guide.md) 安装、接上 Gmail 和项目文件、跑第一份简报，并导出今天页的试用记录。
+
 ## 数据持久化
 
 | 部署方式 | SQLite 路径 | ChromaDB 路径 |

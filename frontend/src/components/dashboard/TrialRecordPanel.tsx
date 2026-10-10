@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ClipboardList } from "lucide-react";
 import { getDeliveryMetrics, type DeliveryMetrics } from "../../api/client";
+import Button from "../ui/Button";
 import LoadErrorNotice, { queryErrorMessage } from "../ui/LoadErrorNotice";
 
 export const TRIAL_WINDOW_DAYS = 14;
@@ -48,6 +49,45 @@ export function trialCostLabel(metrics: DeliveryMetrics): string {
   return `$${cost.toFixed(4)}`;
 }
 
+export function trialRecordDocument(metrics: DeliveryMetrics, exportedAt: string) {
+  return {
+    kind: "trial-record",
+    window_days: metrics.window_days ?? TRIAL_WINDOW_DAYS,
+    exported_at: exportedAt,
+    how_to_read: {
+      success_rate: "窗口内已接受的简报除以有过评审的简报。没有评审时页面写「尚无验收」。",
+      first_version_acceptance_rate:
+        "窗口内首次评审就接受第一版的比例。没有首次评审时页面写「尚无首次评审」。",
+      average_review_latency_hours:
+        "从交付到首次评审的平均小时数，用来看核对花了多少时间。没有核对时页面写「尚无核对」。",
+      cost_per_accepted_delivery:
+        "已归因模型费用除以被接受的份数。没有被接受的交付时页面写「尚无被接受的交付」；费用不是数字时写「未分开计」。",
+    },
+    display: {
+      success_rate: trialSuccessLabel(metrics),
+      first_version_acceptance_rate: trialFirstVersionLabel(metrics),
+      average_review_latency_hours: trialReviewTimeLabel(metrics),
+      cost_per_accepted_delivery: trialCostLabel(metrics),
+    },
+    metrics,
+  };
+}
+
+export function downloadTrialRecord(
+  metrics: DeliveryMetrics,
+  exportedAt = new Date().toISOString(),
+): void {
+  const body = JSON.stringify(trialRecordDocument(metrics, exportedAt), null, 2);
+  const blob = new Blob([body], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const day = /^\d{4}-\d{2}-\d{2}/.test(exportedAt) ? exportedAt.slice(0, 10) : "record";
+  link.href = url;
+  link.download = `trial-record-${day}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function TrialRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-3 text-xs">
@@ -73,6 +113,17 @@ export function TrialRecordView({ metrics }: { metrics: DeliveryMetrics }) {
         <TrialRow label="第一版验收率" value={trialFirstVersionLabel(metrics)} />
         <TrialRow label="人工核对时间" value={trialReviewTimeLabel(metrics)} />
         <TrialRow label="每份被接受交付的成本" value={trialCostLabel(metrics)} />
+      </div>
+      <div className="mt-3">
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          data-testid="trial-record-export"
+          onClick={() => downloadTrialRecord(metrics)}
+        >
+          导出试用记录
+        </Button>
       </div>
       {metrics.capped ? (
         <p className="mt-2 text-xs text-fg-tertiary">这段时间事件较多，数字可能不完整</p>
