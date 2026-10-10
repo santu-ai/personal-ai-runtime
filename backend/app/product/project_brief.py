@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -485,6 +486,14 @@ def collect_allowed_sources(
     return sources, bodies, notes, coverage
 
 
+def _decode_json_object(raw: str) -> dict[str, Any] | None:
+    try:
+        obj, _end = json.JSONDecoder().raw_decode(raw)
+    except json.JSONDecodeError:
+        return None
+    return obj if isinstance(obj, dict) else None
+
+
 def _extract_json(text: str) -> dict[str, Any]:
     raw = (text or "").strip()
     if not raw:
@@ -492,12 +501,12 @@ def _extract_json(text: str) -> dict[str, Any]:
     fenced = _JSON_FENCE.search(raw)
     if fenced:
         raw = fenced.group(1).strip()
-    try:
-        obj = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"model output is not JSON: {exc}") from exc
-    if not isinstance(obj, dict):
-        raise ValueError("model output must be a JSON object")
+    obj = _decode_json_object(raw)
+    if obj is None:
+        start = raw.find("{")
+        obj = _decode_json_object(raw[start:]) if start >= 0 else None
+    if obj is None:
+        raise ValueError("model output is not JSON")
     return obj
 
 
@@ -698,6 +707,111 @@ def _verbatim_span(quote: str, text: str) -> str:
     return best
 
 
+_AMOUNT_CONFLICT_PHRASES = (
+    "金额互相矛盾",
+    "金额相互矛盾",
+    "金额互相冲突",
+    "金额相互冲突",
+    "金额不一致",
+    "金额矛盾",
+    "报价不一致",
+    "报价矛盾",
+    "互相矛盾",
+    "相互矛盾",
+    "互相冲突",
+    "相互冲突",
+    "不一致",
+    "矛盾",
+)
+_DATE_CONFLICT_PHRASES = (
+    "日期互相矛盾",
+    "日期相互矛盾",
+    "日期不一致",
+    "日期矛盾",
+    "日期互相冲突",
+    "日期冲突",
+)
+_DATE_TOKEN = re.compile(r"\d{4}-\d{2}-\d{2}|\d{1,2}月\d{1,2}日")
+
+
+def _catalog_blob(catalog: dict[str, dict[str, str]] | None) -> str:
+    if not catalog:
+        return ""
+    return "\n".join(str(entry.get("text") or "") for entry in catalog.values())
+
+
+def _scrub_false_conflict(
+    text: str,
+    *,
+    amounts_conflict: bool,
+    dates_conflict: bool,
+) -> str:
+    """Drop a disagreement claim the sources do not actually support."""
+    cleaned = text
+    if not amounts_conflict:
+        for phrase in _AMOUNT_CONFLICT_PHRASES:
+            cleaned = cleaned.replace(phrase, "")
+    if not dates_conflict:
+        for phrase in _DATE_CONFLICT_PHRASES:
+            cleaned = cleaned.replace(phrase, "")
+    return cleaned.strip(" ，,;；")
+
+
+def _marker_line(text: str) -> str:
+    for line in str(text or "").splitlines():
+        stripped = line.strip()
+        if "[showing " in stripped or "content truncated" in stripped:
+            return stripped
+    return ""
+
+
+def _truncation_quote_span(quote: str, text: str) -> str:
+    """Map our Chinese truncation note back to the marker line in the file."""
+    note = _file_truncation(text) or ""
+    if not quote or not note:
+        return ""
+    if quote != note and quote not in note and note not in quote:
+        return ""
+    return _marker_line(text)
+
+
+def _plain_from_parts(parts: list[Any]) -> str:
+    lines: list[str] = []
+    for item in parts:
+        if isinstance(item, str) and item.strip():
+            lines.append(item.strip())
+        elif isinstance(item, dict):
+            text = str(item.get("text") or item.get("summary") or "").strip()
+            if text:
+                lines.append(text)
+    return "\n".join(lines)
+
+
+def _coerce_findings(obj: dict[str, Any]) -> list[Any]:
+    raw = obj.get("findings")
+    if isinstance(raw, list) and any(
+        isinstance(item, dict) and str(item.get("text") or "").strip() for item in raw
+    ):
+        return raw
+    content = obj.get("content")
+    if isinstance(content, list):
+        dicts = [
+            item for item in content
+            if isinstance(item, dict) and str(item.get("text") or "").strip()
+        ]
+        if dicts and any(item.get("source_ids") or item.get("quote") for item in dicts):
+            return dicts
+    if isinstance(raw, list) or raw is None:
+        return list(raw or [])
+    raise ValueError("findings must be a list")
+
+
+def _note_text(item: Any) -> str:
+    if isinstance(item, dict):
+        return str(item.get("text") or item.get("summary") or "").strip()
+    return str(item or "").strip()
+
+
 def _evidence_rows(
     item: dict[str, Any],
     source_ids: list[str],
@@ -720,6 +834,8 @@ def _evidence_rows(
             })
             continue
         span = _verbatim_span(quote, text) if quote else ""
+        if not span and quote:
+            span = _truncation_quote_span(quote, text)
         if span:
             rows.append({
                 "source_id": sid,
@@ -736,6 +852,8 @@ def _evidence_rows(
             "snippet": fallback,
             "quote_in_source": False,
         })
+    if quote and any(row["quote_in_source"] for row in rows):
+        return [row for row in rows if row["quote_in_source"]], False
     return rows, quote_miss
 
 
@@ -883,10 +1001,17 @@ def validate_model_brief(
 ) -> dict[str, Any]:
     summary_raw = obj.get("summary")
     content_raw = obj.get("content")
-    if not isinstance(summary_raw, str) or not isinstance(content_raw, str):
+    if not isinstance(summary_raw, str):
         raise ValueError("summary and content must be strings")
     summary = summary_raw.strip()
-    content = content_raw.strip()
+    if isinstance(content_raw, str):
+        content = content_raw.strip()
+    elif isinstance(content_raw, list):
+        content = _plain_from_parts(content_raw)
+    else:
+        raise ValueError("summary and content must be strings")
+    if not content:
+        content = summary
     if not summary or not content:
         raise ValueError("model output missing summary or content")
 
@@ -896,11 +1021,22 @@ def validate_model_brief(
     if unknown_in_body:
         raise ValueError(f"forged or out-of-scope source ids: {unknown_in_body[:8]}")
 
-    findings_raw = obj.get("findings")
-    if findings_raw is None:
-        findings_raw = []
-    if not isinstance(findings_raw, list):
-        raise ValueError("findings must be a list")
+    findings_raw = _coerce_findings(obj)
+    blob = _catalog_blob(source_catalog)
+    amounts_conflict = len(_amount_keys(blob)) >= 2
+    dates_conflict = len(set(_DATE_TOKEN.findall(blob))) >= 2
+    judge_conflict = source_catalog is not None
+
+    def _clean(text: str) -> str:
+        if not judge_conflict:
+            return text.strip()
+        return _scrub_false_conflict(
+            text,
+            amounts_conflict=amounts_conflict,
+            dates_conflict=dates_conflict,
+        )
+
+    summary = _clean(summary) or "已整理来源。"
     findings: list[dict[str, Any]] = []
     unknown: list[str] = []
     missing_cite = 0
@@ -908,7 +1044,14 @@ def validate_model_brief(
     for item in findings_raw:
         if not isinstance(item, dict):
             raise ValueError("each finding must be an object")
-        text = str(item.get("text") or "").strip()
+        quote = str(item.get("quote") or "").strip()
+        text = _clean(str(item.get("text") or "").strip())
+        quote_in_catalog = bool(quote) and any(
+            quote in str(entry.get("text") or "")
+            for entry in (source_catalog or {}).values()
+        )
+        if not text and quote_in_catalog:
+            text = quote
         if not text:
             continue
         source_ids = [
@@ -930,6 +1073,13 @@ def validate_model_brief(
             evidence, missed = _evidence_rows(item, source_ids, source_catalog or {})
             if evidence:
                 finding["evidence"] = evidence
+                matched_ids = [
+                    str(row.get("source_id") or "")
+                    for row in evidence
+                    if row.get("quote_in_source")
+                ]
+                if matched_ids:
+                    finding["source_ids"] = matched_ids
             quote_miss = quote_miss or missed
         findings.append(finding)
     if unknown:
@@ -944,7 +1094,7 @@ def validate_model_brief(
     for item in actions_raw:
         if not isinstance(item, dict):
             continue
-        title = str(item.get("title") or "").strip()
+        title = _clean(str(item.get("title") or item.get("text") or "").strip())
         if not title:
             continue
         action_ids = [
@@ -956,15 +1106,15 @@ def validate_model_brief(
             raise ValueError("suggested action cites unknown source")
         actions.append({
             "title": title,
-            "reason": str(item.get("reason") or "").strip(),
+            "reason": _clean(str(item.get("reason") or "").strip()),
             "source_ids": action_ids,
         })
 
-    limitations = [
-        str(item).strip()
-        for item in (obj.get("limitations") or [])
-        if str(item).strip()
-    ]
+    limitations = []
+    for item in obj.get("limitations") or []:
+        note = _clean(_note_text(item))
+        if note:
+            limitations.append(note)
     limitations.extend(note for note in source_notes if note not in limitations)
     if quote_miss and _QUOTE_MISS not in limitations:
         limitations.append(_QUOTE_MISS)
@@ -1391,6 +1541,18 @@ _UNREACHABLE_MARKERS = (
 )
 
 
+def _brief_model_is_too_small() -> bool:
+    names = [os.environ.get("LLM_MODEL", "")]
+    try:
+        from app.config import settings
+
+        names.append(str(getattr(settings, "ollama_model", "") or ""))
+        names.append(str(getattr(settings, "llm_model", "") or ""))
+    except Exception:
+        logger.info("brief model size check could not read settings", exc_info=True)
+    return any("0.5b" in name.lower() for name in names)
+
+
 def brief_compile_failure(exc: BaseException, *, retryable: bool) -> str:
     """User-facing compile error. Egress and connection failures say what to do next."""
     text = f"{type(exc).__name__}: {exc}"
@@ -1399,8 +1561,12 @@ def brief_compile_failure(exc: BaseException, *, retryable: bool) -> str:
     if any(marker in text for marker in _UNREACHABLE_MARKERS):
         return _MODEL_UNREACHABLE_BRIEF
     if retryable:
-        return f"模型输出非法或不可用，可重试：{exc}"
-    return f"模型不可用或输出非法：{exc}"
+        message = f"模型输出非法或不可用，可重试：{exc}"
+    else:
+        message = f"模型不可用或输出非法：{exc}"
+    if isinstance(exc, ValueError) and _brief_model_is_too_small():
+        message += " 当前模型太小，整理不出可核对的简报。换一个更大的本地模型后再执行。"
+    return message
 
 
 async def compile_project_brief_delivery(
