@@ -11,7 +11,11 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from app.core.runtime import read_ports
-from app.core.runtime.egress.egress_gate import MEMORY_CONTEXT_MARKER, redact_sensitive_text
+from app.core.runtime.egress.egress_gate import (
+    MEMORY_CONTEXT_MARKER,
+    EgressDeniedError,
+    redact_sensitive_text,
+)
 from app.core.runtime.kernel_instance import bind_work_delivery_compiler
 from app.product.work_delivery import (
     content_hash,
@@ -1216,6 +1220,35 @@ def collect_memory_sources(
     return sources, bodies, [], catalog, coverage
 
 
+_EGRESS_DENIED_BRIEF = (
+    "这次简报含有邮件、文件或记忆，当前模型不在本机，所以没有发出。"
+    "把模型地址改成回环上的本地模型（例如 http://127.0.0.1:11434/v1）后，打开任务重新执行。"
+    "只有确认要把这些内容发到云端时，才设置 ALLOW_CLOUD_PERSONAL_DATA_EGRESS=true。"
+)
+_MODEL_UNREACHABLE_BRIEF = (
+    "连不上当前模型。确认模型服务已启动，并且地址能从这台电脑访问，然后打开任务重新执行。"
+)
+_UNREACHABLE_MARKERS = (
+    "APIConnectionError",
+    "APITimeoutError",
+    "ConnectError",
+    "ConnectionError",
+    "TimeoutError",
+)
+
+
+def brief_compile_failure(exc: BaseException, *, retryable: bool) -> str:
+    """User-facing compile error. Egress and connection failures say what to do next."""
+    text = f"{type(exc).__name__}: {exc}"
+    if isinstance(exc, EgressDeniedError) or "EgressDeniedError" in text or "Cloud egress denied" in text:
+        return _EGRESS_DENIED_BRIEF
+    if any(marker in text for marker in _UNREACHABLE_MARKERS):
+        return _MODEL_UNREACHABLE_BRIEF
+    if retryable:
+        return f"模型输出非法或不可用，可重试：{exc}"
+    return f"模型不可用或输出非法：{exc}"
+
+
 async def compile_project_brief_delivery(
     work_id: str,
     outcome: Any = None,
@@ -1346,16 +1379,15 @@ async def compile_project_brief_delivery(
         )
     except Exception as exc:
         logger.info("project brief model compile failed for %s: %s", work_id, exc)
-        if sources and not no_sources_configured:
-            return {
-                "ok": False,
-                "error": f"模型输出非法或不可用，可重试：{exc}",
-            }
+        retryable = bool(sources) and not no_sources_configured
+        message = brief_compile_failure(exc, retryable=retryable)
+        if retryable:
+            return {"ok": False, "error": message}
         brief = _fallback_brief(
             contract=contract,
             sources=sources,
             source_notes=notes,
-            reason=f"模型不可用或输出非法：{exc}",
+            reason=message,
             coverage=retrieval,
         )
 
