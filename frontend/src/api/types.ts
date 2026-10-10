@@ -295,6 +295,8 @@ export interface WorkDeliveryDecision {
   actor?: string;
   created_at?: string | null;
   idempotency_key?: string | null;
+  /** Self-reported minutes this check would have taken without the assistant. */
+  manual_minutes?: number;
 }
 
 export interface WorkDeliveryChangeFinding {
@@ -467,7 +469,16 @@ export interface DeliveryMetrics {
     decided_at: string;
     latency_hours: number;
     decision: string;
+    manual_minutes?: number;
   }>;
+  /** Self-reported manual minutes minus recorded review time. */
+  self_reported_time_saved?: {
+    basis: "self_reported";
+    count: number;
+    manual_minutes: number | null;
+    assisted_minutes: number | null;
+    estimated_saved_minutes: number | null;
+  };
   /** Attributable model cost divided by accepted briefs in the window. */
   cost_per_accepted_delivery?: number | "unavailable" | null;
   attribution: {

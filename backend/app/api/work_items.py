@@ -86,6 +86,7 @@ class CreateProjectBriefRequest(BaseModel):
 class DeliveryDecisionRequest(BaseModel):
     reason: str = Field(default="", max_length=5000)
     idempotency_key: str | None = Field(default=None, max_length=128)
+    manual_minutes: int | None = Field(default=None, ge=0, le=10080)
 
 
 class AdoptSuggestedActionRequest(BaseModel):
@@ -308,6 +309,7 @@ async def accept_work_delivery(item_id: str, delivery_id: str, body: DeliveryDec
             reason=body.reason,
             idempotency_key=body.idempotency_key,
             actor="user",
+            manual_minutes=body.manual_minutes,
         )
     except Exception as exc:
         raise _delivery_http_error(exc) from exc

@@ -1013,12 +1013,44 @@ def _require_current_delivery(
     return row
 
 
-def _idempotency_matches(prior: dict[str, Any], *, delivery_id: str, decision: str, reason: str) -> bool:
+_MANUAL_MINUTES_MAX = 7 * 24 * 60
+
+
+def _stored_manual_minutes(row: dict[str, Any]) -> int | None:
+    raw = row.get("manual_minutes")
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        return None
+    if raw < 0 or raw > _MANUAL_MINUTES_MAX:
+        return None
+    return raw
+
+
+def _coerce_manual_minutes(value: int | None) -> int | None:
+    """Optional self-reported minutes. Blank stays unset."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise DeliveryValidationError("手工耗时必须是整数分钟")
+    if value < 0 or value > _MANUAL_MINUTES_MAX:
+        raise DeliveryValidationError("手工耗时要在 0 到 10080 分钟之间")
+    return value
+
+
+def _idempotency_matches(
+    prior: dict[str, Any],
+    *,
+    delivery_id: str,
+    decision: str,
+    reason: str,
+    manual_minutes: int | None = None,
+) -> bool:
     if str(prior.get("delivery_id") or "") != delivery_id:
         return False
     if str(prior.get("decision") or "") != decision:
         return False
-    return str(prior.get("reason") or "").strip() == str(reason or "").strip()
+    if str(prior.get("reason") or "").strip() != str(reason or "").strip():
+        return False
+    return _stored_manual_minutes(prior) == manual_minutes
 
 
 def _review_status_from_decision(raw: str) -> str:
@@ -1144,11 +1176,17 @@ def decide_delivery(
     reason: str = "",
     idempotency_key: str | None = None,
     actor: str = "user",
+    manual_minutes: int | None = None,
 ) -> dict[str, Any]:
     if decision not in {DECISION_ACCEPTED, DECISION_CHANGES_REQUESTED}:
         raise DeliveryValidationError("decision must be accepted or changes_requested")
     if decision == DECISION_CHANGES_REQUESTED and not str(reason).strip():
         raise DeliveryValidationError("返工必须填写非空理由")
+    stored_minutes = (
+        _coerce_manual_minutes(manual_minutes)
+        if decision == DECISION_ACCEPTED
+        else None
+    )
 
     item = read_ports.query_work_item(work_id)
     if item is None:
@@ -1161,7 +1199,11 @@ def decide_delivery(
             prior = folded["_by_idempotency"].get(key)
             if prior is not None:
                 if not _idempotency_matches(
-                    prior, delivery_id=delivery_id, decision=decision, reason=reason,
+                    prior,
+                    delivery_id=delivery_id,
+                    decision=decision,
+                    reason=reason,
+                    manual_minutes=stored_minutes,
                 ):
                     raise DeliveryConflictError(
                         "幂等键已用于不同的交付决定",
@@ -1216,6 +1258,8 @@ def decide_delivery(
             "created_at": _now(),
             "idempotency_key": key or None,
         }
+        if stored_minutes is not None:
+            body["manual_minutes"] = stored_minutes
         kernel.emit_event(
             EVENT_WORK_ITEM_UPDATED,
             AGGREGATE_WORK_ITEM,
@@ -1238,7 +1282,9 @@ def accept_delivery(
     reason: str = "",
     idempotency_key: str | None = None,
     actor: str = "user",
+    manual_minutes: int | None = None,
 ) -> dict[str, Any]:
+    """Accept a delivery. ``manual_minutes`` is an optional self-report."""
     return decide_delivery(
         work_id,
         delivery_id,
@@ -1246,6 +1292,7 @@ def accept_delivery(
         reason=reason,
         idempotency_key=idempotency_key,
         actor=actor,
+        manual_minutes=manual_minutes,
     )
 
 
@@ -2221,6 +2268,46 @@ def _cost_per_accepted(cost: Any, accepted: int) -> Any:
     return round(float(cost) / accepted, 6)
 
 
+def self_reported_time_saved(reviews: list[dict[str, Any]]) -> dict[str, Any]:
+    """Estimate minutes saved from acceptances that carry a manual guess.
+
+    ``manual_minutes`` is what the user said the same check would have taken
+    without the assistant. Subtract the recorded review latency. Missing
+    guesses are left out. The result is labeled self-reported.
+    """
+    manual = 0
+    assisted = 0.0
+    count = 0
+    for row in reviews:
+        if str(row.get("decision") or "") != DECISION_ACCEPTED:
+            continue
+        minutes = row.get("manual_minutes")
+        hours = row.get("latency_hours")
+        if isinstance(minutes, bool) or not isinstance(minutes, int):
+            continue
+        if isinstance(hours, bool) or not isinstance(hours, (int, float)):
+            continue
+        manual += minutes
+        assisted += float(hours) * 60
+        count += 1
+    if count == 0:
+        return {
+            "basis": "self_reported",
+            "count": 0,
+            "manual_minutes": None,
+            "assisted_minutes": None,
+            "estimated_saved_minutes": None,
+        }
+    assisted_minutes = round(assisted, 2)
+    return {
+        "basis": "self_reported",
+        "count": count,
+        "manual_minutes": manual,
+        "assisted_minutes": assisted_minutes,
+        "estimated_saved_minutes": round(manual - assisted_minutes, 2),
+    }
+
+
 def review_time_trend(
     reviews: list[dict[str, Any]],
     *,
@@ -2373,13 +2460,17 @@ def summarize_delivery_metrics(
                 hours = (decided_at - published_at).total_seconds() / 3600
                 latencies.append(hours)
                 review_latency_hours.append(hours)
-                review_rows.append({
+                review_row = {
                     "work_id": work_id,
                     "published_at": published_at.isoformat(),
                     "decided_at": decided_at.isoformat(),
                     "latency_hours": round(hours, 2),
                     "decision": str(decision.get("decision") or ""),
-                })
+                }
+                manual = _stored_manual_minutes(decision)
+                if manual is not None:
+                    review_row["manual_minutes"] = manual
+                review_rows.append(review_row)
 
         item = read_ports.query_work_item(work_id) or {}
         title = str(item.get("title") or "")
@@ -2444,6 +2535,7 @@ def summarize_delivery_metrics(
             if review_latency_hours else None
         ),
         "review_time_trend": review_time_trend(reviews, since=since, moment=moment),
+        "self_reported_time_saved": self_reported_time_saved(reviews),
         "reviews": reviews,
         "attribution": attribution,
         "capped": len(recent) >= limit or attribution_capped,
