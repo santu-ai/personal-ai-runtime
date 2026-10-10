@@ -1087,6 +1087,45 @@ def test_prompt_labels_do_not_sink_a_real_owner_line():
     assert all("Subject" not in row["text"] for row in result["findings"])
 
 
+def test_echo_without_a_quote_uses_the_real_line():
+    result = _echo_case(_TASK, "", "完整短文")
+    assert result["quality_evidence"] == "pending"
+    evidence = result["findings"][0]["evidence"][0]
+    assert evidence["quote_in_source"] is True
+    assert evidence["snippet"] == "完整短文"
+    assert result["findings"][0]["text"] == "完整短文"
+
+
+def test_echo_with_a_bogus_source_id_uses_the_real_file():
+    result = validate_model_brief(
+        {
+            "summary": "有文件",
+            "content": "正文",
+            "findings": [{
+                "text": _TASK,
+                "source_ids": ["email"],
+                "quote": "",
+            }],
+        },
+        allowed_ids={"file:a"},
+        criteria=default_acceptance_criteria(),
+        source_notes=[],
+        source_catalog={
+            "file:a": {"text": "完整短文", "locator": "a.md", "title": "笔记"},
+        },
+        objective=_TASK,
+    )
+    assert result["quality_evidence"] == "pending"
+    assert result["findings"][0]["source_ids"] == ["file:a"]
+    assert result["findings"][0]["evidence"][0]["snippet"] == "完整短文"
+
+
+def test_real_conclusion_without_a_quote_is_not_replaced():
+    result = _echo_case("预算增加了", "", "完整短文", finding="预算增加了")
+    assert result["findings"][0]["text"] == "预算增加了"
+    assert result["findings"][0]["evidence"][0]["quote_in_source"] is False
+
+
 def test_instruction_echo_on_a_truncated_file_uses_the_real_line():
     result = _echo_case(_TASK, _TASK, "开头\n... [showing 10/40 lines]")
     assert result["quality_evidence"] == "pending"

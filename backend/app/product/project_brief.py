@@ -1034,16 +1034,21 @@ def _ground_instruction_echo(
     criteria: list[str],
     notes: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Swap an instruction-echo quote for a real line from the cited source.
+    """Swap an instruction echo for a real line from the cited source.
 
-    A conclusion that is not itself an echo keeps its quote. Attaching some
+    An echo with no quote is the same kind of miss as an echo quote. A
+    conclusion that is not itself an echo keeps its quote. Attaching some
     other line would make an unrelated claim look supported.
     """
     quote = str(item.get("quote") or "").strip()
     text = str(item.get("text") or "").strip()
-    if not _is_prompt_echo(quote, objective, criteria, notes):
+    quote_echo = bool(quote) and _is_prompt_echo(quote, objective, criteria, notes)
+    text_echo = bool(text) and _is_prompt_echo(text, objective, criteria, notes)
+    if quote and not quote_echo:
         return item
-    if text and not _is_prompt_echo(text, objective, criteria, notes):
+    if text and not text_echo:
+        return item
+    if not quote_echo and not text_echo:
         return item
     source_ids = [
         str(sid).strip()
@@ -1051,6 +1056,8 @@ def _ground_instruction_echo(
         if str(sid).strip()
     ]
     search_ids = source_ids or list(catalog)
+    if source_ids and not any(sid in catalog for sid in source_ids):
+        search_ids = list(catalog)
     for sid in search_ids:
         body = str((catalog.get(sid) or {}).get("text") or "")
         if quote and quote in body:
