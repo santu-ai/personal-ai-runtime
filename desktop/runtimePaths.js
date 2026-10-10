@@ -71,6 +71,19 @@ function resolveFrontendFile(distRoot, relPath) {
   return path.join(distRoot, "index.html");
 }
 
+function briefEntryUrl(base) {
+  let parsed;
+  try {
+    parsed = new URL(base);
+  } catch {
+    return base;
+  }
+  const path = parsed.pathname.endsWith("/") ? parsed.pathname.slice(0, -1) : parsed.pathname;
+  parsed.pathname = `${path}/dashboard`;
+  parsed.searchParams.set("entry", "brief");
+  return parsed.toString();
+}
+
 function isInternalNavigationUrl(url, { isPackaged, devOrigin = "http://127.0.0.1:5173" } = {}) {
   let parsed;
   try {
@@ -272,6 +285,7 @@ module.exports = {
   projectVenvPython,
   resolvePythonCommand,
   resolveFrontendFile,
+  briefEntryUrl,
   isInternalNavigationUrl,
   isSafeExternalUrl,
   reconnectDelayMs,

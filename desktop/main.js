@@ -3,7 +3,7 @@
  *
  * Provides:
  * - System tray icon with quick actions
- * - Global shortcut (Alt+Space) for quick chat
+ * - Global shortcut (Alt+Space) opens today's unreviewed brief
  * - Quick capture (Alt+Shift+I) for Inbox
  * - Native notifications
  * - Auto-start on login
@@ -19,6 +19,7 @@ const { pathToFileURL } = require("url");
 const {
   resolvePythonCommand: resolvePythonCommandImpl,
   resolveFrontendFile: resolveFrontendFileImpl,
+  briefEntryUrl: briefEntryUrlImpl,
   isInternalNavigationUrl,
   isSafeExternalUrl,
   createWsReconnectPolicy,
@@ -506,7 +507,7 @@ function createMiniWindow() {
     },
   });
   installNavigationGuards(miniWindow);
-  miniWindow.loadURL(RESOLVED_WEB_URL);
+  miniWindow.loadURL(briefEntryUrlImpl(RESOLVED_WEB_URL));
 
   miniWindow.on("blur", () => {
     if (miniWindow) {
@@ -555,7 +556,7 @@ function createTrayMenuItems() {
       },
     },
     {
-      label: "快捷对话 (Alt+Space)",
+      label: "待验收简报 (Alt+Space)",
       click: () => createMiniWindow(),
     },
     { type: "separator" },

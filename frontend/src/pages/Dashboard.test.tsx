@@ -1269,6 +1269,69 @@ describe("DashboardPage", () => {
     );
   });
 
+  it("opens the first unreviewed brief when the desktop entry asks for it", async () => {
+    mockDashboardData({
+      dashboard: {
+        generated_at: "2026-10-09T00:00:00Z",
+        data_sovereignty: {
+          total_events: 1,
+          total_memories: 0,
+          memories_self_report: 0,
+          memories_claim: 0,
+          total_goals: 0,
+          goals_active: 0,
+          goals_completed: 0,
+          total_conversations: 0,
+          total_messages: 0,
+          data_location: "本地",
+          last_belief_reflection: null,
+          export_supported: true,
+        },
+        active_goals: { count: 0, top: [] },
+        unreviewed_deliveries: [
+          {
+            work_id: "brief 9",
+            title: "预算简报",
+            delivery_id: "d9",
+            version: 2,
+            summary: "",
+          },
+        ],
+      },
+    });
+    renderDashboard(["/dashboard?entry=brief"]);
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith("/tasks/brief%209", { replace: true }),
+    );
+  });
+
+  it("stays on today when the desktop entry has no unreviewed brief", async () => {
+    mockDashboardData({
+      dashboard: {
+        generated_at: "2026-10-09T00:00:00Z",
+        data_sovereignty: {
+          total_events: 1,
+          total_memories: 0,
+          memories_self_report: 0,
+          memories_claim: 0,
+          total_goals: 0,
+          goals_active: 0,
+          goals_completed: 0,
+          total_conversations: 0,
+          total_messages: 0,
+          data_location: "本地",
+          last_belief_reflection: null,
+          export_supported: true,
+        },
+        active_goals: { count: 0, top: [] },
+        unreviewed_deliveries: [],
+      },
+    });
+    renderDashboard(["/dashboard?entry=brief"]);
+    expect(await screen.findByRole("heading", { name: "今天" })).toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   it("shows a retry when today sources fail and does not claim an empty day", async () => {
     mockUseApprovalsQuery.mockReturnValue({
       data: undefined,
