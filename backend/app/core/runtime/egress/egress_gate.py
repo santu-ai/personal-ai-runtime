@@ -38,11 +38,24 @@ _SENSITIVE_FIELD = re.compile(
     r"(api[_-]?key|password|secret|token|authorization|bearer)",
     re.IGNORECASE,
 )
+# Private-key blocks are replaced line by line so a later brief locator still
+# points at the same line in the file.
+_PEM_PRIVATE_KEY = re.compile(
+    r"-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY-----"
+    r"[\s\S]*?"
+    r"-----END [A-Z0-9 ]{0,40}PRIVATE KEY-----"
+)
 _SENSITIVE_INLINE = re.compile(
-    r"(?i)(sk-[a-zA-Z0-9]{20,}|"
+    r"(?i)(?:"
+    r"sk-[a-zA-Z0-9]{20,}|"
+    r"ghp_[A-Za-z0-9]{20,}|"
+    r"github_pat_[A-Za-z0-9_]{20,}|"
+    r"AKIA[0-9A-Z]{16}|"
+    r"xox[baprs]-[A-Za-z0-9-]{10,}|"
     r"Bearer\s+[A-Za-z0-9._\-+/=]{10,}|"
     r"password\s*[:=]\s*\S+|"
-    r"api[_-]?key\s*[:=]\s*\S+)",
+    r"api[_-]?key\s*[:=]\s*\S+"
+    r")"
 )
 
 
@@ -162,12 +175,25 @@ def _strip_data_source_keys(messages: list[dict[str, Any]]) -> list[dict[str, An
     return stripped
 
 
+def _redact_match_keep_lines(match: re.Match[str]) -> str:
+    """Replace a secret without changing how many lines follow it."""
+    lines = match.group(0).splitlines() or [""]
+    return "\n".join("[REDACTED]" for _ in lines)
+
+
 def _redact_text(text: str) -> tuple[str, bool]:
     """Return redacted text and whether any redaction occurred."""
     if not text:
         return text, False
-    redacted, n = _SENSITIVE_INLINE.subn("[REDACTED]", text)
-    return redacted, n > 0
+    redacted, pem_n = _PEM_PRIVATE_KEY.subn(_redact_match_keep_lines, text)
+    redacted, inline_n = _SENSITIVE_INLINE.subn("[REDACTED]", redacted)
+    return redacted, (pem_n + inline_n) > 0
+
+
+def redact_sensitive_text(text: str) -> str:
+    """Hide high-confidence secrets before they enter a prompt or a brief."""
+    redacted, _changed = _redact_text(text)
+    return redacted
 
 
 def _redact_value(value: Any, *, field_name: str = "") -> tuple[Any, bool]:
@@ -315,5 +341,6 @@ __all__ = [
     "data_sources_for_tool",
     "provider_is_local",
     "redact_llm_messages",
+    "redact_sensitive_text",
     "with_tool_data_sources",
 ]

@@ -11,7 +11,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from app.core.runtime import read_ports
-from app.core.runtime.egress.egress_gate import MEMORY_CONTEXT_MARKER
+from app.core.runtime.egress.egress_gate import MEMORY_CONTEXT_MARKER, redact_sensitive_text
 from app.core.runtime.kernel_instance import bind_work_delivery_compiler
 from app.product.work_delivery import (
     content_hash,
@@ -217,7 +217,7 @@ def _neutralize_untrusted_fences(value: str) -> str:
 
 def _user_data(label: str, value: str, max_len: int = 8000) -> str:
     cleaned = "".join(ch for ch in value if ch.isprintable() or ch in "\n\t").strip()
-    cleaned = _neutralize_untrusted_fences(cleaned)[:max_len]
+    cleaned = redact_sensitive_text(_neutralize_untrusted_fences(cleaned))[:max_len]
     return f"{label}:\n<<<\n{cleaned}\n>>>"
 
 
@@ -351,7 +351,8 @@ def collect_allowed_sources(
                     full_body += 1
                 else:
                     preview_only += 1
-                line_label, hit_snippet = _locate_query(text, query)
+                visible = redact_sensitive_text(text)
+                line_label, hit_snippet = _locate_query(visible, query)
                 locator = _locator_with_line(sender or mid, line_label)
                 sources.append({
                     "id": source_id,
@@ -365,12 +366,12 @@ def collect_allowed_sources(
                 bodies.append(
                     _user_data(
                         f"Email {source_id} ({sender})",
-                        f"Subject: {subject}\nDate: {date_raw}\n{text}",
+                        f"Subject: {subject}\nDate: {date_raw}\n{visible}",
                     )
                 )
-                included_texts.append(text)
+                included_texts.append(visible)
                 catalog[source_id] = {
-                    "text": text,
+                    "text": visible,
                     "locator": locator,
                     "title": subject,
                     "hit_snippet": hit_snippet,
@@ -413,7 +414,8 @@ def collect_allowed_sources(
                     step_params = raw_params
             requested_lines = int(step_params.get("max_lines") or BRIEF_FILE_MAX_LINES)
             truncation = _file_truncation(raw)
-            line_label, hit_snippet = _locate_query(raw, query)
+            visible = redact_sensitive_text(raw)
+            line_label, hit_snippet = _locate_query(visible, query)
             locator = _locator_with_line(path, line_label)
             file_coverage.append({
                 "path": path,
@@ -434,10 +436,10 @@ def collect_allowed_sources(
                 "truncated": truncation is not None,
                 "max_lines": requested_lines,
             })
-            bodies.append(_user_data(f"File {source_id} ({label})", raw))
-            included_texts.append(raw)
+            bodies.append(_user_data(f"File {source_id} ({label})", visible))
+            included_texts.append(visible)
             catalog[source_id] = {
-                "text": raw,
+                "text": visible,
                 "locator": locator,
                 "title": label,
                 "hit_snippet": hit_snippet,
@@ -1153,7 +1155,7 @@ def _fallback_brief(
 
 def _visible_source_text(value: str) -> str:
     cleaned = "".join(ch for ch in value if ch.isprintable() or ch in "\n\t").strip()
-    return cleaned[:8000]
+    return redact_sensitive_text(cleaned)[:8000]
 
 
 def collect_memory_sources(

@@ -64,6 +64,25 @@ def test_audit_llm_egress_swallows_emit_failure(monkeypatch):
     assert audit["purpose"] == "chat"
 
 
+def test_redact_sensitive_text_keeps_line_count_around_a_private_key():
+    from app.core.runtime.egress.egress_gate import redact_sensitive_text
+
+    token = "ghp_" + ("b" * 20)
+    pem = "\n".join([
+        "-----BEGIN " + "OPENSSH PRIVATE KEY-----",
+        "Q" * 12,
+        "-----END " + "OPENSSH PRIVATE KEY-----",
+    ])
+    text = "\n".join(["note", "token " + token, pem, "尾注"])
+    redacted = redact_sensitive_text(text)
+    assert token not in redacted
+    assert "Q" * 12 not in redacted
+    assert "PRIVATE KEY" not in redacted
+    assert redacted.splitlines()[0] == "note"
+    assert redacted.splitlines()[-1] == "尾注"
+    assert len(redacted.splitlines()) == len(text.splitlines())
+
+
 def test_audit_llm_egress_redacts_secrets(monkeypatch):
     k = MagicMock()
     monkeypatch.setattr(
