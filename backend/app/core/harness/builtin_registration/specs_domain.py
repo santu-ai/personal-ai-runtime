@@ -111,6 +111,10 @@ def _email_specs() -> list[BuiltinToolSpec]:
                         "type": "string",
                         "description": "YYYY-MM-DD. Search mail on or after this date before applying limit.",
                     },
+                    "include_unread_index": {
+                        "type": "boolean",
+                        "description": "Download every unread message id for read-sync. Default true. Set false for a scoped brief that does not sync read state.",
+                    },
                 },
             },
             handler=email_server.check_inbox,

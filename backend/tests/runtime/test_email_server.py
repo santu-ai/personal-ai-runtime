@@ -323,6 +323,44 @@ def test_check_inbox_scoped_search_keeps_body_and_reports_truncation(monkeypatch
     assert seen["fetch"][2] == [b"1", b"2", b"3"]
 
 
+def test_check_inbox_can_skip_the_full_unread_index(monkeypatch):
+    """A scoped brief must not download headers for every unread message."""
+    server = EmailServer()
+    calls = {"unread": 0}
+
+    def unread(_mail):
+        calls["unread"] += 1
+        return [{"message_id": "<unseen@example.com>"}]
+
+    monkeypatch.setattr(server, "_connect_inbox", lambda: object())
+    monkeypatch.setattr(server, "_mailbox_uid_validity", lambda _mail: "1")
+    monkeypatch.setattr(server, "_fetch_unread_emails_connected", unread)
+    monkeypatch.setattr(server, "_highest_uid_connected", lambda _mail: 9)
+    monkeypatch.setattr(server, "_search_scope_ids", lambda *_a, **_k: [b"1"])
+    monkeypatch.setattr(
+        server,
+        "_fetch_sorted_emails_connected",
+        lambda *_a, **_k: [{
+            "message_id": "a",
+            "from": "a@b.c",
+            "subject": "预算",
+            "date": "d",
+            "preview": "p",
+            "body": "预算",
+        }],
+    )
+
+    skipped = json.loads(server.check_inbox(
+        limit=2, query="预算", include_unread_index=False,
+    ))
+    assert calls["unread"] == 0
+    assert "all_unread_emails" not in skipped
+
+    kept = json.loads(server.check_inbox(limit=2, query="预算"))
+    assert calls["unread"] == 1
+    assert kept["all_unread_emails"] == [{"message_id": "<unseen@example.com>"}]
+
+
 def test_email_config_refresh_is_ttl_cached(monkeypatch):
     server = EmailServer()
     calls = {"n": 0}

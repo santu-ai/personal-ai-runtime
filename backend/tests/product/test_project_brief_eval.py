@@ -479,6 +479,7 @@ def test_plan_searches_mailbox_before_limit_and_widens_files():
     assert email_step["params"]["query"] == "预算"
     assert email_step["params"]["since"] == "2026-01-01"
     assert email_step["params"]["unread_only"] is False
+    assert email_step["params"]["include_unread_index"] is False
     file_step = plan["steps"][1]
     assert file_step["params"]["max_lines"] == 800
     assert BRIEF_FILE_MAX_LINES > 500

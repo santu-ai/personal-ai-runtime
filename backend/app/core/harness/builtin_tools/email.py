@@ -494,6 +494,7 @@ class EmailServer:
         uid_validity: str | None = None,
         query: str = "",
         since: str = "",
+        include_unread_index: bool = True,
     ) -> str:
         """Check inbox for recent emails (default: all mail, not unread-only)."""
         try:
@@ -522,9 +523,13 @@ class EmailServer:
                     and str(uid_validity) == current_uid_validity
                     and callable(getattr(mail, "uid", None))
                 )
-                # Unseen index is always needed so poll can sync read-state
-                # even when listing recent mail (unread_only=false).
-                all_unread_emails = self._fetch_unread_emails_connected(mail)
+                # Inbox poll needs every UNSEEN id to sync read-state. A scoped
+                # brief does not: downloading those headers is one round trip
+                # per hundred unread messages, and the brief throws the index away.
+                if include_unread_index:
+                    all_unread_emails = self._fetch_unread_emails_connected(mail)
+                else:
+                    all_unread_emails = None
                 scoped_query = str(query or "").strip()
                 scoped_since = str(since or "").strip()
                 use_scope = bool(scoped_query or scoped_since)
@@ -579,20 +584,20 @@ class EmailServer:
             ]
             # Unread index is ids-only: full headers for every UNSEEN message
             # previously blew mcp_hub's text clip and produced invalid JSON.
-            unread_index = [
-                {"message_id": em["message_id"]}
-                for em in all_unread_emails
-                if em.get("message_id")
-            ]
             payload: dict = {
                 "count": len(slim),
                 "unread_only": unread_only,
                 "emails": slim,
-                "all_unread_emails": unread_index,
                 "uid_validity": current_uid_validity,
                 "next_uid": next_uid,
                 "cursor_reset": cursor_reset,
             }
+            if all_unread_emails is not None:
+                payload["all_unread_emails"] = [
+                    {"message_id": em["message_id"]}
+                    for em in all_unread_emails
+                    if em.get("message_id")
+                ]
             if search_meta is not None:
                 payload["scoped"] = True
                 payload["search"] = search_meta
