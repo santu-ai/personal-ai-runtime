@@ -78,6 +78,9 @@ def build_project_brief_plan(
             "unread_only": False,
             "limit": int(email_scope.get("limit") or DEFAULT_EMAIL_LIMIT),
             "since": str(email_scope.get("since") or ""),
+            # The brief does not sync read-state, so it must not download
+            # headers for every unread message in the mailbox.
+            "include_unread_index": False,
         }
         query = str(email_scope.get("query") or "").strip()
         if query:
