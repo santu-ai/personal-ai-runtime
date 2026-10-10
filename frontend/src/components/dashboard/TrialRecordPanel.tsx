@@ -38,11 +38,11 @@ export function trialReviewTrendLabel(metrics: DeliveryMetrics): string {
   const earlier = trend?.earlier_half_hours;
   const later = trend?.later_half_hours;
   if (
-    !trend
-    || trend.earlier_half_count <= 0
-    || trend.later_half_count <= 0
-    || earlier == null
-    || later == null
+    !trend ||
+    trend.earlier_half_count <= 0 ||
+    trend.later_half_count <= 0 ||
+    earlier == null ||
+    later == null
   ) {
     return "次数不够，还看不出变快";
   }
