@@ -1238,6 +1238,7 @@ interface BriefDraft {
   emailQuery: string;
   emailDays: string;
   filePaths: string;
+  costCap: string;
 }
 
 function sameBrief(left: BriefDraft, right: BriefDraft): boolean {
@@ -1247,8 +1248,26 @@ function sameBrief(left: BriefDraft, right: BriefDraft): boolean {
     left.emailEnabled === right.emailEnabled &&
     left.emailQuery === right.emailQuery &&
     left.emailDays === right.emailDays &&
-    left.filePaths === right.filePaths
+    left.filePaths === right.filePaths &&
+    left.costCap === right.costCap
   );
+}
+
+function parsedCostCap(text: string): number | null | "invalid" {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) return "invalid";
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value < 0) return "invalid";
+  return value;
+}
+
+function briefCostCapLabel(item: WorkItem | null | undefined): string | null {
+  const contract = planObject(item)?.contract;
+  if (!contract || typeof contract !== "object" || Array.isArray(contract)) return null;
+  const raw = (contract as { cost_cap_usd?: unknown }).cost_cap_usd;
+  if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0) return null;
+  return `单次费用上限 $${raw.toFixed(4)}`;
 }
 
 function focusIsBlank(): boolean {
@@ -1351,6 +1370,7 @@ export default function TasksPage() {
     emailQuery: "",
     emailDays: "3",
     filePaths: "",
+    costCap: "",
   });
   const acceptLive = useRef("");
   const reworkLive = useRef("");
@@ -1368,6 +1388,7 @@ export default function TasksPage() {
   const [emailQuery, setEmailQuery] = useState("");
   const [emailDays, setEmailDays] = useState("3");
   const [filePaths, setFilePaths] = useState("");
+  const [costCap, setCostCap] = useState("");
   const [reworkOpen, setReworkOpen] = useState(false);
   const [reworkReason, setReworkReason] = useState("");
   const [acceptTarget, setAcceptTarget] = useState<WorkDelivery | null>(null);
@@ -1668,6 +1689,8 @@ export default function TasksPage() {
       query: submitted.emailQuery.trim(),
       days: Math.max(0, Number(submitted.emailDays) || 3),
     };
+    const cap = parsedCostCap(submitted.costCap);
+    if (cap === "invalid") return;
     if (!beginDialog()) return;
     let handoff: TaskDialogHandoff | null = null;
     try {
@@ -1675,6 +1698,7 @@ export default function TasksPage() {
         title,
         objective: goal,
         source_scope: { email, files },
+        ...(cap === null ? {} : { cost_cap_usd: cap }),
       });
       if (sameBrief(briefLive.current, submitted)) {
         briefLive.current = {
@@ -1683,12 +1707,14 @@ export default function TasksPage() {
           objective: "",
           emailQuery: "",
           filePaths: "",
+          costCap: "",
         };
         setShowCreate(false);
         setNewTitle("");
         setObjective("");
         setEmailQuery("");
         setFilePaths("");
+        setCostCap("");
       } else {
         handoff = { kind: "kept", dialog: "create" };
       }
@@ -2480,6 +2506,11 @@ export default function TasksPage() {
                         {selected.description}
                       </p>
                     )}
+                    {briefCostCapLabel(selected) ? (
+                      <p className="text-xs text-fg-tertiary" data-testid="brief-cost-cap">
+                        {briefCostCapLabel(selected)}
+                      </p>
+                    ) : null}
                     {canRerunSameBrief ? (
                       <p className="text-xs text-fg-tertiary" data-testid="rerun-same-brief-hint">
                         再次运行仍使用这一份任务。新版本会对照当前交付，显示相对上一版的变化。定时到点后也只再次运行这一份，不另建简报。
@@ -2992,7 +3023,7 @@ export default function TasksPage() {
           description="指定资料范围、时间范围和验收要求。原始需求会保留在任务说明中。"
           confirmLabel={dialogBusy ? "创建中..." : "创建"}
           cancelLabel="取消"
-          confirmDisabled={!newTitle.trim() || !objective.trim()}
+          confirmDisabled={!newTitle.trim() || !objective.trim() || parsedCostCap(costCap) === "invalid"}
           confirmBusy={dialogBusy}
           confirmMarker="create"
           onConfirm={() => {
@@ -3061,6 +3092,19 @@ export default function TasksPage() {
                 />
               </div>
             )}
+            <label className="block space-y-1">
+              <span className="text-xs text-fg-tertiary">单次费用上限（美元，可选）</span>
+              <Input
+                value={costCap}
+                inputMode="decimal"
+                data-task-dialog-field="create"
+                onChange={(e) => {
+                  briefLive.current = { ...briefLive.current, costCap: e.target.value };
+                  setCostCap(e.target.value);
+                }}
+                placeholder="不填则不限制"
+              />
+            </label>
             <label className="block space-y-1">
               <span className="text-xs text-fg-tertiary">资料路径（每行一个）</span>
               <textarea

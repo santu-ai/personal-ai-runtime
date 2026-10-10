@@ -80,6 +80,7 @@ class CreateProjectBriefRequest(BaseModel):
     objective: str = Field(max_length=20000)
     source_scope: ProjectBriefSourceScope = Field(default_factory=ProjectBriefSourceScope)
     acceptance_criteria: list[str] | None = Field(default=None, max_length=20)
+    cost_cap_usd: float | None = Field(default=None, ge=0, le=10000)
 
 
 class DeliveryDecisionRequest(BaseModel):
@@ -182,6 +183,7 @@ async def create_project_brief(body: CreateProjectBriefRequest):
             objective=objective,
             source_scope=body.source_scope.model_dump(),
             acceptance_criteria=body.acceptance_criteria,
+            cost_cap_usd=body.cost_cap_usd,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -16,6 +16,7 @@ from app.product.work_delivery import (
     content_hash,
     contract_from_plan,
     is_project_brief_plan,
+    model_cost_for_delivery,
     parse_plan,
     publish_delivery,
 )
@@ -28,6 +29,7 @@ DEFAULT_TIMEZONE = "Asia/Shanghai"
 DEFAULT_DAYS = 3
 DEFAULT_EMAIL_LIMIT = 30
 BRIEF_FILE_MAX_LINES = 2000
+BRIEF_COMPILE_MAX_TOKENS = 2500
 DEFAULT_CRITERIA = (
     "每条关键结论附来源",
     "资料不足时明确说明",
@@ -45,12 +47,26 @@ def default_acceptance_criteria() -> list[str]:
     return list(DEFAULT_CRITERIA)
 
 
+def parse_cost_cap(value: Any) -> float | None:
+    """Optional per-run dollar cap. ``None`` means the run is not capped."""
+    if value is None or value == "":
+        return None
+    try:
+        amount = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("单次费用上限必须是非负数字") from exc
+    if amount != amount or amount < 0 or amount == float("inf"):
+        raise ValueError("单次费用上限必须是非负数字")
+    return round(amount, 6)
+
+
 def build_project_brief_plan(
     *,
     objective: str,
     source_scope: dict[str, Any],
     acceptance_criteria: list[str] | None = None,
     timezone: str | None = None,
+    cost_cap_usd: Any = None,
 ) -> dict[str, Any]:
     scope = _normalize_source_scope(source_scope, timezone=timezone)
     steps: list[dict[str, Any]] = []
@@ -86,16 +102,20 @@ def build_project_brief_plan(
         for item in (acceptance_criteria or default_acceptance_criteria())
         if str(item).strip()
     ] or default_acceptance_criteria()
+    contract: dict[str, Any] = {
+        "contract_version": 1,
+        "objective": objective.strip(),
+        "output_kind": OUTPUT_KIND,
+        "source_scope": scope,
+        "acceptance_criteria": criteria,
+    }
+    cap = parse_cost_cap(cost_cap_usd)
+    if cap is not None:
+        contract["cost_cap_usd"] = cap
     return {
         "kind": PLAN_KIND,
         "schema_version": 1,
-        "contract": {
-            "contract_version": 1,
-            "objective": objective.strip(),
-            "output_kind": OUTPUT_KIND,
-            "source_scope": scope,
-            "acceptance_criteria": criteria,
-        },
+        "contract": contract,
         "rework_notes": [],
         "steps": steps,
     }
@@ -161,6 +181,7 @@ def create_project_brief_work(
     objective: str,
     source_scope: dict[str, Any] | None = None,
     acceptance_criteria: list[str] | None = None,
+    cost_cap_usd: Any = None,
 ) -> dict[str, Any]:
     cleaned_title = title.strip()
     cleaned_objective = objective.strip()
@@ -172,6 +193,7 @@ def create_project_brief_work(
         objective=cleaned_objective,
         source_scope=source_scope or {},
         acceptance_criteria=acceptance_criteria,
+        cost_cap_usd=cost_cap_usd,
     )
     return read_ports.create_work_item(
         cleaned_title,
@@ -849,6 +871,84 @@ def _correlation_for_execution(execution_id: str | None) -> str | None:
     return correlation or None
 
 
+def _usd(amount: float) -> str:
+    return f"${amount:.4f}"
+
+
+def _provider_token_prices() -> tuple[float, float, str] | None:
+    """Primary provider prices used to estimate one brief compile call."""
+    try:
+        from app.core.agents.llm_failover import llm_router
+
+        _client, provider = llm_router.get_client(None)
+    except Exception:
+        logger.info("brief cost cap could not read provider prices", exc_info=True)
+        return None
+    try:
+        prompt_price = float(getattr(provider, "price_per_prompt_token", 0.0) or 0.0)
+        completion_price = float(getattr(provider, "price_per_completion_token", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        return None
+    if (
+        prompt_price != prompt_price
+        or completion_price != completion_price
+        or prompt_price < 0
+        or completion_price < 0
+        or prompt_price == float("inf")
+        or completion_price == float("inf")
+    ):
+        return None
+    return prompt_price, completion_price, str(getattr(provider, "model", "") or "")
+
+
+def _estimate_compile_cost(prompt: str, prices: tuple[float, float, str]) -> float:
+    from app.core.agents.token_counter import count_message_tokens
+
+    prompt_price, completion_price, model = prices
+    messages = [
+        {"role": "system", "content": "project brief"},
+        {"role": "user", "content": prompt},
+    ]
+    prompt_tokens = count_message_tokens(messages, model=model or "gpt-4")
+    return prompt_tokens * prompt_price + BRIEF_COMPILE_MAX_TOKENS * completion_price
+
+
+def cost_cap_block_reason(
+    contract: dict[str, Any],
+    execution_id: str | None,
+    prompt: str,
+) -> str | None:
+    """Why this compile must not call the model, or ``None`` when it may.
+
+    No ``cost_cap_usd`` means the run is not capped. A set cap stops the call
+    when money already spent plus the worst-case price of this call would go
+    over it. A cost read that is unavailable, or prices that cannot be read,
+    also stop the call so a capped run does not continue blind.
+    """
+    if "cost_cap_usd" not in contract:
+        return None
+    try:
+        cap = parse_cost_cap(contract.get("cost_cap_usd"))
+    except ValueError:
+        return "单次费用上限无法读取，已停止，没有再调用模型。"
+    if cap is None:
+        return "单次费用上限无法读取，已停止，没有再调用模型。"
+    spent_row = model_cost_for_delivery(execution_id)
+    spent = spent_row.get("llm_cost")
+    if not isinstance(spent, (int, float)) or isinstance(spent, bool):
+        return "单次费用暂时读不全，已停止，以免超出上限。"
+    prices = _provider_token_prices()
+    if prices is None:
+        return "无法估计这次模型费用，已停止，以免超出上限。"
+    estimate = _estimate_compile_cost(prompt, prices)
+    if float(spent) + estimate > cap:
+        return (
+            f"单次费用上限 {_usd(cap)}。已花费 {_usd(float(spent))}，"
+            f"这次调用预计最多 {_usd(estimate)}，已停止，没有再调用模型。"
+        )
+    return None
+
+
 async def _complete_brief_json(
     prompt: str,
     *,
@@ -872,7 +972,7 @@ async def _complete_brief_json(
         purpose="project_brief",
         actor="executor",
         temperature=0.2,
-        max_tokens=2500,
+        max_tokens=BRIEF_COMPILE_MAX_TOKENS,
         correlation_id=_correlation_for_execution(execution_id),
         caused_by=execution_id or None,
         data_sources=data_sources,
@@ -1057,6 +1157,33 @@ async def compile_project_brief_delivery(
         source_notes=notes,
         allowed_ids=sorted(allowed_ids),
     )
+    blocked = cost_cap_block_reason(contract, execution_id, prompt)
+    if blocked:
+        brief = _fallback_brief(
+            contract=contract,
+            sources=sources,
+            source_notes=notes,
+            reason=blocked,
+            coverage=retrieval,
+        )
+        delivery = publish_delivery(
+            work_id,
+            content=brief["content"],
+            summary=brief["summary"],
+            sources=sources,
+            findings=brief["findings"],
+            limitations=brief["limitations"],
+            suggested_actions=brief["suggested_actions"],
+            checks=brief["checks"],
+            contract_version=int(contract.get("contract_version") or 1),
+            execution_id=execution_id,
+            qualified=False,
+            quality_structure=brief["quality_structure"],
+            quality_evidence=brief["quality_evidence"],
+            retrieval=retrieval,
+            actor=actor,
+        )
+        return {"ok": True, "delivery": delivery, "qualified": False, "cost_capped": True}
     complete = llm_complete or _complete_brief_json
     try:
         if complete is _complete_brief_json:
