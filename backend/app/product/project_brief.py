@@ -11,6 +11,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from app.core.runtime import read_ports
+from app.core.runtime.egress.egress_gate import MEMORY_CONTEXT_MARKER
 from app.core.runtime.kernel_instance import bind_work_delivery_compiler
 from app.product.work_delivery import (
     content_hash,
@@ -30,6 +31,7 @@ DEFAULT_DAYS = 3
 DEFAULT_EMAIL_LIMIT = 30
 BRIEF_FILE_MAX_LINES = 2000
 BRIEF_COMPILE_MAX_TOKENS = 2500
+BRIEF_MEMORY_LIMIT = 3
 DEFAULT_CRITERIA = (
     "每条关键结论附来源",
     "资料不足时明确说明",
@@ -37,7 +39,7 @@ DEFAULT_CRITERIA = (
 )
 
 _JSON_FENCE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
-_SOURCE_ID_RE = re.compile(r"\b(?:email|file):[A-Za-z0-9][A-Za-z0-9._@<>+=/-]*")
+_SOURCE_ID_RE = re.compile(r"\b(?:email|file|memory):[A-Za-z0-9][A-Za-z0-9._@<>+=/-]*")
 _LINE_TRUNC = re.compile(r"\.\.\. \[showing (\d+)/(\d+) lines\]")
 _AMOUNT = re.compile(r"\d[\d,]*(?:\.\d+)?\s*(?:元|万元|万|USD|美元|\$|¥)")
 PROGRAMMATIC_CRITERIA = frozenset(DEFAULT_CRITERIA)
@@ -587,6 +589,12 @@ def _retrieval_lines(coverage: dict[str, Any] | None) -> list[str]:
         lines.append(f"- 文件 {label}：窗口 {item.get('max_lines')} 行，{state}")
         if item.get("note"):
             lines.append(f"  - {item.get('note')}")
+    raw_memories = coverage.get("memories")
+    memories: dict[str, Any] = raw_memories if isinstance(raw_memories, dict) else {}
+    if memories.get("unavailable"):
+        lines.append("- 已确认记忆：暂时读不到")
+    elif memories.get("queried"):
+        lines.append(f"- 已确认记忆：纳入 {int(memories.get('included') or 0)} 条")
     gaps = [str(gap) for gap in (coverage.get("gaps") or []) if str(gap).strip()]
     lines.extend(["", "## 缺口"])
     if gaps:
@@ -1089,6 +1097,66 @@ def _fallback_brief(
     }
 
 
+def _visible_source_text(value: str) -> str:
+    cleaned = "".join(ch for ch in value if ch.isprintable() or ch in "\n\t").strip()
+    return cleaned[:8000]
+
+
+def collect_memory_sources(
+    objective: str,
+    *,
+    retrieved_at: str,
+) -> tuple[list[dict[str, Any]], list[str], list[str], dict[str, dict[str, str]], dict[str, Any]]:
+    """Ratified memories for this objective, as citable brief sources.
+
+    Uses the same claim filter as chat. A recall failure is a note, not a
+    fabricated finding. The prompt block carries the memory marker so egress
+    treats the text as personal context.
+    """
+    query = objective.strip()
+    coverage: dict[str, Any] = {"queried": bool(query), "included": 0, "unavailable": False}
+    if not query:
+        return [], [], [], {}, coverage
+    try:
+        hits = read_ports.recall_memories_for_context(query, max_memories=BRIEF_MEMORY_LIMIT)
+    except Exception:
+        logger.warning("brief memory recall failed", exc_info=True)
+        coverage["unavailable"] = True
+        return [], [], ["已确认记忆暂时读不到"], {}, coverage
+    sources: list[dict[str, Any]] = []
+    bodies: list[str] = []
+    catalog: dict[str, dict[str, str]] = {}
+    for hit in hits or []:
+        if not isinstance(hit, dict):
+            continue
+        memory_id = str(hit.get("id") or "").strip()
+        if not memory_id or not _SOURCE_ID_RE.fullmatch(f"memory:{memory_id}"):
+            continue
+        text = _visible_source_text(str(hit.get("content") or ""))
+        if not text:
+            continue
+        source_id = f"memory:{memory_id}"
+        recorded = str(hit.get("created_at") or "")[:10]
+        locator = recorded or "已确认记忆"
+        sources.append({
+            "id": source_id,
+            "type": "memory",
+            "title": _snippet(text, 80),
+            "locator": locator,
+            "retrieved_at": retrieved_at,
+            "content_hash": content_hash(text),
+        })
+        bodies.append(_user_data(
+            f"Memory {source_id} ({locator})",
+            f"{MEMORY_CONTEXT_MARKER}\n{text}",
+        ))
+        catalog[source_id] = {"text": text, "locator": locator, "title": _snippet(text, 80)}
+        if len(sources) >= BRIEF_MEMORY_LIMIT:
+            break
+    coverage["included"] = len(sources)
+    return sources, bodies, [], catalog, coverage
+
+
 async def compile_project_brief_delivery(
     work_id: str,
     outcome: Any = None,
@@ -1117,6 +1185,15 @@ async def compile_project_brief_delivery(
     )
     catalog = coverage.pop("_catalog", {})
     retrieval = {key: value for key, value in coverage.items() if key != "_catalog"}
+    mem_sources, mem_bodies, mem_notes, mem_catalog, mem_coverage = collect_memory_sources(
+        str(contract.get("objective") or ""),
+        retrieved_at=retrieved_at,
+    )
+    sources.extend(mem_sources)
+    bodies.extend(mem_bodies)
+    notes.extend(mem_notes)
+    catalog.update(mem_catalog)
+    retrieval["memories"] = mem_coverage
     allowed_ids = {str(src["id"]) for src in sources}
     source_failures = [note for note in notes if "失败" in note]
     no_sources_configured = not (contract.get("source_scope") or {}).get("email", {}).get("enabled") and not (

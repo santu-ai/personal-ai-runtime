@@ -356,3 +356,149 @@ async def test_compile_stops_when_attributed_cost_cannot_be_read(isolated_kernel
     )
     assert compiled["cost_capped"] is True
     assert any("读不全" in note for note in compiled["delivery"]["limitations"])
+
+
+def _remembered(monkeypatch, hits):
+    def recall(query: str, *, max_memories: int = 3):
+        recall.calls.append((query, max_memories))
+        if isinstance(hits, Exception):
+            raise hits
+        return hits
+
+    recall.calls = []
+    monkeypatch.setattr(
+        "app.product.project_brief.read_ports.recall_memories_for_context",
+        recall,
+    )
+    return recall
+
+
+@pytest.mark.asyncio
+async def test_compile_cites_a_ratified_memory_with_its_snippet(isolated_kernel, monkeypatch):
+    from app.core.runtime.egress.egress_gate import MEMORY_CONTEXT_MARKER, classify_llm_payload
+
+    item = create_project_brief_work(
+        title="A",
+        objective="项目预算口径",
+        source_scope={"email": {"enabled": True, "days": 30}},
+    )
+    recall = _remembered(monkeypatch, [{
+        "id": "mem-1",
+        "content": "预算口径是 RATIFIED-100",
+        "created_at": "2026-09-01 10:00:00",
+        "confidence": 0.9,
+    }])
+    seen: list[str] = []
+
+    async def fake_llm(prompt: str) -> str:
+        seen.append(prompt)
+        return json.dumps({
+            "summary": "预算口径已确认",
+            "content": "沿用已确认口径",
+            "findings": [{
+                "text": "预算口径是 100",
+                "kind": "risk",
+                "source_ids": ["memory:mem-1"],
+                "quote": "预算口径是 RATIFIED-100",
+            }],
+            "suggested_actions": [],
+            "limitations": [],
+        })
+
+    compiled = await compile_project_brief_delivery(
+        item["id"],
+        _inbox_outcome(),
+        execution_id="exec-memory",
+        llm_complete=fake_llm,
+    )
+    assert compiled["ok"] is True
+    assert recall.calls == [("项目预算口径", 3)]
+    assert MEMORY_CONTEXT_MARKER in seen[0]
+    assert "memory_context" in classify_llm_payload([{"role": "user", "content": seen[0]}])["categories"]
+    delivery = compiled["delivery"]
+    assert delivery["retrieval"]["memories"] == {
+        "queried": True,
+        "included": 1,
+        "unavailable": False,
+    }
+    memory = next(src for src in delivery["sources"] if src["id"] == "memory:mem-1")
+    assert memory["type"] == "memory"
+    assert memory["locator"] == "2026-09-01"
+    evidence = delivery["findings"][0]["evidence"][0]
+    assert evidence["quote_in_source"] is True
+    assert evidence["snippet"] == "预算口径是 RATIFIED-100"
+    assert "已确认记忆：纳入 1 条" in delivery["content"]
+    assert "`memory:mem-1`" in delivery["content"]
+
+
+@pytest.mark.asyncio
+async def test_compile_continues_when_memory_recall_fails(isolated_kernel, monkeypatch):
+    item = create_project_brief_work(
+        title="A",
+        objective="列出变化",
+        source_scope={"email": {"enabled": True, "days": 30}},
+    )
+    _remembered(monkeypatch, RuntimeError("chroma down"))
+
+    async def fake_llm(_prompt: str) -> str:
+        return json.dumps({
+            "summary": "有延期风险",
+            "content": "全文",
+            "findings": [{
+                "text": "进度延期",
+                "kind": "risk",
+                "source_ids": ["email:m1"],
+            }],
+            "suggested_actions": [],
+            "limitations": [],
+        })
+
+    compiled = await compile_project_brief_delivery(
+        item["id"],
+        _inbox_outcome(),
+        execution_id="exec-memory-down",
+        llm_complete=fake_llm,
+    )
+    assert compiled["ok"] is True
+    delivery = compiled["delivery"]
+    assert all(src["type"] != "memory" for src in delivery["sources"])
+    assert delivery["retrieval"]["memories"]["unavailable"] is True
+    assert "已确认记忆暂时读不到" in delivery["content"]
+
+
+@pytest.mark.asyncio
+async def test_compile_records_when_no_ratified_memory_matches(isolated_kernel, monkeypatch):
+    item = create_project_brief_work(
+        title="A",
+        objective="列出变化",
+        source_scope={"email": {"enabled": True, "days": 30}},
+    )
+    _remembered(monkeypatch, [])
+
+    async def fake_llm(_prompt: str) -> str:
+        return json.dumps({
+            "summary": "有延期风险",
+            "content": "全文",
+            "findings": [{
+                "text": "进度延期",
+                "kind": "risk",
+                "source_ids": ["email:m1"],
+            }],
+            "suggested_actions": [],
+            "limitations": [],
+        })
+
+    compiled = await compile_project_brief_delivery(
+        item["id"],
+        _inbox_outcome(),
+        execution_id="exec-memory-empty",
+        llm_complete=fake_llm,
+    )
+    assert compiled["ok"] is True
+    assert compiled["delivery"]["retrieval"]["memories"]["included"] == 0
+    assert "已确认记忆：纳入 0 条" in compiled["delivery"]["content"]
+    assert "memory:" not in seen_ids(compiled["delivery"])
+
+
+def seen_ids(delivery: dict) -> str:
+    return " ".join(str(src.get("id") or "") for src in delivery["sources"])
