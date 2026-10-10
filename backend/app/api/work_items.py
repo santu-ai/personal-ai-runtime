@@ -588,17 +588,14 @@ async def decompose_work_item(item_id: str):
     if item.get("work_type") != "goal":
         raise HTTPException(status_code=400, detail="decompose is only supported for goals")
 
+    from app.product.project_brief import _user_data
+
     title = item.get("title", "") or ""
     description = item.get("description", "") or ""
 
-    def _user_data(label: str, value: str, max_len: int = 2000) -> str:
-        cleaned = "".join(ch for ch in value if ch.isprintable() or ch in "\n\t").strip()
-        cleaned = cleaned[:max_len]
-        return f"{label}:\n<<<\n{cleaned}\n>>>"
-
-    goal_block = _user_data("Goal title", title)
+    goal_block = _user_data("Goal title", title, max_len=2000)
     if description:
-        goal_block += "\n" + _user_data("Goal description", description)
+        goal_block += "\n" + _user_data("Goal description", description, max_len=2000)
 
     prompt = f"""You are a goal decomposition assistant. Break down the following goal into 3-7 concrete, actionable steps.
 
