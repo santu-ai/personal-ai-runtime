@@ -33,14 +33,16 @@ export function trialReviewTimeLabel(metrics: DeliveryMetrics): string {
 
 export function trialCostLabel(metrics: DeliveryMetrics): string {
   const explicit = metrics.cost_per_accepted_delivery;
-  const cost =
-    explicit !== undefined
-      ? explicit
-      : metrics.attribution.llm_cost === "unavailable"
-        ? "unavailable"
-        : metrics.accepted_tasks > 0
-          ? metrics.attribution.llm_cost / metrics.accepted_tasks
-          : null;
+  let cost: number | "unavailable" | null;
+  if (explicit !== undefined) {
+    cost = explicit;
+  } else if (!metrics.attribution || metrics.attribution.llm_cost === "unavailable") {
+    cost = metrics.attribution ? "unavailable" : null;
+  } else if (metrics.accepted_tasks > 0) {
+    cost = metrics.attribution.llm_cost / metrics.accepted_tasks;
+  } else {
+    cost = null;
+  }
   if (cost === "unavailable") return "未分开计";
   if (cost == null) return "尚无被接受的交付";
   return `$${cost.toFixed(4)}`;

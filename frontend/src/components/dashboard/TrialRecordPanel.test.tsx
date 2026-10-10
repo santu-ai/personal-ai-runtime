@@ -65,5 +65,6 @@ describe("TrialRecordPanel", () => {
 
   it("says the per-delivery cost is not separated when the read is unavailable", () => {
     expect(trialCostLabel(metrics({ cost_per_accepted_delivery: "unavailable" }))).toBe("未分开计");
+    expect(trialCostLabel({ reviewed_tasks: 0 } as DeliveryMetrics)).toBe("尚无被接受的交付");
   });
 });

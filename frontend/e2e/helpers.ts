@@ -141,6 +141,34 @@ export function buildCommonMocks(): MockApiRouter {
         await route.fulfill({ json: [goal] });
         return;
       }
+      if (pathname.endsWith("/delivery-metrics")) {
+        await route.fulfill({
+          json: {
+            window_days: 14,
+            reviewed_tasks: 0,
+            accepted_tasks: 0,
+            success_rate: null,
+            first_reviewed_tasks: 0,
+            first_version_accepted_tasks: 0,
+            first_version_acceptance_rate: null,
+            rework_count: 0,
+            adopted_action_count: 0,
+            average_review_latency_hours: null,
+            cost_per_accepted_delivery: null,
+            attribution: {
+              approval_interventions: 0,
+              recovery_interventions: 0,
+              llm_cost: 0,
+              unattributed_project_brief_calls: 0,
+              unattributed_project_brief_cost: 0,
+            },
+            capped: false,
+            cap_limit: 5000,
+            items: [],
+          },
+        });
+        return;
+      }
       if (pathname.includes("/decompose")) {
         await route.fulfill({ json: { steps: ["读文档", "写练习"] } });
         return;
