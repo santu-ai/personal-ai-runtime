@@ -739,6 +739,136 @@ def test_truncation_note_uses_the_marker_line_as_evidence():
     assert result["findings"][0]["evidence"][0]["quote_in_source"] is True
 
 
+def test_cited_line_surfaces_owner_and_due_date():
+    result = validate_model_brief(
+        {
+            "summary": "有分工",
+            "content": "正文",
+            "findings": [{
+                "text": "材料要交",
+                "kind": "action",
+                "source_ids": ["email:m1"],
+                "quote": "负责人 陈舟，截止 4月2日",
+            }],
+            "suggested_actions": [{
+                "title": "交材料",
+                "reason": "会前要齐",
+                "source_ids": ["email:m1"],
+            }],
+        },
+        allowed_ids={"email:m1"},
+        criteria=["每条关键结论附来源"],
+        source_notes=[],
+        source_catalog={
+            "email:m1": {
+                "text": "负责人 陈舟，截止 4月2日",
+                "locator": "a@b.c",
+                "title": "分工",
+            },
+        },
+    )
+    finding = result["findings"][0]
+    assert finding["owner"] == "陈舟"
+    assert finding["due_on"] == "4月2日"
+    assert "负责人 陈舟" in finding["text"]
+    assert "截止 4月2日" in finding["text"]
+    assert "负责人 陈舟" in result["content"]
+    action = result["suggested_actions"][0]
+    assert action["owner"] == "陈舟"
+    assert action["due_on"] == "4月2日"
+    assert "截止 4月2日" in action["title"]
+
+
+def test_two_owners_on_one_line_are_not_assigned():
+    result = validate_model_brief(
+        {
+            "summary": "有分工",
+            "content": "正文",
+            "findings": [{
+                "text": "两人负责",
+                "source_ids": ["email:m1"],
+                "quote": "负责人 陈舟 负责人 林晚",
+            }],
+        },
+        allowed_ids={"email:m1"},
+        criteria=["每条关键结论附来源"],
+        source_notes=[],
+        source_catalog={
+            "email:m1": {
+                "text": "负责人 陈舟 负责人 林晚",
+                "locator": "a@b.c",
+                "title": "分工",
+            },
+        },
+    )
+    assert "owner" not in result["findings"][0]
+    assert "负责人 陈舟" not in result["findings"][0]["text"]
+
+
+def test_blocking_risk_is_listed_before_a_change():
+    result = validate_model_brief(
+        {
+            "summary": "有进度",
+            "content": "正文",
+            "findings": [
+                {
+                    "text": "本周进度正常",
+                    "kind": "change",
+                    "source_ids": ["email:a"],
+                    "quote": "本周进度正常",
+                },
+                {
+                    "text": "联调阻塞",
+                    "kind": "risk",
+                    "source_ids": ["email:b"],
+                    "quote": "联调阻塞",
+                },
+            ],
+        },
+        allowed_ids={"email:a", "email:b"},
+        criteria=["每条关键结论附来源"],
+        source_notes=[],
+        source_catalog={
+            "email:a": {"text": "本周进度正常", "locator": "a", "title": "进度"},
+            "email:b": {"text": "联调阻塞", "locator": "b", "title": "风险"},
+        },
+    )
+    assert [item["kind"] for item in result["findings"]] == ["risk", "change"]
+    body = result["content"]
+    assert body.index("联调阻塞") < body.index("本周进度正常")
+
+
+def test_repeat_quote_is_kept_once():
+    result = validate_model_brief(
+        {
+            "summary": "有进度",
+            "content": "正文",
+            "findings": [
+                {
+                    "text": "进度正常",
+                    "kind": "change",
+                    "source_ids": ["email:a"],
+                    "quote": "本周进度正常",
+                },
+                {
+                    "text": "又说了一遍进度",
+                    "kind": "change",
+                    "source_ids": ["email:a"],
+                    "quote": "本周进度正常",
+                },
+            ],
+        },
+        allowed_ids={"email:a"},
+        criteria=["每条关键结论附来源"],
+        source_notes=[],
+        source_catalog={
+            "email:a": {"text": "本周进度正常", "locator": "a", "title": "进度"},
+        },
+    )
+    assert len(result["findings"]) == 1
+    assert result["findings"][0]["text"] == "进度正常"
+
+
 def test_full_source_line_wins_over_a_longer_partial_span():
     text = "注意注意\n本周预算 100元请确认"
     result = _quote_case("注意注意。本周预算 100元", text)

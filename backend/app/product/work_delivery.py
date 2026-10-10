@@ -396,6 +396,26 @@ def _string_delta(previous: list[str], current: list[str]) -> tuple[list[str], l
     return added, removed
 
 
+def _finding_identity(item: dict[str, Any]) -> str:
+    """Same cited line is the same finding, even when the wording changes.
+
+    Without a grounded snippet, the written sentence stays the identity.
+    """
+    evidence = item.get("evidence")
+    if isinstance(evidence, list):
+        parts: list[str] = []
+        for row in evidence:
+            if not isinstance(row, dict) or not row.get("quote_in_source"):
+                continue
+            snippet = _plain_text(row.get("snippet"))
+            source_id = _plain_text(row.get("source_id"))
+            if snippet:
+                parts.append(f"{source_id}:{snippet}")
+        if parts:
+            return "quote:" + "|".join(sorted(parts))
+    return "text:" + _plain_text(item.get("text"))
+
+
 def _changes_from_previous(previous: dict[str, Any], current: dict[str, Any]) -> dict[str, Any]:
     """Structured delta already stored on the two delivery payloads.
 
@@ -407,11 +427,12 @@ def _changes_from_previous(previous: dict[str, Any], current: dict[str, Any]) ->
     findings_added, findings_removed, findings_changed = _partition_changes(
         prev_findings,
         next_findings,
-        key_of=lambda item: _plain_text(item.get("text")),
+        key_of=_finding_identity,
         same=lambda old, item: (
             (_plain_text(old.get("kind")) or "change")
             == (_plain_text(item.get("kind")) or "change")
             and _id_key(old.get("source_ids")) == _id_key(item.get("source_ids"))
+            and _plain_text(old.get("text")) == _plain_text(item.get("text"))
         ),
         view=_finding_view,
         changed_view=lambda old, item: {

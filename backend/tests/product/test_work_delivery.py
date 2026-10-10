@@ -369,6 +369,48 @@ def test_changes_from_previous_use_stored_delivery_fields(isolated_kernel):
     assert "body-v1" not in str(rebuilt["changes_from_previous"])
 
 
+def test_same_source_line_on_rerun_is_a_rewrite_not_a_new_finding(isolated_kernel):
+    item = _create_task()
+    work_id = item["id"]
+    evidence = [{
+        "source_id": "email:1",
+        "locator": "a@b.c",
+        "snippet": "负责人 陈舟，截止 4月2日",
+        "quote_in_source": True,
+    }]
+    publish_delivery(
+        work_id,
+        content="v1",
+        summary="第一版",
+        sources=[{"id": "email:1", "type": "email", "title": "分工", "locator": "a"}],
+        findings=[{
+            "text": "陈舟负责，4月2日截止",
+            "kind": "action",
+            "source_ids": ["email:1"],
+            "evidence": evidence,
+        }],
+        execution_id="exec-same-line-1",
+    )
+    v2 = publish_delivery(
+        work_id,
+        content="v2",
+        summary="第二版",
+        sources=[{"id": "email:1", "type": "email", "title": "分工", "locator": "a"}],
+        findings=[{
+            "text": "负责人还是陈舟，材料 4月2日 前交",
+            "kind": "action",
+            "source_ids": ["email:1"],
+            "evidence": evidence,
+        }],
+        execution_id="exec-same-line-2",
+    )
+    delta = v2["changes_from_previous"]
+    assert delta["findings_added"] == []
+    assert delta["findings_removed"] == []
+    assert delta["findings_changed"][0]["text"] == "负责人还是陈舟，材料 4月2日 前交"
+    assert delta["findings_changed"][0]["previous_kind"] == "action"
+
+
 def test_old_work_without_delivery_still_reads(isolated_kernel):
     item = read_ports.create_work_item("普通任务", work_type="task")
     folded = fold_delivery_history(item["id"])
