@@ -18,6 +18,7 @@ Windows 子集见 [`Makefile.ps1`](../../Makefile.ps1)。
 | `test-backend` | `python3 -m pytest tests/ -q -m "not live_llm"` |
 | `test-backend-coverage` | `python3 -m pytest tests/ -v --cov=app/core/runtime --cov=app/core/harness --cov=app/api --cov=app...` |
 | `test-live` | `RUN_LIVE_LLM=1 python3 -m pytest tests/e2e_live/ -v -m live_llm` |
+| `test-brief-live` | `RUN_LIVE_LLM=1 LLM_BASE_URL=$${LLM_BASE_URL:-http://127.0.0.1:11434/v1} LLM_MODEL=$${LLM_MODEL:-q...` |
 | `test-frontend` | `frontend: npx tsc --noEmit && npm test` |
 | `frontend-build` | `frontend: npm run build` |
 | `merge-gate` | `@echo "merge-gate checks passed"` |

@@ -84,6 +84,7 @@ Available tasks:
   test-backend         Run backend pytest
   test-backend-coverage Backend pytest with coverage gates
   test-live            Run opt-in live LLM smoke (needs RUN_LIVE_LLM=1 + LLM_API_KEY)
+  test-brief-live      Score the brief eval set on a loopback model (Ollama)
   test-frontend        Run frontend unit tests
   frontend-build       Frontend production build
   merge-gate           Coverage tests + frontend test/build + boundary/layer-deps/provenance/rebuild
@@ -147,6 +148,13 @@ PowerShell runs modules sequentially for reliable exit codes; use make/WSL for p
     "test-live" {
         $env:RUN_LIVE_LLM = "1"
         Invoke-Backend -PyArgs @("-m", "pytest", "tests/e2e_live/", "-v", "-m", "live_llm")
+    }
+    "test-brief-live" {
+        $env:RUN_LIVE_LLM = "1"
+        if (-not $env:LLM_BASE_URL) { $env:LLM_BASE_URL = "http://127.0.0.1:11434/v1" }
+        if (-not $env:LLM_MODEL) { $env:LLM_MODEL = "qwen2.5:0.5b" }
+        if (-not $env:LLM_API_KEY) { $env:LLM_API_KEY = "ollama" }
+        Invoke-Backend -PyArgs @("-m", "pytest", "tests/e2e_live/test_live_brief_eval.py", "-v", "-s", "-m", "live_llm")
     }
     "test-frontend" {
         Push-Location $Frontend

@@ -1,0 +1,50 @@
+name: Brief live eval
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 02:30 Asia/Shanghai. Skipped unless the repository variable BRIEF_LIVE_EVAL is 1.
+    - cron: "30 18 * * *"
+
+jobs:
+  eval:
+    if: github.event_name == 'workflow_dispatch' || vars.BRIEF_LIVE_EVAL == '1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install locked dependencies
+        run: python -m pip install --require-hashes -r requirements.lock
+        working-directory: backend
+
+      - name: Install Ollama and a small model
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama serve >/tmp/ollama.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:11434/api/tags && break
+            sleep 2
+          done
+          ollama pull qwen2.5:0.5b
+
+      - name: Score the brief eval set
+        env:
+          RUN_LIVE_LLM: "1"
+          LLM_BASE_URL: http://127.0.0.1:11434/v1
+          LLM_API_KEY: ollama
+          LLM_MODEL: qwen2.5:0.5b
+          BRIEF_EVAL_REPORT: ${{ github.workspace }}/brief-eval-report.txt
+        run: python -m pytest tests/e2e_live/test_live_brief_eval.py -v -s -m live_llm
+        working-directory: backend
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: brief-eval-report
+          path: brief-eval-report.txt
+          if-no-files-found: ignore
