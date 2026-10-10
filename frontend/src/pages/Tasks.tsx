@@ -3023,7 +3023,9 @@ export default function TasksPage() {
           description="指定资料范围、时间范围和验收要求。原始需求会保留在任务说明中。"
           confirmLabel={dialogBusy ? "创建中..." : "创建"}
           cancelLabel="取消"
-          confirmDisabled={!newTitle.trim() || !objective.trim() || parsedCostCap(costCap) === "invalid"}
+          confirmDisabled={
+            !newTitle.trim() || !objective.trim() || parsedCostCap(costCap) === "invalid"
+          }
           confirmBusy={dialogBusy}
           confirmMarker="create"
           onConfirm={() => {
