@@ -400,3 +400,214 @@ async def test_fence_breakout_cannot_call_tools_or_open_egress(client, monkeypat
     assert "list_capability_definitions" not in inspect.getsource(complete_text_with_failover)
     assert _bundle(client, work_id)["current"] is None
     assert _work(client, work_id)["status"] == "failed"
+
+
+def _seed_execution(kernel, execution_id: str) -> None:
+    """Register a handler execution so executor-owned tool calls are allowed."""
+    from app.core.runtime.kernel.constants import AGGREGATE_EXECUTION, EVENT_EXECUTION_REQUESTED
+
+    kernel.emit_event(
+        EVENT_EXECUTION_REQUESTED,
+        AGGREGATE_EXECUTION,
+        execution_id,
+        payload={
+            "execution_id": execution_id,
+            "handler_name": "on_execute_requested",
+            "trigger_event_id": "evt_scenario",
+            "trigger_event_seq": 1,
+            "trigger_event_type": "ExecuteRequested",
+            "instance_id": "runtime:test",
+            "policy": {},
+            "event_seq": 1,
+        },
+        actor="scheduler",
+    )
+
+
+def _finding(text: str, source_id: str, quote: str, kind: str = "change") -> dict:
+    return {
+        "text": text,
+        "kind": kind,
+        "source_ids": [source_id],
+        "quote": quote,
+    }
+
+
+def _sourced_json(marker: str, findings: list[dict]) -> str:
+    return json.dumps({
+        "summary": marker,
+        "content": f"{marker} 正文",
+        "findings": findings,
+        "suggested_actions": [{
+            "title": "确认供应商",
+            "reason": "邮件和文件都提到延期",
+            "source_ids": [findings[0]["source_ids"][0]],
+        }],
+        "limitations": [],
+    }, ensure_ascii=False)
+
+
+@pytest.mark.asyncio
+async def test_fake_mailbox_and_folder_cover_the_brief_loop(
+    client, monkeypatch, allow_tmp_fs,
+):
+    """假邮箱和项目目录跑通：简报、核对来源、验收、预约重跑、变化摘要、出口。"""
+    import hashlib
+
+    from app.core.agents.handlers.timer_trigger_handler import _handle_reminder
+    from app.core.runtime.egress.egress_gate import EgressDeniedError, audit_llm_egress
+    from app.core.runtime.runtime_container import runtime
+    from app.product.work_delivery import brief_changes_summary
+
+    project = allow_tmp_fs / "project"
+    project.mkdir()
+    notes = project / "notes.md"
+    notes.write_text("抬头\n风险：供应商延期\n另有预算 200元\n", encoding="utf-8")
+    file_id = "file:" + hashlib.sha256(str(notes).encode("utf-8")).hexdigest()[:12]
+    email_id = "email:m-budget"
+    mailbox = json.dumps({
+        "scoped": True,
+        "search": {"matched": 1, "truncated": False},
+        "emails": [{
+            "message_id": "m-budget",
+            "subject": "预算变化",
+            "from": "pm@example.com",
+            "date": "2099-01-02T00:00:00+00:00",
+            "body": "本周预算 100元\n联调延期两周",
+        }],
+    }, ensure_ascii=False)
+
+    kernel = runtime.kernel
+    invokes: list[str] = []
+    tool_results: list[tuple[str, object]] = []
+    egress_calls: list[dict] = []
+    original = kernel.invoke_capability
+
+    async def stub_invoke(*args, **kwargs):
+        name = args[0] if args else kwargs.get("name")
+        name = str(name or "")
+        invokes.append(name)
+        if name == "check_inbox":
+            return {"status": "success", "result": mailbox}
+        out = await original(*args, **kwargs)
+        tool_results.append((name, out))
+        return out
+
+    replies = [
+        _sourced_json("第一期", [
+            _finding("联调延期两周", email_id, "联调延期两周", "risk"),
+            _finding("供应商延期", file_id, "供应商延期", "risk"),
+        ]),
+        _sourced_json("第二期", [
+            _finding("联调延期两周", email_id, "联调延期两周", "risk"),
+            _finding("供应商延期", file_id, "供应商延期", "risk"),
+            _finding("预算口径不一致", file_id, "另有预算 200元", "risk"),
+        ]),
+    ]
+
+    async def stub_llm(messages, **kwargs):
+        egress_calls.append({
+            "messages": messages,
+            "data_sources": list(kwargs.get("data_sources") or []),
+        })
+        reply = replies.pop(0)
+        return reply, "stub"
+
+    monkeypatch.setattr(kernel, "invoke_capability", stub_invoke)
+    monkeypatch.setattr(
+        "app.core.agents.brain_llm_ops.complete_text_with_failover", stub_llm,
+    )
+
+    created = client.post("/api/work-items/project-brief", json={
+        "title": "项目 A 简报",
+        "objective": "从邮件和项目目录整理预算、风险和待办",
+        "source_scope": {
+            "email": {"enabled": True, "query": "预算", "days": 3},
+            "files": [{"path": str(notes), "label": "项目笔记"}],
+        },
+    })
+    assert created.status_code == 200, created.text
+    work_id = str(created.json()["id"])
+
+    assert client.post(f"/api/work-items/{work_id}/execute").status_code == 200
+    _seed_execution(kernel, "exec-scenario-1")
+    await _drive_execute(kernel, work_id, execution_id="exec-scenario-1")
+
+    bundle = _bundle(client, work_id)
+    current = bundle["current"]
+    assert current is not None, {
+        "work": _work(client, work_id),
+        "invokes": invokes,
+        "tools": [
+            (name, str(result)[:500]) for name, result in tool_results
+        ],
+        "egress": [call["data_sources"] for call in egress_calls],
+    }
+    assert current["version"] == 1
+    assert current["quality_structure"] == "passed"
+    assert current["quality_evidence"] == "pending"
+    assert bundle["current_review_status"] == "unreviewed"
+    source_ids = {src["id"] for src in current["sources"]}
+    assert email_id in source_ids
+    assert file_id in source_ids
+    quotes = {
+        (row["source_id"], row["snippet"], row["quote_in_source"])
+        for finding in current["findings"]
+        for row in finding.get("evidence") or []
+    }
+    assert (email_id, "联调延期两周", True) in quotes
+    assert any(sid == file_id and "供应商延期" in snippet and ok for sid, snippet, ok in quotes)
+    assert "检索范围" in current["content"]
+    assert "金额不一致" in current["content"]
+    retrieval = current["retrieval"]
+    assert retrieval["email"]["scoped"] is True
+    assert retrieval["email"]["included"] == 1
+    assert retrieval["files"][0]["truncated"] is False
+    assert any("金额不一致" in str(gap) for gap in retrieval["gaps"])
+    assert egress_calls[0]["data_sources"] == ["email", "file"]
+    with pytest.raises(EgressDeniedError):
+        audit_llm_egress(
+            egress_calls[0]["messages"],
+            purpose="project_brief",
+            provider_name="remote",
+            provider_local=False,
+            data_sources=["email", "file"],
+        )
+
+    accept = client.post(
+        f"/api/work-items/{work_id}/deliveries/{current['delivery_id']}/accept",
+        json={"idempotency_key": "scenario-accept"},
+    )
+    assert accept.status_code == 200, accept.text
+    assert _bundle(client, work_id)["current_review_status"] == "accepted"
+    assert _bundle(client, work_id)["current"]["quality_evidence"] == "pending"
+
+    scheduled = client.post(
+        f"/api/work-items/{work_id}/repeat-timer",
+        json={"hours": 1},
+    )
+    assert scheduled.status_code == 200, scheduled.text
+    assert scheduled.json()["changes_summary"] == "还没有上一版"
+    assert scheduled.json()["work_id"] == work_id
+
+    await _handle_reminder(
+        {"message": "再次运行：项目 A 简报", "work_id": work_id},
+        scheduled.json()["timer_id"],
+    )
+    _seed_execution(kernel, "exec-scenario-2")
+    await _drive_execute(kernel, work_id, execution_id="exec-scenario-2")
+
+    again = _bundle(client, work_id)
+    assert again["current"]["version"] == 2
+    assert again["current"]["supersedes_delivery_id"] == current["delivery_id"]
+    assert any(
+        finding["text"] == "预算口径不一致"
+        for finding in again["current"]["findings"]
+    )
+    summary = brief_changes_summary(work_id)
+    assert summary.startswith("相对 v1")
+    assert "新增结论 1" in summary
+    assert invokes == [
+        "check_inbox", "read_file", "set_timer", "check_inbox", "read_file",
+    ]
+    assert egress_calls[1]["data_sources"] == ["email", "file"]
