@@ -32,6 +32,23 @@ export function trialReviewTimeLabel(metrics: DeliveryMetrics): string {
   return `${metrics.average_review_latency_hours} 小时`;
 }
 
+export function trialReviewTrendLabel(metrics: DeliveryMetrics): string {
+  if (metrics.average_review_latency_hours == null) return "尚无核对";
+  const trend = metrics.review_time_trend;
+  const earlier = trend?.earlier_half_hours;
+  const later = trend?.later_half_hours;
+  if (
+    !trend
+    || trend.earlier_half_count <= 0
+    || trend.later_half_count <= 0
+    || earlier == null
+    || later == null
+  ) {
+    return "次数不够，还看不出变快";
+  }
+  return `前半段 ${earlier} 小时（${trend.earlier_half_count} 次），后半段 ${later} 小时（${trend.later_half_count} 次）`;
+}
+
 export function trialCostLabel(metrics: DeliveryMetrics): string {
   const explicit = metrics.cost_per_accepted_delivery;
   let cost: number | "unavailable" | null;
@@ -60,6 +77,8 @@ export function trialRecordDocument(metrics: DeliveryMetrics, exportedAt: string
         "窗口内首次评审就接受第一版的比例。没有首次评审时页面写「尚无首次评审」。",
       average_review_latency_hours:
         "从交付到首次评审的平均小时数，用来看核对花了多少时间。没有核对时页面写「尚无核对」。",
+      review_time_trend:
+        "把窗口对半切开。前半段和后半段各至少有一次核对时，比较两段的平均小时。后半段更短，说明这 14 天里核对变快了。这不是和不用助手相比省下的时间。只有一个总平均数看不出有没有降下来。每一次核对的起止时间在 reviews 里。次数只落在半段时页面写「次数不够，还看不出变快」。",
       cost_per_accepted_delivery:
         "已归因模型费用除以被接受的份数。没有被接受的交付时页面写「尚无被接受的交付」；费用不是数字时写「未分开计」。",
     },
@@ -67,8 +86,11 @@ export function trialRecordDocument(metrics: DeliveryMetrics, exportedAt: string
       success_rate: trialSuccessLabel(metrics),
       first_version_acceptance_rate: trialFirstVersionLabel(metrics),
       average_review_latency_hours: trialReviewTimeLabel(metrics),
+      review_time_trend: trialReviewTrendLabel(metrics),
       cost_per_accepted_delivery: trialCostLabel(metrics),
     },
+    review_time_trend: metrics.review_time_trend ?? null,
+    reviews: metrics.reviews ?? [],
     metrics,
   };
 }
@@ -112,6 +134,7 @@ export function TrialRecordView({ metrics }: { metrics: DeliveryMetrics }) {
         <TrialRow label="成功率" value={trialSuccessLabel(metrics)} />
         <TrialRow label="第一版验收率" value={trialFirstVersionLabel(metrics)} />
         <TrialRow label="人工核对时间" value={trialReviewTimeLabel(metrics)} />
+        <TrialRow label="核对是否变短" value={trialReviewTrendLabel(metrics)} />
         <TrialRow label="每份被接受交付的成本" value={trialCostLabel(metrics)} />
       </div>
       <div className="mt-3">
