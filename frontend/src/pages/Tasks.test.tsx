@@ -1140,6 +1140,51 @@ describe("TasksPage", () => {
     });
   });
 
+  it("sends a per-run cost cap and refuses a non-numeric one", async () => {
+    vi.mocked(createProjectBrief).mockResolvedValue(briefTask);
+    renderTasks("/tasks");
+    fireEvent.click(screen.getByRole("button", { name: "新建简报" }));
+    fireEvent.change(screen.getByPlaceholderText("项目 A 简报"), {
+      target: { value: "项目 A 简报" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/整理最近三天的邮件/), {
+      target: { value: "整理最近三天邮件" },
+    });
+    const cap = screen.getByPlaceholderText("不填则不限制");
+    fireEvent.change(cap, { target: { value: "abc" } });
+    expect(screen.getByRole("button", { name: "创建" })).toBeDisabled();
+    fireEvent.change(cap, { target: { value: "0.05" } });
+    fireEvent.click(screen.getByRole("button", { name: "创建" }));
+    await waitFor(() => expect(createProjectBrief).toHaveBeenCalledTimes(1));
+    expect(createProjectBrief).toHaveBeenCalledWith({
+      title: "项目 A 简报",
+      objective: "整理最近三天邮件",
+      source_scope: {
+        email: { enabled: true, query: "", days: 3 },
+        files: [],
+      },
+      cost_cap_usd: 0.05,
+    });
+  });
+
+  it("shows the stored per-run cost cap on the brief", async () => {
+    const capped: WorkItem = {
+      ...briefTask,
+      executable_plan: JSON.stringify({
+        kind: "project_brief",
+        contract: { cost_cap_usd: 0.5 },
+        steps: [],
+      }),
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [capped];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(capped);
+    renderTasks("/tasks/brief_1");
+    expect(await screen.findByTestId("brief-cost-cap")).toHaveTextContent("单次费用上限 $0.5000");
+  });
+
   it("shows full delivery first and accepts the current version", async () => {
     vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
       if (workType === "task") return [briefTask];

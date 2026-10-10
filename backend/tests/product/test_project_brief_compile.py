@@ -226,3 +226,133 @@ async def test_compile_declares_email_and_file_sources(isolated_kernel, monkeypa
     body = seen[0]["messages"][1]["content"]
     assert "只是普通进度，没有特殊标记" in body
     assert "本地笔记：下周三评审" in body
+
+
+def _inbox_outcome() -> SimpleNamespace:
+    return SimpleNamespace(results=[
+        SimpleNamespace(
+            tool="check_inbox",
+            status="success",
+            result=json.dumps({
+                "emails": [{
+                    "message_id": "m1",
+                    "subject": "项目变化",
+                    "from": "a@b.c",
+                    "date": "2099-01-01T00:00:00+00:00",
+                    "preview": "进度延期",
+                }],
+            }),
+        ),
+    ])
+
+
+def test_create_project_brief_stores_a_non_negative_cost_cap(isolated_kernel):
+    item = create_project_brief_work(
+        title="A",
+        objective="列出变化",
+        cost_cap_usd=0.05,
+    )
+    plan = json.loads(item["executable_plan"])
+    assert plan["contract"]["cost_cap_usd"] == 0.05
+    with pytest.raises(ValueError, match="非负"):
+        create_project_brief_work(title="A", objective="列出变化", cost_cap_usd=-1)
+
+
+@pytest.mark.asyncio
+async def test_compile_stops_when_the_cost_cap_would_be_exceeded(isolated_kernel, monkeypatch):
+    item = create_project_brief_work(
+        title="A",
+        objective="列出变化",
+        source_scope={"email": {"enabled": True, "days": 30}},
+        cost_cap_usd=0,
+    )
+    monkeypatch.setattr(
+        "app.product.project_brief._provider_token_prices",
+        lambda: (1.0, 1.0, "test-model"),
+    )
+    called = False
+
+    async def fake_llm(_prompt: str) -> str:
+        nonlocal called
+        called = True
+        return "{}"
+
+    compiled = await compile_project_brief_delivery(
+        item["id"],
+        _inbox_outcome(),
+        execution_id="exec-cap",
+        llm_complete=fake_llm,
+    )
+    assert called is False
+    assert compiled["ok"] is True
+    assert compiled["qualified"] is False
+    assert compiled["cost_capped"] is True
+    assert compiled["delivery"]["quality_structure"] == "failed"
+    assert any("单次费用上限" in note for note in compiled["delivery"]["limitations"])
+    assert "没有再调用模型" in compiled["delivery"]["content"]
+
+
+@pytest.mark.asyncio
+async def test_compile_calls_the_model_when_the_estimate_fits_the_cap(isolated_kernel, monkeypatch):
+    item = create_project_brief_work(
+        title="A",
+        objective="列出变化",
+        source_scope={"email": {"enabled": True, "days": 30}},
+        cost_cap_usd=10,
+    )
+    monkeypatch.setattr(
+        "app.product.project_brief._provider_token_prices",
+        lambda: (0.0, 0.0, "test-model"),
+    )
+    called = False
+
+    async def fake_llm(_prompt: str) -> str:
+        nonlocal called
+        called = True
+        return json.dumps({
+            "summary": "有延期风险",
+            "content": "全文",
+            "findings": [{
+                "text": "进度延期",
+                "kind": "risk",
+                "source_ids": ["email:m1"],
+            }],
+            "suggested_actions": [],
+            "limitations": [],
+        })
+
+    compiled = await compile_project_brief_delivery(
+        item["id"],
+        _inbox_outcome(),
+        execution_id="exec-fit",
+        llm_complete=fake_llm,
+    )
+    assert called is True
+    assert compiled["ok"] is True
+    assert compiled.get("cost_capped") is not True
+
+
+@pytest.mark.asyncio
+async def test_compile_stops_when_attributed_cost_cannot_be_read(isolated_kernel, monkeypatch):
+    item = create_project_brief_work(
+        title="A",
+        objective="列出变化",
+        source_scope={"email": {"enabled": True, "days": 30}},
+        cost_cap_usd=1,
+    )
+    monkeypatch.setattr(
+        "app.product.project_brief.model_cost_for_delivery",
+        lambda _execution_id: {"llm_cost": "unavailable", "recovery_interventions": "unavailable"},
+    )
+
+    async def fake_llm(_prompt: str) -> str:
+        raise AssertionError("model should not be called")
+
+    compiled = await compile_project_brief_delivery(
+        item["id"],
+        _inbox_outcome(),
+        execution_id="exec-unread",
+        llm_complete=fake_llm,
+    )
+    assert compiled["cost_capped"] is True
+    assert any("读不全" in note for note in compiled["delivery"]["limitations"])

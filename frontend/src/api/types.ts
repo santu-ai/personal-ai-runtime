@@ -472,6 +472,7 @@ export interface CreateProjectBriefPayload {
     files?: Array<{ path: string; label?: string }>;
   };
   acceptance_criteria?: string[];
+  cost_cap_usd?: number;
 }
 
 export interface Approval {
