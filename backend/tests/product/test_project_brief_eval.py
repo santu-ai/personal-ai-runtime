@@ -65,6 +65,28 @@ def _file(body: str, step: int | None = None) -> SimpleNamespace:
     return result
 
 
+def prepare_case(case: dict):
+    """Collect one fixed eval case the same way the deterministic suite does."""
+    scope: dict = {
+        "timezone": "UTC",
+        "email": {
+            "enabled": True,
+            "query": case.get("query") or "",
+            "days": case.get("days", 30),
+            "since": case.get("since") or "2099-01-01",
+            "limit": 30,
+        },
+    }
+    if case.get("files") is not None:
+        scope["files"] = case["files"]
+    return collect_allowed_sources(
+        contract={"source_scope": scope, "objective": "整理进度、风险和待办"},
+        step_results=case["results"],
+        retrieved_at="t0",
+        plan_steps=case.get("plan_steps"),
+    )
+
+
 def _collect(
     results: list[SimpleNamespace],
     *,
@@ -74,24 +96,14 @@ def _collect(
     plan_steps: list[dict] | None = None,
     since: str = "2099-01-01",
 ):
-    scope: dict = {
-        "timezone": "UTC",
-        "email": {
-            "enabled": True,
-            "query": query,
-            "days": days,
-            "since": since,
-            "limit": 30,
-        },
-    }
-    if files is not None:
-        scope["files"] = files
-    sources, _bodies, notes, coverage = collect_allowed_sources(
-        contract={"source_scope": scope},
-        step_results=results,
-        retrieved_at="t0",
-        plan_steps=plan_steps,
-    )
+    sources, _bodies, notes, coverage = prepare_case({
+        "query": query,
+        "days": days,
+        "files": files,
+        "plan_steps": plan_steps,
+        "since": since,
+        "results": results,
+    })
     return sources, notes, coverage
 
 

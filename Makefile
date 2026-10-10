@@ -1,4 +1,4 @@
-.PHONY: install setup init-db dev demo screenshots test test-backend test-backend-coverage test-live test-frontend test-e2e test-e2e-real ci-local backend-ci-core backend-ci-static backend-ci-runtime backend-compileall backend-smoke lint typecheck dependency-sync desktop desktop-test desktop-build boundary layer-deps layer-deps-inventory layer-deps-strict docs-links docs-table-sync docs-line-refs docs-numbers docs-gen docs-gen-check policy-consistency rebuild-verify export-roundtrip-verify snapshot-verify egress-verify alembic-verify vector-consistency-verify memory-repair-verify tool-calls-audit-verify architecture-check architecture-check-strict architecture-snapshot architecture-record event-schema event-schema-snapshot event-schema-record non-sovereign-attachments single-process-control-plane dynamic-imports except-hygiene dashboard dashboard-write docker-up docker-down compose-smoke projection-provenance conversation-rebuild goal-rebuild work-items-goal-rebuild memory-lifecycle-verify inbox-audit-verify lockfile secrets-scan merge-gate frontend-build
+.PHONY: install setup init-db dev demo screenshots test test-backend test-backend-coverage test-live test-brief-live test-frontend test-e2e test-e2e-real ci-local backend-ci-core backend-ci-static backend-ci-runtime backend-compileall backend-smoke lint typecheck dependency-sync desktop desktop-test desktop-build boundary layer-deps layer-deps-inventory layer-deps-strict docs-links docs-table-sync docs-line-refs docs-numbers docs-gen docs-gen-check policy-consistency rebuild-verify export-roundtrip-verify snapshot-verify egress-verify alembic-verify vector-consistency-verify memory-repair-verify tool-calls-audit-verify architecture-check architecture-check-strict architecture-snapshot architecture-record event-schema event-schema-snapshot event-schema-record non-sovereign-attachments single-process-control-plane dynamic-imports except-hygiene dashboard dashboard-write docker-up docker-down compose-smoke projection-provenance conversation-rebuild goal-rebuild work-items-goal-rebuild memory-lifecycle-verify inbox-audit-verify lockfile secrets-scan merge-gate frontend-build
 
 # Backend
 BACKEND_DIR := backend
@@ -53,6 +53,9 @@ test-backend-coverage:
 # Opt-in live LLM smoke (requires RUN_LIVE_LLM=1 and a real LLM_API_KEY).
 test-live:
 	cd $(BACKEND_DIR) && RUN_LIVE_LLM=1 python3 -m pytest tests/e2e_live/ -v -m live_llm
+
+test-brief-live:
+	cd $(BACKEND_DIR) && RUN_LIVE_LLM=1 LLM_BASE_URL=$${LLM_BASE_URL:-http://127.0.0.1:11434/v1} LLM_MODEL=$${LLM_MODEL:-qwen2.5:0.5b} LLM_API_KEY=$${LLM_API_KEY:-ollama} python3 -m pytest tests/e2e_live/test_live_brief_eval.py -v -s -m live_llm
 
 test-frontend:
 	cd $(FRONTEND_DIR) && npx tsc --noEmit && npm test
