@@ -34,6 +34,8 @@ def score_case(
     parsed: bool,
     quality_evidence: str = "",
     brief_text: str = "",
+    fact_any: list[str] | None = None,
+    fact_all: list[str] | None = None,
 ) -> dict:
     gaps = "\n".join(collector_gaps)
     expects_conflict = case_id.startswith("contra-") and "金额不一致" in gaps
@@ -50,6 +52,14 @@ def score_case(
         included_empty or "没有看到" in gaps
     )
     invented = bool(model_amounts - source_amounts)
+    any_spans = [str(item) for item in (fact_any or []) if str(item)]
+    all_spans = [str(item) for item in (fact_all or []) if str(item)]
+    fact_applicable = bool(any_spans or all_spans)
+    fact_hit = False
+    if fact_applicable and parsed:
+        fact_hit = all(span in brief_text for span in all_spans) and (
+            not any_spans or any(span in brief_text for span in any_spans)
+        )
     return {
         "id": case_id,
         "parsed": parsed,
@@ -58,6 +68,8 @@ def score_case(
         "invented_amount": invented,
         "contradiction_applicable": contradiction_applicable,
         "contradiction_handled": contradiction_handled,
+        "fact_applicable": fact_applicable,
+        "fact_hit": fact_hit,
     }
 
 
@@ -69,6 +81,26 @@ def _rate(numerator: int, denominator: int) -> float | None:
 
 def _is_holdout(row: dict) -> bool:
     return str(row.get("id") or "").startswith("holdout-")
+
+
+def _is_sealed(row: dict) -> bool:
+    return str(row.get("id") or "").startswith("sealed-")
+
+
+def _is_dev(row: dict) -> bool:
+    return str(row.get("id") or "").startswith("dev-")
+
+
+def _tier_report(rows: list[dict], prefix: str) -> dict:
+    parsed = [row for row in rows if row["parsed"]]
+    fields = _support_fields(parsed, prefix)
+    fact_rows = [row for row in parsed if row.get("fact_applicable")]
+    fact_hits = [row for row in fact_rows if row.get("fact_hit")]
+    fields[f"{prefix}fact_rate"] = _rate(len(fact_hits), len(fact_rows))
+    fields[f"{prefix}fact_miss_ids"] = [
+        row["id"] for row in fact_rows if not row.get("fact_hit")
+    ]
+    return fields
 
 
 def _support_fields(parsed: list[dict], prefix: str) -> dict:
@@ -90,8 +122,19 @@ def _support_fields(parsed: list[dict], prefix: str) -> dict:
 
 def summarize(rows: list[dict]) -> dict:
     parsed = [row for row in rows if row["parsed"]]
-    tracked = [row for row in parsed if not _is_holdout(row)]
+    tracked = [
+        row for row in parsed
+        if not _is_holdout(row) and not _is_sealed(row) and not _is_dev(row)
+    ]
     holdout = [row for row in parsed if _is_holdout(row)]
+    sealed_fields = _tier_report(
+        [row for row in rows if _is_sealed(row)],
+        "sealed_",
+    )
+    dev_fields = _tier_report(
+        [row for row in rows if _is_dev(row)],
+        "dev_",
+    )
     supported = [row for row in parsed if row["evidence_supported"]]
     miss_rows = [row for row in parsed if row["miss_applicable"]]
     missed = [row for row in miss_rows if row["invented_amount"]]
@@ -119,4 +162,13 @@ def summarize(rows: list[dict]) -> dict:
         "holdout_parsed": holdout_fields["holdout_parsed"],
         "holdout_evidence_support_rate": holdout_fields["holdout_evidence_support_rate"],
         "holdout_unsupported_ids": holdout_fields["holdout_unsupported_ids"],
+        "sealed_parsed": sealed_fields["sealed_parsed"],
+        "sealed_evidence_support_rate": sealed_fields["sealed_evidence_support_rate"],
+        "sealed_unsupported_ids": sealed_fields["sealed_unsupported_ids"],
+        "sealed_fact_rate": sealed_fields["sealed_fact_rate"],
+        "sealed_fact_miss_ids": sealed_fields["sealed_fact_miss_ids"],
+        "dev_parsed": dev_fields["dev_parsed"],
+        "dev_evidence_support_rate": dev_fields["dev_evidence_support_rate"],
+        "dev_fact_rate": dev_fields["dev_fact_rate"],
+        "dev_fact_miss_ids": dev_fields["dev_fact_miss_ids"],
     }

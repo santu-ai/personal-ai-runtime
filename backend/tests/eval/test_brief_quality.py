@@ -157,3 +157,46 @@ def test_holdout_support_is_reported_apart_from_the_tracked_set():
     assert report["holdout_evidence_support_rate"] == 1.0
     assert report["holdout_unsupported_ids"] == []
     assert report["miss_rate"] is None
+
+
+def test_sealed_fact_miss_stays_out_of_the_tracked_rate():
+    stale = score_case(
+        case_id="sealed-thread-supersede",
+        source_text="验收改到 4月18日\n> 验收定在 4月3日",
+        collector_gaps=[],
+        included_empty=False,
+        parsed=True,
+        quality_evidence="pending",
+        brief_text="验收定在 4月3日",
+        fact_any=["4月18日"],
+    )
+    kept = score_case(
+        case_id="sealed-quoted-reply",
+        source_text="42万元\n18万元",
+        collector_gaps=[],
+        included_empty=False,
+        parsed=True,
+        quality_evidence="pending",
+        brief_text="预算改成 42万元",
+        fact_any=["42万元"],
+    )
+    both_dates = score_case(
+        case_id="sealed-date-conflict",
+        source_text="5月2日\n5月9日",
+        collector_gaps=[],
+        included_empty=False,
+        parsed=True,
+        quality_evidence="pending",
+        brief_text="邮件写 5月2日，记录写 5月9日",
+        fact_all=["5月2日", "5月9日"],
+    )
+    assert stale["fact_hit"] is False
+    assert kept["fact_hit"] is True
+    assert both_dates["fact_hit"] is True
+    report = summarize([stale, kept, both_dates, _row()])
+    assert report["tracked_parsed"] == 1
+    assert report["sealed_parsed"] == 3
+    assert report["sealed_fact_rate"] == round(2 / 3, 4)
+    assert report["sealed_fact_miss_ids"] == ["sealed-thread-supersede"]
+    assert report["sealed_evidence_support_rate"] == 1.0
+    assert report["dev_parsed"] == 0
