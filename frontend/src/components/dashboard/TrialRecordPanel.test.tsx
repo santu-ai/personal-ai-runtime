@@ -95,10 +95,10 @@ describe("TrialRecordPanel", () => {
     renderWithRouter(<TrialRecordView metrics={metrics()} />);
     fireEvent.click(screen.getByRole("button", { name: "导出试用记录" }));
     downloadTrialRecord(metrics(), "2026-10-10T03:00:00.000Z");
-    const blob = create.mock.calls.at(-1)?.[0] as Blob;
+    const blob = create.mock.calls[create.mock.calls.length - 1]?.[0] as Blob;
     expect(await blob.text()).toContain("50%（2/4）");
     expect(downloads[0]).toMatch(/^trial-record-\d{4}-\d{2}-\d{2}\.json$/);
-    expect(downloads.at(-1)).toBe("trial-record-2026-10-10.json");
+    expect(downloads[downloads.length - 1]).toBe("trial-record-2026-10-10.json");
     expect(revoke).toHaveBeenCalled();
     create.mockRestore();
     revoke.mockRestore();
