@@ -47,6 +47,8 @@ describe("TrialRecordPanel", () => {
     expect(record).toHaveTextContent("25%（1/4）");
     expect(record).toHaveTextContent("人工核对时间");
     expect(record).toHaveTextContent("1.5 小时");
+    expect(record).toHaveTextContent("核对是否变短");
+    expect(record).toHaveTextContent("次数不够，还看不出变快");
     expect(record).toHaveTextContent("每份被接受交付的成本");
     expect(record).toHaveTextContent("$0.1250");
   });
@@ -81,8 +83,11 @@ describe("TrialRecordPanel", () => {
     expect(doc.display.success_rate).toBe("50%（2/4）");
     expect(doc.display.first_version_acceptance_rate).toBe("25%（1/4）");
     expect(doc.display.average_review_latency_hours).toBe("1.5 小时");
+    expect(doc.display.review_time_trend).toBe("次数不够，还看不出变快");
     expect(doc.display.cost_per_accepted_delivery).toBe("$0.1250");
     expect(doc.how_to_read.average_review_latency_hours).toContain("核对");
+    expect(doc.how_to_read.review_time_trend).toContain("后半段");
+    expect(doc.reviews).toEqual([]);
 
     const create = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:trial");
     const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});

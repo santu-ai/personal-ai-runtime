@@ -453,6 +453,21 @@ export interface DeliveryMetrics {
   rework_count: number;
   adopted_action_count: number;
   average_review_latency_hours: number | null;
+  review_time_trend?: {
+    split_at: string;
+    earlier_half_hours: number | null;
+    earlier_half_count: number;
+    later_half_hours: number | null;
+    later_half_count: number;
+  };
+  reviews?: Array<{
+    work_id: string;
+    title: string;
+    published_at: string;
+    decided_at: string;
+    latency_hours: number;
+    decision: string;
+  }>;
   /** Attributable model cost divided by accepted briefs in the window. */
   cost_per_accepted_delivery?: number | "unavailable" | null;
   attribution: {

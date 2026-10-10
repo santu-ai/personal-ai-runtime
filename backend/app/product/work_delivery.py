@@ -2221,6 +2221,44 @@ def _cost_per_accepted(cost: Any, accepted: int) -> Any:
     return round(float(cost) / accepted, 6)
 
 
+def review_time_trend(
+    reviews: list[dict[str, Any]],
+    *,
+    since: datetime,
+    moment: datetime,
+) -> dict[str, Any]:
+    """Split review hours at the middle of the window.
+
+    One average cannot show whether checking got shorter. The earlier half
+    and the later half can. A half with no review stays ``None``.
+    """
+    midpoint = since + (moment - since) / 2
+    earlier: list[float] = []
+    later: list[float] = []
+    for row in reviews:
+        decided = _metric_datetime(row.get("decided_at"))
+        hours = row.get("latency_hours")
+        if decided is None or not isinstance(hours, (int, float)) or isinstance(hours, bool):
+            continue
+        if decided < midpoint:
+            earlier.append(float(hours))
+        else:
+            later.append(float(hours))
+
+    def _avg(values: list[float]) -> float | None:
+        if not values:
+            return None
+        return round(sum(values) / len(values), 2)
+
+    return {
+        "split_at": midpoint.isoformat(),
+        "earlier_half_hours": _avg(earlier),
+        "earlier_half_count": len(earlier),
+        "later_half_hours": _avg(later),
+        "later_half_count": len(later),
+    }
+
+
 def summarize_delivery_metrics(
     *,
     days: int = 30,
@@ -2275,6 +2313,7 @@ def summarize_delivery_metrics(
     reviewed_tasks = accepted_tasks = first_reviewed = first_accepted = 0
     reworks = adopted_actions = 0
     review_latency_hours: list[float] = []
+    reviews: list[dict[str, Any]] = []
     per_work: list[dict[str, Any]] = []
     folded_by_work: dict[str, dict[str, Any]] = {}
 
@@ -2324,6 +2363,7 @@ def summarize_delivery_metrics(
             first_accepted += 1
 
         latencies: list[float] = []
+        review_rows: list[dict[str, Any]] = []
         deliveries = folded.get("_by_id") or {}
         for decision in current_decisions:
             delivery = deliveries.get(str(decision.get("delivery_id") or "")) or {}
@@ -2333,8 +2373,19 @@ def summarize_delivery_metrics(
                 hours = (decided_at - published_at).total_seconds() / 3600
                 latencies.append(hours)
                 review_latency_hours.append(hours)
+                review_rows.append({
+                    "work_id": work_id,
+                    "published_at": published_at.isoformat(),
+                    "decided_at": decided_at.isoformat(),
+                    "latency_hours": round(hours, 2),
+                    "decision": str(decision.get("decision") or ""),
+                })
 
         item = read_ports.query_work_item(work_id) or {}
+        title = str(item.get("title") or "")
+        for row in review_rows:
+            row["title"] = title
+        reviews.extend(review_rows)
         per_work.append({
             "work_id": work_id,
             "title": item.get("title") or "",
@@ -2392,6 +2443,8 @@ def summarize_delivery_metrics(
             round(sum(review_latency_hours) / len(review_latency_hours), 2)
             if review_latency_hours else None
         ),
+        "review_time_trend": review_time_trend(reviews, since=since, moment=moment),
+        "reviews": reviews,
         "attribution": attribution,
         "capped": len(recent) >= limit or attribution_capped,
         "cap_limit": limit,

@@ -767,6 +767,30 @@ def test_delivery_metrics_track_first_acceptance_rework_and_adoption(isolated_ke
     assert by_title["首版通过"]["first_review_accepted_v1"] is True
     assert by_title["返工通过"]["reworks"] == 1
     assert by_title["返工通过"]["adopted_actions"] == 1
+    assert len(metrics["reviews"]) >= 2
+    assert metrics["reviews"][0]["latency_hours"] >= 0
+    assert "decided_at" in metrics["reviews"][0]
+    trend = metrics["review_time_trend"]
+    assert trend["earlier_half_count"] + trend["later_half_count"] == len(metrics["reviews"])
+
+
+def test_review_time_trend_splits_the_window_in_half():
+    from datetime import UTC, datetime, timedelta
+
+    from app.product.work_delivery import review_time_trend
+
+    moment = datetime(2026, 10, 11, tzinfo=UTC)
+    since = moment - timedelta(days=14)
+    reviews = [
+        {"decided_at": "2026-10-01T00:00:00+00:00", "latency_hours": 4},
+        {"decided_at": "2026-10-08T00:00:00+00:00", "latency_hours": 1},
+        {"decided_at": "2026-10-10T00:00:00+00:00", "latency_hours": 1},
+    ]
+    trend = review_time_trend(reviews, since=since, moment=moment)
+    assert trend["earlier_half_count"] == 1
+    assert trend["earlier_half_hours"] == 4
+    assert trend["later_half_count"] == 2
+    assert trend["later_half_hours"] == 1
 
 
 def test_unreviewed_delivery_is_not_hidden_by_newer_ordinary_tasks(isolated_kernel):
