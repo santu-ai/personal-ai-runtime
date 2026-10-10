@@ -377,3 +377,112 @@ async def test_cron_reschedule_failure_healed_by_init_timers(isolated_kernel, mo
     _init_timers()
     assert k.query_state("timer_events", id="morning_brief")[0]["status"] == "active"
 
+
+def _utc_z(moment) -> str:
+    from datetime import UTC
+
+    return moment.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _timer_event_count(db, event_type: str, timer_id: str) -> int:
+    with db.get_db() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM event_log WHERE type=? AND aggregate_id=?",
+            (event_type, timer_id),
+        ).fetchone()
+    return int(row[0])
+
+
+def _arm_timer(k, timer_id: str, *, schedule_type: str, fire_at: str, cron_expr: str = ""):
+    k.emit_event(
+        "TimerCreated",
+        "timer",
+        timer_id,
+        payload={
+            "handler_name": "reminder",
+            "schedule_type": schedule_type,
+            "cron_expr": cron_expr,
+            "fire_at": fire_at,
+            "payload": {"message": "再次运行", "work_id": "brief-1"},
+        },
+        actor="test",
+    )
+
+
+@pytest.mark.asyncio
+async def test_sleep_and_restart_fire_an_overdue_one_shot_once(isolated_kernel, monkeypatch):
+    """A one-shot that comes due while the laptop sleeps fires once after wake."""
+    from datetime import UTC, datetime, timedelta
+
+    import app.core.runtime.runtime_loop as rl_mod
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    k, db = isolated_kernel
+    fire_at = datetime(2026, 10, 11, 1, 0, tzinfo=UTC)
+    _arm_timer(k, "sleep_once", schedule_type="once", fire_at=_utc_z(fire_at))
+    monkeypatch.setattr(rl_mod, "kernel", k)
+
+    asleep = RuntimeLoop()
+    await asleep._check_timers(now=fire_at - timedelta(hours=2))
+    assert _timer_event_count(db, "TimerFired", "sleep_once") == 0
+
+    await asleep._check_timers(now=fire_at + timedelta(hours=8))
+    assert _timer_event_count(db, "TimerFired", "sleep_once") == 1
+    assert _timer_event_count(db, "TimerCreated", "sleep_once") == 1
+    assert k.query_state("timer_events", id="sleep_once")[0]["status"] == "fired"
+
+    restarted = RuntimeLoop()
+    await restarted._check_timers(now=fire_at + timedelta(hours=10))
+    assert _timer_event_count(db, "TimerFired", "sleep_once") == 1
+
+
+@pytest.mark.asyncio
+async def test_clock_jump_backward_leaves_a_future_timer_alone(isolated_kernel, monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    import app.core.runtime.runtime_loop as rl_mod
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    k, db = isolated_kernel
+    fire_at = datetime(2026, 10, 11, 8, 0, tzinfo=UTC)
+    _arm_timer(k, "clock_back", schedule_type="once", fire_at=_utc_z(fire_at))
+    monkeypatch.setattr(rl_mod, "kernel", k)
+
+    await RuntimeLoop()._check_timers(now=fire_at - timedelta(hours=5))
+    assert _timer_event_count(db, "TimerFired", "clock_back") == 0
+    assert k.query_state("timer_events", id="clock_back")[0]["status"] == "active"
+
+    await RuntimeLoop()._check_timers(now=fire_at)
+    assert _timer_event_count(db, "TimerFired", "clock_back") == 1
+
+
+@pytest.mark.asyncio
+async def test_missed_daily_cron_fires_once_and_schedules_ahead(isolated_kernel, monkeypatch):
+    """Three days asleep: the daily slot fires once, then the next slot is ahead."""
+    from datetime import UTC, datetime
+
+    import app.core.runtime.runtime_loop as rl_mod
+    from app.core.runtime.runtime_loop import RuntimeLoop
+
+    k, db = isolated_kernel
+    now = datetime(2026, 10, 11, 15, 0, tzinfo=UTC)
+    stale = datetime(2026, 10, 8, 0, 0, tzinfo=UTC)
+    _arm_timer(
+        k,
+        "daily_brief",
+        schedule_type="cron",
+        cron_expr="hour=8,minute=0",
+        fire_at=_utc_z(stale),
+    )
+    monkeypatch.setattr(rl_mod, "kernel", k)
+
+    await RuntimeLoop()._check_timers(now=now)
+    assert _timer_event_count(db, "TimerFired", "daily_brief") == 1
+    assert _timer_event_count(db, "TimerCreated", "daily_brief") == 2
+    row = k.query_state("timer_events", id="daily_brief")[0]
+    assert row["status"] == "active"
+    assert row["fire_at"] > _utc_z(now)
+
+    await RuntimeLoop()._check_timers(now=now)
+    assert _timer_event_count(db, "TimerFired", "daily_brief") == 1
+

@@ -115,6 +115,28 @@ def test_collect_sources_records_unconfigured_failure():
     )
     assert sources == []
     assert any("失败" in note for note in notes)
+    assert all("应用专用密码" not in note for note in notes)
+
+
+def test_collect_sources_explains_expired_mailbox_login():
+    results = [
+        SimpleNamespace(
+            tool="check_inbox",
+            status="failed",
+            result="IMAP login failed: [AUTHENTICATIONFAILED] Invalid credentials",
+        ),
+    ]
+    sources, _bodies, notes, _coverage = collect_allowed_sources(
+        contract={"source_scope": {"email": {"enabled": True, "days": 3}, "files": []}},
+        step_results=results,
+        retrieved_at="t0",
+    )
+    assert sources == []
+    assert len(notes) == 1
+    assert "邮箱登录已失效" in notes[0]
+    assert "应用专用密码" in notes[0]
+    assert "测试连接" in notes[0]
+    assert "AUTHENTICATIONFAILED" in notes[0]
 
 
 def test_collect_sources_maps_file_by_original_step_index():
