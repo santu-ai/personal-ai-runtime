@@ -893,6 +893,20 @@ def _scrub_false_conflict(
     return cleaned.strip(" ，,;；")
 
 
+def _space_collapsed_line(quote: str, text: str) -> str:
+    """A full source line with the same characters, ignoring spaces."""
+    wanted = "".join(str(quote or "").split())
+    if len(wanted) < 2:
+        return ""
+    for line in str(text or "").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped == str(quote or "").strip() or "".join(stripped.split()) == wanted:
+            return stripped
+    return ""
+
+
 def _marker_line(text: str) -> str:
     for line in str(text or "").splitlines():
         stripped = line.strip()
@@ -1181,6 +1195,10 @@ def _evidence_rows(
                     break
         if not span and quote:
             span = _truncation_quote_span(quote, text)
+        if not span and quote:
+            span = _space_collapsed_line(quote, text)
+        if not span and not quote:
+            span = _space_collapsed_line(str(item.get("text") or ""), text)
         if span:
             rows.append({
                 "source_id": sid,

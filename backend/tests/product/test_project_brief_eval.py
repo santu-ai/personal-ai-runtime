@@ -987,6 +987,55 @@ def test_collector_note_echo_does_not_sink_a_real_line():
     assert all(row["evidence"][0]["quote_in_source"] for row in result["findings"])
 
 
+def test_owner_line_matches_when_the_space_was_dropped():
+    result = validate_model_brief(
+        {
+            "summary": "负责人已写明",
+            "content": "负责人 林晚",
+            "findings": [{
+                "text": "负责人林晚",
+                "source_ids": ["email:m1"],
+                "quote": "负责人林晚",
+            }],
+        },
+        allowed_ids={"email:m1"},
+        criteria=default_acceptance_criteria(),
+        source_notes=[],
+        source_catalog={
+            "email:m1": {"text": "负责人 林晚", "locator": "a@b.c", "title": "分工"},
+        },
+        objective=_TASK,
+    )
+    assert result["quality_evidence"] == "pending"
+    assert result["findings"][0]["evidence"][0]["snippet"] == "负责人 林晚"
+
+
+def test_finding_text_that_is_the_source_line_counts_without_a_quote():
+    result = validate_model_brief(
+        {
+            "summary": "样品已寄出",
+            "content": "样品已寄出",
+            "findings": [{
+                "text": "样品已寄出",
+                "source_ids": ["file:s"],
+            }],
+        },
+        allowed_ids={"file:s"},
+        criteria=default_acceptance_criteria(),
+        source_notes=["只显示 4/30 行"],
+        source_catalog={
+            "file:s": {
+                "text": "样品已寄出\n... [showing 4/30 lines]",
+                "locator": "sample.md",
+                "title": "样品",
+            },
+        },
+        objective=_TASK,
+    )
+    assert result["quality_evidence"] == "pending"
+    assert result["findings"][0]["evidence"][0]["quote_in_source"] is True
+
+
 def test_prompt_labels_do_not_sink_a_real_owner_line():
     result = validate_model_brief(
         {
