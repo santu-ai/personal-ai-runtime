@@ -2123,6 +2123,15 @@ def _with_model_cost(public: dict[str, Any]) -> dict[str, Any]:
     return public
 
 
+def _cost_per_accepted(cost: Any, accepted: int) -> Any:
+    """Attributed dollars divided by accepted briefs in the same window."""
+    if accepted <= 0:
+        return None
+    if isinstance(cost, bool) or not isinstance(cost, (int, float)):
+        return "unavailable"
+    return round(float(cost) / accepted, 6)
+
+
 def summarize_delivery_metrics(
     *,
     days: int = 30,
@@ -2132,7 +2141,11 @@ def summarize_delivery_metrics(
     """Summarize project-brief review outcomes from existing Work events.
 
     The first-version rate is tasks whose first review accepted delivery v1
-    divided by tasks whose first review happened in the window. Approval count,
+    divided by tasks whose first review happened in the window. ``success_rate``
+    is accepted briefs divided by briefs that received a review in the window.
+    ``cost_per_accepted_delivery`` divides attributable ``llm_cost`` by accepted
+    briefs; it is ``None`` when none were accepted and ``unavailable`` when the
+    cost read is not a number. Approval count,
     crash-recovery count, and model cost are joined from the delivery's
     ``execution_id`` onto existing correlation and execution events. An
     ``interrupted_before_audit`` closure twins the handler replay of the same
@@ -2270,15 +2283,20 @@ def summarize_delivery_metrics(
         until=moment,
         limit=limit,
     )
+    llm_cost = attribution["llm_cost"]
     return {
         "window_days": days,
         "reviewed_tasks": reviewed_tasks,
         "accepted_tasks": accepted_tasks,
+        "success_rate": (
+            accepted_tasks / reviewed_tasks if reviewed_tasks else None
+        ),
         "first_reviewed_tasks": first_reviewed,
         "first_version_accepted_tasks": first_accepted,
         "first_version_acceptance_rate": (
             first_accepted / first_reviewed if first_reviewed else None
         ),
+        "cost_per_accepted_delivery": _cost_per_accepted(llm_cost, accepted_tasks),
         "rework_count": reworks,
         "adopted_action_count": adopted_actions,
         "average_review_latency_hours": (

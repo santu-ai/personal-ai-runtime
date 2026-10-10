@@ -445,12 +445,16 @@ export interface DeliveryMetrics {
   window_days: number;
   reviewed_tasks: number;
   accepted_tasks: number;
+  /** Accepted briefs divided by briefs reviewed in the window. */
+  success_rate?: number | null;
   first_reviewed_tasks: number;
   first_version_accepted_tasks: number;
   first_version_acceptance_rate: number | null;
   rework_count: number;
   adopted_action_count: number;
   average_review_latency_hours: number | null;
+  /** Attributable model cost divided by accepted briefs in the window. */
+  cost_per_accepted_delivery?: number | "unavailable" | null;
   attribution: {
     approval_interventions: number | "unavailable";
     recovery_interventions: number | "unavailable";
