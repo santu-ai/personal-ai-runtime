@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { markNotificationRead, type Notification } from "../api/client";
 import { useDashboard } from "../hooks/useDashboard";
 import { useLiveNotifications } from "../hooks/useNotifications";
@@ -118,7 +118,10 @@ function focusOnDashboardRefresh(): boolean {
 
 export default function DashboardPage() {
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const briefEntry = searchParams.get("entry") === "brief";
+  const briefEntryHandled = useRef(false);
   const tabParam = searchParams.get("tab");
   const tab: DashboardTab =
     tabParam === "trust" ? "trust" : tabParam === "monitors" ? "monitors" : "today";
@@ -170,6 +173,24 @@ export default function DashboardPage() {
     refresh,
     retryNotifications,
   } = useDashboard();
+  useEffect(() => {
+    if (!briefEntry || briefEntryHandled.current || loading) return;
+    if (!dashboard) {
+      if (error) briefEntryHandled.current = true;
+      return;
+    }
+    briefEntryHandled.current = true;
+    const workId = dashboard.unreviewed_deliveries
+      ?.map((row) => row.work_id?.trim() ?? "")
+      .find((id) => id.length > 0);
+    if (workId) {
+      navigate(`/tasks/${encodeURIComponent(workId)}`, { replace: true });
+      return;
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("entry");
+    setSearchParams(next, { replace: true });
+  }, [briefEntry, loading, dashboard, error, navigate, searchParams, setSearchParams]);
   const refreshLock = useRef(false);
   const [refreshBusy, setRefreshBusy] = useState(false);
   const refreshFocus = useRef(false);

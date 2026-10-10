@@ -7,6 +7,7 @@ import path from "node:path";
 import {
   projectVenvPython,
   resolveFrontendFile,
+  briefEntryUrl,
   resolvePythonCommand,
   isInternalNavigationUrl,
   isSafeExternalUrl,
@@ -19,6 +20,16 @@ import {
 } from "./runtimePaths.js";
 
 describe("runtimePaths", () => {
+  it("points the quick window at today's unreviewed brief", () => {
+    expect(briefEntryUrl("http://127.0.0.1:5173")).toBe(
+      "http://127.0.0.1:5173/dashboard?entry=brief",
+    );
+    expect(briefEntryUrl("http://127.0.0.1:5173/")).toBe(
+      "http://127.0.0.1:5173/dashboard?entry=brief",
+    );
+    expect(briefEntryUrl("app://./")).toBe("app://./dashboard?entry=brief");
+  });
+
   it("prefers project venv python in dev mode", () => {
     const repoRoot = path.join(os.tmpdir(), "par-test-repo");
     const venvPy = projectVenvPython(repoRoot)[0];
