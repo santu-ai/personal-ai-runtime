@@ -104,6 +104,7 @@ describe("TrialRecordPanel", () => {
     });
     renderWithRouter(<TrialRecordView metrics={metrics()} />);
     fireEvent.click(screen.getByRole("button", { name: "导出试用记录" }));
+    expect(screen.getByText(/下载一份 JSON/)).toBeInTheDocument();
     downloadTrialRecord(metrics(), "2026-10-10T03:00:00.000Z");
     const blob = create.mock.calls[create.mock.calls.length - 1]?.[0] as Blob;
     expect(await blob.text()).toContain("50%（2/4）");

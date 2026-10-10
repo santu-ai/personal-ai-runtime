@@ -11,6 +11,7 @@ export interface HealthResponse {
     checks?: {
       mcp?: { total: number; connected: number; failed: number; available?: number };
       llm?: { configured: boolean; model?: string };
+      email?: { configured: boolean };
       storage?: { data_dir_exists: boolean; data_dir_writable: boolean; sqlite_exists: boolean };
     };
   };

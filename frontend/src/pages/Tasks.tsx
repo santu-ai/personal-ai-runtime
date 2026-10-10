@@ -3092,6 +3092,7 @@ export default function TasksPage() {
               />
               <span>读取已配置邮箱</span>
             </label>
+            <p className="text-xs text-fg-tertiary">不勾选时只读下面的资料路径。</p>
             {emailEnabled && (
               <div className="grid grid-cols-2 gap-2">
                 <Input
