@@ -267,6 +267,32 @@ def _parse_email_date(value: str, tz: ZoneInfo) -> datetime | None:
     return dt.astimezone(tz)
 
 
+_EMAIL_AUTH_MARKERS = (
+    "imap login failed",
+    "authenticationfailed",
+    "authentication failed",
+    "invalid credentials",
+    "auth failed",
+    "login failed",
+    "application-specific password",
+    "app password",
+)
+
+
+def _email_read_failure_note(raw: str) -> str:
+    """Chinese next step when the mailbox rejected the login."""
+    text = (raw or "").strip()
+    lowered = text.lower()
+    if any(marker in lowered for marker in _EMAIL_AUTH_MARKERS):
+        detail = f"（{text[:180]}）" if text else ""
+        return (
+            "邮箱登录已失效。到邮箱里重新生成应用专用密码，在设置里更新后点「测试连接」，"
+            "再重新执行这一份任务。"
+            + detail
+        )
+    return f"邮箱读取失败：{text[:300] or 'unknown error'}"
+
+
 def collect_allowed_sources(
     *,
     contract: dict[str, Any],
@@ -330,7 +356,7 @@ def collect_allowed_sources(
         if tool == "check_inbox":
             email_attempted = True
             if status != "success":
-                notes.append(f"邮箱读取失败：{raw[:300] or 'unknown error'}")
+                notes.append(_email_read_failure_note(raw))
                 continue
             payload = _parse_step_payload(raw)
             if not isinstance(payload, dict):

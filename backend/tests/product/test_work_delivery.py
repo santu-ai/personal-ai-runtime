@@ -238,6 +238,96 @@ def test_blank_accept_reason_stays_blank(isolated_kernel):
     bundle = public_bundle(work_id)
     assert bundle["current"]["review_status"] == "accepted"
     assert bundle["current"]["latest_decision"]["reason"] == ""
+    assert "manual_minutes" not in bundle["current"]["latest_decision"]
+
+
+def test_accept_stores_self_reported_manual_minutes(isolated_kernel):
+    k, _db = isolated_kernel
+    item = _create_task()
+    work_id = item["id"]
+    published = publish_delivery(
+        work_id,
+        content="v1 body",
+        summary="v1",
+        sources=[],
+        execution_id="exec-manual",
+    )
+    accepted = accept_delivery(
+        work_id,
+        published["delivery_id"],
+        reason="来源齐全",
+        idempotency_key="accept-manual",
+        manual_minutes=90,
+    )
+    assert accepted["replayed"] is False
+    assert accepted["decision"]["manual_minutes"] == 90
+
+    bundle = public_bundle(work_id)
+    assert bundle["current"]["latest_decision"]["manual_minutes"] == 90
+
+    replay = accept_delivery(
+        work_id,
+        published["delivery_id"],
+        reason="来源齐全",
+        idempotency_key="accept-manual",
+        manual_minutes=90,
+    )
+    assert replay["replayed"] is True
+    assert replay["decision"]["manual_minutes"] == 90
+
+    with pytest.raises(DeliveryConflictError):
+        accept_delivery(
+            work_id,
+            published["delivery_id"],
+            reason="来源齐全",
+            idempotency_key="accept-manual",
+            manual_minutes=30,
+        )
+
+    k.rebuild_all()
+    bundle = public_bundle(work_id)
+    assert bundle["current"]["latest_decision"]["manual_minutes"] == 90
+
+    metrics = summarize_delivery_metrics(days=30)
+    saved = metrics["self_reported_time_saved"]
+    assert saved["basis"] == "self_reported"
+    assert saved["count"] == 1
+    assert saved["manual_minutes"] == 90
+    assert saved["estimated_saved_minutes"] is not None
+    matched = [row for row in metrics["reviews"] if row["work_id"] == work_id]
+    assert matched[0]["manual_minutes"] == 90
+
+
+def test_manual_minutes_out_of_range_is_rejected(isolated_kernel):
+    item = _create_task()
+    published = publish_delivery(
+        item["id"],
+        content="v1 body",
+        summary="v1",
+        sources=[],
+        execution_id="exec-manual-range",
+    )
+    with pytest.raises(DeliveryValidationError):
+        accept_delivery(item["id"], published["delivery_id"], manual_minutes=10081)
+    with pytest.raises(DeliveryValidationError):
+        accept_delivery(item["id"], published["delivery_id"], manual_minutes=-1)
+
+
+def test_self_reported_time_saved_ignores_reviews_without_a_guess():
+    from app.product.work_delivery import self_reported_time_saved
+
+    saved = self_reported_time_saved([
+        {"decision": "accepted", "latency_hours": 1, "manual_minutes": 90},
+        {"decision": "accepted", "latency_hours": 0.5},
+        {"decision": "changes_requested", "latency_hours": 2, "manual_minutes": 10},
+    ])
+    assert saved["count"] == 1
+    assert saved["manual_minutes"] == 90
+    assert saved["assisted_minutes"] == 60
+    assert saved["estimated_saved_minutes"] == 30
+    empty = self_reported_time_saved([{"decision": "accepted", "latency_hours": 1}])
+    assert empty["count"] == 0
+    assert empty["estimated_saved_minutes"] is None
 
 
 def test_changes_from_previous_use_stored_delivery_fields(isolated_kernel):

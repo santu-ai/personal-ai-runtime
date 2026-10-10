@@ -1220,6 +1220,34 @@ describe("TasksPage", () => {
     });
   });
 
+  it("sends a self-reported manual estimate and rejects a non-integer", async () => {
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [briefTask];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(briefTask);
+    renderTasks("/tasks/brief_1");
+
+    fireEvent.click(await screen.findByRole("button", { name: "验收" }));
+    const dialog = await screen.findByRole("dialog", { name: "验收交付" });
+    const minutes = within(dialog).getByPlaceholderText("不填则不记入省下的时间");
+    fireEvent.change(minutes, { target: { value: "很快" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认验收" }));
+    await waitFor(() => {
+      expect(addError).toHaveBeenCalledWith("如果填写手工耗时，请填 0 到 10080 的整数分钟", "任务");
+    });
+    expect(acceptWorkDelivery).not.toHaveBeenCalled();
+
+    fireEvent.change(minutes, { target: { value: "90" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认验收" }));
+    await waitFor(() => {
+      expect(acceptWorkDelivery).toHaveBeenCalledWith("brief_1", "d2", {
+        manual_minutes: 90,
+        idempotency_key: expect.any(String),
+      });
+    });
+  });
+
   it("links a non-empty adopted task id and leaves a blank id as text", async () => {
     const adopted: WorkItem = {
       ...briefTask,

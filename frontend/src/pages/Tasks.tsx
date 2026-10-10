@@ -1373,6 +1373,7 @@ export default function TasksPage() {
     costCap: "",
   });
   const acceptLive = useRef("");
+  const manualMinutesLive = useRef("");
   const reworkLive = useRef("");
   const scheduleLive = useRef({ hours: "", minutes: "" });
   const [confirmExecute, setConfirmExecute] = useState(false);
@@ -1393,6 +1394,7 @@ export default function TasksPage() {
   const [reworkReason, setReworkReason] = useState("");
   const [acceptTarget, setAcceptTarget] = useState<WorkDelivery | null>(null);
   const [acceptNote, setAcceptNote] = useState("");
+  const [manualMinutes, setManualMinutes] = useState("");
   const [historyId, setHistoryId] = useState<string | null>(null);
   const [historyFull, setHistoryFull] = useState<WorkDelivery | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -1458,6 +1460,8 @@ export default function TasksPage() {
     setReworkReason("");
     setAcceptTarget(null);
     setAcceptNote("");
+    setManualMinutes("");
+    manualMinutesLive.current = "";
     setHistoryId(null);
     setHistoryFull(null);
     setHistoryError(null);
@@ -1837,20 +1841,36 @@ export default function TasksPage() {
     const taskId = selected.id;
     const fromReview = selected.delivery_bundle?.current_review_status ?? null;
     const submitted = acceptLive.current;
+    const submittedMinutes = manualMinutesLive.current;
     const note = submitted.trim();
+    const manualRaw = submittedMinutes.trim();
+    let manualMinutesValue: number | undefined;
+    if (manualRaw) {
+      const parsed = Number(manualRaw);
+      if (!/^\d+$/.test(manualRaw) || parsed > 10080) {
+        addError("如果填写手工耗时，请填 0 到 10080 的整数分钟", "任务");
+        dialogHandoff.current = { kind: "failed", dialog: "accept" };
+        endDialog();
+        return;
+      }
+      manualMinutesValue = parsed;
+    }
     if (!acceptKey.current) acceptKey.current = newIdempotencyKey("accept");
     let handoff: TaskDialogHandoff | null = null;
     let closed = false;
     try {
       await acceptWorkDelivery(taskId, acceptTarget.delivery_id, {
         ...(note ? { reason: note } : {}),
+        ...(manualMinutesValue !== undefined ? { manual_minutes: manualMinutesValue } : {}),
         idempotency_key: acceptKey.current,
       });
       acceptKey.current = null;
-      if (acceptLive.current === submitted) {
+      if (acceptLive.current === submitted && manualMinutesLive.current === submittedMinutes) {
         setAcceptTarget(null);
         setAcceptNote("");
         acceptLive.current = "";
+        setManualMinutes("");
+        manualMinutesLive.current = "";
         closed = true;
       } else {
         handoff = { kind: "kept", dialog: "accept" };
@@ -3126,7 +3146,7 @@ export default function TasksPage() {
         <Dialog
           open={Boolean(acceptTarget)}
           title="验收交付"
-          description="可以留下验收说明。留空则直接验收，说明不会显示。"
+          description="可以留下验收说明，也可以估计不用助手要多少分钟。留空则直接验收。"
           confirmLabel={dialogBusy ? "验收中..." : "确认验收"}
           cancelLabel="取消"
           confirmBusy={dialogBusy}
@@ -3146,6 +3166,21 @@ export default function TasksPage() {
             }}
             placeholder="例如：结论和来源都齐了。"
           />
+          <label className="mt-3 block space-y-1">
+            <span className="text-xs text-fg-tertiary">
+              不用助手的话，这件事大概要多久（分钟，可选，自报）
+            </span>
+            <Input
+              value={manualMinutes}
+              inputMode="numeric"
+              data-task-dialog-field="accept-minutes"
+              onChange={(e) => {
+                manualMinutesLive.current = e.target.value;
+                setManualMinutes(e.target.value);
+              }}
+              placeholder="不填则不记入省下的时间"
+            />
+          </label>
         </Dialog>
 
         <Dialog
