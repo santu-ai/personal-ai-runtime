@@ -438,6 +438,15 @@ CASES: list[dict] = [
         "included": {"email:m1"},
         "gaps": [],
     },
+    {
+        "id": "holdout-meeting-room",
+        "query": "会议室",
+        "results": [_inbox([
+            _email("m1", subject="场地", preview="本周安排", body="会议室 在三楼"),
+        ], scoped=True, query="会议室")],
+        "included": {"email:m1"},
+        "gaps": [],
+    },
 ]
 
 
@@ -641,6 +650,93 @@ def test_two_character_overlap_stays_unsupported():
     result = _quote_case("已经确定预算", "预算 100元")
     assert result["quality_evidence"] == "unsupported"
     assert result["findings"][0]["evidence"][0]["quote_in_source"] is False
+
+
+def test_quote_matching_one_of_two_ids_keeps_only_that_source():
+    result = validate_model_brief(
+        {
+            "summary": "两封邮件报价不同",
+            "content": "正文",
+            "findings": [{
+                "text": "一封写了一百",
+                "source_ids": ["email:a", "email:b"],
+                "quote": "报价 100元",
+            }],
+        },
+        allowed_ids={"email:a", "email:b"},
+        criteria=["每条关键结论附来源"],
+        source_notes=[],
+        source_catalog={
+            "email:a": {"text": "报价 100元", "locator": "a", "title": "甲"},
+            "email:b": {"text": "报价 200元", "locator": "b", "title": "乙"},
+        },
+    )
+    assert result["quality_evidence"] == "pending"
+    evidence = result["findings"][0]["evidence"]
+    assert [row["source_id"] for row in evidence] == ["email:a"]
+    assert evidence[0]["quote_in_source"] is True
+
+
+def test_same_amount_does_not_keep_a_false_inconsistency_claim():
+    result = validate_model_brief(
+        {
+            "summary": "金额互相矛盾",
+            "content": "正文",
+            "findings": [{
+                "text": "两封邮件报价不一致",
+                "source_ids": ["email:a"],
+                "quote": "报价 100元",
+            }],
+            "limitations": ["日期矛盾，需要再问"],
+        },
+        allowed_ids={"email:a", "email:b"},
+        criteria=["每条关键结论附来源"],
+        source_notes=[],
+        source_catalog={
+            "email:a": {"text": "报价 100元", "locator": "a", "title": "甲"},
+            "email:b": {"text": "确认 100 元", "locator": "b", "title": "乙"},
+        },
+    )
+    visible = "\n".join([
+        result["summary"],
+        result["content"],
+        result["findings"][0]["text"],
+        "\n".join(result["limitations"]),
+    ])
+    assert "不一致" not in visible
+    assert "矛盾" not in visible
+    assert result["quality_evidence"] == "pending"
+
+
+def test_real_amount_conflict_keeps_the_disagreement():
+    result = validate_model_brief(
+        {
+            "summary": "金额不一致",
+            "content": "正文",
+            "findings": [{
+                "text": "两封邮件金额不一致",
+                "source_ids": ["email:a"],
+                "quote": "报价 100元",
+            }],
+        },
+        allowed_ids={"email:a", "email:b"},
+        criteria=["每条关键结论附来源"],
+        source_notes=["来源中的金额不一致，需人工核对"],
+        source_catalog={
+            "email:a": {"text": "报价 100元", "locator": "a", "title": "甲"},
+            "email:b": {"text": "报价 200元", "locator": "b", "title": "乙"},
+        },
+    )
+    assert "不一致" in result["summary"]
+    assert "来源中的金额不一致，需人工核对" in result["limitations"]
+
+
+def test_truncation_note_uses_the_marker_line_as_evidence():
+    result = _quote_case("只显示 10/40 行", "开头\n... [showing 10/40 lines]")
+    assert result["quality_evidence"] == "pending"
+    snippet = result["findings"][0]["evidence"][0]["snippet"]
+    assert "showing 10/40" in snippet
+    assert result["findings"][0]["evidence"][0]["quote_in_source"] is True
 
 
 def test_full_source_line_wins_over_a_longer_partial_span():

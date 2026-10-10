@@ -9,6 +9,8 @@ import pytest
 
 from app.product.project_brief import (
     _build_prompt,
+    _extract_json,
+    brief_compile_failure,
     collect_allowed_sources,
     validate_model_brief,
 )
@@ -200,13 +202,51 @@ def test_summary_and_content_must_be_strings():
         validate_model_brief(
             {
                 "summary": "看起来完整",
-                "content": [{"text": "不是字符串"}],
+                "content": 1,
                 "findings": [],
             },
             allowed_ids=set(),
             criteria=["每条关键结论附来源"],
             source_notes=[],
         )
+
+
+def test_trailing_note_after_json_is_ignored():
+    parsed = _extract_json(
+        '{"summary":"有结论","content":"正文"}\nNote: this is not part of the object.'
+    )
+    assert parsed == {"summary": "有结论", "content": "正文"}
+
+
+def test_empty_content_keeps_findings(monkeypatch):
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    result = validate_model_brief(
+        {
+            "summary": "有三笔金额",
+            "content": "",
+            "findings": [{
+                "text": "一处是 1元",
+                "source_ids": ["email:a"],
+                "quote": "1元",
+            }],
+        },
+        allowed_ids={"email:a"},
+        criteria=["每条关键结论附来源"],
+        source_notes=[],
+        source_catalog={"email:a": {"text": "1元", "locator": "a", "title": "金额"}},
+    )
+    assert result["quality_evidence"] == "pending"
+    assert result["findings"][0]["evidence"][0]["quote_in_source"] is True
+
+
+def test_small_model_failure_says_the_model_is_too_weak(monkeypatch):
+    monkeypatch.setenv("LLM_MODEL", "qwen2.5:0.5b")
+    message = brief_compile_failure(ValueError("missing summary"), retryable=True)
+    assert message.startswith("模型输出非法或不可用，可重试：")
+    assert "当前模型太小" in message
+    monkeypatch.setenv("LLM_MODEL", "qwen2.5:3b")
+    larger = brief_compile_failure(ValueError("missing summary"), retryable=True)
+    assert "当前模型太小" not in larger
 
 
 def test_validate_custom_criterion_needs_review():
