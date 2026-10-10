@@ -611,12 +611,16 @@ def test_wrapped_source_line_stays_pending_and_shows_the_line():
     assert evidence["snippet"] == "本周预算 100元"
 
 
-def test_paraphrase_keeps_only_the_verbatim_amount():
+def test_rewritten_amount_without_the_source_words_stays_unsupported():
     result = _quote_case("在会上说预算为100元。", "预算 100元")
-    assert result["quality_evidence"] == "pending"
-    evidence = result["findings"][0]["evidence"][0]
-    assert evidence["quote_in_source"] is True
-    assert evidence["snippet"] == "100元"
+    assert result["quality_evidence"] == "unsupported"
+    assert result["findings"][0]["evidence"][0]["quote_in_source"] is False
+
+
+def test_same_amount_in_a_different_sentence_stays_unsupported():
+    result = _quote_case("报价 100元", "确认 100元")
+    assert result["quality_evidence"] == "unsupported"
+    assert result["findings"][0]["evidence"][0]["quote_in_source"] is False
 
 
 def test_different_amount_does_not_inherit_a_shared_suffix():

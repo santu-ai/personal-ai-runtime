@@ -189,8 +189,24 @@ def test_validate_empty_findings_with_sources_is_unqualified():
         source_notes=[],
     )
     assert result["qualified"] is False
+    assert result["quality_evidence"] == "unsupported"
     assert any(c["result"] == "fail" for c in result["checks"])
     assert "结构化结论" in result["content"]
+    assert "证据未支持" in result["content"]
+
+
+def test_summary_and_content_must_be_strings():
+    with pytest.raises(ValueError, match="must be strings"):
+        validate_model_brief(
+            {
+                "summary": "看起来完整",
+                "content": [{"text": "不是字符串"}],
+                "findings": [],
+            },
+            allowed_ids=set(),
+            criteria=["每条关键结论附来源"],
+            source_notes=[],
+        )
 
 
 def test_validate_custom_criterion_needs_review():
