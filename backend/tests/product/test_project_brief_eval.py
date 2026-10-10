@@ -1126,6 +1126,61 @@ def test_real_conclusion_without_a_quote_is_not_replaced():
     assert result["findings"][0]["evidence"][0]["quote_in_source"] is False
 
 
+def test_echo_quoting_the_subject_uses_the_body_line():
+    result = validate_model_brief(
+        {
+            "summary": "有邮件",
+            "content": "正文",
+            "findings": [{
+                "text": _TASK,
+                "source_ids": ["email:m1"],
+                "quote": " 分工",
+            }],
+        },
+        allowed_ids={"email:m1"},
+        criteria=default_acceptance_criteria(),
+        source_notes=[],
+        source_catalog={
+            "email:m1": {
+                "text": "负责人 林晚",
+                "locator": "a@b.c",
+                "title": "分工",
+            },
+        },
+        objective=_TASK,
+    )
+    assert result["quality_evidence"] == "pending"
+    assert result["findings"][0]["text"] == "负责人 林晚"
+    assert result["findings"][0]["evidence"][0]["snippet"] == "负责人 林晚"
+
+
+def test_real_conclusion_quoting_the_subject_stays_unsupported():
+    result = validate_model_brief(
+        {
+            "summary": "有邮件",
+            "content": "正文",
+            "findings": [{
+                "text": "预算增加了",
+                "source_ids": ["email:m1"],
+                "quote": "分工",
+            }],
+        },
+        allowed_ids={"email:m1"},
+        criteria=default_acceptance_criteria(),
+        source_notes=[],
+        source_catalog={
+            "email:m1": {
+                "text": "负责人 林晚",
+                "locator": "a@b.c",
+                "title": "分工",
+            },
+        },
+        objective=_TASK,
+    )
+    assert result["quality_evidence"] == "unsupported"
+    assert result["findings"][0]["text"] == "预算增加了"
+
+
 def test_instruction_echo_on_a_truncated_file_uses_the_real_line():
     result = _echo_case(_TASK, _TASK, "开头\n... [showing 10/40 lines]")
     assert result["quality_evidence"] == "pending"

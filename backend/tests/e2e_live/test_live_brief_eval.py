@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from app.product.project_brief import (
+    BRIEF_COMPILE_MAX_TOKENS,
     _build_prompt,
     _extract_json,
     default_acceptance_criteria,
@@ -89,7 +90,7 @@ async def test_live_brief_eval_reports_quality_rates():
                         {"role": "user", "content": prompt},
                     ],
                     temperature=0,
-                    max_tokens=900,
+                    max_tokens=BRIEF_COMPILE_MAX_TOKENS,
                     response_format={"type": "json_object"},
                 )
             except Exception as exc:
@@ -103,7 +104,7 @@ async def test_live_brief_eval_reports_quality_rates():
                                 {"role": "user", "content": prompt},
                             ],
                             temperature=0,
-                            max_tokens=900,
+                            max_tokens=BRIEF_COMPILE_MAX_TOKENS,
                         )
                     except Exception as retry_exc:
                         exc = retry_exc

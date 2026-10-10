@@ -35,7 +35,9 @@ DEFAULT_TIMEZONE = "Asia/Shanghai"
 DEFAULT_DAYS = 3
 DEFAULT_EMAIL_LIMIT = 30
 BRIEF_FILE_MAX_LINES = 2000
-BRIEF_COMPILE_MAX_TOKENS = 2500
+# 900 completion tokens ran past the 60s client timeout on a 3B CPU model
+# that repeats one finding. 600 still finishes, and a cut-off array is closed.
+BRIEF_COMPILE_MAX_TOKENS = 600
 BRIEF_MEMORY_LIMIT = 3
 DEFAULT_CRITERIA = (
     "每条关键结论附来源",
@@ -1036,19 +1038,26 @@ def _ground_instruction_echo(
 ) -> dict[str, Any]:
     """Swap an instruction echo for a real line from the cited source.
 
-    An echo with no quote is the same kind of miss as an echo quote. A
-    conclusion that is not itself an echo keeps its quote. Attaching some
-    other line would make an unrelated claim look supported.
+    An echo with no quote, or a quote that is only the subject line, is the
+    same kind of miss as an echo quote. A conclusion that is not itself an
+    echo keeps its quote. Attaching some other line would make an unrelated
+    claim look supported.
     """
     quote = str(item.get("quote") or "").strip()
     text = str(item.get("text") or "").strip()
     quote_echo = bool(quote) and _is_prompt_echo(quote, objective, criteria, notes)
     text_echo = bool(text) and _is_prompt_echo(text, objective, criteria, notes)
-    if quote and not quote_echo:
+    quote_scaffold = bool(quote) and _is_scaffold_finding(
+        quote, catalog, objective, criteria, notes,
+    )
+    text_scaffold = bool(text) and _is_scaffold_finding(
+        text, catalog, objective, criteria, notes,
+    )
+    if text and not text_scaffold:
         return item
-    if text and not text_echo:
+    if quote and not quote_echo and not quote_scaffold:
         return item
-    if not quote_echo and not text_echo:
+    if not (quote_echo or quote_scaffold or text_echo or text_scaffold):
         return item
     source_ids = [
         str(sid).strip()
