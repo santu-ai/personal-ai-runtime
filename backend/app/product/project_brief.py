@@ -923,6 +923,104 @@ def _cited_source_ids(*texts: str) -> list[str]:
     return found
 
 
+_OWNER_RE = re.compile(r"负责人[:：\s]*([^\s，,。；;、]{1,16})")
+_DUE_RE = re.compile(r"(?:截止|到期)[:：\s]*(\d{4}-\d{2}-\d{2}|\d{1,2}月\d{1,2}日)")
+_RISK_BLOCKERS = ("阻塞", "失败", "延期", "逾期")
+
+
+def _unique_owner_due(blob: str) -> tuple[str, str]:
+    """Owner and due date only when the span names one of each."""
+    owners = list(dict.fromkeys(_OWNER_RE.findall(blob or "")))
+    dues = list(dict.fromkeys(_DUE_RE.findall(blob or "")))
+    owner = owners[0] if len(owners) == 1 else ""
+    due = dues[0] if len(dues) == 1 else ""
+    return owner, due
+
+
+def _grounded_blob(row: dict[str, Any]) -> str:
+    parts = [str(row.get("text") or "")]
+    for evidence in row.get("evidence") or []:
+        if isinstance(evidence, dict) and evidence.get("quote_in_source"):
+            parts.append(str(evidence.get("snippet") or ""))
+    return "\n".join(parts)
+
+
+def _append_owner_due(text: str, owner: str, due: str, *, seen: str | None = None) -> str:
+    haystack = text if seen is None else seen
+    extra: list[str] = []
+    if owner and owner not in haystack:
+        extra.append(f"负责人 {owner}")
+    if due and due not in haystack:
+        extra.append(f"截止 {due}")
+    if not extra:
+        return text
+    return f"{text}（{'，'.join(extra)}）"
+
+
+def _attach_finding_facts(finding: dict[str, Any]) -> None:
+    owner, due = _unique_owner_due(_grounded_blob(finding))
+    if owner:
+        finding["owner"] = owner
+    if due:
+        finding["due_on"] = due
+    finding["text"] = _append_owner_due(str(finding.get("text") or ""), owner, due)
+
+
+def _snippet_key(finding: dict[str, Any]) -> tuple[str, ...]:
+    parts: list[str] = []
+    for evidence in finding.get("evidence") or []:
+        if not isinstance(evidence, dict) or not evidence.get("quote_in_source"):
+            continue
+        snippet = str(evidence.get("snippet") or "").strip()
+        source_id = str(evidence.get("source_id") or "").strip()
+        if snippet:
+            parts.append(f"{source_id}:{snippet}")
+    return tuple(sorted(parts))
+
+
+def _risk_rank(finding: dict[str, Any]) -> tuple[int, int]:
+    kind = str(finding.get("kind") or "change")
+    kind_rank = {"risk": 0, "change": 1, "action": 2}.get(kind, 3)
+    severe = 0
+    if kind == "risk" and any(word in _grounded_blob(finding) for word in _RISK_BLOCKERS):
+        severe = 1
+    return kind_rank, -severe
+
+
+def _arrange_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Pull owner and due date from the cited line, rank risks, drop repeat quotes."""
+    for finding in findings:
+        _attach_finding_facts(finding)
+    ordered = sorted(enumerate(findings), key=lambda pair: (*_risk_rank(pair[1]), pair[0]))
+    seen: set[tuple[str, ...]] = set()
+    kept: list[dict[str, Any]] = []
+    for _, finding in ordered:
+        key = _snippet_key(finding)
+        if key and key in seen:
+            continue
+        if key:
+            seen.add(key)
+        kept.append(finding)
+    return kept
+
+
+def _attach_action_facts(action: dict[str, Any], catalog: dict[str, dict[str, str]] | None) -> None:
+    if not catalog:
+        return
+    blob = "\n".join(
+        str((catalog.get(sid) or {}).get("text") or "")
+        for sid in action.get("source_ids") or []
+    )
+    owner, due = _unique_owner_due(blob)
+    title = str(action.get("title") or "")
+    reason = str(action.get("reason") or "")
+    if owner:
+        action["owner"] = owner
+    if due:
+        action["due_on"] = due
+    action["title"] = _append_owner_due(title, owner, due, seen=f"{title}\n{reason}")
+
+
 def _render_grounded_content(
     *,
     summary: str,
@@ -1082,6 +1180,7 @@ def validate_model_brief(
                     finding["source_ids"] = matched_ids
             quote_miss = quote_miss or missed
         findings.append(finding)
+    findings = _arrange_findings(findings)
     if unknown:
         raise ValueError(f"forged or out-of-scope source ids: {unknown[:8]}")
     if allowed_ids and not findings:
@@ -1104,11 +1203,13 @@ def validate_model_brief(
         ]
         if any(sid not in allowed_ids for sid in action_ids):
             raise ValueError("suggested action cites unknown source")
-        actions.append({
+        action = {
             "title": title,
             "reason": _clean(str(item.get("reason") or "").strip()),
             "source_ids": action_ids,
-        })
+        }
+        _attach_action_facts(action, source_catalog)
+        actions.append(action)
 
     limitations = []
     for item in obj.get("limitations") or []:
