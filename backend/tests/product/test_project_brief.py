@@ -198,3 +198,81 @@ def test_validate_custom_criterion_needs_review():
     )
     assert "change happened" in result["content"]
     assert "`email:1`" in result["content"]
+
+
+def test_collect_points_evidence_at_the_matching_line():
+    file_body = "说明\n进度正常\n风险：供应商延期\n"
+    sources, _bodies, _notes, coverage = collect_allowed_sources(
+        contract={
+            "source_scope": {
+                "email": {"enabled": True, "query": "预算", "days": 30},
+                "files": [{"path": "C:/tmp/notes.md", "label": "notes"}],
+            },
+        },
+        step_results=[
+            SimpleNamespace(
+                tool="check_inbox",
+                status="success",
+                result=(
+                    '{"scoped": true, "search": {"matched": 1, "truncated": false},'
+                    '"emails": [{"message_id": "m1", "subject": "预算",'
+                    '"from": "a@b.c", "date": "2099-01-02T00:00:00+00:00",'
+                    '"body": "抬头\\n无关的一行\\n本周预算 100元\\n结尾"}]}'
+                ),
+            ),
+            SimpleNamespace(
+                step=1,
+                tool="read_file",
+                status="success",
+                result=file_body,
+            ),
+        ],
+        retrieved_at="t0",
+        plan_steps=[
+            {"tool": "check_inbox", "params": {"query": "预算"}},
+            {"tool": "read_file", "params": {"path": "C:/tmp/notes.md"}},
+        ],
+    )
+    email = next(src for src in sources if src["type"] == "email")
+    assert email["locator"] == "a@b.c · 第 3 行"
+    file_src = next(src for src in sources if src["type"] == "file")
+    # The file does not contain 预算, so it stays on the path.
+    assert file_src["locator"] == "C:/tmp/notes.md"
+
+    catalog = coverage["_catalog"]
+    missed = validate_model_brief(
+        {
+            "summary": "有预算",
+            "content": "正文",
+            "findings": [{
+                "text": "预算变了",
+                "source_ids": ["email:m1"],
+                "quote": "完全编造",
+            }],
+        },
+        allowed_ids={src["id"] for src in sources},
+        criteria=["每条关键结论附来源"],
+        source_notes=[],
+        source_catalog=catalog,
+    )
+    evidence = missed["findings"][0]["evidence"][0]
+    assert evidence["quote_in_source"] is False
+    assert evidence["snippet"] == "本周预算 100元"
+    assert evidence["locator"] == "a@b.c · 第 3 行"
+    assert "抬头" not in evidence["snippet"]
+
+    file_hit_sources, _b, _n, file_coverage = collect_allowed_sources(
+        contract={
+            "source_scope": {
+                "email": {"enabled": False, "query": "供应商 延期"},
+                "files": [{"path": "C:/tmp/notes.md", "label": "notes"}],
+            },
+        },
+        step_results=[
+            SimpleNamespace(step=0, tool="read_file", status="success", result=file_body),
+        ],
+        retrieved_at="t0",
+        plan_steps=[{"tool": "read_file", "params": {"path": "C:/tmp/notes.md"}}],
+    )
+    assert file_hit_sources[0]["locator"] == "C:/tmp/notes.md · 第 3 行"
+    assert file_coverage["_catalog"][file_hit_sources[0]["id"]]["hit_snippet"] == "风险：供应商延期"

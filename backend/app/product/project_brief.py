@@ -342,11 +342,13 @@ def collect_allowed_sources(
                     full_body += 1
                 else:
                     preview_only += 1
+                line_label, hit_snippet = _locate_query(text, query)
+                locator = _locator_with_line(sender or mid, line_label)
                 sources.append({
                     "id": source_id,
                     "type": "email",
                     "title": subject,
-                    "locator": sender or mid,
+                    "locator": locator,
                     "retrieved_at": retrieved_at,
                     "content_hash": content_hash(text or mid),
                     "body_complete": used_full,
@@ -360,8 +362,9 @@ def collect_allowed_sources(
                 included_texts.append(text)
                 catalog[source_id] = {
                     "text": text,
-                    "locator": sender or mid,
+                    "locator": locator,
                     "title": subject,
+                    "hit_snippet": hit_snippet,
                 }
                 matched += 1
             email_included = matched
@@ -401,6 +404,8 @@ def collect_allowed_sources(
                     step_params = raw_params
             requested_lines = int(step_params.get("max_lines") or BRIEF_FILE_MAX_LINES)
             truncation = _file_truncation(raw)
+            line_label, hit_snippet = _locate_query(raw, query)
+            locator = _locator_with_line(path, line_label)
             file_coverage.append({
                 "path": path,
                 "label": label,
@@ -414,7 +419,7 @@ def collect_allowed_sources(
                 "id": source_id,
                 "type": "file",
                 "title": label,
-                "locator": path,
+                "locator": locator,
                 "retrieved_at": retrieved_at,
                 "content_hash": content_hash(raw),
                 "truncated": truncation is not None,
@@ -422,7 +427,12 @@ def collect_allowed_sources(
             })
             bodies.append(_user_data(f"File {source_id} ({label})", raw))
             included_texts.append(raw)
-            catalog[source_id] = {"text": raw, "locator": path, "title": label}
+            catalog[source_id] = {
+                "text": raw,
+                "locator": locator,
+                "title": label,
+                "hit_snippet": hit_snippet,
+            }
 
     if email_scope.get("enabled") and not email_attempted:
         notes.append("任务要求读取邮箱，但执行计划未包含 check_inbox 步骤")
@@ -517,6 +527,36 @@ def _snippet(text: str, limit: int = _SNIPPET_LEN) -> str:
     return cleaned[:limit].rstrip() + "…"
 
 
+def _locate_query(text: str, query: str) -> tuple[str, str]:
+    """Line label and the snippet to show when a quote is missing.
+
+    An empty query, or a query that never appears, keeps the opening snippet
+    and an empty line label. A multi-word query matches a line that contains
+    every word when the whole phrase is not on one line.
+    """
+    needle = query.strip().lower()
+    opening = _snippet(text)
+    if not needle:
+        return "", opening
+    parts = [part for part in needle.split() if part]
+    for index, line in enumerate(str(text or "").splitlines(), start=1):
+        lowered = line.lower()
+        phrase = needle in lowered
+        words = len(parts) > 1 and all(part in lowered for part in parts)
+        if phrase or words:
+            return f"第 {index} 行", _snippet(line)
+    return "", opening
+
+
+def _locator_with_line(base: str, line_label: str) -> str:
+    base = base.strip()
+    if not line_label:
+        return base
+    if not base:
+        return line_label
+    return f"{base} · {line_label}"
+
+
 def _evidence_rows(
     item: dict[str, Any],
     source_ids: list[str],
@@ -529,6 +569,7 @@ def _evidence_rows(
         entry = catalog.get(sid) or {}
         text = str(entry.get("text") or "")
         locator = str(entry.get("locator") or sid)
+        fallback = str(entry.get("hit_snippet") or "").strip() or _snippet(text)
         if quote and quote in text:
             rows.append({
                 "source_id": sid,
@@ -542,7 +583,7 @@ def _evidence_rows(
         rows.append({
             "source_id": sid,
             "locator": locator,
-            "snippet": _snippet(text),
+            "snippet": fallback,
             "quote_in_source": False,
         })
     return rows, quote_miss
