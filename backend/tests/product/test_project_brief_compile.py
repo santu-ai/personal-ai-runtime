@@ -7,7 +7,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.product.project_brief import compile_project_brief_delivery, create_project_brief_work
+from app.product.project_brief import (
+    brief_compile_failure,
+    compile_project_brief_delivery,
+    create_project_brief_work,
+)
 from app.product.work_delivery import fold_delivery_history
 
 
@@ -502,3 +506,63 @@ async def test_compile_records_when_no_ratified_memory_matches(isolated_kernel, 
 
 def seen_ids(delivery: dict) -> str:
     return " ".join(str(src.get("id") or "") for src in delivery["sources"])
+
+
+def test_brief_compile_failure_tells_the_user_what_to_do():
+    from app.core.runtime.egress.egress_gate import EgressDeniedError
+
+    denied = brief_compile_failure(
+        EgressDeniedError("Cloud egress denied for classified personal context"),
+        retryable=True,
+    )
+    assert "没有发出" in denied
+    assert "127.0.0.1:11434" in denied
+    assert "重新执行" in denied
+    assert "ALLOW_CLOUD_PERSONAL_DATA_EGRESS" in denied
+    assert "模型输出非法" not in denied
+
+    wrapped = brief_compile_failure(
+        RuntimeError(
+            "All LLM providers failed for project_brief: "
+            "cloud(EgressDeniedError: Cloud egress denied for classified personal context)"
+        ),
+        retryable=True,
+    )
+    assert wrapped == denied
+
+    offline = brief_compile_failure(
+        RuntimeError("local(APIConnectionError: Connection error.)"),
+        retryable=True,
+    )
+    assert offline.startswith("连不上当前模型")
+    assert "重新执行" in offline
+    assert "模型输出非法" not in offline
+
+    other = brief_compile_failure(ValueError("missing summary"), retryable=True)
+    assert other.startswith("模型输出非法或不可用，可重试：")
+    quiet = brief_compile_failure(ValueError("missing summary"), retryable=False)
+    assert quiet.startswith("模型不可用或输出非法：")
+
+
+@pytest.mark.asyncio
+async def test_compile_returns_egress_denial_without_a_delivery(isolated_kernel):
+    from app.core.runtime.egress.egress_gate import EgressDeniedError
+
+    item = create_project_brief_work(
+        title="A",
+        objective="列出变化",
+        source_scope={"email": {"enabled": True, "days": 30}},
+    )
+
+    async def deny(_prompt: str) -> str:
+        raise EgressDeniedError("Cloud egress denied")
+
+    compiled = await compile_project_brief_delivery(
+        item["id"],
+        _inbox_outcome(),
+        execution_id="exec-egress",
+        llm_complete=deny,
+    )
+    assert compiled["ok"] is False
+    assert "没有发出" in compiled["error"]
+    assert "delivery" not in compiled
