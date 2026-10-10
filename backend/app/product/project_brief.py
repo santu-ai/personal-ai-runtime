@@ -206,9 +206,18 @@ def create_project_brief_work(
     )
 
 
+def _neutralize_untrusted_fences(value: str) -> str:
+    """Stop untrusted text from opening or closing a ``<<< >>>`` data fence.
+
+    A source body that contains the closer would otherwise end the fence early,
+    so the rest of the email or file would sit in the instruction channel.
+    """
+    return value.replace(">>>", "›››").replace("<<<", "‹‹‹")
+
+
 def _user_data(label: str, value: str, max_len: int = 8000) -> str:
     cleaned = "".join(ch for ch in value if ch.isprintable() or ch in "\n\t").strip()
-    cleaned = cleaned[:max_len]
+    cleaned = _neutralize_untrusted_fences(cleaned)[:max_len]
     return f"{label}:\n<<<\n{cleaned}\n>>>"
 
 
@@ -1039,10 +1048,14 @@ def _build_prompt(
 ) -> str:
     objective = str(contract.get("objective") or "")
     criteria = contract.get("acceptance_criteria") or default_acceptance_criteria()
-    notes_text = json.dumps(rework_notes, ensure_ascii=False) if rework_notes else "[]"
+    notes_text = _neutralize_untrusted_fences(
+        json.dumps(rework_notes, ensure_ascii=False) if rework_notes else "[]"
+    )
     allowed = ", ".join(allowed_ids) if allowed_ids else "(none)"
     source_section = "\n\n".join(source_blocks) if source_blocks else "(no sources retrieved)"
-    limitations_hint = "\n".join(source_notes) if source_notes else "(none)"
+    limitations_hint = _neutralize_untrusted_fences(
+        "\n".join(source_notes) if source_notes else "(none)"
+    )
     return f"""Write a project change/risk/todo brief.
 
 {_user_data("Objective", objective)}
