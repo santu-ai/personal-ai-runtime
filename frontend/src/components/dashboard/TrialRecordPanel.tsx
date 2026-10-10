@@ -169,6 +169,9 @@ export function TrialRecordView({ metrics }: { metrics: DeliveryMetrics }) {
         >
           导出试用记录
         </Button>
+        <p className="mt-2 text-xs text-fg-tertiary">
+          下载一份 JSON，文件名是 trial-record-加当天日期。上面六行和每一次核对都会写进去。
+        </p>
       </div>
       {metrics.capped ? (
         <p className="mt-2 text-xs text-fg-tertiary">这段时间事件较多，数字可能不完整</p>

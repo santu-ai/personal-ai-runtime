@@ -74,6 +74,8 @@ export default function OnboardingWizard({ onComplete }: Props) {
   const [launchingLabel, setLaunchingLabel] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [messageOk, setMessageOk] = useState(true);
+  const [modelReady, setModelReady] = useState(false);
+  const [emailReady, setEmailReady] = useState<boolean | null>(null);
   const checkLock = useRef(false);
   const launchLock = useRef(false);
   const checkFailFocus = useRef<CheckAction | null>(null);
@@ -130,6 +132,9 @@ export default function OnboardingWizard({ onComplete }: Props) {
     try {
       const health = await getSystemHealth();
       const configured = health?.startup?.checks?.llm?.configured ?? false;
+      const emailConfigured = health?.startup?.checks?.email?.configured;
+      setModelReady(configured);
+      if (typeof emailConfigured === "boolean") setEmailReady(emailConfigured);
       setMessage("后端运行正常");
       setMessageOk(true);
       return { ok: true, configured };
@@ -302,9 +307,23 @@ export default function OnboardingWizard({ onComplete }: Props) {
 
           {step === 2 && (
             <div className="mt-4 space-y-2">
-              <p className="text-xs text-fg-tertiary mb-3">
-                选一个场景。打开后可以执行、核对来源、验收，并预约下一次。
-              </p>
+              {modelReady ? (
+                <p className="text-xs text-fg-secondary">模型已经配好，所以跳过了配置模型。</p>
+              ) : null}
+              {emailReady === false ? (
+                <div className="p-3 bg-warning/10 border border-warning/30 rounded-lg">
+                  <p className="text-xs text-warning mb-2">
+                    邮箱还没接上。下面的场景会去读邮箱。先到设置里保存邮箱并测试连接，再执行。没有邮箱时，点「稍后再说」，到任务页新建简报，只填资料路径。
+                  </p>
+                  <Button size="sm" variant="secondary" onClick={goToSettings}>
+                    前往设置
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-xs text-fg-tertiary mb-3">
+                  选一个场景。打开后可以执行、核对来源、验收，并预约下一次。
+                </p>
+              )}
               {BRIEF_SCENES.map((scene) => {
                 const Icon = scene.icon;
                 const busy = launchingLabel === scene.label;

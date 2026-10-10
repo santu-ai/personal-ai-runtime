@@ -381,6 +381,22 @@ describe("OnboardingWizard", () => {
     expect(starter).toHaveFocus();
   });
 
+  it("says the model is ready and the mailbox is not, when health says so", async () => {
+    mockHealth.mockResolvedValue({
+      status: "ok",
+      auth_required: false,
+      startup: {
+        checks: { llm: { configured: true }, email: { configured: false } },
+      },
+    } as Awaited<ReturnType<typeof getSystemHealth>>);
+    renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    expect(await screen.findByText("模型已经配好，所以跳过了配置模型。")).toBeInTheDocument();
+    expect(screen.getByText(/邮箱还没接上/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "前往设置" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /整理最近邮件/ })).toBeInTheDocument();
+  });
+
   it("does not steal focus when 下一步 skips to the starters", async () => {
     const pending = defer<Awaited<ReturnType<typeof getSystemHealth>>>();
     mockHealth.mockImplementationOnce(() => pending.promise);
