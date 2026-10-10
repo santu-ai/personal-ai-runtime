@@ -67,13 +67,38 @@ def _rate(numerator: int, denominator: int) -> float | None:
     return round(numerator / denominator, 4)
 
 
-def summarize(rows: list[dict]) -> dict:
-    parsed = [row for row in rows if row["parsed"]]
+def _is_holdout(row: dict) -> bool:
+    return str(row.get("id") or "").startswith("holdout-")
+
+
+def _support_fields(parsed: list[dict], prefix: str) -> dict:
     supported = [row for row in parsed if row["evidence_supported"]]
     miss_rows = [row for row in parsed if row["miss_applicable"]]
     missed = [row for row in miss_rows if row["invented_amount"]]
     contra = [row for row in parsed if row["contradiction_applicable"]]
     handled = [row for row in contra if row["contradiction_handled"]]
+    return {
+        f"{prefix}parsed": len(parsed),
+        f"{prefix}evidence_support_rate": _rate(len(supported), len(parsed)),
+        f"{prefix}miss_rate": _rate(len(missed), len(miss_rows)),
+        f"{prefix}contradiction_handled_rate": _rate(len(handled), len(contra)),
+        f"{prefix}unsupported_ids": [
+            row["id"] for row in parsed if not row["evidence_supported"]
+        ],
+    }
+
+
+def summarize(rows: list[dict]) -> dict:
+    parsed = [row for row in rows if row["parsed"]]
+    tracked = [row for row in parsed if not _is_holdout(row)]
+    holdout = [row for row in parsed if _is_holdout(row)]
+    supported = [row for row in parsed if row["evidence_supported"]]
+    miss_rows = [row for row in parsed if row["miss_applicable"]]
+    missed = [row for row in miss_rows if row["invented_amount"]]
+    contra = [row for row in parsed if row["contradiction_applicable"]]
+    handled = [row for row in contra if row["contradiction_handled"]]
+    tracked_fields = _support_fields(tracked, "tracked_")
+    holdout_fields = _support_fields(holdout, "holdout_")
     return {
         "cases": len(rows),
         "parsed": len(parsed),
@@ -88,4 +113,10 @@ def summarize(rows: list[dict]) -> dict:
         "contradiction_missed_ids": [
             row["id"] for row in contra if not row["contradiction_handled"]
         ],
+        "tracked_parsed": tracked_fields["tracked_parsed"],
+        "tracked_evidence_support_rate": tracked_fields["tracked_evidence_support_rate"],
+        "tracked_unsupported_ids": tracked_fields["tracked_unsupported_ids"],
+        "holdout_parsed": holdout_fields["holdout_parsed"],
+        "holdout_evidence_support_rate": holdout_fields["holdout_evidence_support_rate"],
+        "holdout_unsupported_ids": holdout_fields["holdout_unsupported_ids"],
     }

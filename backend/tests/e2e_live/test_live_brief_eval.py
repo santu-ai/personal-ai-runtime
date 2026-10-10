@@ -63,6 +63,10 @@ async def test_live_brief_eval_reports_quality_rates():
     rows: list[dict] = []
     try:
         for index, case in enumerate(CASES):
+            print(
+                f"BRIEF_EVAL_CASE {index + 1}/{len(CASES)} {case['id']}",
+                flush=True,
+            )
             sources, bodies, notes, coverage = prepare_case(case)
             catalog = dict(coverage.get("_catalog") or {})
             retrieval = {key: value for key, value in coverage.items() if key != "_catalog"}
