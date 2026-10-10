@@ -650,6 +650,25 @@ def _extract_json(text: str) -> dict[str, Any]:
 
 _SNIPPET_LEN = 240
 _QUOTE_MISS = "模型给出的摘录对不上来源正文"
+# A sentence that only says the model found no limitation is not one a person can check.
+_META_LIMITATION = re.compile(
+    r"(?i)^no limitations?(?: are| were)?(?: identified| found| noted)?"
+    r"(?: in (?:the )?(?:provided|available|given) [\w\s]+)?[.\s]*$"
+)
+_META_LIMITATION_ZH = (
+    "未发现限制",
+    "没有发现限制",
+    "无其他限制",
+    "没有其他限制",
+)
+
+
+def _is_meta_limitation(note: str) -> bool:
+    folded = re.sub(r"[\s.。!！]+", " ", note).strip()
+    if _META_LIMITATION.fullmatch(folded):
+        return True
+    bare = folded.rstrip("。.!！ ").strip()
+    return bare in _META_LIMITATION_ZH
 _MIN_VERBATIM_SPAN = 4
 _SPAN_QUOTE_LIMIT = 1500
 
@@ -1652,7 +1671,7 @@ def validate_model_brief(
     limitations = []
     for item in obj.get("limitations") or []:
         note = _clean(_note_text(item))
-        if note:
+        if note and not _is_meta_limitation(note):
             limitations.append(note)
     limitations.extend(note for note in source_notes if note not in limitations)
     if quote_miss and _QUOTE_MISS not in limitations:

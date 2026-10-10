@@ -59,6 +59,7 @@ import {
   type DeliverySourceRef,
 } from "../utils/deliverySourceNav";
 import { isImeKeyboardEvent } from "../utils/imeKey";
+import { formatTime } from "../utils/time";
 import { timeAgo } from "../utils/timeUtils";
 import { executionStatusLabel, handlerLabel } from "../utils/handlerLabels";
 import { describeToolAction, toolLabel } from "../utils/toolLabels";
@@ -1806,7 +1807,7 @@ export default function TasksPage() {
         handoff = { kind: "kept", dialog: "schedule" };
       }
       const when = scheduled.fire_at
-        ? `已设定，将在 ${scheduled.fire_at} 再次运行这一份任务。`
+        ? `已设定，将在 ${formatTime(scheduled.fire_at)} 再次运行这一份任务。`
         : "已设定，到点后再次运行这一份任务。";
       const summary = scheduled.changes_summary?.trim();
       setScheduledRepeatNote(summary ? `${when}${summary}` : when);
