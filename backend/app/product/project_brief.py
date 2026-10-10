@@ -511,6 +511,91 @@ def _decode_json_object(raw: str) -> dict[str, Any] | None:
     return obj if isinstance(obj, dict) else None
 
 
+_BARE_JSON_KEY = re.compile(r'([,{])(\s*)([A-Za-z_][A-Za-z0-9_]*)"\s*:')
+
+
+def _repair_bare_json_keys(text: str) -> str:
+    """Put the missing opening quote back on ``, content":``."""
+    return _BARE_JSON_KEY.sub(r'\1\2"\3":', text)
+
+
+def _structural_closer_indexes(chunk: str) -> tuple[int | None, list[int]]:
+    """Return a complete-object end, or indexes of ``}`` that still leave a stack."""
+    in_string = False
+    escaped = False
+    stack: list[str] = []
+    partial: list[int] = []
+    for index, char in enumerate(chunk):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+            continue
+        if char in "{[":
+            stack.append(char)
+            continue
+        if char not in "}]":
+            continue
+        if not stack:
+            continue
+        opener = stack[-1]
+        if (opener == "{" and char != "}") or (opener == "[" and char != "]"):
+            continue
+        stack.pop()
+        if not stack:
+            return index, partial
+        if char == "}":
+            partial.append(index)
+    return None, partial
+
+
+def _append_json_closers(chunk: str) -> str:
+    in_string = False
+    escaped = False
+    stack: list[str] = []
+    for char in chunk:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+            continue
+        if char in "{[":
+            stack.append(char)
+        elif char in "}]" and stack:
+            opener = stack[-1]
+            if (opener == "{" and char == "}") or (opener == "[" and char == "]"):
+                stack.pop()
+    if in_string:
+        chunk += '"'
+    return chunk + "".join("}" if opener == "{" else "]" for opener in reversed(stack))
+
+
+def _close_truncated_json(text: str) -> str | None:
+    """Keep complete objects when the model stops mid-array."""
+    start = text.find("{")
+    if start < 0:
+        return None
+    chunk = text[start:]
+    complete, partial = _structural_closer_indexes(chunk)
+    if complete is not None:
+        return chunk[: complete + 1]
+    if not partial:
+        return None
+    return _append_json_closers(chunk[: partial[-1] + 1])
+
+
 def _extract_json(text: str) -> dict[str, Any]:
     raw = (text or "").strip()
     if not raw:
@@ -518,13 +603,21 @@ def _extract_json(text: str) -> dict[str, Any]:
     fenced = _JSON_FENCE.search(raw)
     if fenced:
         raw = fenced.group(1).strip()
-    obj = _decode_json_object(raw)
-    if obj is None:
-        start = raw.find("{")
-        obj = _decode_json_object(raw[start:]) if start >= 0 else None
-    if obj is None:
-        raise ValueError("model output is not JSON")
-    return obj
+    candidates = [raw]
+    repaired = _repair_bare_json_keys(raw)
+    if repaired != raw:
+        candidates.append(repaired)
+    closed = _close_truncated_json(repaired)
+    if closed and closed not in candidates:
+        candidates.append(closed)
+    for candidate in candidates:
+        obj = _decode_json_object(candidate)
+        if obj is None:
+            start = candidate.find("{")
+            obj = _decode_json_object(candidate[start:]) if start >= 0 else None
+        if obj is not None:
+            return obj
+    raise ValueError("model output is not JSON")
 
 
 _SNIPPET_LEN = 240
@@ -814,17 +907,42 @@ def _collapsed(text: str) -> str:
     return " ".join(str(text or "").split())
 
 
-def _is_prompt_echo(text: str, objective: str, criteria: list[str]) -> bool:
-    """True when this text copies the task instead of a source line."""
-    cleaned = _collapsed(text)
+_QUOTE_EDGE = "。.!?！？\"'“”‘’"
+
+
+def _strip_quote_edge(text: str) -> str:
+    return str(text or "").strip().strip(_QUOTE_EDGE).strip()
+
+
+def _quote_candidates(quote: str) -> list[str]:
+    """The quote, then the same words without one trailing period."""
+    cleaned = str(quote or "").strip()
+    trimmed = _strip_quote_edge(cleaned)
+    found: list[str] = []
+    for item in (cleaned, trimmed):
+        if item and item not in found:
+            found.append(item)
+    return found
+
+
+def _is_prompt_echo(
+    text: str,
+    objective: str,
+    criteria: list[str],
+    notes: list[str] | None = None,
+) -> bool:
+    """True when this text copies the task or a collector note, not a source line."""
+    cleaned = _collapsed(_strip_quote_edge(text))
     if len(cleaned) < 8:
         return False
     goal = _collapsed(objective)
     if goal and min(len(cleaned), len(goal)) >= 8 and (cleaned in goal or goal in cleaned):
         return True
-    for blob in [*criteria, *_PROMPT_ECHOES]:
-        phrase = _collapsed(blob)
+    for blob in [*criteria, *_PROMPT_ECHOES, *(notes or [])]:
+        phrase = _collapsed(_strip_quote_edge(blob))
         if len(phrase) >= 8 and phrase in cleaned and len(phrase) * 2 >= len(cleaned):
+            return True
+        if len(cleaned) >= 8 and cleaned in phrase and len(cleaned) * 2 >= len(phrase):
             return True
     return False
 
@@ -835,6 +953,7 @@ def _ground_instruction_echo(
     catalog: dict[str, dict[str, str]],
     objective: str,
     criteria: list[str],
+    notes: list[str] | None = None,
 ) -> dict[str, Any]:
     """Swap an instruction-echo quote for a real line from the cited source.
 
@@ -843,9 +962,9 @@ def _ground_instruction_echo(
     """
     quote = str(item.get("quote") or "").strip()
     text = str(item.get("text") or "").strip()
-    if not _is_prompt_echo(quote, objective, criteria):
+    if not _is_prompt_echo(quote, objective, criteria, notes):
         return item
-    if text and not _is_prompt_echo(text, objective, criteria):
+    if text and not _is_prompt_echo(text, objective, criteria, notes):
         return item
     source_ids = [
         str(sid).strip()
@@ -977,15 +1096,24 @@ def _evidence_rows(
         text = str(entry.get("text") or "")
         locator = str(entry.get("locator") or sid)
         fallback = str(entry.get("hit_snippet") or "").strip() or _snippet(text)
-        if quote and quote in text:
+        matched = next(
+            (candidate for candidate in _quote_candidates(quote) if candidate in text),
+            "",
+        )
+        if matched:
             rows.append({
                 "source_id": sid,
                 "locator": locator,
-                "snippet": _snippet(quote),
+                "snippet": _snippet(matched),
                 "quote_in_source": True,
             })
             continue
-        span = _verbatim_span(quote, text) if quote else ""
+        span = ""
+        if quote:
+            for candidate in _quote_candidates(quote):
+                span = _verbatim_span(candidate, text)
+                if span:
+                    break
         if not span and quote:
             span = _truncation_quote_span(quote, text)
         if span:
@@ -1313,6 +1441,7 @@ def validate_model_brief(
                 catalog=source_catalog,
                 objective=objective,
                 criteria=criteria,
+                notes=source_notes,
             )
         quote = str(item.get("quote") or "").strip()
         text = _clean(str(item.get("text") or "").strip())
@@ -1603,6 +1732,7 @@ async def _complete_brief_json(
         actor="executor",
         temperature=0.2,
         max_tokens=BRIEF_COMPILE_MAX_TOKENS,
+        json_object=True,
         correlation_id=_correlation_for_execution(execution_id),
         caused_by=execution_id or None,
         data_sources=data_sources,
