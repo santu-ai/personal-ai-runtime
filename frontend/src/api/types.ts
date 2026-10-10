@@ -540,6 +540,8 @@ export interface RerunnableBrief {
   title: string;
   version: number;
   delivery_id: string;
+  /** Compact line from the current delivery's changes_from_previous. */
+  changes_summary?: string;
 }
 
 export interface RecoverableBriefFailure {

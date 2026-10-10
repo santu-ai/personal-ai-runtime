@@ -104,6 +104,11 @@ export default function TimerBriefPanel({ timers, activeTimers, briefs }: TimerB
                 >
                   {brief.title || "项目简报"} · 当前 v{brief.version}
                 </Link>
+                {brief.changes_summary?.trim() ? (
+                  <p className="mt-0.5 text-fg-tertiary" data-testid="brief-changes-summary">
+                    {brief.changes_summary}
+                  </p>
+                ) : null}
               </li>
             ))}
           </ul>

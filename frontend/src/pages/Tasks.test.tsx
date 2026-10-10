@@ -43,6 +43,7 @@ vi.mock("../api/client", async (importOriginal) => {
       work_id: "brief_1",
       timer_id: "t_1",
       fire_at: "2026-09-24T08:00:00Z",
+      changes_summary: "还没有上一版",
     }),
     cancelWorkItem: vi.fn(),
     createProjectBrief: vi.fn(),
@@ -2481,6 +2482,7 @@ describe("TasksPage", () => {
     );
     expect(rerunProjectBrief).not.toHaveBeenCalled();
     expect(screen.getByTestId("scheduled-repeat-note")).toHaveTextContent("这一份任务");
+    expect(screen.getByTestId("scheduled-repeat-note")).toHaveTextContent("还没有上一版");
   });
 
   it("sets the repeat from Enter, and ignores IME, an empty delay, and a second press", async () => {

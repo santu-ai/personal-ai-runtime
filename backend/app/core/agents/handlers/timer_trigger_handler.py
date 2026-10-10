@@ -219,6 +219,7 @@ async def _open_or_rerun_same_task(
         DeliveryConflictError,
         DeliveryNotFoundError,
         DeliveryValidationError,
+        brief_changes_summary,
         rerun_project_brief,
     )
 
@@ -236,10 +237,19 @@ async def _open_or_rerun_same_task(
         logger.warning("timer repeat skipped for %s", work_id, exc_info=True)
         started = False
 
+    summary = ""
+    if started:
+        try:
+            summary = brief_changes_summary(work_id)
+        except Exception:
+            logger.warning("change summary skipped for %s", work_id, exc_info=True)
+            summary = ""
     if started:
         content = "已再次运行这一份任务。"
     else:
         content = "这一份任务现在不能再次运行，打开的仍是它。"
+    if summary:
+        content = f"{content}{summary}"
     extra = message.strip()
     if extra and extra != "时间到！":
         content = f"{content} {extra}"

@@ -484,6 +484,67 @@ def _changes_from_previous(previous: dict[str, Any], current: dict[str, Any]) ->
     }
 
 
+# Compact Chinese line for the same delta. Counts only; bodies stay on the task page.
+_CHANGE_COUNT_LABELS = (
+    ("findings_added", "新增结论"),
+    ("findings_removed", "去掉结论"),
+    ("findings_changed", "改写结论"),
+    ("sources_added", "新增来源"),
+    ("sources_removed", "去掉来源"),
+    ("sources_changed", "改写来源"),
+    ("limitations_added", "新增限制"),
+    ("limitations_removed", "去掉限制"),
+    ("actions_added", "新增待办"),
+    ("actions_removed", "去掉待办"),
+    ("actions_changed", "改写待办"),
+)
+_STRUCTURED_BODY_KEYS = frozenset({
+    "findings_added",
+    "findings_removed",
+    "findings_changed",
+    "limitations_added",
+    "limitations_removed",
+    "actions_added",
+    "actions_removed",
+    "actions_changed",
+})
+
+
+def summarize_delivery_changes(delta: dict[str, Any] | None) -> str:
+    """One line for ``changes_from_previous``. No previous version stays explicit."""
+    if not isinstance(delta, dict):
+        return "还没有上一版"
+    try:
+        previous_version = int(delta.get("previous_version") or 0)
+    except (TypeError, ValueError):
+        previous_version = 0
+    parts: list[str] = []
+    structured = 0
+    for key, label in _CHANGE_COUNT_LABELS:
+        rows = delta.get(key)
+        count = len(rows) if isinstance(rows, list) else 0
+        if count:
+            parts.append(f"{label} {count}")
+        if key in _STRUCTURED_BODY_KEYS:
+            structured += count
+    if delta.get("summary_changed") is True:
+        parts.append("摘要已更新")
+    if delta.get("content_changed") is True and structured == 0:
+        parts.append("正文已更新")
+    prefix = f"相对 v{previous_version}"
+    if not parts:
+        return f"{prefix}：与上一版相同"
+    return f"{prefix}：" + "，".join(parts)
+
+
+def brief_changes_summary(work_id: str) -> str:
+    """Change line for the current delivery of one work item."""
+    folded = fold_delivery_history(work_id)
+    current = folded.get("current")
+    delta = current.get("changes_from_previous") if isinstance(current, dict) else None
+    return summarize_delivery_changes(delta if isinstance(delta, dict) else None)
+
+
 def _changes_for(row: dict[str, Any], by_id: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
     previous_id = str(row.get("supersedes_delivery_id") or "").strip()
     if not previous_id:
@@ -1364,6 +1425,7 @@ def list_rerunnable_briefs(*, limit: int = 5) -> list[dict[str, Any]]:
     Opening one and running it again stays on the same work item. The next
     ``publish_delivery`` sets ``supersedes_delivery_id``, so
     ``changes_from_previous`` is the comparison with the previous version.
+    ``changes_summary`` is that comparison as one line, or ``还没有上一版``.
     """
     limit = max(1, min(int(limit), 5))
     rows = read_ports.query_work_items(
@@ -1387,11 +1449,15 @@ def list_rerunnable_briefs(*, limit: int = 5) -> list[dict[str, Any]]:
         current = folded.get("current")
         if not isinstance(current, dict) or not current.get("delivery_id"):
             continue
+        delta = current.get("changes_from_previous")
         out.append({
             "work_id": work_id,
             "title": item.get("title") or "",
             "version": current.get("version"),
             "delivery_id": current.get("delivery_id"),
+            "changes_summary": summarize_delivery_changes(
+                delta if isinstance(delta, dict) else None,
+            ),
         })
     return out
 
@@ -1572,6 +1638,7 @@ async def schedule_brief_repeat(
     with _work_lock(work_id):
         item, _previous_id = _require_completed_brief(work_id)
         message = _repeat_timer_message(str(item.get("title") or "项目简报"))
+        changes_summary = brief_changes_summary(work_id)
     cap = await kernel.invoke_capability(
         "set_timer",
         {
@@ -1595,6 +1662,7 @@ async def schedule_brief_repeat(
         "work_id": work_id,
         "timer_id": str(data["timer_id"]),
         "fire_at": str(data.get("fire_at") or ""),
+        "changes_summary": changes_summary,
     }
 
 
