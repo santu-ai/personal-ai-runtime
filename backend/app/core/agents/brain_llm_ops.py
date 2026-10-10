@@ -29,6 +29,7 @@ async def _complete_text(
     *,
     temperature: float | None = None,
     max_tokens: int | None = None,
+    json_object: bool = False,
 ) -> str:
     """非流式文本补全——统一生成参数解析与调用模板。
 
@@ -40,12 +41,22 @@ async def _complete_text(
         gen_temp, gen_max = runtime_config.get_generation_params()
         temperature = temperature if temperature is not None else gen_temp
         max_tokens = max_tokens if max_tokens is not None else gen_max
-    response = await client.chat.completions.create(
-        model=model,
-        messages=messages,
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
+    request = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    if json_object:
+        request["response_format"] = {"type": "json_object"}
+    try:
+        response = await client.chat.completions.create(**request)
+    except Exception as exc:
+        status = getattr(exc, "status_code", None)
+        if not json_object or status not in {400, 422}:
+            raise
+        request.pop("response_format", None)
+        response = await client.chat.completions.create(**request)
     return response.choices[0].message.content or ""
 
 
@@ -279,6 +290,7 @@ async def complete_text_with_failover(
     correlation_id: str | None = None,
     caused_by: str | None = None,
     data_sources: list[str] | None = None,
+    json_object: bool = False,
 ) -> tuple[str, str]:
     """Text-only completion routed through primary + fallback providers.
 
@@ -328,6 +340,7 @@ async def complete_text_with_failover(
             content = (await _complete_text(
                 client, provider.model, audited_messages,
                 temperature=temperature, max_tokens=max_tokens,
+                json_object=json_object,
             )).strip()
             if content:
                 record_llm_outcome(

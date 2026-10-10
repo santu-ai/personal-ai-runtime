@@ -35,7 +35,9 @@ DEFAULT_TIMEZONE = "Asia/Shanghai"
 DEFAULT_DAYS = 3
 DEFAULT_EMAIL_LIMIT = 30
 BRIEF_FILE_MAX_LINES = 2000
-BRIEF_COMPILE_MAX_TOKENS = 2500
+# 900 completion tokens ran past the 60s client timeout on a 3B CPU model
+# that repeats one finding. 600 still finishes, and a cut-off array is closed.
+BRIEF_COMPILE_MAX_TOKENS = 600
 BRIEF_MEMORY_LIMIT = 3
 DEFAULT_CRITERIA = (
     "每条关键结论附来源",
@@ -537,6 +539,91 @@ def _decode_json_object(raw: str) -> dict[str, Any] | None:
     return obj if isinstance(obj, dict) else None
 
 
+_BARE_JSON_KEY = re.compile(r'([,{])(\s*)([A-Za-z_][A-Za-z0-9_]*)"\s*:')
+
+
+def _repair_bare_json_keys(text: str) -> str:
+    """Put the missing opening quote back on ``, content":``."""
+    return _BARE_JSON_KEY.sub(r'\1\2"\3":', text)
+
+
+def _structural_closer_indexes(chunk: str) -> tuple[int | None, list[int]]:
+    """Return a complete-object end, or indexes of ``}`` that still leave a stack."""
+    in_string = False
+    escaped = False
+    stack: list[str] = []
+    partial: list[int] = []
+    for index, char in enumerate(chunk):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+            continue
+        if char in "{[":
+            stack.append(char)
+            continue
+        if char not in "}]":
+            continue
+        if not stack:
+            continue
+        opener = stack[-1]
+        if (opener == "{" and char != "}") or (opener == "[" and char != "]"):
+            continue
+        stack.pop()
+        if not stack:
+            return index, partial
+        if char == "}":
+            partial.append(index)
+    return None, partial
+
+
+def _append_json_closers(chunk: str) -> str:
+    in_string = False
+    escaped = False
+    stack: list[str] = []
+    for char in chunk:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+            continue
+        if char in "{[":
+            stack.append(char)
+        elif char in "}]" and stack:
+            opener = stack[-1]
+            if (opener == "{" and char == "}") or (opener == "[" and char == "]"):
+                stack.pop()
+    if in_string:
+        chunk += '"'
+    return chunk + "".join("}" if opener == "{" else "]" for opener in reversed(stack))
+
+
+def _close_truncated_json(text: str) -> str | None:
+    """Keep complete objects when the model stops mid-array."""
+    start = text.find("{")
+    if start < 0:
+        return None
+    chunk = text[start:]
+    complete, partial = _structural_closer_indexes(chunk)
+    if complete is not None:
+        return chunk[: complete + 1]
+    if not partial:
+        return None
+    return _append_json_closers(chunk[: partial[-1] + 1])
+
+
 def _extract_json(text: str) -> dict[str, Any]:
     raw = (text or "").strip()
     if not raw:
@@ -544,13 +631,21 @@ def _extract_json(text: str) -> dict[str, Any]:
     fenced = _JSON_FENCE.search(raw)
     if fenced:
         raw = fenced.group(1).strip()
-    obj = _decode_json_object(raw)
-    if obj is None:
-        start = raw.find("{")
-        obj = _decode_json_object(raw[start:]) if start >= 0 else None
-    if obj is None:
-        raise ValueError("model output is not JSON")
-    return obj
+    candidates = [raw]
+    repaired = _repair_bare_json_keys(raw)
+    if repaired != raw:
+        candidates.append(repaired)
+    closed = _close_truncated_json(repaired)
+    if closed and closed not in candidates:
+        candidates.append(closed)
+    for candidate in candidates:
+        obj = _decode_json_object(candidate)
+        if obj is None:
+            start = candidate.find("{")
+            obj = _decode_json_object(candidate[start:]) if start >= 0 else None
+        if obj is not None:
+            return obj
+    raise ValueError("model output is not JSON")
 
 
 _SNIPPET_LEN = 240
@@ -800,6 +895,20 @@ def _scrub_false_conflict(
     return cleaned.strip(" ，,;；")
 
 
+def _space_collapsed_line(quote: str, text: str) -> str:
+    """A full source line with the same characters, ignoring spaces."""
+    wanted = "".join(str(quote or "").split())
+    if len(wanted) < 2:
+        return ""
+    for line in str(text or "").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped == str(quote or "").strip() or "".join(stripped.split()) == wanted:
+            return stripped
+    return ""
+
+
 def _marker_line(text: str) -> str:
     for line in str(text or "").splitlines():
         stripped = line.strip()
@@ -840,17 +949,81 @@ def _collapsed(text: str) -> str:
     return " ".join(str(text or "").split())
 
 
-def _is_prompt_echo(text: str, objective: str, criteria: list[str]) -> bool:
-    """True when this text copies the task instead of a source line."""
-    cleaned = _collapsed(text)
-    if len(cleaned) < 8:
+_QUOTE_EDGE = "。.!?！？\"'“”‘’"
+
+
+def _strip_quote_edge(text: str) -> str:
+    return str(text or "").strip().strip(_QUOTE_EDGE).strip()
+
+
+def _quote_candidates(quote: str) -> list[str]:
+    """The quote, then the same words without one trailing period."""
+    cleaned = str(quote or "").strip()
+    trimmed = _strip_quote_edge(cleaned)
+    found: list[str] = []
+    for item in (cleaned, trimmed):
+        if item and item not in found:
+            found.append(item)
+    return found
+
+
+def _is_prompt_echo(
+    text: str,
+    objective: str,
+    criteria: list[str],
+    notes: list[str] | None = None,
+) -> bool:
+    """True when this text copies the task or a collector note, not a source line."""
+    cleaned = _collapsed(_strip_quote_edge(text))
+    if len(cleaned) < 4:
         return False
     goal = _collapsed(objective)
-    if goal and min(len(cleaned), len(goal)) >= 8 and (cleaned in goal or goal in cleaned):
+    if (
+        len(cleaned) >= 8
+        and goal
+        and min(len(cleaned), len(goal)) >= 8
+        and (cleaned in goal or goal in cleaned)
+    ):
         return True
-    for blob in [*criteria, *_PROMPT_ECHOES]:
-        phrase = _collapsed(blob)
+    for blob in [*criteria, *_PROMPT_ECHOES, *(notes or [])]:
+        phrase = _collapsed(_strip_quote_edge(blob))
+        if len(phrase) >= 4 and phrase == cleaned:
+            return True
         if len(phrase) >= 8 and phrase in cleaned and len(phrase) * 2 >= len(cleaned):
+            return True
+        if len(cleaned) >= 8 and cleaned in phrase and len(cleaned) * 2 >= len(phrase):
+            return True
+    return False
+
+
+_SCAFFOLD_PREFIXES = (
+    "subject:",
+    "date:",
+    "allowed source ids",
+    "quotable lines",
+)
+
+
+def _is_scaffold_finding(
+    text: str,
+    catalog: dict[str, dict[str, str]],
+    objective: str,
+    criteria: list[str],
+    notes: list[str] | None = None,
+) -> bool:
+    """Prompt labels and collector notes are not findings about the source."""
+    if _is_prompt_echo(text, objective, criteria, notes):
+        return True
+    cleaned = _strip_quote_edge(text)
+    lowered = cleaned.lower()
+    if any(lowered.startswith(prefix) for prefix in _SCAFFOLD_PREFIXES):
+        return True
+    for entry in catalog.values():
+        title = str(entry.get("title") or "").strip()
+        locator = str(entry.get("locator") or "").strip()
+        base = locator.split(" · ", 1)[0].strip()
+        body = str(entry.get("text") or "")
+        if cleaned and cleaned in {title, locator, base} and cleaned not in body:
             return True
     return False
 
@@ -861,17 +1034,30 @@ def _ground_instruction_echo(
     catalog: dict[str, dict[str, str]],
     objective: str,
     criteria: list[str],
+    notes: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Swap an instruction-echo quote for a real line from the cited source.
+    """Swap an instruction echo for a real line from the cited source.
 
-    A conclusion that is not itself an echo keeps its quote. Attaching some
-    other line would make an unrelated claim look supported.
+    An echo with no quote, or a quote that is only the subject line, is the
+    same kind of miss as an echo quote. A conclusion that is not itself an
+    echo keeps its quote. Attaching some other line would make an unrelated
+    claim look supported.
     """
     quote = str(item.get("quote") or "").strip()
     text = str(item.get("text") or "").strip()
-    if not _is_prompt_echo(quote, objective, criteria):
+    quote_echo = bool(quote) and _is_prompt_echo(quote, objective, criteria, notes)
+    text_echo = bool(text) and _is_prompt_echo(text, objective, criteria, notes)
+    quote_scaffold = bool(quote) and _is_scaffold_finding(
+        quote, catalog, objective, criteria, notes,
+    )
+    text_scaffold = bool(text) and _is_scaffold_finding(
+        text, catalog, objective, criteria, notes,
+    )
+    if text and not text_scaffold:
         return item
-    if text and not _is_prompt_echo(text, objective, criteria):
+    if quote and not quote_echo and not quote_scaffold:
+        return item
+    if not (quote_echo or quote_scaffold or text_echo or text_scaffold):
         return item
     source_ids = [
         str(sid).strip()
@@ -879,6 +1065,8 @@ def _ground_instruction_echo(
         if str(sid).strip()
     ]
     search_ids = source_ids or list(catalog)
+    if source_ids and not any(sid in catalog for sid in source_ids):
+        search_ids = list(catalog)
     for sid in search_ids:
         body = str((catalog.get(sid) or {}).get("text") or "")
         if quote and quote in body:
@@ -1003,17 +1191,30 @@ def _evidence_rows(
         text = str(entry.get("text") or "")
         locator = str(entry.get("locator") or sid)
         fallback = str(entry.get("hit_snippet") or "").strip() or _snippet(text)
-        if quote and quote in text:
+        matched = next(
+            (candidate for candidate in _quote_candidates(quote) if candidate in text),
+            "",
+        )
+        if matched:
             rows.append({
                 "source_id": sid,
                 "locator": locator,
-                "snippet": _snippet(quote),
+                "snippet": _snippet(matched),
                 "quote_in_source": True,
             })
             continue
-        span = _verbatim_span(quote, text) if quote else ""
+        span = ""
+        if quote:
+            for candidate in _quote_candidates(quote):
+                span = _verbatim_span(candidate, text)
+                if span:
+                    break
         if not span and quote:
             span = _truncation_quote_span(quote, text)
+        if not span and quote:
+            span = _space_collapsed_line(quote, text)
+        if not span and not quote:
+            span = _space_collapsed_line(str(item.get("text") or ""), text)
         if span:
             rows.append({
                 "source_id": sid,
@@ -1339,7 +1540,22 @@ def validate_model_brief(
                 catalog=source_catalog,
                 objective=objective,
                 criteria=criteria,
+                notes=source_notes,
             )
+        quote_for_keep = str(item.get("quote") or "")
+        quote_in_catalog = any(
+            candidate in str(entry.get("text") or "")
+            for entry in (source_catalog or {}).values()
+            for candidate in _quote_candidates(quote_for_keep)
+        )
+        if not quote_in_catalog and _is_scaffold_finding(
+            str(item.get("text") or ""),
+            source_catalog or {},
+            objective,
+            criteria,
+            source_notes,
+        ):
+            continue
         quote = str(item.get("quote") or "").strip()
         text = _clean(str(item.get("text") or "").strip())
         quote_in_catalog = bool(quote) and any(
@@ -1629,6 +1845,7 @@ async def _complete_brief_json(
         actor="executor",
         temperature=0.2,
         max_tokens=BRIEF_COMPILE_MAX_TOKENS,
+        json_object=True,
         correlation_id=_correlation_for_execution(execution_id),
         caused_by=execution_id or None,
         data_sources=data_sources,
@@ -1661,6 +1878,7 @@ def _build_prompt(
             "- Do not leave findings empty. Copy one source line into quote.\n"
             "- When quotable lines are listed, copy quote from one of those lines.\n"
             "- Do not copy the objective, the acceptance criteria, or these rules into quote.\n"
+            "- Write at most 6 findings. Do not repeat a quote.\n"
             "- Each finding lists only the source ids that contain that quote."
         )
     else:

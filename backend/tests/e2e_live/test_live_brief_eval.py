@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from app.product.project_brief import (
+    BRIEF_COMPILE_MAX_TOKENS,
     _build_prompt,
     _extract_json,
     default_acceptance_criteria,
@@ -89,19 +90,42 @@ async def test_live_brief_eval_reports_quality_rates():
                         {"role": "user", "content": prompt},
                     ],
                     temperature=0,
-                    max_tokens=900,
+                    max_tokens=BRIEF_COMPILE_MAX_TOKENS,
+                    response_format={"type": "json_object"},
                 )
             except Exception as exc:
-                if index == 0:
-                    pytest.fail(f"local model unreachable: {type(exc).__name__}: {exc}")
-                rows.append(score_case(
-                    case_id=str(case["id"]),
-                    source_text="\n".join(bodies),
-                    collector_gaps=list(coverage.get("gaps") or []),
-                    included_empty=not sources,
-                    parsed=False,
-                ))
-                continue
+                status = getattr(exc, "status_code", None)
+                if status in {400, 422}:
+                    try:
+                        resp = await client.chat.completions.create(
+                            model=model,
+                            messages=[
+                                {"role": "system", "content": _SYSTEM},
+                                {"role": "user", "content": prompt},
+                            ],
+                            temperature=0,
+                            max_tokens=BRIEF_COMPILE_MAX_TOKENS,
+                        )
+                    except Exception as retry_exc:
+                        exc = retry_exc
+                        resp = None
+                else:
+                    resp = None
+                if resp is None:
+                    print(
+                        f"BRIEF_EVAL_UNPARSED {case['id']}: {type(exc).__name__}: {exc}",
+                        flush=True,
+                    )
+                    if index == 0:
+                        pytest.fail(f"local model unreachable: {type(exc).__name__}: {exc}")
+                    rows.append(score_case(
+                        case_id=str(case["id"]),
+                        source_text="\n".join(bodies),
+                        collector_gaps=list(coverage.get("gaps") or []),
+                        included_empty=not sources,
+                        parsed=False,
+                    ))
+                    continue
             content = (resp.choices[0].message.content or "") if resp.choices else ""
             source_text = "\n".join(bodies)
             gaps = list(retrieval.get("gaps") or coverage.get("gaps") or [])

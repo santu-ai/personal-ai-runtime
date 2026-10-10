@@ -10,6 +10,7 @@ import pytest
 from app.product.project_brief import (
     BRIEF_FILE_MAX_LINES,
     _build_prompt,
+    _extract_json,
     _source_block,
     build_project_brief_plan,
     collect_allowed_sources,
@@ -460,6 +461,15 @@ CASES: list[dict] = [
         ],
         "file_truncated": True,
         "gaps_contains": "只显示 4/30 行",
+    },
+    {
+        "id": "holdout-supplier-name",
+        "query": "供应商",
+        "results": [_inbox([
+            _email("m1", subject="供货", preview="本周到货", body="供应商 周宁"),
+        ], scoped=True, query="供应商")],
+        "included": {"email:m1"},
+        "gaps": [],
     },
 ]
 
@@ -914,6 +924,263 @@ def _echo_case(text: str, quote: str, source: str, *, finding: str | None = None
     )
 
 
+def test_bare_key_and_truncated_array_still_parse():
+    bare = _extract_json('{"summary": "有结论", content": "正文", "findings": []}')
+    assert bare["content"] == "正文"
+    truncated = _extract_json(
+        '{"summary":"有","content":"文","findings":['
+        '{"text":"负责人 林晚","quote":"负责人 林晚"},'
+        '{"text":"还没写完'
+    )
+    assert truncated["findings"][0]["quote"] == "负责人 林晚"
+    assert len(truncated["findings"]) == 1
+
+
+def test_trailing_period_on_a_source_line_still_matches():
+    result = validate_model_brief(
+        {
+            "summary": "负责人已写明",
+            "content": "负责人 林晚",
+            "findings": [{
+                "text": "负责人 林晚",
+                "source_ids": ["email:m1"],
+                "quote": "负责人 林晚.",
+            }],
+        },
+        allowed_ids={"email:m1"},
+        criteria=default_acceptance_criteria(),
+        source_notes=[],
+        source_catalog={
+            "email:m1": {"text": "负责人 林晚", "locator": "m1", "title": "分工"},
+        },
+        objective=_TASK,
+    )
+    assert result["quality_evidence"] == "pending"
+    assert result["findings"][0]["evidence"][0]["snippet"] == "负责人 林晚"
+
+
+def test_collector_note_echo_does_not_sink_a_real_line():
+    result = validate_model_brief(
+        {
+            "summary": "",
+            "content": "",
+            "findings": [
+                {
+                    "text": "封命中邮件没有全文，简报只用了预览",
+                    "source_ids": ["email:m1"],
+                    "quote": "封命中邮件没有全文，简报只用了预览.",
+                },
+                {
+                    "text": "正常",
+                    "source_ids": ["email:m1"],
+                    "quote": "正常",
+                },
+            ],
+        },
+        allowed_ids={"email:m1"},
+        criteria=default_acceptance_criteria(),
+        source_notes=["1 封命中邮件没有全文，简报只用了预览"],
+        source_catalog={"email:m1": {"text": "正常", "locator": "m1", "title": "邮件"}},
+        objective=_TASK,
+    )
+    assert result["quality_evidence"] == "pending"
+    assert all(row["evidence"][0]["quote_in_source"] for row in result["findings"])
+
+
+def test_owner_line_matches_when_the_space_was_dropped():
+    result = validate_model_brief(
+        {
+            "summary": "负责人已写明",
+            "content": "负责人 林晚",
+            "findings": [{
+                "text": "负责人林晚",
+                "source_ids": ["email:m1"],
+                "quote": "负责人林晚",
+            }],
+        },
+        allowed_ids={"email:m1"},
+        criteria=default_acceptance_criteria(),
+        source_notes=[],
+        source_catalog={
+            "email:m1": {"text": "负责人 林晚", "locator": "a@b.c", "title": "分工"},
+        },
+        objective=_TASK,
+    )
+    assert result["quality_evidence"] == "pending"
+    assert result["findings"][0]["evidence"][0]["snippet"] == "负责人 林晚"
+
+
+def test_finding_text_that_is_the_source_line_counts_without_a_quote():
+    result = validate_model_brief(
+        {
+            "summary": "样品已寄出",
+            "content": "样品已寄出",
+            "findings": [{
+                "text": "样品已寄出",
+                "source_ids": ["file:s"],
+            }],
+        },
+        allowed_ids={"file:s"},
+        criteria=default_acceptance_criteria(),
+        source_notes=["只显示 4/30 行"],
+        source_catalog={
+            "file:s": {
+                "text": "样品已寄出\n... [showing 4/30 lines]",
+                "locator": "sample.md",
+                "title": "样品",
+            },
+        },
+        objective=_TASK,
+    )
+    assert result["quality_evidence"] == "pending"
+    assert result["findings"][0]["evidence"][0]["quote_in_source"] is True
+
+
+def test_prompt_labels_do_not_sink_a_real_owner_line():
+    result = validate_model_brief(
+        {
+            "summary": "负责人已写明",
+            "content": "负责人 林晚",
+            "findings": [
+                {
+                    "text": "不编造来源",
+                    "source_ids": ["email:m1"],
+                    "quote": "不编造来源.",
+                },
+                {
+                    "text": "负责人 林晚",
+                    "source_ids": ["email:m1"],
+                    "quote": "负责人 林晚.",
+                },
+                {
+                    "text": "Subject: 分工",
+                    "source_ids": ["email:m1"],
+                    "quote": "Subject: 分工.",
+                },
+                {
+                    "text": "a@b.c",
+                    "source_ids": ["email:m1"],
+                    "quote": "a@b.c.",
+                },
+                {
+                    "text": "Allowed source ids: email:m1",
+                    "source_ids": ["email:m1"],
+                    "quote": "Allowed source ids: email:m1.",
+                },
+            ],
+        },
+        allowed_ids={"email:m1"},
+        criteria=default_acceptance_criteria(),
+        source_notes=[],
+        source_catalog={
+            "email:m1": {
+                "text": "负责人 林晚",
+                "locator": "a@b.c",
+                "title": "分工",
+            },
+        },
+        objective=_TASK,
+    )
+    assert result["quality_evidence"] == "pending"
+    assert all(row["evidence"][0]["quote_in_source"] for row in result["findings"])
+    assert any("林晚" in row["text"] for row in result["findings"])
+    assert all("Subject" not in row["text"] for row in result["findings"])
+
+
+def test_echo_without_a_quote_uses_the_real_line():
+    result = _echo_case(_TASK, "", "完整短文")
+    assert result["quality_evidence"] == "pending"
+    evidence = result["findings"][0]["evidence"][0]
+    assert evidence["quote_in_source"] is True
+    assert evidence["snippet"] == "完整短文"
+    assert result["findings"][0]["text"] == "完整短文"
+
+
+def test_echo_with_a_bogus_source_id_uses_the_real_file():
+    result = validate_model_brief(
+        {
+            "summary": "有文件",
+            "content": "正文",
+            "findings": [{
+                "text": _TASK,
+                "source_ids": ["email"],
+                "quote": "",
+            }],
+        },
+        allowed_ids={"file:a"},
+        criteria=default_acceptance_criteria(),
+        source_notes=[],
+        source_catalog={
+            "file:a": {"text": "完整短文", "locator": "a.md", "title": "笔记"},
+        },
+        objective=_TASK,
+    )
+    assert result["quality_evidence"] == "pending"
+    assert result["findings"][0]["source_ids"] == ["file:a"]
+    assert result["findings"][0]["evidence"][0]["snippet"] == "完整短文"
+
+
+def test_real_conclusion_without_a_quote_is_not_replaced():
+    result = _echo_case("预算增加了", "", "完整短文", finding="预算增加了")
+    assert result["findings"][0]["text"] == "预算增加了"
+    assert result["findings"][0]["evidence"][0]["quote_in_source"] is False
+
+
+def test_echo_quoting_the_subject_uses_the_body_line():
+    result = validate_model_brief(
+        {
+            "summary": "有邮件",
+            "content": "正文",
+            "findings": [{
+                "text": _TASK,
+                "source_ids": ["email:m1"],
+                "quote": " 分工",
+            }],
+        },
+        allowed_ids={"email:m1"},
+        criteria=default_acceptance_criteria(),
+        source_notes=[],
+        source_catalog={
+            "email:m1": {
+                "text": "负责人 林晚",
+                "locator": "a@b.c",
+                "title": "分工",
+            },
+        },
+        objective=_TASK,
+    )
+    assert result["quality_evidence"] == "pending"
+    assert result["findings"][0]["text"] == "负责人 林晚"
+    assert result["findings"][0]["evidence"][0]["snippet"] == "负责人 林晚"
+
+
+def test_real_conclusion_quoting_the_subject_stays_unsupported():
+    result = validate_model_brief(
+        {
+            "summary": "有邮件",
+            "content": "正文",
+            "findings": [{
+                "text": "预算增加了",
+                "source_ids": ["email:m1"],
+                "quote": "分工",
+            }],
+        },
+        allowed_ids={"email:m1"},
+        criteria=default_acceptance_criteria(),
+        source_notes=[],
+        source_catalog={
+            "email:m1": {
+                "text": "负责人 林晚",
+                "locator": "a@b.c",
+                "title": "分工",
+            },
+        },
+        objective=_TASK,
+    )
+    assert result["quality_evidence"] == "unsupported"
+    assert result["findings"][0]["text"] == "预算增加了"
+
+
 def test_instruction_echo_on_a_truncated_file_uses_the_real_line():
     result = _echo_case(_TASK, _TASK, "开头\n... [showing 10/40 lines]")
     assert result["quality_evidence"] == "pending"
@@ -958,6 +1225,7 @@ def test_short_file_lists_quotable_lines_inside_a_data_fence():
     )
     assert "Quotable lines in File file:abc" in prompt
     assert "Do not copy the objective" in prompt
+    assert "at most 6 findings" in prompt
     start = prompt.find("Quotable lines")
     fence = prompt.find("<<<", start)
     close = prompt.find(">>>", fence)
