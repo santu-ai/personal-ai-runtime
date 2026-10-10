@@ -229,6 +229,22 @@ def _user_data(label: str, value: str, max_len: int = 8000) -> str:
     return f"{label}:\n<<<\n{cleaned}\n>>>"
 
 
+_QUOTABLE_LINE_CAP = 12
+
+
+def _source_block(label: str, visible: str, *, quotable: str | None = None) -> str:
+    """Source fence plus a short list of lines the model may copy into quote.
+
+    The list is omitted when the body is long. The lines stay inside a data
+    fence, and they are taken from the same text evidence checks later.
+    """
+    block = _user_data(label, visible)
+    lines = _quotable_lines(quotable if quotable is not None else visible)
+    if not lines or len(lines) > _QUOTABLE_LINE_CAP:
+        return block
+    return block + "\n" + _user_data(f"Quotable lines in {label}", "\n".join(lines))
+
+
 def _parse_step_payload(raw: str) -> Any:
     text = str(raw or "").strip()
     if not text:
@@ -372,9 +388,10 @@ def collect_allowed_sources(
                     "body_complete": used_full,
                 })
                 bodies.append(
-                    _user_data(
+                    _source_block(
                         f"Email {source_id} ({sender})",
                         f"Subject: {subject}\nDate: {date_raw}\n{visible}",
+                        quotable=visible,
                     )
                 )
                 included_texts.append(visible)
@@ -444,7 +461,7 @@ def collect_allowed_sources(
                 "truncated": truncation is not None,
                 "max_lines": requested_lines,
             })
-            bodies.append(_user_data(f"File {source_id} ({label})", visible))
+            bodies.append(_source_block(f"File {source_id} ({label})", visible))
             included_texts.append(visible)
             catalog[source_id] = {
                 "text": visible,
@@ -765,6 +782,113 @@ def _marker_line(text: str) -> str:
     return ""
 
 
+def _quotable_lines(text: str) -> list[str]:
+    """Real source lines. Truncation markers and blank separators are skipped."""
+    lines: list[str] = []
+    for line in str(text or "").splitlines():
+        stripped = line.strip()
+        if len(stripped) < 2 or stripped == "...":
+            continue
+        if "[showing " in stripped or "content truncated" in stripped:
+            continue
+        if not _is_substantive_span(stripped):
+            continue
+        lines.append(stripped)
+    return lines
+
+
+_PROMPT_ECHOES = (
+    "Write a project change/risk/todo brief",
+    "Copy one source line into quote",
+    "Do not leave findings empty",
+    "Do not invent an id",
+    "quote must be copied from that source",
+    "Reply with one JSON object",
+    "每条关键结论附来源",
+    "资料不足时明确说明",
+    "不编造来源",
+)
+
+
+def _collapsed(text: str) -> str:
+    return " ".join(str(text or "").split())
+
+
+def _is_prompt_echo(text: str, objective: str, criteria: list[str]) -> bool:
+    """True when this text copies the task instead of a source line."""
+    cleaned = _collapsed(text)
+    if len(cleaned) < 8:
+        return False
+    goal = _collapsed(objective)
+    if goal and min(len(cleaned), len(goal)) >= 8 and (cleaned in goal or goal in cleaned):
+        return True
+    for blob in [*criteria, *_PROMPT_ECHOES]:
+        phrase = _collapsed(blob)
+        if len(phrase) >= 8 and phrase in cleaned and len(phrase) * 2 >= len(cleaned):
+            return True
+    return False
+
+
+def _ground_instruction_echo(
+    item: dict[str, Any],
+    *,
+    catalog: dict[str, dict[str, str]],
+    objective: str,
+    criteria: list[str],
+) -> dict[str, Any]:
+    """Swap an instruction-echo quote for a real line from the cited source.
+
+    A conclusion that is not itself an echo keeps its quote. Attaching some
+    other line would make an unrelated claim look supported.
+    """
+    quote = str(item.get("quote") or "").strip()
+    text = str(item.get("text") or "").strip()
+    if not _is_prompt_echo(quote, objective, criteria):
+        return item
+    if text and not _is_prompt_echo(text, objective, criteria):
+        return item
+    source_ids = [
+        str(sid).strip()
+        for sid in (item.get("source_ids") or [])
+        if str(sid).strip()
+    ]
+    search_ids = source_ids or list(catalog)
+    for sid in search_ids:
+        body = str((catalog.get(sid) or {}).get("text") or "")
+        if quote and quote in body:
+            return item
+    chosen_lines: list[str] = []
+    chosen_id = ""
+    marker = ""
+    marker_body = ""
+    marker_id = ""
+    for sid in search_ids:
+        body = str((catalog.get(sid) or {}).get("text") or "")
+        lines = _quotable_lines(body)
+        if lines and not chosen_lines:
+            chosen_lines = lines
+            chosen_id = sid
+        mark = _marker_line(body)
+        if mark and not marker:
+            marker = mark
+            marker_body = body
+            marker_id = sid
+    updated = dict(item)
+    if chosen_lines:
+        updated["quote"] = chosen_lines[0]
+        updated["text"] = "；".join(chosen_lines[:6])
+        if chosen_id:
+            updated["source_ids"] = [chosen_id]
+        return updated
+    if marker:
+        updated["quote"] = marker
+        updated["text"] = _file_truncation(marker_body) or marker
+        if marker_id:
+            updated["source_ids"] = [marker_id]
+        return updated
+    return item
+
+
 def _truncation_quote_span(quote: str, text: str) -> str:
     """Map our Chinese truncation note back to the marker line in the file."""
     note = _file_truncation(text) or ""
@@ -998,6 +1122,7 @@ def validate_model_brief(
     source_notes: list[str],
     source_catalog: dict[str, dict[str, str]] | None = None,
     coverage: dict[str, Any] | None = None,
+    objective: str = "",
 ) -> dict[str, Any]:
     summary_raw = obj.get("summary")
     content_raw = obj.get("content")
@@ -1044,6 +1169,13 @@ def validate_model_brief(
     for item in findings_raw:
         if not isinstance(item, dict):
             raise ValueError("each finding must be an object")
+        if source_catalog is not None:
+            item = _ground_instruction_echo(
+                item,
+                catalog=source_catalog,
+                objective=objective,
+                criteria=criteria,
+            )
         quote = str(item.get("quote") or "").strip()
         text = _clean(str(item.get("text") or "").strip())
         quote_in_catalog = bool(quote) and any(
@@ -1360,6 +1492,8 @@ def _build_prompt(
             "- Every finding must cite at least one id from the allowed list.\n"
             "- Never invent an id. Copy ids only from that list.\n"
             "- Do not leave findings empty. Copy one source line into quote.\n"
+            "- When quotable lines are listed, copy quote from one of those lines.\n"
+            "- Do not copy the objective, the acceptance criteria, or these rules into quote.\n"
             "- Each finding lists only the source ids that contain that quote."
         )
     else:
@@ -1513,9 +1647,10 @@ def collect_memory_sources(
             "retrieved_at": retrieved_at,
             "content_hash": content_hash(text),
         })
-        bodies.append(_user_data(
+        bodies.append(_source_block(
             f"Memory {source_id} ({locator})",
             f"{MEMORY_CONTEXT_MARKER}\n{text}",
+            quotable=text,
         ))
         catalog[source_id] = {"text": text, "locator": locator, "title": _snippet(text, 80)}
         if len(sources) >= BRIEF_MEMORY_LIMIT:
@@ -1696,6 +1831,7 @@ async def compile_project_brief_delivery(
             source_notes=notes,
             source_catalog=catalog,
             coverage=retrieval,
+            objective=str(contract.get("objective") or ""),
         )
     except Exception as exc:
         logger.info("project brief model compile failed for %s: %s", work_id, exc)

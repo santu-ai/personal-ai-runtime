@@ -113,8 +113,10 @@ async def test_live_brief_eval_reports_quality_rates():
                     source_notes=notes,
                     source_catalog=catalog,
                     coverage=retrieval,
+                    objective=_OBJECTIVE,
                 )
-            except (ValueError, TypeError, KeyError):
+            except (ValueError, TypeError, KeyError) as exc:
+                print(f"BRIEF_EVAL_UNPARSED {case['id']}: {exc}", flush=True)
                 rows.append(score_case(
                     case_id=str(case["id"]),
                     source_text=source_text,

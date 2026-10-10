@@ -9,8 +9,11 @@ import pytest
 
 from app.product.project_brief import (
     BRIEF_FILE_MAX_LINES,
+    _build_prompt,
+    _source_block,
     build_project_brief_plan,
     collect_allowed_sources,
+    default_acceptance_criteria,
     validate_model_brief,
 )
 
@@ -447,6 +450,17 @@ CASES: list[dict] = [
         "included": {"email:m1"},
         "gaps": [],
     },
+    {
+        "id": "holdout-trunc-sample-sent",
+        "query": "",
+        "files": [{"path": "sample.md", "label": "样品"}],
+        "results": [
+            _inbox([], scoped=True),
+            _file("样品已寄出\n... [showing 4/30 lines]"),
+        ],
+        "file_truncated": True,
+        "gaps_contains": "只显示 4/30 行",
+    },
 ]
 
 
@@ -744,3 +758,85 @@ def test_full_source_line_wins_over_a_longer_partial_span():
     result = _quote_case("注意注意。本周预算 100元", text)
     assert result["quality_evidence"] == "pending"
     assert result["findings"][0]["evidence"][0]["snippet"] == "注意注意"
+
+
+_TASK = "整理进度、风险和待办。来源里没有的金额不要写。金额互相矛盾时要写明。"
+
+
+def _echo_case(text: str, quote: str, source: str, *, finding: str | None = None) -> dict:
+    return validate_model_brief(
+        {
+            "summary": "有文件",
+            "content": "正文",
+            "findings": [{
+                "text": finding if finding is not None else text,
+                "source_ids": ["file:a"],
+                "quote": quote,
+            }],
+        },
+        allowed_ids={"file:a"},
+        criteria=default_acceptance_criteria(),
+        source_notes=[],
+        source_catalog={
+            "file:a": {"text": source, "locator": "a.md", "title": "笔记"},
+        },
+        objective=_TASK,
+    )
+
+
+def test_instruction_echo_on_a_truncated_file_uses_the_real_line():
+    result = _echo_case(_TASK, _TASK, "开头\n... [showing 10/40 lines]")
+    assert result["quality_evidence"] == "pending"
+    evidence = result["findings"][0]["evidence"][0]
+    assert evidence["quote_in_source"] is True
+    assert evidence["snippet"] == "开头"
+    assert result["findings"][0]["text"] == "开头"
+    assert _TASK not in result["content"]
+
+
+def test_instruction_echo_keeps_a_real_conclusion_unsupported():
+    result = _echo_case(_TASK, _TASK, "开头\n... [showing 10/40 lines]", finding="预算增加了")
+    assert result["quality_evidence"] == "unsupported"
+    assert result["findings"][0]["text"] == "预算增加了"
+    assert result["findings"][0]["evidence"][0]["quote_in_source"] is False
+
+
+def test_marker_only_echo_quotes_the_truncation_marker():
+    source = "...\n... [showing 2000/9000 lines]\n... [content truncated]"
+    result = _echo_case(_TASK, _TASK, source)
+    assert result["quality_evidence"] == "pending"
+    snippet = result["findings"][0]["evidence"][0]["snippet"]
+    assert "showing 2000/9000" in snippet
+    assert "只显示 2000/9000 行" in result["findings"][0]["text"]
+
+
+def test_objective_sentence_stays_when_the_source_contains_it():
+    result = _echo_case(_TASK, _TASK, _TASK)
+    assert result["quality_evidence"] == "pending"
+    assert "整理进度、风险和待办" in result["findings"][0]["text"]
+    assert result["findings"][0]["evidence"][0]["snippet"] == _TASK
+
+
+def test_short_file_lists_quotable_lines_inside_a_data_fence():
+    block = _source_block("File file:abc (笔记)", "完整短文")
+    prompt = _build_prompt(
+        contract={"objective": _TASK, "acceptance_criteria": default_acceptance_criteria()},
+        rework_notes=[],
+        source_blocks=[block],
+        source_notes=[],
+        allowed_ids=["file:abc"],
+    )
+    assert "Quotable lines in File file:abc" in prompt
+    assert "Do not copy the objective" in prompt
+    start = prompt.find("Quotable lines")
+    fence = prompt.find("<<<", start)
+    close = prompt.find(">>>", fence)
+    assert fence >= 0 and close > fence
+    assert "完整短文" in prompt[fence:close]
+
+
+def test_long_file_does_not_repeat_every_line_as_quotable():
+    body = "\n".join(f"第{index}行进度正常" for index in range(1, 14))
+    block = _source_block("File file:abc (笔记)", body)
+    assert "Quotable lines" not in block
+    assert "第1行进度正常" in block
