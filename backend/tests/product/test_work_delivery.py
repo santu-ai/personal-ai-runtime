@@ -710,6 +710,8 @@ def test_delivery_metrics_track_first_acceptance_rework_and_adoption(isolated_ke
     assert metrics["first_reviewed_tasks"] == 2
     assert metrics["first_version_accepted_tasks"] == 1
     assert metrics["first_version_acceptance_rate"] == 0.5
+    assert metrics["success_rate"] == 1.0
+    assert metrics["cost_per_accepted_delivery"] == 0.0
     assert metrics["rework_count"] == 1
     assert metrics["adopted_action_count"] == 1
     assert metrics["average_review_latency_hours"] is not None
