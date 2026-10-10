@@ -987,6 +987,57 @@ def test_collector_note_echo_does_not_sink_a_real_line():
     assert all(row["evidence"][0]["quote_in_source"] for row in result["findings"])
 
 
+def test_prompt_labels_do_not_sink_a_real_owner_line():
+    result = validate_model_brief(
+        {
+            "summary": "负责人已写明",
+            "content": "负责人 林晚",
+            "findings": [
+                {
+                    "text": "不编造来源",
+                    "source_ids": ["email:m1"],
+                    "quote": "不编造来源.",
+                },
+                {
+                    "text": "负责人 林晚",
+                    "source_ids": ["email:m1"],
+                    "quote": "负责人 林晚.",
+                },
+                {
+                    "text": "Subject: 分工",
+                    "source_ids": ["email:m1"],
+                    "quote": "Subject: 分工.",
+                },
+                {
+                    "text": "a@b.c",
+                    "source_ids": ["email:m1"],
+                    "quote": "a@b.c.",
+                },
+                {
+                    "text": "Allowed source ids: email:m1",
+                    "source_ids": ["email:m1"],
+                    "quote": "Allowed source ids: email:m1.",
+                },
+            ],
+        },
+        allowed_ids={"email:m1"},
+        criteria=default_acceptance_criteria(),
+        source_notes=[],
+        source_catalog={
+            "email:m1": {
+                "text": "负责人 林晚",
+                "locator": "a@b.c",
+                "title": "分工",
+            },
+        },
+        objective=_TASK,
+    )
+    assert result["quality_evidence"] == "pending"
+    assert all(row["evidence"][0]["quote_in_source"] for row in result["findings"])
+    assert any("林晚" in row["text"] for row in result["findings"])
+    assert all("Subject" not in row["text"] for row in result["findings"])
+
+
 def test_instruction_echo_on_a_truncated_file_uses_the_real_line():
     result = _echo_case(_TASK, _TASK, "开头\n... [showing 10/40 lines]")
     assert result["quality_evidence"] == "pending"
@@ -1031,6 +1082,7 @@ def test_short_file_lists_quotable_lines_inside_a_data_fence():
     )
     assert "Quotable lines in File file:abc" in prompt
     assert "Do not copy the objective" in prompt
+    assert "at most 6 findings" in prompt
     start = prompt.find("Quotable lines")
     fence = prompt.find("<<<", start)
     close = prompt.find(">>>", fence)

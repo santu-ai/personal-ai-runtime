@@ -933,16 +933,55 @@ def _is_prompt_echo(
 ) -> bool:
     """True when this text copies the task or a collector note, not a source line."""
     cleaned = _collapsed(_strip_quote_edge(text))
-    if len(cleaned) < 8:
+    if len(cleaned) < 4:
         return False
     goal = _collapsed(objective)
-    if goal and min(len(cleaned), len(goal)) >= 8 and (cleaned in goal or goal in cleaned):
+    if (
+        len(cleaned) >= 8
+        and goal
+        and min(len(cleaned), len(goal)) >= 8
+        and (cleaned in goal or goal in cleaned)
+    ):
         return True
     for blob in [*criteria, *_PROMPT_ECHOES, *(notes or [])]:
         phrase = _collapsed(_strip_quote_edge(blob))
+        if len(phrase) >= 4 and phrase == cleaned:
+            return True
         if len(phrase) >= 8 and phrase in cleaned and len(phrase) * 2 >= len(cleaned):
             return True
         if len(cleaned) >= 8 and cleaned in phrase and len(cleaned) * 2 >= len(phrase):
+            return True
+    return False
+
+
+_SCAFFOLD_PREFIXES = (
+    "subject:",
+    "date:",
+    "allowed source ids",
+    "quotable lines",
+)
+
+
+def _is_scaffold_finding(
+    text: str,
+    catalog: dict[str, dict[str, str]],
+    objective: str,
+    criteria: list[str],
+    notes: list[str] | None = None,
+) -> bool:
+    """Prompt labels and collector notes are not findings about the source."""
+    if _is_prompt_echo(text, objective, criteria, notes):
+        return True
+    cleaned = _strip_quote_edge(text)
+    lowered = cleaned.lower()
+    if any(lowered.startswith(prefix) for prefix in _SCAFFOLD_PREFIXES):
+        return True
+    for entry in catalog.values():
+        title = str(entry.get("title") or "").strip()
+        locator = str(entry.get("locator") or "").strip()
+        base = locator.split(" · ", 1)[0].strip()
+        body = str(entry.get("text") or "")
+        if cleaned and cleaned in {title, locator, base} and cleaned not in body:
             return True
     return False
 
@@ -1443,6 +1482,20 @@ def validate_model_brief(
                 criteria=criteria,
                 notes=source_notes,
             )
+        quote_for_keep = str(item.get("quote") or "")
+        quote_in_catalog = any(
+            candidate in str(entry.get("text") or "")
+            for entry in (source_catalog or {}).values()
+            for candidate in _quote_candidates(quote_for_keep)
+        )
+        if not quote_in_catalog and _is_scaffold_finding(
+            str(item.get("text") or ""),
+            source_catalog or {},
+            objective,
+            criteria,
+            source_notes,
+        ):
+            continue
         quote = str(item.get("quote") or "").strip()
         text = _clean(str(item.get("text") or "").strip())
         quote_in_catalog = bool(quote) and any(
@@ -1765,6 +1818,7 @@ def _build_prompt(
             "- Do not leave findings empty. Copy one source line into quote.\n"
             "- When quotable lines are listed, copy quote from one of those lines.\n"
             "- Do not copy the objective, the acceptance criteria, or these rules into quote.\n"
+            "- Write at most 6 findings. Do not repeat a quote.\n"
             "- Each finding lists only the source ids that contain that quote."
         )
     else:
