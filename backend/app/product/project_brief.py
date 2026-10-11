@@ -225,10 +225,62 @@ def _neutralize_untrusted_fences(value: str) -> str:
     return value.replace(">>>", "›››").replace("<<<", "‹‹‹")
 
 
+_BARE_ADDRESS = re.compile(r"[A-Za-z0-9._+-]+@[A-Za-z0-9.-]+\Z")
+_SAFE_CITATION = re.compile(
+    r"(?:email|file|memory):[A-Za-z0-9<][A-Za-z0-9._@<>+=/:-]{0,240}\Z"
+)
+
+
+def _outside_phrase(value: str) -> str:
+    """Text that may sit outside a data fence: one printable line, no closer."""
+    text = str(value or "").strip()
+    if (
+        not text
+        or any(ch in text for ch in "\r\n")
+        or "<<<" in text
+        or ">>>" in text
+        or any(not ch.isprintable() for ch in text)
+    ):
+        return ""
+    return text
+
+
+def _channel_label(label: str) -> str:
+    """Collapse a label onto one line so it cannot open an instruction."""
+    text = _neutralize_untrusted_fences(str(label or ""))
+    text = "".join(ch if ch.isprintable() else " " for ch in text)
+    text = " ".join(text.split())
+    return text or "Source"
+
+
+def _email_source_id(raw: str) -> str:
+    """Citation token. A header that is not a single safe token is hashed."""
+    mid = str(raw or "").strip()
+    token = f"email:{mid}"
+    if (
+        _SAFE_CITATION.fullmatch(token)
+        and "<<<" not in token
+        and ">>>" not in token
+    ):
+        return token
+    digest = hashlib.sha256(mid.encode("utf-8")).hexdigest()[:16]
+    return f"email:h{digest}"
+
+
+def _source_label(kind: str, source_id: str, note: str, *, address_only: bool = False) -> str:
+    """Keep a short note beside the id only when it cannot carry instructions."""
+    shown = _outside_phrase(note)
+    if address_only and not _BARE_ADDRESS.fullmatch(shown):
+        return f"{kind} {source_id}"
+    if not shown:
+        return f"{kind} {source_id}"
+    return f"{kind} {source_id} ({shown})"
+
+
 def _user_data(label: str, value: str, max_len: int = 8000) -> str:
     cleaned = "".join(ch for ch in value if ch.isprintable() or ch in "\n\t").strip()
     cleaned = redact_sensitive_text(_neutralize_untrusted_fences(cleaned))[:max_len]
-    return f"{label}:\n<<<\n{cleaned}\n>>>"
+    return f"{_channel_label(label)}:\n<<<\n{cleaned}\n>>>"
 
 
 _QUOTABLE_LINE_CAP = 12
@@ -363,21 +415,25 @@ def _emit_inbox_batch(
             prompt = f"Subject: {item['subject']}\nDate: {item['date_raw']}\n{visible}"
             quotable = "\n".join(preferred)
         line_label, hit_snippet = _locate_query(visible, query)
-        locator = _locator_with_line(str(item["sender"] or item["id"]), line_label)
+        sender = str(item["sender"] or "")
+        locator = _locator_with_line(_outside_phrase(sender) or str(item["id"]), line_label)
         source_id = str(item["id"])
         sources.append({
             "id": source_id,
             "type": "email",
-            "title": item["subject"],
+            "title": _outside_phrase(str(item["subject"])) or "(无主题)",
             "locator": locator,
             "retrieved_at": item["retrieved_at"],
             "content_hash": item["content_hash"],
             "body_complete": item["body_complete"],
         })
+        fenced = prompt
+        if not _BARE_ADDRESS.fullmatch(_outside_phrase(sender)):
+            fenced = f"From: {sender}\n{prompt}"
         bodies.append(
             _source_block(
-                f"Email {source_id} ({item['sender']})",
-                prompt,
+                _source_label("Email", source_id, sender, address_only=True),
+                fenced,
                 quotable=quotable,
             )
         )
@@ -385,7 +441,7 @@ def _emit_inbox_batch(
         catalog[source_id] = {
             "text": visible,
             "locator": locator,
-            "title": str(item["subject"]),
+            "title": _outside_phrase(str(item["subject"])) or "(无主题)",
             "hit_snippet": hit_snippet,
             "preferred": "\n".join(preferred),
             "surface": "\n".join(surface),
@@ -473,28 +529,32 @@ def _emit_file_batch(
         preferred = preferred[:_QUOTABLE_LINE_CAP]
         surface = surface[:3]
         source_id = str(item["id"])
+        label = str(item["label"] or "")
         sources.append({
             "id": source_id,
             "type": "file",
-            "title": item["label"],
-            "locator": item["locator"],
+            "title": _outside_phrase(label) or source_id,
+            "locator": _outside_phrase(str(item["locator"])) or source_id,
             "retrieved_at": item["retrieved_at"],
             "content_hash": item["content_hash"],
             "truncated": item["truncated"],
             "max_lines": item["max_lines"],
         })
+        fenced = visible
+        if _outside_phrase(label) != label.strip():
+            fenced = f"Path: {label}\n{visible}"
         bodies.append(
             _source_block(
-                f"File {source_id} ({item['label']})",
-                visible,
+                _source_label("File", source_id, label),
+                fenced,
                 quotable="\n".join(preferred),
             )
         )
         included_texts.append(visible)
         catalog[source_id] = {
             "text": visible,
-            "locator": str(item["locator"]),
-            "title": str(item["label"]),
+            "locator": _outside_phrase(str(item["locator"])) or source_id,
+            "title": _outside_phrase(str(item["label"])) or source_id,
             "hit_snippet": str(item["hit_snippet"]),
             "preferred": "\n".join(preferred),
             "surface": "\n".join(surface),
@@ -607,7 +667,7 @@ def collect_allowed_sources(
                         continue
                 if not date_raw or dt is None:
                     unknown_date += 1
-                source_id = f"email:{mid}"
+                source_id = _email_source_id(mid)
                 used_full = bool(body) and len(body) > len(preview)
                 if used_full:
                     full_body += 1
@@ -1112,14 +1172,28 @@ def _scrub_false_conflict(
     amounts_conflict: bool,
     dates_conflict: bool,
 ) -> str:
-    """Drop a disagreement claim the sources do not actually support."""
+    """Drop a disagreement claim the sources do not actually support.
+
+    Amount words such as 「不一致」are also inside date claims. A real date
+    disagreement is held aside so those words do not erase it.
+    """
     cleaned = text
+    held: list[str] = []
+    if dates_conflict:
+        for phrase in _DATE_CONFLICT_PHRASES:
+            if phrase not in cleaned:
+                continue
+            token = f"\uE000{len(held)}\uE000"
+            held.append(phrase)
+            cleaned = cleaned.replace(phrase, token)
     if not amounts_conflict:
         for phrase in _AMOUNT_CONFLICT_PHRASES:
             cleaned = cleaned.replace(phrase, "")
     if not dates_conflict:
         for phrase in _DATE_CONFLICT_PHRASES:
             cleaned = cleaned.replace(phrase, "")
+    for index, phrase in enumerate(held):
+        cleaned = cleaned.replace(f"\uE000{index}\uE000", phrase)
     return cleaned.strip(" ，,;；")
 
 
@@ -2630,7 +2704,7 @@ def collect_memory_sources(
             "content_hash": content_hash(text),
         })
         bodies.append(_source_block(
-            f"Memory {source_id} ({locator})",
+            _source_label("Memory", source_id, locator),
             f"{MEMORY_CONTEXT_MARKER}\n{text}",
             quotable=text,
         ))

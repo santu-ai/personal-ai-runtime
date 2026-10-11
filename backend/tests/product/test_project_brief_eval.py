@@ -1624,6 +1624,32 @@ def test_real_amount_conflict_keeps_the_disagreement():
     assert "来源中的金额不一致，需人工核对" in result["limitations"]
 
 
+def test_date_conflict_survives_when_amounts_do_not_conflict():
+    result = validate_model_brief(
+        {
+            "summary": "日期不一致",
+            "content": "正文",
+            "findings": [{
+                "text": "两封邮件日期不一致",
+                "source_ids": ["email:a"],
+                "quote": "评审定在 5月2日",
+            }],
+            "limitations": ["金额互相矛盾"],
+        },
+        allowed_ids={"email:a", "email:b"},
+        criteria=["每条关键结论附来源"],
+        source_notes=[],
+        source_catalog={
+            "email:a": {"text": "评审定在 5月2日，报价 100元", "locator": "a", "title": "甲"},
+            "email:b": {"text": "评审定在 5月9日，报价 100元", "locator": "b", "title": "乙"},
+        },
+    )
+    assert "日期不一致" in result["summary"]
+    assert "日期不一致" in result["findings"][0]["text"]
+    assert not any("矛盾" in note for note in result["limitations"])
+    assert result["quality_evidence"] == "pending"
+
+
 def test_truncation_note_uses_the_marker_line_as_evidence():
     result = _quote_case("只显示 10/40 行", "开头\n... [showing 10/40 lines]")
     assert result["quality_evidence"] == "pending"
