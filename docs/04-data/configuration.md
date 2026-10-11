@@ -34,7 +34,9 @@ flowchart LR
 | `llm_max_tokens` | `4096` | `LLM_MAX_TOKENS` |
 | `llm_timeout_seconds` | `60` | `LLM_TIMEOUT_SECONDS` |
 | `ollama_base_url` | `http://localhost:11434/v1` | `OLLAMA_BASE_URL` |
-| `ollama_model` | `qwen2.5:7b` | `OLLAMA_MODEL` |
+| `ollama_model` | `qwen2.5:3b` | `OLLAMA_MODEL` |
+
+调用本地模型时，名字来自 Ollama `GET /api/tags` 里已经安装的列表。显式设置的 `OLLAMA_MODEL` 或 `LLM_MODEL` 只有出现在这份列表里才会被选中。列表里有 `qwen2.5:3b` 时优先用它（今天的评测用的是这个模型）。都没有时用列表里的第一个。连不上 Ollama，或列表是空的，不会拿写死的 `qwen2.5:7b` 去调用。首次引导会列出已安装的模型，并可以拉取 `qwen2.5:3b`，进度按百分比显示。
 
 ### 存储
 

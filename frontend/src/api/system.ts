@@ -21,6 +21,70 @@ export async function getLlmProviders(): Promise<LlmProvidersResponse> {
   return request<LlmProvidersResponse>(`${API_BASE}/system/llm-providers`);
 }
 
+export interface LocalModels {
+  reachable: boolean;
+  installed: string[];
+  recommended: string;
+  recommended_installed: boolean;
+  selected: string | null;
+  message: string;
+}
+
+export async function getLocalModels(): Promise<LocalModels> {
+  return request<LocalModels>(`${API_BASE}/system/local-models`);
+}
+
+/** Stream Ollama pull progress. `onStatus` receives the latest Chinese line. */
+export async function pullRecommendedModel(
+  name: string,
+  onStatus: (status: string) => void,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/system/local-models/pull`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok || !res.body) {
+    let message = "拉取失败";
+    try {
+      const body = await res.json();
+      if (typeof body?.detail === "string") message = body.detail;
+    } catch {
+      /* keep the fallback */
+    }
+    throw new ApiError(message, res.status);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  let failed = false;
+  let last = "";
+  while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    pending += decoder.decode(chunk.value, { stream: true });
+    const lines = pending.split("\n");
+    pending = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      let row: { status?: string; ok?: boolean };
+      try {
+        row = JSON.parse(line) as { status?: string; ok?: boolean };
+      } catch {
+        continue;
+      }
+      if (row.status) {
+        last = row.status;
+        onStatus(row.status);
+      }
+      if (row.ok === false) failed = true;
+    }
+  }
+  if (failed) {
+    throw new ApiError(last || "拉取失败", 502);
+  }
+}
+
 export async function getMcpStatus(): Promise<McpStatusResponse> {
   return request<McpStatusResponse>(`${API_BASE}/system/mcp-status`);
 }

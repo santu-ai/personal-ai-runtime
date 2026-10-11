@@ -1,8 +1,16 @@
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
 import { Mail, Target } from "lucide-react";
-import { getSystemHealth, getLlmProviders, createProjectBrief, ApiError } from "../../api/client";
+import {
+  getSystemHealth,
+  getLlmProviders,
+  getLocalModels,
+  pullRecommendedModel,
+  createProjectBrief,
+  ApiError,
+} from "../../api/client";
+import type { LocalModels } from "../../api/system";
 import { useErrorStore } from "../../stores/errorStore";
 import Button from "../ui/Button";
 import Card from "../ui/Card";
@@ -10,7 +18,7 @@ import { useOverlayDismiss } from "../ui/useOverlayDismiss";
 
 const STEPS = [
   { title: "连接后端", description: "确认 Personal AI Runtime 后端已启动" },
-  { title: "配置 AI 大脑", description: "设置 LLM 模型，让 AI 可以思考和对话" },
+  { title: "配置 AI 大脑", description: "看看这台电脑上已经安装的模型。推荐 qwen2.5:3b。" },
   { title: "生成第一份简报", description: "选一个场景，接上邮箱，打开一份可以核对来源的交付" },
 ];
 
@@ -75,6 +83,9 @@ export default function OnboardingWizard({ onComplete }: Props) {
   const [message, setMessage] = useState("");
   const [messageOk, setMessageOk] = useState(true);
   const [modelReady, setModelReady] = useState(false);
+  const [localModels, setLocalModels] = useState<LocalModels | null>(null);
+  const [pulling, setPulling] = useState(false);
+  const [pullProgress, setPullProgress] = useState("");
   const [emailReady, setEmailReady] = useState<boolean | null>(null);
   const checkLock = useRef(false);
   const launchLock = useRef(false);
@@ -91,7 +102,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
 
   /** 检查或创建还没回来时，Esc 不离开。点外面也不离开。 */
   const dismiss = () => {
-    if (checkLock.current || launchLock.current) return;
+    if (checkLock.current || launchLock.current || pulling) return;
     leave();
   };
 
@@ -127,6 +138,36 @@ export default function OnboardingWizard({ onComplete }: Props) {
     if (!focusIsIdle("data-onboarding-starter", label)) return;
     focusMarked("data-onboarding-starter", label);
   }, [launchingLabel]);
+
+  useEffect(() => {
+    if (step !== 1) return;
+    let cancelled = false;
+    void getLocalModels()
+      .then((info) => {
+        if (!cancelled) setLocalModels(info);
+      })
+      .catch(() => {
+        if (!cancelled) setLocalModels(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [step]);
+
+  const pullModel = async () => {
+    if (!localModels || pulling) return;
+    setPulling(true);
+    setPullProgress(`正在拉取 ${localModels.recommended}`);
+    try {
+      await pullRecommendedModel(localModels.recommended, setPullProgress);
+      const info = await getLocalModels();
+      setLocalModels(info);
+    } catch (err) {
+      setPullProgress(err instanceof ApiError ? err.message : "拉取失败");
+    } finally {
+      setPulling(false);
+    }
+  };
 
   const checkHealth = async (): Promise<{ ok: true; configured: boolean } | { ok: false }> => {
     try {
@@ -290,6 +331,36 @@ export default function OnboardingWizard({ onComplete }: Props) {
                 >
                   {message}
                 </p>
+              )}
+              {step === 1 && localModels && (
+                <div
+                  className="mt-3 p-3 bg-surface-overlay/50 border border-border-subtle rounded-lg"
+                  data-testid="local-models"
+                >
+                  <p className="text-xs text-fg-secondary">{localModels.message}</p>
+                  {localModels.installed.length > 0 ? (
+                    <p className="text-xs text-fg-tertiary mt-1">
+                      已安装：{localModels.installed.join("、")}
+                    </p>
+                  ) : null}
+                  {localModels.reachable && !localModels.recommended_installed ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="mt-2"
+                      data-onboarding-action="pull-model"
+                      aria-busy={pulling || undefined}
+                      onClick={() => void pullModel()}
+                    >
+                      {pulling ? "拉取中…" : `拉取 ${localModels.recommended}`}
+                    </Button>
+                  ) : null}
+                  {pullProgress ? (
+                    <p className="text-xs text-fg-secondary mt-2" data-testid="model-pull-progress">
+                      {pullProgress}
+                    </p>
+                  ) : null}
+                </div>
               )}
               {step === 1 && !messageOk && checkBusy === null && (
                 <div className="mt-3 p-3 bg-warning/10 border border-warning/30 rounded-lg">

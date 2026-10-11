@@ -77,7 +77,7 @@ describe("LlmConfigCard field names", () => {
     expect(expectNamed("模型：DeepSeek", "模型")).toHaveValue("deepseek-chat");
     expect(screen.getByLabelText("模型：DeepSeek")).toHaveAttribute(
       "placeholder",
-      "deepseek-chat / gpt-4o / qwen2.5:7b",
+      "deepseek-chat / gpt-4o / qwen2.5:3b",
     );
     expect(expectNamed("Base URL：DeepSeek", "Base URL")).toHaveValue(
       "https://api.deepseek.com/v1",
