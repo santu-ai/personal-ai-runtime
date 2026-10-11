@@ -906,7 +906,135 @@ DEV_CASES: list[dict] = [
     },
 ]
 
+FRESH_CASES: list[dict] = [
+    {
+        "id": "fresh-date-conflict",
+        "query": "",
+        "results": [
+            _inbox([
+                _email(
+                    "wharf",
+                    subject="西码头移交",
+                    date="2099-06-01T00:00:00+00:00",
+                    body="西码头移交写的是 9月2日。",
+                ),
+            ], scoped=True),
+            _file("\n".join([
+                "西码头移交纪要",
+                "地点：西码头。",
+                "出席：赵衡。",
+                "一、天气",
+                "当日多云。",
+                "二、船舶",
+                "靠泊正常。",
+                "三、装卸",
+                "白班完成。",
+                "四、安全",
+                "未发现险情。",
+                "五、记录",
+                "记录人 赵衡。",
+                "六、下次",
+                "仍在周三。",
+                "纪要：西码头移交写的是 9月16日。",
+            ])),
+        ],
+        "files": [{"path": "notes/west-wharf.md", "label": "notes/west-wharf.md"}],
+        "included": {"email:wharf", _file_source_id("notes/west-wharf.md")},
+        "has_file": True,
+        "fact_all": ["9月2日", "9月16日"],
+    },
+    {
+        "id": "fresh-spec-distractor",
+        "query": "",
+        "results": [
+            _file("\n".join([
+                "北吊车说明书",
+                "适用：室内轨道。",
+                "一、范围",
+                "只含轨道吊。",
+                "二、电源",
+                "三相供电。",
+                "三、环境",
+                "室内使用。",
+                "四、维护",
+                "按月保养。",
+                "五、备件",
+                "钢丝绳自备。",
+                "六、联系",
+                "找设备科。",
+                "北吊报价 19万元。",
+            ])),
+            _file("\n".join([
+                "南吊车说明书",
+                "适用：室内轨道。",
+                "一、范围",
+                "只含门座吊。",
+                "二、电源",
+                "单相供电。",
+                "三、环境",
+                "室外使用。",
+                "四、维护",
+                "按季保养。",
+                "五、备件",
+                "吊钩自备。",
+                "六、联系",
+                "找调度室。",
+                "南吊报价 24万元。",
+            ])),
+        ],
+        "files": [
+            {"path": "manuals/crane/north.md", "label": "manuals/crane/north.md"},
+            {"path": "manuals/crane/south.md", "label": "manuals/crane/south.md"},
+        ],
+        "included": {
+            _file_source_id("manuals/crane/north.md"),
+            _file_source_id("manuals/crane/south.md"),
+        },
+        "has_file": True,
+        "fact_all": ["19万元", "24万元"],
+    },
+    {
+        "id": "fresh-mixed-language",
+        "query": "",
+        "results": [_file("\n".join([
+            "南闸备件会",
+            "出席：赵衡。",
+            "一、库存",
+            "密封圈还够用。",
+            "二、供应商",
+            "原供应商不停产。",
+            "三、讨论",
+            "有人建议再等等。",
+            "四、其他",
+            "下次仍在周二。",
+            "五、记录",
+            "记录人 赵衡。",
+            "六、地点",
+            "会议室 2。",
+            "Spare seal lead time is 16 days.",
+        ]))],
+        "files": [{"path": "notes/south-gate.md", "label": "notes/south-gate.md"}],
+        "included": {_file_source_id("notes/south-gate.md")},
+        "has_file": True,
+        "fact_any": ["16 days"],
+    },
+    {
+        "id": "fresh-csv-amount",
+        "query": "",
+        "results": [_file("\n".join(
+            ["设备,编号,状态,金额"]
+            + [f"泵,A-{index},检修中,{index}万元" for index in range(1, 5)]
+            + ["闸门,G-9,在用,48万元"]
+        ))],
+        "files": [{"path": "exports/gate-cost.csv", "label": "exports/gate-cost.csv"}],
+        "included": {_file_source_id("exports/gate-cost.csv")},
+        "has_file": True,
+        "fact_any": ["48万元"],
+    },
+]
+
 CASES.extend(DEV_CASES)
+CASES.extend(FRESH_CASES)
 
 
 @pytest.mark.parametrize("case", CASES, ids=[item["id"] for item in CASES])
@@ -953,6 +1081,10 @@ def _rendered_scope(coverage: dict) -> str:
 
 def _dev(case_id: str) -> dict:
     return next(item for item in DEV_CASES if item["id"] == case_id)
+
+
+def _fresh(case_id: str) -> dict:
+    return next(item for item in FRESH_CASES if item["id"] == case_id)
 
 
 def _compile_miss(case: dict, finding: dict) -> str:
@@ -1079,6 +1211,88 @@ def test_dev_partial_spec_quote_stays_with_the_file_that_contains_it():
     )
     assert result["quality_evidence"] == "pending"
     assert result["findings"][0]["source_ids"] == [by_title[_DEV_NORTH_BASIN]]
+
+
+def test_fresh_date_conflict_keeps_both_dates():
+    text = _compile_miss(_fresh("fresh-date-conflict"), {
+        "text": "西码头移交写的是 9月2日",
+        "quote": "西码头移交写的是 9月2日。",
+        "source_ids": ["email:wharf"],
+        "kind": "change",
+    })
+    assert "9月2日" in text
+    assert "9月16日" in text
+
+
+def test_fresh_specs_in_one_folder_keep_both_prices():
+    case = _fresh("fresh-spec-distractor")
+    text = _compile_miss(case, {
+        "text": "适用：室内轨道",
+        "quote": "适用：室内轨道。",
+        "source_ids": [_file_source_id("manuals/crane/north.md")],
+        "kind": "change",
+    })
+    assert "19万元" in text
+    assert "24万元" in text
+
+
+def test_fresh_mixed_language_line_is_kept():
+    text = _compile_miss(_fresh("fresh-mixed-language"), {
+        "text": "出席：赵衡",
+        "quote": "出席：赵衡。",
+        "source_ids": [_file_source_id("notes/south-gate.md")],
+        "kind": "change",
+    })
+    assert "16 days" in text
+
+
+def test_fresh_csv_keeps_the_later_amount():
+    text = _compile_miss(_fresh("fresh-csv-amount"), {
+        "text": "设备,编号,状态,金额",
+        "quote": "设备,编号,状态,金额",
+        "source_ids": [_file_source_id("exports/gate-cost.csv")],
+        "kind": "change",
+    })
+    assert "48万元" in text
+
+
+def test_scrambled_mail_order_keeps_the_latest_copy():
+    late = _email(
+        "night-late",
+        subject="仓库门禁",
+        date="2099-07-03T00:00:00+00:00",
+        body="仓库门禁走西门。\n已改走东门。",
+    )
+    mid = _email(
+        "night-mid",
+        subject="仓库门禁",
+        date="2099-07-02T00:00:00+00:00",
+        body="仓库门禁走西门。\n已改走南门。",
+    )
+    old = _email(
+        "night-old",
+        subject="仓库门禁",
+        date="2099-07-01T00:00:00+00:00",
+        body="仓库门禁走西门。",
+    )
+    first_notes = prepare_case({
+        "results": [_inbox([late, old, mid], scoped=True)],
+    })[2]
+    second_notes = prepare_case({
+        "results": [_inbox([mid, late, old], scoped=True)],
+    })[2]
+    assert first_notes == second_notes
+    joined = "\n".join(first_notes)
+    assert "email:night-old 已被 email:night-late 取代" in joined
+    assert "email:night-mid 已被 email:night-late 取代" in joined
+
+
+def test_same_case_builds_the_same_prompt_twice():
+    case = _fresh("fresh-spec-distractor")
+    first = prepare_case(case)
+    second = prepare_case(case)
+    assert first[1] == second[1]
+    assert first[2] == second[2]
 
 
 def test_dev_similar_specs_keep_both_prices():
