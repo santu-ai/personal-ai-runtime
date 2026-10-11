@@ -295,6 +295,24 @@ def _email_read_failure_note(raw: str) -> str:
     return f"邮箱读取失败：{text[:300] or 'unknown error'}"
 
 
+def _newer_replaces(older: dict[str, Any], newer: dict[str, Any]) -> bool:
+    """A later mail replaces an earlier one only when it covers that copy.
+
+    Two similar mails that each state a different date stay side by side.
+    """
+    if older["date"] is None or newer["date"] is None or older["date"] >= newer["date"]:
+        return False
+    older_lines = set(older["lines"])
+    newer_lines = set(newer["lines"])
+    if not older_lines or not newer_lines:
+        return False
+    covered = older_lines <= newer_lines
+    updated = bool(_UPDATE_CUE.search(str(newer["visible"]))) and _near_duplicate_lines(
+        older["lines"], newer["lines"],
+    )
+    return covered or updated
+
+
 def _emit_inbox_batch(
     batch: list[dict[str, Any]],
     *,
@@ -303,33 +321,28 @@ def _emit_inbox_batch(
     bodies: list[str],
     catalog: dict[str, dict[str, str]],
     included_texts: list[str],
+    notes: list[str],
 ) -> None:
-    """Keep the later near-duplicate, and surface its new line and current date."""
+    """Keep the later copy when it covers the earlier one, and surface its new line."""
     for item in batch:
         item["superseded_by"] = ""
         item["surface"] = []
     for older in batch:
         for newer in batch:
-            if older is newer or older["date"] is None or newer["date"] is None:
-                continue
-            if older["date"] >= newer["date"]:
-                continue
-            if not _near_duplicate_lines(older["lines"], newer["lines"]):
+            if older is newer or not _newer_replaces(older, newer):
                 continue
             older["superseded_by"] = newer["id"]
             for line in newer["lines"]:
                 if line not in older["lines"] and line not in newer["surface"]:
                     newer["surface"].append(line)
+            notes.append(f"{older['id']} 已被 {newer['id']} 取代，请改读后一封。")
             break
     for item in batch:
         visible = str(item["visible"])
         if item["superseded_by"]:
-            prompt = (
-                f"Subject: {item['subject']}\nDate: {item['date_raw']}\n"
-                f"这封已被 {item['superseded_by']} 取代，请改读后一封。"
-            )
+            prompt = f"Subject: {item['subject']}\nDate: {item['date_raw']}\n{visible}"
             preferred: list[str] = []
-            surface: list[str] = []
+            surface = []
             quotable = ""
         else:
             operative = _operative_lines(visible)
@@ -586,6 +599,7 @@ def collect_allowed_sources(
                 bodies=bodies,
                 catalog=catalog,
                 included_texts=included_texts,
+                notes=notes,
             )
             email_included = matched
             if email_truncated:
@@ -1124,6 +1138,8 @@ _CSV_STATUS_RE = re.compile(
     r"检修|完成|延期|暂停|进行|open|closed|blocked|done|delayed",
     re.I,
 )
+_CSV_OPEN_RE = re.compile(r"检修|延期|暂停|open|blocked|delayed", re.I)
+_UPDATE_CUE = re.compile(r"改到|改为|改走|已改|更正|更新为|推迟到|提前到")
 
 
 def _is_forward_boilerplate(line: str) -> bool:
@@ -1167,10 +1183,18 @@ def _csv_key_rows(text: str) -> list[str]:
     if len(rows) < 2:
         return []
     data = rows[1:]
-    keyed = [
-        row for row in data
-        if _DATE_TOKEN.search(row) or _CSV_STATUS_RE.search(row)
-    ]
+
+    def _priority(row: str) -> int:
+        if _CSV_OPEN_RE.search(row):
+            return 0
+        if _CSV_STATUS_RE.search(row):
+            return 1
+        if _DATE_TOKEN.search(row):
+            return 2
+        return 3
+
+    keyed = [row for row in data if _priority(row) < 3]
+    keyed.sort(key=_priority)
     chosen = keyed or data[-1:]
     return chosen[:_QUOTABLE_LINE_CAP]
 
