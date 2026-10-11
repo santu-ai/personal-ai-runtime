@@ -1542,6 +1542,47 @@ def test_dev_conflicting_dates_both_stay():
     assert "7月8日" in text
 
 
+def test_bilingual_done_row_does_not_hide_a_later_open_row():
+    body = "\n".join([
+        "设备,状态,日期",
+        "旧泵,done,2026-01-01",
+        "一号泵,open,2026-02-01",
+        "二号泵,open,2026-03-01",
+        "三号泵,open,2026-04-11",
+    ])
+    path = "exports/pump-bilingual.csv"
+    _sources, _bodies, _notes, coverage = collect_allowed_sources(
+        contract={
+            "source_scope": {
+                "timezone": "UTC",
+                "email": {"enabled": False},
+                "files": [{"path": path, "label": "泵表"}],
+            },
+            "objective": "整理进度、风险和待办",
+        },
+        step_results=[_file(body, step=0)],
+        retrieved_at="t0",
+        plan_steps=[{"tool": "read_file", "params": {"path": path}}],
+    )
+    surface = coverage["_catalog"][_file_source_id(path)]["surface"]
+    assert "三号泵,open,2026-04-11" in surface
+    text = _compile_miss({
+        "query": "",
+        "files": [{"path": path, "label": "泵表"}],
+        "results": [_inbox([], scoped=True), _file(body)],
+        "plan_steps": [
+            {"tool": "check_inbox"},
+            {"tool": "read_file", "params": {"path": path}},
+        ],
+    }, {
+        "text": "设备,状态,日期",
+        "quote": "设备,状态,日期",
+        "source_ids": [_file_source_id(path)],
+        "kind": "change",
+    })
+    assert "三号泵,open,2026-04-11" in text
+
+
 def test_dev_csv_keeps_a_late_open_row():
     text = _compile_miss(_dev("dev-csv-open-row"), {
         "text": "设备,编号,状态,日期",
