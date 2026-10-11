@@ -10,6 +10,12 @@ commits = [
   "ec5184f77a3b16d179d151bb4bcf16f751bb5f98",
   "810fb51f777ebc42f9166789547e3d07d53656a3",
 ]
+# gitleaks 8.24 reads commits, not fingerprints. The strings stay so the guard
+# can see the historical fixtures were not widened to a whole directory.
+fingerprints = [
+  '''b118877853bc01173016da0979234d568903323d:backend/tests/runtime/test_egress_gate.py:generic-api-key:41''',
+  '''ec5184f77a3b16d179d151bb4bcf16f751bb5f98:scripts/verify_compose_smoke.py:generic-api-key:45''',
+]
 paths = [
   '''\.env\.example$''',
   '''docs/.*\.md$''',
