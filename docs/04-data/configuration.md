@@ -57,6 +57,8 @@ flowchart LR
 | `cors_origins` | `http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174` | `CORS_ORIGINS` |
 | `log_json` | `False` | `LOG_JSON` |
 
+日志写到标准错误，并在数据目录的 `logs/runtime.log` 里轮转：当前文件加上两份旧文件，每份大约 256KB，到了就丢掉更早的。设置页「导出诊断」下载一份 JSON，给排错时附在报告上。里面有版本、去掉密钥之后的模型设置、最近的错误和日志、调用统计和 14 天试用的汇总数字。没有邮箱地址、密码、API Key、邮件正文或文件正文。
+
 ### 认证
 
 | 字段 | 默认 | 环境变量 |
