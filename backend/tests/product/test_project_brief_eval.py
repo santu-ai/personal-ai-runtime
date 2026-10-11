@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.product.project_brief import (
+    _PROMPT_CHAR_BUDGET,
     BRIEF_FILE_MAX_LINES,
     _build_prompt,
     _extract_json,
@@ -1249,6 +1250,76 @@ def test_rare_revision_survives_a_long_inbox():
     assert "42万元" in catalog["email:m140"]["surface"]
     assert "18万元" in catalog["email:m020"]["surface"]
     assert elapsed < 3.0
+
+
+def _prompt_for(case: dict) -> str:
+    sources, bodies, notes, _coverage = prepare_case(case)
+    return _build_prompt(
+        contract={
+            "objective": "整理进度、风险和待办",
+            "acceptance_criteria": default_acceptance_criteria(),
+        },
+        rework_notes=[],
+        source_blocks=bodies,
+        source_notes=notes,
+        allowed_ids=sorted(str(item["id"]) for item in sources),
+    )
+
+
+def test_short_prompt_keeps_the_full_mail():
+    prompt = _prompt_for(_field("field-near-paraphrase"))
+    assert len(prompt) <= _PROMPT_CHAR_BUDGET
+    assert "left out of this prompt" not in prompt
+    assert "Subject: 西仓出库更新" in prompt
+    assert prompt.count("西仓出库已经放行，货单号 W-19。") >= 2
+
+
+def test_long_inbox_prompt_keeps_the_newest_line_inside_the_budget():
+    emails = []
+    for index in range(40):
+        if index == 39:
+            body = "最新决定：验收编号 K-40 已完成。\n" + ("填充行，没有新决定。\n" * 20)
+        else:
+            body = f"第{index:03d}封只有旧事。\n" + ("填充行，没有新决定。\n" * 20)
+        emails.append(_email(
+            f"m{index:03d}",
+            subject=f"周报 {index}",
+            date=f"2099-06-{(index // 24) + 1:02d}T{index % 24:02d}:00:00+00:00",
+            body=body,
+        ))
+    file_body = "# 阀门\n故障码 12 表示阀杆卡死。\n复位等待 4 秒。\n"
+    sources, bodies, notes, _coverage = collect_allowed_sources(
+        contract={
+            "source_scope": {
+                "timezone": "UTC",
+                "email": {"enabled": True, "query": "", "days": 30, "since": "2099-01-01", "limit": 40},
+                "files": [{"path": "specs/valve.md", "label": "阀门"}],
+            },
+            "objective": "整理进度、风险和待办",
+        },
+        step_results=[
+            _inbox(emails, scoped=True, limit=40),
+            _file(file_body, step=1),
+        ],
+        retrieved_at="t0",
+        plan_steps=[{"tool": "check_inbox"}, {"tool": "read_file", "params": {"path": "specs/valve.md"}}],
+    )
+    prompt = _build_prompt(
+        contract={
+            "objective": "整理进度、风险和待办",
+            "acceptance_criteria": default_acceptance_criteria(),
+        },
+        rework_notes=[],
+        source_blocks=bodies,
+        source_notes=notes,
+        allowed_ids=sorted(str(item["id"]) for item in sources),
+    )
+    assert len(prompt) <= _PROMPT_CHAR_BUDGET
+    assert "验收编号 K-40 已完成" in prompt
+    assert "阀杆卡死" in prompt
+    assert "left out of this prompt" in prompt
+    assert "第000封只有旧事" not in prompt
+    assert prompt.count("Quotable lines in Email") <= 8
 
 
 def test_field_paraphrase_keeps_the_later_line():
