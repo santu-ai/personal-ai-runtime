@@ -70,7 +70,7 @@ stdio = ["ignore", "pipe", "pipe"]
 
 ## 窗口管理
 
-- `createMainWindow()`（[`main.js`](../../desktop/main.js)）：1200×800，最小 800×600。两个窗口共用 `nodeIntegration: false`、`contextIsolation: true`、`sandbox: true`、`webSecurity: true`，`preload.js` 不暴露 IPC。`app://` 文件响应带内容安全策略（脚本只来自自身，禁止插件和外来框架）。权限请求一律拒绝。没有自动更新通道，升级靠重新安装。`ready-to-show` 前隐藏。关闭 → 隐藏（驻留托盘），除非正在退出。
+- `createMainWindow()`（[`main.js`](../../desktop/main.js)）：1200×800，最小 800×600。两个窗口共用 `nodeIntegration: false`、`contextIsolation: true`、`sandbox: true`、`webSecurity: true`，`preload.js` 不暴露 IPC。`app://` 文件响应带内容安全策略（脚本只来自自身，禁止插件和外来框架）。权限请求一律拒绝。没有自动更新通道，升级靠重新安装。启动后端前，若 `settings.key` 仍是明文 Fernet 密钥且 `safeStorage` 可用，先包成 `os:v1` / `electron`，明文只从管道交给子进程。`ready-to-show` 前隐藏。关闭 → 隐藏（驻留托盘），除非正在退出。
 - `createMiniWindow()`（[`main.js`](../../desktop/main.js)）：600×500 无边框、置顶、跳过任务栏的「快捷对话」弹窗（Alt+Space），失焦关闭。
 
 ## 系统托盘

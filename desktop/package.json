@@ -29,6 +29,7 @@
     },
     "files": [
       "main.js",
+      "settingsKey.js",
       "preload.js",
       "runtimePaths.js",
       "smokeMode.js",
