@@ -390,6 +390,7 @@ def _emit_inbox_batch(
                     newer["surface"].append(line)
             notes.append(f"{older['id']} 已被 {newer['id']} 取代，请改读后一封。")
             break
+    _mark_email_revisions(batch)
     for item in batch:
         visible = str(item["visible"])
         if item["superseded_by"]:
@@ -406,6 +407,15 @@ def _emit_inbox_batch(
             for line in _mixed_language_lines(operative):
                 if line not in surface:
                     surface.insert(0, line)
+            quoted_amounts: set[str] = set()
+            for line in _quotable_lines(visible):
+                if line.startswith(">"):
+                    quoted_amounts |= _amount_keys(line)
+            if quoted_amounts:
+                for line in operative:
+                    own = _amount_keys(line)
+                    if own and own != quoted_amounts and line not in surface:
+                        surface.append(line)
             surface = surface[:3]
             preferred = []
             for line in surface + operative:
@@ -461,7 +471,8 @@ def _emit_file_batch(
     """Surface spreadsheet rows, meeting decisions, and lines that differ."""
     pending.sort(key=lambda item: (str(item["label"]), str(item["id"])))
     line_sets = [list(item["lines"]) for item in pending]
-    labels = [str(item["label"]) for item in pending]
+    # Directory grouping follows the file path. A display label is not a path.
+    labels = [str(item.get("path") or item["label"]) for item in pending]
     for index, item in enumerate(pending):
         others: list[list[str]] = []
         for other in range(len(pending)):
@@ -488,6 +499,20 @@ def _emit_file_batch(
             ],
         )
         mixed = _mixed_language_lines(list(item["lines"]))
+        peer_lines = [
+            line_sets[other]
+            for other in range(len(pending))
+            if other != index and _same_directory(labels[index], labels[other])
+        ]
+        revisions = [
+            line for line in item["lines"]
+            if not str(line).startswith(">")
+            and any(
+                _is_line_revision(line, other)
+                for peer in peer_lines
+                for other in peer
+            )
+        ]
         visible = str(item["visible"])
         csv_rows = _csv_key_rows(visible) if _looks_like_csv(visible) else []
         decisions = [
@@ -521,7 +546,7 @@ def _emit_file_batch(
             for line in family_facts:
                 if line not in surface:
                     surface.append(line)
-        for line in mixed:
+        for line in revisions + mixed:
             if line not in preferred:
                 preferred.insert(0, line)
             if line not in surface:
@@ -747,6 +772,7 @@ def collect_allowed_sources(
                 gaps.append(f"文件 {label} 被截断：{truncation}")
             file_pending.append({
                 "id": source_id,
+                "path": path,
                 "label": label,
                 "visible": visible,
                 "lines": _quotable_lines(visible),
@@ -1256,11 +1282,95 @@ def _is_forward_boilerplate(line: str) -> bool:
     return bool(_FORWARD_BOILERPLATE.search(line.strip()))
 
 
+_ATTRIBUTION_RE = re.compile(r"写道|写到|wrote|writes", re.I)
+
+
+def _is_attribution_line(line: str) -> bool:
+    """A 'wrote on this date' line is not the fact that follows it."""
+    if _AMOUNT.search(line) or _DECISION_RE.search(line):
+        return False
+    return bool(_ATTRIBUTION_RE.search(line))
+
+
+def _collapsed_chars(text: str) -> str:
+    return "".join(str(text or "").split())
+
+
+def _shared_span_len(left: str, right: str) -> int:
+    """Longest contiguous span shared by two lines, ignoring spaces."""
+    a = _collapsed_chars(left)
+    b = _collapsed_chars(right)
+    if len(a) < 2 or len(b) < 2:
+        return 0
+    best = 0
+    prev = [0] * (len(b) + 1)
+    for ch in a:
+        curr = [0] * (len(b) + 1)
+        for index, other in enumerate(b):
+            if ch != other:
+                continue
+            length = prev[index] + 1
+            curr[index + 1] = length
+            if length > best:
+                best = length
+        prev = curr
+    return best
+
+
+def _is_line_revision(left: str, right: str) -> bool:
+    """Two different lines that still share a long stretch of the same words."""
+    if not left or not right or _collapsed_chars(left) == _collapsed_chars(right):
+        return False
+    return _shared_span_len(left, right) >= 6
+
+
+def _line_facts_conflict(left: str, right: str) -> bool:
+    """True when the two lines name different dates or different amounts."""
+    dates_left = set(_DATE_TOKEN.findall(left))
+    dates_right = set(_DATE_TOKEN.findall(right))
+    if dates_left and dates_right and dates_left != dates_right:
+        return True
+    amounts_left = _amount_keys(left)
+    amounts_right = _amount_keys(right)
+    return bool(amounts_left and amounts_right and amounts_left != amounts_right)
+
+
+def _remember_surface(item: dict[str, Any], line: str) -> None:
+    surface = item["surface"]
+    if line and line not in surface:
+        surface.append(line)
+
+
+def _mark_email_revisions(batch: list[dict[str, Any]]) -> None:
+    """Keep a later line that rewrites an earlier one, and both lines when they disagree."""
+    for older in batch:
+        if older["superseded_by"] or older["date"] is None:
+            continue
+        for newer in batch:
+            if older is newer or newer["date"] is None or older["date"] >= newer["date"]:
+                continue
+            if newer["superseded_by"]:
+                continue
+            for newer_line in newer["lines"]:
+                if newer_line.startswith(">") or _is_attribution_line(newer_line):
+                    continue
+                for older_line in older["lines"]:
+                    if older_line.startswith(">") or not _is_line_revision(older_line, newer_line):
+                        continue
+                    if _line_facts_conflict(older_line, newer_line):
+                        _remember_surface(older, older_line)
+                        _remember_surface(newer, newer_line)
+                    else:
+                        _remember_surface(newer, newer_line)
+                    break
+
+
 def _operative_lines(text: str) -> list[str]:
     """Lines from the current message. Quoted history and the earlier date lose."""
     unquoted = [
         line for line in _quotable_lines(text)
         if not line.startswith(">") and not _is_forward_boilerplate(line)
+        and not _is_attribution_line(line)
     ]
     dated = [line for line in unquoted if _DATE_TOKEN.search(line)]
     if not dated:
@@ -1901,6 +2011,49 @@ def _retrieval_lines(coverage: dict[str, Any] | None) -> list[str]:
     return lines
 
 
+def _retarget_similar_quote(
+    item: dict[str, Any],
+    catalog: dict[str, dict[str, str]],
+) -> dict[str, Any]:
+    """Use the source line when a quote is that line with a few words changed.
+
+    A shared amount, or a short overlap, is not enough. Two lines that name
+    different amounts stay apart.
+    """
+    quote = str(item.get("quote") or "").strip()
+    if not quote or not catalog:
+        return item
+    if any(
+        candidate in str(entry.get("text") or "")
+        for entry in catalog.values()
+        for candidate in _quote_candidates(quote)
+    ):
+        return item
+    if any(
+        _longest_line_in_quote(quote, str(entry.get("text") or ""))
+        for entry in catalog.values()
+    ):
+        return item
+    found: list[tuple[str, str]] = []
+    for sid, entry in catalog.items():
+        for line in _quotable_lines(str(entry.get("text") or "")):
+            if line.startswith(">") or _is_attribution_line(line):
+                continue
+            if _shared_span_len(quote, line) < 8:
+                continue
+            if _line_facts_conflict(quote, line):
+                continue
+            found.append((sid, line))
+    lines = {line for _sid, line in found}
+    if len(lines) != 1:
+        return item
+    sid, line = found[0]
+    updated = dict(item)
+    updated["quote"] = line
+    updated["source_ids"] = [sid]
+    return updated
+
+
 def _retarget_unique_quote(
     item: dict[str, Any],
     catalog: dict[str, dict[str, str]],
@@ -2207,6 +2360,7 @@ def validate_model_brief(
             )
             item = _prefer_current_fact(item, source_catalog)
             item = _retarget_unique_quote(item, source_catalog)
+            item = _retarget_similar_quote(item, source_catalog)
         quote_for_keep = str(item.get("quote") or "")
         quote_in_catalog = any(
             candidate in str(entry.get("text") or "")
