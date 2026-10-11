@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-10-11：任务页简报阶段行在浏览器里点过。读取和写简报都会写出已读来源数，结束后消失。项目简报的执行时限改为工具环超时，避免写到一半被 30 秒掐成死信。未改 Kernel。
 - 2026-10-11：未变的简报重跑先看 UIDVALIDITY、MODSEQ 或 Message-ID，文件先看大小和 mtime，变了才读正文。8MiB 文件从 0.011 秒降到 0.0004 秒。返工会清掉这些记号。未改 Kernel。
 - 2026-10-11：Fernet 密钥不再以明文放在数据库旁。Windows DPAPI、macOS 钥匙串、Linux libsecret；没有这些接口时只留在进程内存。整库备份不复制 settings.key。桌面用 safeStorage 包旧密钥，并从管道交给后端。未改 Kernel。
 - 2026-10-11：桌面窗口显式沙箱，app:// 带内容安全策略，不接自动更新。邮箱密码和 API key 以 enc:v1 落在 app_settings，密钥在数据库旁的 settings.key。未改 Kernel。
