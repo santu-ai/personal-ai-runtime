@@ -691,6 +691,72 @@ def public_bundle(work_id: str) -> dict[str, Any]:
     return bundle
 
 
+def _public_for_execution(
+    folded: dict[str, Any],
+    execution_id: str,
+) -> dict[str, Any] | None:
+    """Public delivery already published by this execution, if any."""
+    for existing in folded["_by_id"].values():
+        if str(existing.get("execution_id") or "") != execution_id:
+            continue
+        did = str(existing.get("delivery_id") or "")
+        decision = _decision_for(folded["_decisions"], did)
+        status = (
+            _review_status_from_decision(str(decision.get("decision") or ""))
+            if decision
+            else REVIEW_UNREVIEWED
+        )
+        public = _public_delivery(
+            existing,
+            review_status=status,
+            include_content=True,
+            latest_decision=decision,
+        )
+        assert public is not None
+        public["changes_from_previous"] = _changes_for(existing, folded["_by_id"])
+        return _with_model_cost(public)
+    return None
+
+
+def existing_delivery_for_execution(
+    work_id: str,
+    execution_id: str | None,
+) -> dict[str, Any] | None:
+    """Delivery this execution already published. Does not append a version."""
+    resolved = str(execution_id or "").strip()
+    if not resolved:
+        return None
+    return _public_for_execution(fold_delivery_history(work_id), resolved)
+
+
+def successful_brief_llm_calls(execution_id: str | None) -> int:
+    """Successful project-brief model calls already recorded for one execution.
+
+    Failed calls are not counted. A scheduler retry of the same execution
+    uses this so it does not call the model again, and the cost cap does not
+    see the same completion twice.
+    """
+    resolved = str(execution_id or "").strip()
+    if not resolved:
+        return 0
+    events = kernel.read_events(
+        type=EVENT_LLM_CALL_RECORDED,
+        order="desc",
+        limit=500,
+    )
+    count = 0
+    for event in events:
+        if str(getattr(event, "caused_by", None) or "") != resolved:
+            continue
+        payload = event.payload if isinstance(getattr(event, "payload", None), dict) else {}
+        if payload.get("purpose") != "project_brief":
+            continue
+        if not payload.get("success", True):
+            continue
+        count += 1
+    return count
+
+
 def publish_delivery(
     work_id: str,
     *,
@@ -717,24 +783,9 @@ def publish_delivery(
     with _work_lock(work_id):
         folded = fold_delivery_history(work_id)
         if execution_id:
-            for existing in folded["_by_id"].values():
-                if str(existing.get("execution_id") or "") == execution_id:
-                    did = str(existing.get("delivery_id") or "")
-                    decision = _decision_for(folded["_decisions"], did)
-                    status = (
-                        _review_status_from_decision(str(decision.get("decision") or ""))
-                        if decision
-                        else REVIEW_UNREVIEWED
-                    )
-                    public = _public_delivery(
-                        existing,
-                        review_status=status,
-                        include_content=True,
-                        latest_decision=decision,
-                    )
-                    assert public is not None
-                    public["changes_from_previous"] = _changes_for(existing, folded["_by_id"])
-                    return _with_model_cost(public)
+            prior = _public_for_execution(folded, execution_id)
+            if prior is not None:
+                return prior
 
         current = folded["current"]
         version = int(current["version"]) + 1 if current else 1
@@ -1641,6 +1692,43 @@ def _restore_completed_brief(
     if restore_progress:
         read_ports.reset_work_item_plan_progress(work_id, snapshot=snapshot)
     logger.info("restored completed brief %s after execute request failed", work_id)
+
+
+def cancel_project_brief(work_id: str) -> dict[str, Any]:
+    """Stop a running project brief without discarding the current delivery.
+
+    The handler is cancelled. When a delivery already exists, status returns
+    to ``completed`` with ``reason=brief_cancel`` so the same brief can run
+    again. When none exists, status becomes ``failed`` with the same reason
+    so the task page can offer 重新执行. ``cancelled`` is not used: that
+    status hides both actions. The reason is not a new completion, so
+    dependent tasks are not started.
+    """
+    with _work_lock(work_id):
+        item = read_ports.query_work_item(work_id)
+        if item is None or not is_project_brief_plan(item.get("executable_plan")):
+            raise DeliveryNotFoundError(work_id)
+        status = str(item.get("status") or "")
+        if status not in {"pending", "running"}:
+            raise DeliveryConflictError("只有进行中的简报可以取消")
+        read_ports.stop_work_item_execution(work_id)
+        folded = fold_delivery_history(work_id)
+        current = folded.get("current")
+        has_delivery = isinstance(current, dict) and bool(current.get("delivery_id"))
+        kernel.emit_event(
+            EVENT_WORK_ITEM_STATUS_CHANGED,
+            AGGREGATE_WORK_ITEM,
+            work_id,
+            payload={
+                "status": "completed" if has_delivery else "failed",
+                "reason": read_ports.WORK_STATUS_REASON_BRIEF_CANCEL,
+            },
+            actor="user",
+        )
+        updated = read_ports.query_work_item(work_id)
+        if updated is None:
+            raise DeliveryNotFoundError(work_id)
+        return updated
 
 
 def rerun_project_brief(work_id: str) -> dict[str, Any]:

@@ -266,6 +266,7 @@ async def on_execute_requested(ctx: "ExecutionContext", event: "Event") -> None:
         return
 
     is_background = action.get("work_type") == "background"
+    is_brief = _is_project_brief_plan(action.get("executable_plan"))
     actor = "background" if is_background else "executor"
     exec_key = f"exec_{action_id}"
 
@@ -308,7 +309,6 @@ async def on_execute_requested(ctx: "ExecutionContext", event: "Event") -> None:
         )
         return
 
-    is_brief = _is_project_brief_plan(action.get("executable_plan"))
     if not steps and not is_brief:
         _sync_work_item_status(ctx, event, action_id, "failed")
         _emit_execute_completed(
@@ -331,12 +331,22 @@ async def on_execute_requested(ctx: "ExecutionContext", event: "Event") -> None:
                 ctx=ctx,
                 action_id=action_id,
                 actor=actor,
-                cancel_check=cancel_check if is_background else None,
+                cancel_check=cancel_check if (is_background or is_brief) else None,
             )
         else:
             outcome = PlanRunOutcome(stopped_reason="completed")
     except Exception as exc:
-        if is_background and cancel_check():
+        if (is_background or is_brief) and cancel_check():
+            if is_brief and not is_background:
+                # Cancel API already wrote completed or failed. Do not stamp
+                # cancelled, which would hide 再次运行 and 重新执行.
+                clear_execution_cancel(exec_key)
+                _emit_execute_completed(
+                    ctx, event, action_id, status="cancelled",
+                    total_steps=len(steps),
+                    completed_steps=0, results=[],
+                )
+                return
             _finalize_cancelled(
                 ctx, event, action_id,
                 exec_key=exec_key,
@@ -364,9 +374,21 @@ async def on_execute_requested(ctx: "ExecutionContext", event: "Event") -> None:
 
     # Cancel acknowledged by plan_runner — durable cancel already emitted by API,
     # but re-stamp cancelled in case the handler raced past the API's emit.
+    # A project brief keeps the status the cancel API wrote (completed when a
+    # delivery exists, failed otherwise) so the previous delivery stays usable.
     if outcome.stopped_reason == "cancelled" or (
-        is_background and cancel_check()
+        (is_background or is_brief) and cancel_check()
     ):
+        if is_brief and not is_background:
+            clear_execution_cancel(exec_key)
+            _emit_execute_completed(
+                ctx, event, action_id, status="cancelled",
+                total_steps=len(steps),
+                completed_steps=outcome.completed_steps,
+                results=[r.preview() for r in outcome.results],
+                resume_from=resume_from,
+            )
+            return
         _finalize_cancelled(
             ctx, event, action_id,
             exec_key=exec_key,
@@ -412,6 +434,17 @@ async def on_execute_requested(ctx: "ExecutionContext", event: "Event") -> None:
                 compile_error = None
     else:
         compile_error = None
+
+    if is_brief and not is_background and cancel_check():
+        clear_execution_cancel(exec_key)
+        _emit_execute_completed(
+            ctx, event, action_id, status="cancelled",
+            total_steps=len(steps),
+            completed_steps=outcome.completed_steps,
+            results=[r.preview() for r in outcome.results],
+            resume_from=resume_from,
+        )
+        return
 
     if is_background and wi_status in (
         "waiting_approval", "failed", "completed",

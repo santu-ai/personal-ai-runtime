@@ -832,6 +832,89 @@ describe("TasksPage", () => {
     expect(screen.getAllByText("tool step failed: disk full")).toHaveLength(2);
   });
 
+  it("keeps the previous delivery visible when a brief times out", async () => {
+    const timedOut: WorkItem = {
+      ...briefTask,
+      status: "failed",
+      execution: {
+        ...briefTask.execution!,
+        handler_execution: {
+          id: "wi_timeout",
+          status: "failed",
+          dead_letter: true,
+          retry_count: 1,
+          handler_name: "on_execute_requested",
+          started_at: "2026-08-06T00:00:00Z",
+          completed_at: "2026-08-06T00:05:00Z",
+          error: "Timeout after 300.0s",
+        },
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [timedOut];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(timedOut);
+    renderTasks("/tasks/brief_1");
+
+    expect(await screen.findByTestId("brief-stop-notice")).toHaveTextContent(
+      "写简报超时。上一版交付还在，可以重新执行。",
+    );
+    expect(screen.getByText("有进度风险")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重新执行" })).toBeInTheDocument();
+    expect(screen.queryByTestId("rerun-failure-reason")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("brief-run-progress")).not.toBeInTheDocument();
+  });
+
+  it("offers cancel and a live stage while a brief is running", async () => {
+    const running = asRunning(briefTask);
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [running];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(running);
+    renderTasks("/tasks/brief_1");
+
+    expect(await screen.findByRole("button", { name: "取消" })).toBeInTheDocument();
+    const progress = screen.getByTestId("brief-run-progress");
+    expect(progress).toHaveAttribute("aria-busy", "true");
+    expect(progress).toHaveTextContent("正在写简报");
+    expect(screen.getByText("有进度风险")).toBeInTheDocument();
+  });
+
+  it("keeps the previous delivery when a running brief is cancelled", async () => {
+    const cancelled: WorkItem = {
+      ...briefTask,
+      status: "completed",
+      execution: {
+        ...briefTask.execution!,
+        handler_execution: {
+          id: "wi_cancel",
+          status: "failed",
+          dead_letter: false,
+          retry_count: 0,
+          handler_name: "on_execute_requested",
+          started_at: "2026-08-06T00:00:00Z",
+          completed_at: "2026-08-06T00:02:00Z",
+          error: "cancelled",
+        },
+      },
+    };
+    vi.mocked(listWorkItems).mockImplementation(async (workType?: string) => {
+      if (workType === "task") return [cancelled];
+      return [];
+    });
+    vi.mocked(getWorkItem).mockResolvedValue(cancelled);
+    renderTasks("/tasks/brief_1");
+
+    expect(await screen.findByTestId("brief-stop-notice")).toHaveTextContent(
+      "已取消。上一版交付还在，可以再次运行。",
+    );
+    expect(screen.getByText("有进度风险")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "再次运行" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "取消" })).not.toBeInTheDocument();
+  });
+
   it("shows a running dead-letter reason beside the rerun hint", async () => {
     const stuck: WorkItem = {
       ...sampleTask,

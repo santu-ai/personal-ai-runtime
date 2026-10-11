@@ -428,6 +428,27 @@ def cancel_background_work_item(item_id: str) -> dict[str, Any]:
     return updated
 
 
+def stop_work_item_execution(item_id: str) -> None:
+    """Stop the in-flight ``ExecuteRequested`` for a work item.
+
+    Sets the cooperative cancel flag on ``exec_{item_id}`` and cancels the
+    matching Scheduler task when one is alive. Does not emit a work-item
+    status. The flag stays set until the next ``request_work_item_execute``
+    so a handler still between awaits can see it. A later execute clears it.
+    """
+    from app.core.runtime.execution import request_cancel_execution
+
+    request_cancel_execution(f"exec_{item_id}")
+    try:
+        from app.core.runtime.agent_scheduler import get_scheduler
+        from app.core.runtime.runtime_container import runtime
+
+        if runtime._scheduler is not None:
+            get_scheduler(kernel()).cancel_executions_for(item_id)
+    except Exception:
+        logger.debug("Scheduler cancel for work item skipped", exc_info=True)
+
+
 def request_work_item_execute(item_id: str) -> dict[str, Any]:
     """Start a work item's ``executable_plan`` (Ports command ABI).
 
@@ -475,6 +496,12 @@ def request_work_item_execute(item_id: str) -> dict[str, Any]:
         raise ValueError(
             f"Work item is {status}; wait for completion or resolve approval"
         )
+
+    from app.core.runtime.execution import clear_execution_cancel
+
+    # A cancelled brief keeps the flag so the old handler stops. The next
+    # execute is a new attempt and must not inherit that cancel.
+    clear_execution_cancel(f"exec_{item_id}")
 
     k = kernel()
     k.emit_event(

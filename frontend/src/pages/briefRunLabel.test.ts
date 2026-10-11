@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { briefRunLabel } from "./briefRunLabel";
+import { briefRunLabel, briefStopNotice } from "./briefRunLabel";
 
 const now = 1_700_000_000_000;
 
@@ -64,5 +64,22 @@ describe("briefRunLabel", () => {
         },
       }),
     ).toBeNull();
+  });
+});
+
+describe("briefStopNotice", () => {
+  it("keeps the previous delivery in view after a timeout", () => {
+    expect(briefStopNotice("Timeout after 300.0s", true)).toBe(
+      "写简报超时。上一版交付还在，可以重新执行。",
+    );
+    expect(briefStopNotice("Timeout after 300.0s", false)).toBe(
+      "写简报超时。这一版还没有交出。可以重新执行。",
+    );
+  });
+
+  it("says which action comes next after cancel", () => {
+    expect(briefStopNotice("cancelled", true)).toBe("已取消。上一版交付还在，可以再次运行。");
+    expect(briefStopNotice("cancelled", false)).toBe("已取消。可以重新执行。");
+    expect(briefStopNotice("tool step failed: disk full", true)).toBeNull();
   });
 });

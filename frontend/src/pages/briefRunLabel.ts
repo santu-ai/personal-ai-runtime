@@ -45,3 +45,17 @@ export function briefRunLabel(input: {
   }
   return `正在写简报（已读取 ${done} 个来源）`;
 }
+
+/** Next step after a brief times out or the user cancels it. */
+export function briefStopNotice(error: string, hasDelivery: boolean): string | null {
+  const text = error.trim();
+  if (text.startsWith("Timeout after")) {
+    return hasDelivery
+      ? "写简报超时。上一版交付还在，可以重新执行。"
+      : "写简报超时。这一版还没有交出。可以重新执行。";
+  }
+  if (text === "cancelled") {
+    return hasDelivery ? "已取消。上一版交付还在，可以再次运行。" : "已取消。可以重新执行。";
+  }
+  return null;
+}

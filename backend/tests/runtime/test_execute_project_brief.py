@@ -121,3 +121,55 @@ async def test_execute_handler_fails_on_illegal_brief(monkeypatch):
     assert done[1]["payload"]["error"] == "模型输出非法或不可用，可重试"
     wi = [e for e in emitted if e[0][0] == "WorkItemStatusChanged"]
     assert wi[-1][1]["payload"]["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_brief_cancel_does_not_stamp_cancelled(monkeypatch):
+    emitted: list[tuple] = []
+    calls = {"n": 0}
+
+    class Ctx:
+        execution_id = "ex-cancel"
+        correlation_id = "c-cancel"
+
+        def emit(self, *args, **kwargs):
+            emitted.append((args, kwargs))
+
+    def flag(_key: str) -> bool:
+        calls["n"] += 1
+        return calls["n"] >= 2
+
+    plan = '{"kind":"project_brief","contract":{"output_kind":"project_brief"},"steps":[]}'
+    monkeypatch.setattr(
+        "app.core.runtime.read_ports.query_work_item",
+        lambda _id: {
+            "id": "brief_3",
+            "status": "running",
+            "title": "Brief",
+            "parent_work_id": None,
+            "executable_plan": plan,
+        },
+    )
+    monkeypatch.setattr(
+        "app.core.runtime.execution.is_execution_cancelled",
+        flag,
+    )
+
+    async def _compile(*_args, **_kwargs):
+        raise AssertionError("cancelled brief must not compile")
+
+    from app.core.runtime.runtime_container import runtime
+
+    prev = runtime.work_delivery_compiler
+    runtime.bind_work_delivery_compiler(_compile)
+    try:
+        event = MagicMock()
+        event.id = "evt"
+        event.payload = {"action_id": "brief_3"}
+        await on_execute_requested(Ctx(), event)
+    finally:
+        runtime.bind_work_delivery_compiler(prev)
+
+    assert not any(args[0] == "WorkItemStatusChanged" for args, _ in emitted)
+    done = next(e for e in emitted if e[0][0] == "ExecuteCompleted")
+    assert done[1]["payload"]["status"] == "cancelled"

@@ -147,6 +147,7 @@ from app.core.runtime.read_ports.work import (
     query_work_items_by_parent_goal,
     request_work_item_execute,
     reset_work_item_plan_progress,
+    stop_work_item_execution,
     update_work_item_fields,
     update_work_item_status,
     work_item_execution_snapshot,
@@ -158,8 +159,11 @@ from app.core.runtime.read_ports.work import (
 # rework_restore：返工把 completed 或 failed 收成 pending，没执行起来时收回
 #   打开前的那个状态。不能复用 rerun_restore：那会跳过依赖钩子，并被当成
 #   「不是新的完成」的再次运行收回，终态也只会是 completed。
+# brief_cancel：用户取消进行中的简报。有上一版交付时收回 completed，没有时
+#   写成 failed，这样可以再次运行或重新执行。不是新的完成。
 WORK_STATUS_REASON_RERUN_RESTORE = "rerun_restore"
 WORK_STATUS_REASON_REWORK_RESTORE = "rework_restore"
+WORK_STATUS_REASON_BRIEF_CANCEL = "brief_cancel"
 
 __all__ = [
     "count_active_goals",
@@ -189,6 +193,7 @@ __all__ = [
     "update_work_item_status",
     "WORK_STATUS_REASON_RERUN_RESTORE",
     "WORK_STATUS_REASON_REWORK_RESTORE",
+    "WORK_STATUS_REASON_BRIEF_CANCEL",
     "rework_open_waiting_for_execute",
     "restore_half_open_rework",
     "delete_work_item",
@@ -255,6 +260,7 @@ __all__ = [
     "query_background_work_item",
     "query_background_work_items",
     "cancel_background_work_item",
+    "stop_work_item_execution",
     "query_active_timers",
     "count_active_timers",
     "query_timer",

@@ -972,3 +972,224 @@ def test_rework_drops_skip_tokens(isolated_kernel):
     assert "known_id_digest" not in params
     assert "known_source_hashes" not in params
     assert "请重读来源" in updated["executable_plan"]
+
+
+@pytest.mark.asyncio
+async def test_retry_does_not_call_the_model_or_replace_the_delivery(isolated_kernel):
+    """一次执行里已经记过成功调用时，重试不再调用，也不另写一版交付。"""
+    from app.core.runtime.kernel.constants import EVENT_LLM_CALL_RECORDED
+    from app.product.project_brief import ALREADY_BILLED_BRIEF
+    from app.product.work_delivery import model_cost_for_delivery, publish_delivery
+
+    kernel, _db = isolated_kernel
+    item = create_project_brief_work(
+        title="A",
+        objective="列出变化",
+        source_scope={"email": {"enabled": True, "days": 30}},
+    )
+    first = publish_delivery(
+        item["id"],
+        content="上一版还在",
+        summary="上一版",
+        sources=[{"id": "email:m1", "type": "email"}],
+        findings=[],
+        execution_id="exec-old",
+    )
+    kernel.emit_event(
+        EVENT_LLM_CALL_RECORDED,
+        "llm_call",
+        "llm-once",
+        payload={
+            "provider": "ollama",
+            "model": "qwen2.5:3b",
+            "prompt_tokens": 10,
+            "completion_tokens": 8,
+            "latency_ms": 1,
+            "cost": 0.4,
+            "success": True,
+            "purpose": "project_brief",
+        },
+        actor="executor",
+        caused_by="exec-new",
+    )
+
+    async def fake_llm(_prompt: str) -> str:
+        raise AssertionError("retry must not call the model")
+
+    compiled = await compile_project_brief_delivery(
+        item["id"],
+        _inbox_outcome(),
+        execution_id="exec-new",
+        llm_complete=fake_llm,
+    )
+    assert compiled["ok"] is False
+    assert compiled["error"] == ALREADY_BILLED_BRIEF
+    folded = fold_delivery_history(item["id"])
+    assert folded["current"]["delivery_id"] == first["delivery_id"]
+    assert folded["current"]["content"] == "上一版还在"
+    assert model_cost_for_delivery("exec-new")["llm_cost"] == 0.4
+    again = await compile_project_brief_delivery(
+        item["id"],
+        _inbox_outcome(),
+        execution_id="exec-new",
+        llm_complete=fake_llm,
+    )
+    assert again["error"] == ALREADY_BILLED_BRIEF
+    recorded = [
+        event
+        for event in kernel.read_events(type=EVENT_LLM_CALL_RECORDED)
+        if getattr(event, "caused_by", None) == "exec-new"
+    ]
+    assert len(recorded) == 1
+
+
+@pytest.mark.asyncio
+async def test_failed_model_record_does_not_block_or_charge(isolated_kernel):
+    from app.core.runtime.kernel.constants import EVENT_LLM_CALL_RECORDED
+    from app.product.work_delivery import model_cost_for_delivery
+
+    kernel, _db = isolated_kernel
+    item = create_project_brief_work(
+        title="A",
+        objective="列出变化",
+        source_scope={"email": {"enabled": True, "days": 30}},
+    )
+    kernel.emit_event(
+        EVENT_LLM_CALL_RECORDED,
+        "llm_call",
+        "llm-fail",
+        payload={
+            "provider": "ollama",
+            "model": "qwen2.5:3b",
+            "cost": 9,
+            "success": False,
+            "purpose": "project_brief",
+            "error_message": "Timeout",
+        },
+        actor="executor",
+        caused_by="exec-fail",
+    )
+    called = False
+
+    async def fake_llm(_prompt: str) -> str:
+        nonlocal called
+        called = True
+        return json.dumps({
+            "summary": "有延期风险",
+            "content": "全文",
+            "findings": [{
+                "text": "进度延期",
+                "kind": "risk",
+                "source_ids": ["email:m1"],
+            }],
+            "suggested_actions": [],
+            "limitations": [],
+        })
+
+    compiled = await compile_project_brief_delivery(
+        item["id"],
+        _inbox_outcome(),
+        execution_id="exec-fail",
+        llm_complete=fake_llm,
+    )
+    assert called is True
+    assert compiled["ok"] is True
+    assert model_cost_for_delivery("exec-fail")["llm_cost"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_same_execution_does_not_publish_a_second_delivery(isolated_kernel):
+    from app.core.runtime.kernel.constants import EVENT_WORK_ITEM_UPDATED
+
+    kernel, _db = isolated_kernel
+    item = create_project_brief_work(
+        title="A",
+        objective="列出变化",
+        source_scope={"email": {"enabled": True, "days": 30}},
+    )
+    calls = 0
+
+    async def fake_llm(_prompt: str) -> str:
+        nonlocal calls
+        calls += 1
+        return json.dumps({
+            "summary": "有延期风险",
+            "content": "全文",
+            "findings": [{
+                "text": "进度延期",
+                "kind": "risk",
+                "source_ids": ["email:m1"],
+            }],
+            "suggested_actions": [],
+            "limitations": [],
+        })
+
+    first = await compile_project_brief_delivery(
+        item["id"],
+        _inbox_outcome(),
+        execution_id="exec-once",
+        llm_complete=fake_llm,
+    )
+    second = await compile_project_brief_delivery(
+        item["id"],
+        _inbox_outcome(),
+        execution_id="exec-once",
+        llm_complete=fake_llm,
+    )
+    assert calls == 1
+    assert second["already_published"] is True
+    assert second["delivery"]["delivery_id"] == first["delivery"]["delivery_id"]
+    published = [
+        event
+        for event in kernel.read_events(
+            type=EVENT_WORK_ITEM_UPDATED,
+            aggregate_id=item["id"],
+        )
+        if isinstance(event.payload, dict) and "delivery_published" in event.payload
+    ]
+    assert len(published) == 1
+
+
+def test_cancel_running_brief_keeps_the_delivery(isolated_kernel):
+    from app.core.runtime import read_ports
+    from app.product.work_delivery import cancel_project_brief, publish_delivery
+
+    kernel, _db = isolated_kernel
+    item = create_project_brief_work(
+        title="A",
+        objective="列出变化",
+        source_scope={"email": {"enabled": True, "days": 30}},
+    )
+    published = publish_delivery(
+        item["id"],
+        content="上一版还在",
+        summary="上一版",
+        sources=[],
+        findings=[],
+        execution_id="exec-old",
+    )
+    read_ports.update_work_item_status(item["id"], "running")
+    updated = cancel_project_brief(item["id"])
+    assert updated["status"] == "completed"
+    folded = fold_delivery_history(item["id"])
+    assert folded["current"]["delivery_id"] == published["delivery_id"]
+    assert folded["current"]["content"] == "上一版还在"
+    status_events = kernel.read_events(
+        type="WorkItemStatusChanged",
+        aggregate_id=item["id"],
+    )
+    assert status_events[-1].payload["status"] == "completed"
+    assert status_events[-1].payload["reason"] == "brief_cancel"
+
+
+def test_cancel_running_brief_without_delivery_can_run_again(isolated_kernel):
+    from app.core.runtime import read_ports
+    from app.product.work_delivery import DeliveryConflictError, cancel_project_brief
+
+    item = create_project_brief_work(title="A", objective="列出变化")
+    read_ports.update_work_item_status(item["id"], "running")
+    updated = cancel_project_brief(item["id"])
+    assert updated["status"] == "failed"
+    assert fold_delivery_history(item["id"])["current"] is None
+    with pytest.raises(DeliveryConflictError):
+        cancel_project_brief(item["id"])

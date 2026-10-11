@@ -26,6 +26,18 @@ def test_rerun_restore_is_not_a_completion():
     assert _is_completion(event) is False
 
 
+def test_brief_cancel_is_not_a_completion():
+    from app.core.runtime.read_ports.events import _is_completion
+
+    event = Event(
+        type="WorkItemStatusChanged",
+        aggregate_type="work_item",
+        aggregate_id="brief",
+        payload={"status": "completed", "reason": "brief_cancel"},
+    )
+    assert _is_completion(event) is False
+
+
 def test_rework_restore_is_not_a_completion():
     from app.core.runtime.read_ports.events import _is_completion
 

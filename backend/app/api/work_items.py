@@ -562,10 +562,22 @@ async def execute_work_item(item_id: str):
 
 @router.post("/{item_id}/cancel")
 async def cancel_work_item(item_id: str):
-    """Cancel a non-terminal background work item (R010 cooperative cancel)."""
+    """Cancel a running project brief, or a non-terminal background item.
+
+    A project brief is not marked ``cancelled``. A current delivery stays,
+    and the status returns to ``completed`` so the same brief can run again.
+    With no delivery the status is ``failed``, so 重新执行 stays available.
+    """
+    from app.product.work_delivery import cancel_project_brief, is_project_brief_plan
+
     item = read_ports.query_work_item(item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Work item not found")
+    if is_project_brief_plan(item.get("executable_plan")):
+        try:
+            return cancel_project_brief(item_id)
+        except Exception as exc:
+            raise _delivery_http_error(exc) from exc
     if item.get("work_type") != "background":
         raise HTTPException(
             status_code=400,
