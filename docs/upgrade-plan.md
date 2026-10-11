@@ -303,7 +303,7 @@ llama3.2:3b 在当前主分支（#385）上、修复前：37 例里 30 例能解
 - [x] #394 合入后原样重测封存题。qwen2.5:3b 事实命中从 0.8889 到 1.0，证据支持仍是 1.0。llama3.2:3b 事实命中从 0.4444 到 0.5556，证据支持从 1.0 到 0.8889（`sealed-quoted-reply` 的摘录对不上）。llama 没写到新事实的是 `sealed-near-duplicate`、`sealed-date-conflict`、`sealed-csv-export`、`sealed-spec-distractor`
 - [x] #395 合入后再测。qwen2.5:3b 8/9 已解析，已解析的事实命中 1.0、证据支持 1.0；`sealed-quoted-reply` 把来源写成了 `email:reply (a@b.c)`，结构校验拒绝。llama3.2:3b 9/9 已解析，事实命中 0.7778，证据支持 0.8889。没命中的是 `sealed-near-duplicate` 和 `sealed-spec-distractor`，`sealed-quoted-reply` 的摘录对不上
 - [x] #396 合入后再测。来源 id 后面的发件人会先去掉。qwen2.5:3b 9/9 已解析，事实命中 1.0，证据支持 1.0。llama3.2:3b 9/9 已解析，事实命中 0.7778，证据支持 0.8889。没命中的是 `sealed-date-conflict` 和 `sealed-spec-distractor`，`sealed-quoted-reply` 的摘录对不上
-- [x] 主分支没有新的红灯。#396 的 CI 通过（run 38101228228），Windows 安装包构建和干净安装验证通过（run 38101228261）
-- [x] 两份短文件只要有一行相同，就抽出各自不同的行，带金额、日期或决定的行排在前面。摘录只属于其中一份时，来源改到那一份。用北区、南区清水池两份说明书验证，没有按封存题改
-- [ ] 合入后再测封存题
+- [x] 两份短文件只要有一行相同，就抽出各自不同的行，带金额、日期或决定的行排在前面。摘录只属于其中一份时，来源改到那一份。开发题 10/10，qwen2.5:3b 和 llama3.2:3b 都是事实命中 1.0、证据支持 1.0。用北区、南区清水池验证，没有按封存题改
+- [x] #397 合入后再测。qwen2.5:3b 9/9 已解析，事实命中 1.0，证据支持 1.0（与 #396 后相同）。llama3.2:3b 9/9 已解析，事实命中从 0.7778 到 0.6667，证据支持仍是 0.8889。没命中的是 `sealed-mixed-language`、`sealed-date-conflict`、`sealed-csv-export`，`sealed-spec-distractor` 的摘录对不上
+- [x] 主分支没有新的红灯。#397 的 CI 通过（run 38102587798），Windows 安装包构建和干净安装验证通过（run 38102587801）
 - [ ] 仍不做：通用工作流画布、多用户、大批连接器、只为缩小文件的重构
