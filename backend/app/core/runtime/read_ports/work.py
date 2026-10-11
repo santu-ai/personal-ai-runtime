@@ -1,8 +1,6 @@
-"""Work-item / goal 端口——投影读取与 Work 变更（API ABI）。
+"""Work-item / goal 端口：投影读取与 Work 变更（API ABI）。
 
-读助手查询受治理的 ``work_items``。变更助手是对 ``work_item_engine`` 的薄
-惰性包装，使 API 不直接导入该模块（避免 work_item_engine ↔ read_ports 的
-导入环）。
+变更助手惰性包装 ``work_item_engine``，避免与 read_ports 的导入环。
 """
 
 from __future__ import annotations
@@ -293,34 +291,18 @@ def notify_goal_action_completed(
 ) -> None:
     """Notify when a goal's child action completes.
 
-    Shared by the Work API status transitions and ExecuteRequested completion
-    so plan execution does not skip product side-effects.
-
-    Does **not** write MemoryDerived: ``actor=system`` would land as
-    ``origin=claim`` / ``proposed``, and the extractor already treats
-    「完成了行动步骤」 as noise (dogfood W34-R2).
+    Does not write MemoryDerived (``actor=system`` would land as a claim).
     """
-    import logging
-
-    logger = logging.getLogger(__name__)
     try:
         all_items = query_work_items_by_parent_goal(goal_id, limit=500)
-
-        # 确保刚完成的 action 被计入，即使并发读与投影器竞争
-        #（emit 是同步的，但此处做双保险）。
+        # Count the action just completed even if the projection lags.
         for item in all_items:
             if item["id"] == action_id:
                 item["status"] = "completed"
 
         if all_items:
-            # 目标有子项才统计进度；无子项（孤儿 action / 数据不一致）时
-            # 跳过通知，避免产生 "0/0 步已完成" 的噪音。
-            completed = sum(
-                1 for a in all_items if a.get("status") == "completed"
-            )
-            all_done = all(
-                a.get("status") == "completed" for a in all_items
-            )
+            completed = sum(1 for a in all_items if a.get("status") == "completed")
+            all_done = all(a.get("status") == "completed" for a in all_items)
             from app.core.runtime.read_ports.notifications import create_notification
 
             goal_row = query_goal(goal_id)
@@ -381,11 +363,9 @@ def query_background_work_items(
 def cancel_background_work_item(item_id: str) -> dict[str, Any]:
     """Cancel a non-terminal background work item (Ports command ABI).
 
-    Sets the cooperative cancel flag for ``exec_{item_id}``, cancels matching
-    Lane A ``ExecuteRequested`` handlers when the Scheduler is alive, clears
-    plan resumes, and emits ``WorkItemStatusChanged(cancelled)``.
+    Stops the in-flight execution, clears plan resumes, and emits
+    ``WorkItemStatusChanged(cancelled)``.
     """
-    from app.core.runtime.execution import request_cancel_execution
     from app.core.runtime.kernel.constants import (
         AGGREGATE_WORK_ITEM,
         EVENT_WORK_ITEM_STATUS_CHANGED,
@@ -400,18 +380,7 @@ def cancel_background_work_item(item_id: str) -> dict[str, Any]:
     if status in _TERMINAL_BACKGROUND_STATUSES:
         raise ValueError(f"Task already terminal ({status})")
 
-    exec_id = f"exec_{item_id}"
-    request_cancel_execution(exec_id)
-
-    try:
-        from app.core.runtime.agent_scheduler import get_scheduler
-        from app.core.runtime.runtime_container import runtime
-
-        if runtime._scheduler is not None:
-            get_scheduler(kernel()).cancel_executions_for(item_id)
-    except Exception:
-        logger.debug("Scheduler cancel for background work item skipped", exc_info=True)
-
+    stop_work_item_execution(item_id)
     clear_plan_resumes_for_work_item(item_id, kernel=kernel())
 
     kernel().emit_event(
@@ -429,12 +398,10 @@ def cancel_background_work_item(item_id: str) -> dict[str, Any]:
 
 
 def stop_work_item_execution(item_id: str) -> None:
-    """Stop the in-flight ``ExecuteRequested`` for a work item.
+    """Stop in-flight ``exec_{item_id}`` without emitting a work-item status.
 
-    Sets the cooperative cancel flag on ``exec_{item_id}`` and cancels the
-    matching Scheduler task when one is alive. Does not emit a work-item
-    status. The flag stays set until the next ``request_work_item_execute``
-    so a handler still between awaits can see it. A later execute clears it.
+    The cancel flag stays until the next execute so a handler between awaits
+    still sees it.
     """
     from app.core.runtime.execution import request_cancel_execution
 
@@ -442,7 +409,6 @@ def stop_work_item_execution(item_id: str) -> None:
     try:
         from app.core.runtime.agent_scheduler import get_scheduler
         from app.core.runtime.runtime_container import runtime
-
         if runtime._scheduler is not None:
             get_scheduler(kernel()).cancel_executions_for(item_id)
     except Exception:
@@ -499,8 +465,7 @@ def request_work_item_execute(item_id: str) -> dict[str, Any]:
 
     from app.core.runtime.execution import clear_execution_cancel
 
-    # A cancelled brief keeps the flag so the old handler stops. The next
-    # execute is a new attempt and must not inherit that cancel.
+    # Next execute is a new attempt and must not inherit a leftover cancel flag.
     clear_execution_cancel(f"exec_{item_id}")
 
     k = kernel()
