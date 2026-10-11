@@ -1523,6 +1523,20 @@ _SCAFFOLD_PREFIXES = (
 )
 
 
+def _is_collector_note_echo(text: str, notes: list[str] | None) -> bool:
+    """True when the quote is a retrieval note, even with one extra period."""
+    cleaned = _collapsed(_strip_quote_edge(text))
+    if len(cleaned) < 8:
+        return False
+    for note in notes or []:
+        phrase = _collapsed(_strip_quote_edge(note))
+        if len(phrase) < 8:
+            continue
+        if phrase == cleaned or phrase in cleaned or cleaned in phrase:
+            return True
+    return False
+
+
 def _is_scaffold_finding(
     text: str,
     catalog: dict[str, dict[str, str]],
@@ -2133,7 +2147,7 @@ def validate_model_brief(
                 criteria,
                 source_notes,
             )
-            or _is_prompt_echo(quote_for_keep, objective, criteria, source_notes)
+            or _is_collector_note_echo(quote_for_keep, source_notes)
         ):
             continue
         quote = str(item.get("quote") or "").strip()
