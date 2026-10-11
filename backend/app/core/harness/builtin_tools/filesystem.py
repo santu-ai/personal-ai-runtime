@@ -19,6 +19,16 @@ def _fail(message: str, reason: str = OUTCOME_TOOL_EXECUTION_FAILURE) -> NoRetur
     raise ToolInvokeError(reason, message)
 
 
+def _optional_int(value: object) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().lstrip("-").isdigit():
+        return int(value.strip())
+    return None
+
+
 def _lexical_abs(path: Path) -> Path:
     """Absolute path with ``.`` / ``..`` collapsed, without resolving symlinks.
 
@@ -279,8 +289,18 @@ class FilesystemServer:
         if self._is_protected(path):
             _fail("Access denied: protected path", OUTCOME_AUTHORIZATION_FAILURE)
 
-    def read_file(self, path: str, max_lines: int = 500) -> str:
-        """Read a text file with safety check."""
+    def read_file(
+        self,
+        path: str,
+        max_lines: int = 500,
+        known_size: int | str | None = None,
+        known_mtime_ns: int | str | None = None,
+    ) -> str:
+        """Read a text file with safety check.
+
+        When ``known_size`` and ``known_mtime_ns`` still match the file,
+        return a small unchanged marker and do not read the bytes.
+        """
         self._read_denied(path)
 
         p = Path(path).expanduser().resolve()
@@ -288,6 +308,28 @@ class FilesystemServer:
             _fail(f"File not found: {path}")
         if p.is_dir():
             _fail(f"Path is a directory: {path}", OUTCOME_TOOL_INVALID_RESULT)
+
+        try:
+            st = p.stat()
+        except PermissionError:
+            _fail("Permission denied")
+        except OSError:
+            _fail(f"File not found: {path}")
+
+        size_token = _optional_int(known_size)
+        mtime_token = _optional_int(known_mtime_ns)
+        if (
+            size_token is not None
+            and mtime_token is not None
+            and size_token == st.st_size
+            and mtime_token == st.st_mtime_ns
+        ):
+            return json.dumps({
+                "unchanged": True,
+                "path": str(p),
+                "size": st.st_size,
+                "mtime_ns": st.st_mtime_ns,
+            }, ensure_ascii=False)
 
         try:
             content = p.read_text(encoding="utf-8")

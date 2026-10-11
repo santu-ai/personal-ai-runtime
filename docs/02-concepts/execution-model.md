@@ -80,7 +80,7 @@ Domain FSM 不含 `retrying`；操作层重试由 Lane A（`ScheduledExecution`�
 
 ### 再次运行的半开收回
 
-`rerun_project_brief` 把已完成且已有交付的项目简报收成 pending，payload 为 `reason=rerun_restore`，然后清计划游标并走既有 `ExecuteRequested`。不写评审决定，不追加返工笔记。计划在打开前就不能执行时不改状态。当前交付保持不变。定时到点走同一条路径。
+`rerun_project_brief` 把已完成且已有交付的项目简报收成 pending，payload 为 `reason=rerun_restore`，然后清计划游标并走既有 `ExecuteRequested`。不写评审决定，不追加返工笔记。计划在打开前就不能执行时不改状态。当前交付保持不变。定时到点走同一条路径。计划步骤上若留着上一版的 UIDVALIDITY、HIGHESTMODSEQ 或 Message-ID 摘要，以及文件的字节数和 mtime，这次执行先对这几项，没变就不读正文。返工笔记会清掉这些记号。
 
 Kernel 每次 emit 单独提交，所以打开和派发不是一个事务。打开之后、`ExecuteRequested` 还没落库时：
 

@@ -808,3 +808,167 @@ async def test_rework_notes_force_a_full_model_call(isolated_kernel):
     assert second["ok"] is True
     assert second.get("reused") is not True
     assert "请改写延期那条" in calls[1]
+
+
+def test_file_stat_marker_keeps_the_previous_hash():
+    from app.product.project_brief import collect_allowed_sources
+
+    raw = json.dumps({
+        "unchanged": True,
+        "path": "/tmp/n.txt",
+        "size": 4,
+        "mtime_ns": 9,
+    })
+    sources, bodies, _notes, coverage = collect_allowed_sources(
+        contract={
+            "source_scope": {
+                "timezone": "UTC",
+                "email": {},
+                "files": [{"path": "/tmp/n.txt", "label": "n"}],
+            },
+        },
+        step_results=[SimpleNamespace(
+            tool="read_file", status="success", step=0, result=raw,
+        )],
+        retrieved_at="2026-01-01T00:00:00+00:00",
+        plan_steps=[{
+            "tool": "read_file",
+            "params": {
+                "path": "/tmp/n.txt",
+                "known_size": 4,
+                "known_mtime_ns": 9,
+                "known_hash": "abc123abc123abcd",
+            },
+        }],
+    )
+    assert sources[0]["content_hash"] == "abc123abc123abcd"
+    assert "unchanged" not in bodies[0]
+    assert sources[0]["id"] in coverage["_cheap_ids"]
+
+
+@pytest.mark.asyncio
+async def test_skipped_bodies_reuse_the_previous_hash(isolated_kernel):
+    from app.core.harness.builtin_tools.email import _message_id_digest
+    from app.core.runtime import read_ports
+
+    item = create_project_brief_work(
+        title="A",
+        objective="列出变化",
+        source_scope={"email": {"enabled": True, "days": 30}},
+    )
+    digest = _message_id_digest(["m1"])
+    calls: list[str] = []
+
+    def outcome(*, skipped: bool) -> SimpleNamespace:
+        email = {
+            "message_id": "m1",
+            "subject": "项目变化",
+            "from": "a@b.c",
+            "date": "2099-01-01T00:00:00+00:00",
+            "preview": "" if skipped else "进度延期",
+            "body": "" if skipped else "进度延期",
+        }
+        payload: dict = {
+            "emails": [email],
+            "uid_validity": "42",
+            "id_digest": digest,
+            "modseq": "7",
+            "scoped": True,
+            "search": {"matched": 1, "truncated": False},
+        }
+        if skipped:
+            payload["bodies_skipped"] = True
+        return SimpleNamespace(results=[SimpleNamespace(
+            tool="check_inbox",
+            status="success",
+            step=0,
+            result=json.dumps(payload),
+        )])
+
+    async def fake_llm(prompt: str) -> str:
+        calls.append(prompt)
+        return json.dumps({
+            "summary": "有延期",
+            "findings": [_finding("进度延期", "email:m1")],
+        })
+
+    first = await compile_project_brief_delivery(
+        item["id"],
+        outcome(skipped=False),
+        execution_id="exec-bodies-1",
+        llm_complete=fake_llm,
+    )
+    assert first["ok"] is True
+    stored = read_ports.query_work_item(item["id"])
+    assert stored is not None
+    plan = json.loads(stored["executable_plan"])
+    params = plan["steps"][0]["params"]
+    assert params["known_uid_validity"] == "42"
+    assert params["known_id_digest"] == digest
+    assert params["known_modseq"] == "7"
+    assert params["known_source_hashes"]["email:m1"]
+    assert params["known_messages"][0]["message_id"] == "m1"
+    assert "body" not in params["known_messages"][0]
+
+    second = await compile_project_brief_delivery(
+        item["id"],
+        outcome(skipped=True),
+        execution_id="exec-bodies-2",
+        llm_complete=fake_llm,
+    )
+    assert len(calls) == 1
+    assert second["reused"] is True
+    assert "进度延期" in second["delivery"]["content"]
+
+
+def test_rework_drops_skip_tokens(isolated_kernel):
+    from app.core.runtime import read_ports
+    from app.core.runtime.kernel.constants import (
+        AGGREGATE_WORK_ITEM,
+        EVENT_WORK_ITEM_UPDATED,
+    )
+    from app.product.work_delivery import publish_delivery, request_rework
+
+    kernel, _db = isolated_kernel
+    item = create_project_brief_work(
+        title="A",
+        objective="列出变化",
+        source_scope={"email": {"enabled": True, "days": 30}},
+    )
+    published = publish_delivery(
+        item["id"],
+        content="有延期",
+        summary="有延期",
+        sources=[{"id": "email:m1", "type": "email", "content_hash": "abc"}],
+        findings=[{
+            "text": "进度延期",
+            "kind": "change",
+            "source_ids": ["email:m1"],
+            "quote": "进度延期",
+        }],
+        execution_id="exec-rework-skip",
+    )
+    stored = read_ports.query_work_item(item["id"])
+    assert stored is not None
+    plan = json.loads(stored["executable_plan"])
+    plan["steps"][0]["params"]["known_id_digest"] = "deadbeef"
+    plan["steps"][0]["params"]["known_source_hashes"] = {"email:m1": "abc"}
+    kernel.emit_event(
+        EVENT_WORK_ITEM_UPDATED,
+        AGGREGATE_WORK_ITEM,
+        item["id"],
+        payload={"executable_plan": json.dumps(plan, ensure_ascii=False)},
+        actor="user",
+    )
+    request_rework(
+        item["id"],
+        published["delivery_id"],
+        reason="请重读来源",
+        dispatch=True,
+    )
+    updated = read_ports.query_work_item(item["id"])
+    assert updated is not None
+    params = json.loads(updated["executable_plan"])["steps"][0]["params"]
+    assert "known_id_digest" not in params
+    assert "known_source_hashes" not in params
+    assert "请重读来源" in updated["executable_plan"]

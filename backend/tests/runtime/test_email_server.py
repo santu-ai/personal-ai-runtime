@@ -281,8 +281,8 @@ def test_check_inbox_scoped_search_keeps_body_and_reports_truncation(monkeypatch
         seen["search"] = (query, since, unread_only)
         return [b"1", b"2", b"3"]
 
-    def fetch(_mail, limit, unread_only, body_max=300, sequence_ids=None):
-        seen["fetch"] = (limit, body_max, sequence_ids)
+    def fetch(_mail, limit, unread_only, body_max=300, sequence_ids=None, include_body=True):
+        seen["fetch"] = (limit, body_max, sequence_ids, include_body)
         return [
             {
                 "message_id": "a",
@@ -386,3 +386,110 @@ def test_email_config_refresh_is_ttl_cached(monkeypatch):
     # Force bypasses TTL.
     server._refresh_config(force=True)
     assert calls["n"] == 2
+
+
+def test_unchanged_mailbox_skips_the_body(monkeypatch, capsys):
+    """UIDVALIDITY plus Message-ID or MODSEQ skips BODY.PEEK[]."""
+    import time
+
+    from app.core.harness.builtin_tools.email import _message_id_digest
+
+    server = EmailServer()
+    specs: list[str] = []
+    searches = {"n": 0}
+
+    class Mail:
+        def search(self, charset, *criteria):
+            searches["n"] += 1
+            return "OK", [b"1"]
+
+        def fetch(self, message_set, message_parts):
+            specs.append(message_parts)
+            header = (
+                b"From: a@b.c\r\nSubject: Budget\r\n"
+                b"Date: Thu, 01 Jan 2026 00:00:00 +0000\r\n"
+                b"Message-ID: <m1@example.com>\r\n\r\n"
+            )
+            if message_parts == "(BODY.PEEK[])":
+                time.sleep(0.2)
+                body = (
+                    b"From: a@b.c\r\nMessage-ID: <m1@example.com>\r\n\r\n"
+                    + (b"y" * 200_000)
+                )
+                return "OK", [(b"1 (BODY[] {20}", body), b")"]
+            info = (
+                b'1 (INTERNALDATE "01-Jan-2026 00:00:00 +0000" '
+                b"BODY[HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID)] {80}"
+            )
+            return "OK", [(info, header), b")"]
+
+        def response(self, name):
+            return "OK", [b"42"]
+
+        def status(self, mailbox, names):
+            return "OK", [b"INBOX (HIGHESTMODSEQ 7)"]
+
+        def uid(self, command, *args):
+            return "OK", [b"5"]
+
+        def logout(self):
+            return None
+
+    monkeypatch.setattr(server, "_connect_inbox", lambda: Mail())
+
+    started = time.perf_counter()
+    first = json.loads(server.check_inbox(
+        limit=5, since="2026-01-01", include_unread_index=False,
+    ))
+    full_s = time.perf_counter() - started
+    assert any(spec == "(BODY.PEEK[])" for spec in specs)
+    assert "bodies_skipped" not in first
+    assert first["id_digest"] == _message_id_digest(["<m1@example.com>"])
+    assert first["modseq"] == "7"
+    assert first["emails"][0]["body"]
+
+    specs.clear()
+    started = time.perf_counter()
+    second = json.loads(server.check_inbox(
+        limit=5,
+        since="2026-01-01",
+        include_unread_index=False,
+        known_uid_validity="42",
+        known_id_digest=first["id_digest"],
+    ))
+    header_s = time.perf_counter() - started
+    assert second["bodies_skipped"] is True
+    assert not any(spec == "(BODY.PEEK[])" for spec in specs)
+    assert specs
+    assert second["emails"][0]["body"] == ""
+    assert header_s < full_s
+
+    specs.clear()
+    searches["n"] = 0
+    started = time.perf_counter()
+    third = json.loads(server.check_inbox(
+        limit=5,
+        since="2026-01-01",
+        include_unread_index=False,
+        known_uid_validity="42",
+        known_id_digest=first["id_digest"],
+        known_modseq="7",
+        known_messages=[{
+            "message_id": "<m1@example.com>",
+            "from": "a@b.c",
+            "subject": "Budget",
+            "date": "2026-01-01",
+        }],
+        known_matched=1,
+    ))
+    modseq_s = time.perf_counter() - started
+    assert third["bodies_skipped"] is True
+    assert specs == []
+    assert searches["n"] == 0
+    assert third["emails"][0]["message_id"] == "<m1@example.com>"
+    assert third["emails"][0].get("body", "") == ""
+    print(
+        f"CHEAP_MAIL full_s={full_s:.4f} header_s={header_s:.4f} modseq_s={modseq_s:.4f}",
+    )
+    captured = capsys.readouterr()
+    assert "CHEAP_MAIL" in captured.out

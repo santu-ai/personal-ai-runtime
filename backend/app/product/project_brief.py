@@ -593,6 +593,65 @@ def _emit_file_batch(
         }
 
 
+_SKIP_PARAM_KEYS = (
+    "known_uid_validity",
+    "known_id_digest",
+    "known_modseq",
+    "known_messages",
+    "known_matched",
+    "known_source_hashes",
+    "known_size",
+    "known_mtime_ns",
+    "known_hash",
+)
+
+
+def _step_params(result: Any, plan_steps: list[dict[str, Any]] | None, tool: str) -> dict[str, Any]:
+    if not plan_steps:
+        return {}
+    step_idx = getattr(result, "step", None)
+    if isinstance(step_idx, int) and 0 <= step_idx < len(plan_steps):
+        step = plan_steps[step_idx]
+        if str(step.get("tool") or "") == tool:
+            raw = step.get("params")
+            return raw if isinstance(raw, dict) else {}
+    if tool == "check_inbox":
+        for step in plan_steps:
+            if str(step.get("tool") or "") == tool:
+                raw = step.get("params")
+                return raw if isinstance(raw, dict) else {}
+    return {}
+
+
+def _file_unchanged(raw: str, params: dict[str, Any]) -> bool:
+    """True only when this step asked for a stat match and the tool confirmed it."""
+    known_hash = str(params.get("known_hash") or "").strip()
+    if not known_hash or "known_size" not in params or "known_mtime_ns" not in params:
+        return False
+    try:
+        marker = json.loads(raw)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(marker, dict) or marker.get("unchanged") is not True:
+        return False
+    size = marker.get("size")
+    mtime = marker.get("mtime_ns")
+    known_size = params.get("known_size")
+    known_mtime = params.get("known_mtime_ns")
+    if isinstance(size, bool) or isinstance(mtime, bool):
+        return False
+    if isinstance(known_size, bool) or isinstance(known_mtime, bool):
+        return False
+    if not isinstance(size, (int, str)) or not isinstance(mtime, (int, str)):
+        return False
+    if not isinstance(known_size, (int, str)) or not isinstance(known_mtime, (int, str)):
+        return False
+    try:
+        return int(size) == int(known_size) and int(mtime) == int(known_mtime)
+    except (TypeError, ValueError):
+        return False
+
+
 def collect_allowed_sources(
     *,
     contract: dict[str, Any],
@@ -649,6 +708,7 @@ def collect_allowed_sources(
     file_pending: list[dict[str, Any]] = []
     included_texts: list[str] = []
     catalog: dict[str, dict[str, str]] = {}
+    cheap_ids: list[str] = []
 
     for result in step_results:
         tool = str(getattr(result, "tool", "") or "")
@@ -669,6 +729,10 @@ def collect_allowed_sources(
             raw_search = payload.get("search")
             search: dict[str, Any] = raw_search if isinstance(raw_search, dict) else {}
             email_scoped = bool(payload.get("scoped"))
+            bodies_skipped = bool(payload.get("bodies_skipped"))
+            inbox_params = _step_params(result, plan_steps, "check_inbox")
+            raw_hashes = inbox_params.get("known_source_hashes")
+            known_hashes = raw_hashes if isinstance(raw_hashes, dict) else {}
             if email_scoped:
                 email_matched = search.get("matched")
                 email_truncated = bool(search.get("truncated"))
@@ -688,22 +752,32 @@ def collect_allowed_sources(
                 dt = _parse_email_date(date_raw, tz)
                 if dt is not None and dt < cutoff:
                     continue
-                text = body if len(body) > len(preview) else preview
-                # Scoped search already matched the mailbox. Filtering the
-                # preview again drops hits whose keyword is only in the body.
-                if query and not email_scoped:
-                    haystack = f"{subject} {sender} {preview}".lower()
-                    if query not in haystack:
-                        continue
+                source_id = _email_source_id(mid)
+                if bodies_skipped:
+                    # Header or MODSEQ said this message did not change.
+                    # Hashing the empty body would not match the previous text.
+                    text = ""
+                    visible = ""
+                    digest = str(known_hashes.get(source_id) or "").strip()
+                    used_full = False
+                    cheap_ids.append(source_id)
+                else:
+                    text = body if len(body) > len(preview) else preview
+                    # Scoped search already matched the mailbox. Filtering the
+                    # preview again drops hits whose keyword is only in the body.
+                    if query and not email_scoped:
+                        haystack = f"{subject} {sender} {preview}".lower()
+                        if query not in haystack:
+                            continue
+                    used_full = bool(body) and len(body) > len(preview)
+                    if used_full:
+                        full_body += 1
+                    else:
+                        preview_only += 1
+                    visible = redact_sensitive_text(text)
+                    digest = content_hash(text or mid)
                 if not date_raw or dt is None:
                     unknown_date += 1
-                source_id = _email_source_id(mid)
-                used_full = bool(body) and len(body) > len(preview)
-                if used_full:
-                    full_body += 1
-                else:
-                    preview_only += 1
-                visible = redact_sensitive_text(text)
                 batch.append({
                     "id": source_id,
                     "subject": subject,
@@ -713,7 +787,7 @@ def collect_allowed_sources(
                     "visible": visible,
                     "lines": _quotable_lines(visible),
                     "retrieved_at": retrieved_at,
-                    "content_hash": content_hash(text or mid),
+                    "content_hash": digest,
                     "body_complete": used_full,
                 })
                 matched += 1
@@ -762,6 +836,29 @@ def collect_allowed_sources(
                 if isinstance(raw_params, dict):
                     step_params = raw_params
             requested_lines = int(step_params.get("max_lines") or BRIEF_FILE_MAX_LINES)
+            if _file_unchanged(raw, step_params):
+                cheap_ids.append(source_id)
+                file_coverage.append({
+                    "path": path,
+                    "label": label,
+                    "max_lines": requested_lines,
+                    "truncated": False,
+                    "note": "",
+                })
+                file_pending.append({
+                    "id": source_id,
+                    "path": path,
+                    "label": label,
+                    "visible": "",
+                    "lines": [],
+                    "locator": path,
+                    "retrieved_at": retrieved_at,
+                    "content_hash": str(step_params.get("known_hash") or ""),
+                    "truncated": False,
+                    "max_lines": requested_lines,
+                    "hit_snippet": "",
+                })
+                continue
             truncation = _file_truncation(raw)
             visible = redact_sensitive_text(raw)
             line_label, hit_snippet = _locate_query(visible, query)
@@ -826,6 +923,7 @@ def collect_allowed_sources(
         "files": file_coverage,
         "gaps": gaps,
         "_catalog": catalog,
+        "_cheap_ids": cheap_ids,
     }
     _ = (email_ok, files_ok)
     return sources, bodies, notes, coverage
@@ -3329,6 +3427,32 @@ def _reuse_split(
     return ("partial", unchanged, changed)
 
 
+def _fill_skipped_quotes(
+    catalog: dict[str, dict[str, str]],
+    cheap_ids: set[str],
+    previous: dict[str, Any],
+) -> None:
+    """Keep previous quotes available when the body was not read again."""
+    grouped: dict[str, list[str]] = {}
+    for finding in previous.get("findings") or []:
+        if not isinstance(finding, dict):
+            continue
+        quote = _finding_quote(finding)
+        if not quote:
+            continue
+        for sid in finding.get("source_ids") or []:
+            token = str(sid).strip()
+            if token in cheap_ids:
+                grouped.setdefault(token, []).append(quote)
+    for sid, quotes in grouped.items():
+        entry = catalog.get(sid)
+        if not isinstance(entry, dict) or str(entry.get("text") or "").strip():
+            continue
+        blob = "\n".join(quotes)
+        entry["text"] = blob
+        entry["preferred"] = blob
+
+
 def _content_with_note(content: str, note: str) -> str:
     text = str(content or "")
     if note in text:
@@ -3412,6 +3536,164 @@ def brief_compile_failure(exc: BaseException, *, retryable: bool) -> str:
     return message
 
 
+def _brief_can_reuse(brief: dict[str, Any]) -> bool:
+    return (
+        str(brief.get("quality_structure") or "") == "passed"
+        and bool(brief.get("findings"))
+    )
+
+
+def _strip_skip_params(params: dict[str, Any]) -> dict[str, Any]:
+    cleaned = dict(params)
+    for key in _SKIP_PARAM_KEYS:
+        cleaned.pop(key, None)
+    return cleaned
+
+
+def _inbox_fingerprint(
+    params: dict[str, Any],
+    result: Any,
+    sources: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if result is None or str(getattr(result, "status", "") or "") != "success":
+        return params
+    payload = _parse_step_payload(str(getattr(result, "result", "") or ""))
+    if not isinstance(payload, dict):
+        return params
+    uid = str(payload.get("uid_validity") or "").strip()
+    digest = str(payload.get("id_digest") or "").strip()
+    if not uid or not digest:
+        return params
+    raw_emails = payload.get("emails")
+    emails = raw_emails if isinstance(raw_emails, list) else []
+    messages: list[dict[str, str]] = []
+    for em in emails:
+        if not isinstance(em, dict):
+            continue
+        mid = str(em.get("message_id") or "").strip()
+        if not mid:
+            continue
+        messages.append({
+            "message_id": mid,
+            "from": str(em.get("from") or ""),
+            "subject": str(em.get("subject") or "(无主题)"),
+            "date": str(em.get("date") or ""),
+        })
+    hashes = {
+        str(src.get("id")): str(src.get("content_hash"))
+        for src in sources
+        if src.get("type") == "email" and src.get("id") and src.get("content_hash")
+    }
+    search = payload.get("search")
+    matched = search.get("matched") if isinstance(search, dict) else None
+    updated = dict(params)
+    updated["known_uid_validity"] = uid
+    updated["known_id_digest"] = digest
+    updated["known_modseq"] = str(payload.get("modseq") or "")
+    updated["known_messages"] = messages
+    if isinstance(matched, int) and not isinstance(matched, bool):
+        updated["known_matched"] = matched
+    updated["known_source_hashes"] = hashes
+    return updated
+
+
+def _file_fingerprint(
+    params: dict[str, Any],
+    result: Any,
+    sources: list[dict[str, Any]],
+) -> dict[str, Any]:
+    path = str(params.get("path") or "")
+    if result is None or str(getattr(result, "status", "") or "") != "success" or not path:
+        return params
+    source_id = f"file:{hashlib.sha256(path.encode('utf-8')).hexdigest()[:12]}"
+    file_hash = ""
+    for src in sources:
+        if str(src.get("id") or "") == source_id:
+            file_hash = str(src.get("content_hash") or "")
+            break
+    if not file_hash:
+        return params
+    raw = str(getattr(result, "result", "") or "")
+    if _file_unchanged(raw, params) and str(params.get("known_hash") or "") == file_hash:
+        return params
+    from pathlib import Path
+
+    try:
+        st = Path(path).expanduser().resolve().stat()
+    except OSError:
+        return params
+    updated = dict(params)
+    updated["known_size"] = st.st_size
+    updated["known_mtime_ns"] = st.st_mtime_ns
+    updated["known_hash"] = file_hash
+    return updated
+
+
+def _sync_brief_fingerprints(
+    work_id: str,
+    plan: dict[str, Any],
+    sources: list[dict[str, Any]],
+    step_results: list[Any],
+    *,
+    reusable: bool,
+) -> None:
+    """Remember cheap change tokens on the plan, or drop them when reuse is unsafe."""
+    steps = [step for step in (plan.get("steps") or []) if isinstance(step, dict)]
+    by_step: dict[int, Any] = {}
+    loose_inbox = None
+    loose_files: list[Any] = []
+    indexed = False
+    for result in step_results:
+        idx = getattr(result, "step", None)
+        if isinstance(idx, int):
+            by_step[idx] = result
+            indexed = True
+        tool = str(getattr(result, "tool", "") or "")
+        if tool == "check_inbox" and loose_inbox is None:
+            loose_inbox = result
+        elif tool == "read_file":
+            loose_files.append(result)
+    file_cursor = 0
+    changed = False
+    for idx, step in enumerate(steps):
+        raw_params = step.get("params")
+        params = raw_params if isinstance(raw_params, dict) else {}
+        tool = str(step.get("tool") or "")
+        result = by_step.get(idx)
+        if not indexed:
+            if tool == "check_inbox":
+                result = loose_inbox
+            elif tool == "read_file" and file_cursor < len(loose_files):
+                result = loose_files[file_cursor]
+                file_cursor += 1
+        if not reusable:
+            updated = _strip_skip_params(params)
+        elif tool == "check_inbox":
+            updated = _inbox_fingerprint(params, result, sources)
+        elif tool == "read_file":
+            updated = _file_fingerprint(params, result, sources)
+        else:
+            updated = params
+        if updated != params:
+            step["params"] = updated
+            changed = True
+    if not changed:
+        return
+    from app.core.runtime.kernel.constants import (
+        AGGREGATE_WORK_ITEM,
+        EVENT_WORK_ITEM_UPDATED,
+    )
+    from app.core.runtime.kernel_instance import kernel
+
+    kernel.emit_event(
+        EVENT_WORK_ITEM_UPDATED,
+        AGGREGATE_WORK_ITEM,
+        work_id,
+        payload={"executable_plan": json.dumps(plan, ensure_ascii=False)},
+        actor="executor",
+    )
+
+
 async def compile_project_brief_delivery(
     work_id: str,
     outcome: Any = None,
@@ -3439,7 +3721,9 @@ async def compile_project_brief_delivery(
         plan_steps=plan_steps,
     )
     catalog = coverage.pop("_catalog", {})
-    retrieval = {key: value for key, value in coverage.items() if key != "_catalog"}
+    cheap_raw = coverage.pop("_cheap_ids", [])
+    cheap_ids = {str(item) for item in cheap_raw} if isinstance(cheap_raw, list) else set()
+    retrieval = {key: value for key, value in coverage.items() if not str(key).startswith("_")}
     mem_sources, mem_bodies, mem_notes, mem_catalog, mem_coverage = collect_memory_sources(
         str(contract.get("objective") or ""),
         retrieved_at=retrieved_at,
@@ -3480,6 +3764,9 @@ async def compile_project_brief_delivery(
             retrieval=retrieval,
             actor=actor,
         )
+        _sync_brief_fingerprints(
+            work_id, plan, sources, results, reusable=False,
+        )
         return {"ok": True, "delivery": delivery, "qualified": False}
 
     rework_notes = list(plan.get("rework_notes") or [])
@@ -3490,6 +3777,8 @@ async def compile_project_brief_delivery(
         folded = fold_delivery_history(work_id)
         current = folded.get("current") if isinstance(folded, dict) else None
         previous = current if isinstance(current, dict) else None
+    if cheap_ids and isinstance(previous, dict):
+        _fill_skipped_quotes(catalog, cheap_ids, previous)
     reuse = _reuse_split(previous, sources)
     if reuse is not None and reuse[0] == "same" and isinstance(previous, dict):
         _report_brief_progress(
@@ -3504,6 +3793,9 @@ async def compile_project_brief_delivery(
             execution_id=execution_id,
             retrieval=retrieval,
             actor=actor,
+        )
+        _sync_brief_fingerprints(
+            work_id, plan, sources, results, reusable=True,
         )
         return {
             "ok": True,
@@ -3566,6 +3858,13 @@ async def compile_project_brief_delivery(
                     retrieval=retrieval,
                     actor=actor,
                 )
+                _sync_brief_fingerprints(
+                    work_id,
+                    plan,
+                    sources,
+                    results,
+                    reusable=_brief_can_reuse(kept_brief),
+                )
                 return {
                     "ok": True,
                     "delivery": delivery,
@@ -3624,6 +3923,9 @@ async def compile_project_brief_delivery(
             quality_evidence=brief["quality_evidence"],
             retrieval=retrieval,
             actor=actor,
+        )
+        _sync_brief_fingerprints(
+            work_id, plan, sources, results, reusable=False,
         )
         return {"ok": True, "delivery": delivery, "qualified": False, "cost_capped": True}
     complete = llm_complete or _complete_brief_json
@@ -3684,6 +3986,13 @@ async def compile_project_brief_delivery(
         quality_evidence=str(brief.get("quality_evidence") or ""),
         retrieval=retrieval,
         actor=actor,
+    )
+    _sync_brief_fingerprints(
+        work_id,
+        plan,
+        sources,
+        results,
+        reusable=_brief_can_reuse(brief),
     )
     return {"ok": True, "delivery": delivery, "qualified": bool(brief.get("qualified"))}
 

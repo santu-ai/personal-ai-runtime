@@ -31,6 +31,60 @@ def test_read_inside_allowed(fs_server: FilesystemServer, tmp_path: Path):
     assert result == "hello"
 
 
+def test_matching_stat_skips_the_read(fs_server: FilesystemServer, tmp_path: Path, capsys):
+    import time
+
+    allowed = tmp_path / "allowed"
+    target = allowed / "big.txt"
+    target.write_bytes(b"z" * (8 * 1024 * 1024))
+    reads = {"n": 0}
+    original = Path.read_text
+
+    def counting(self, *args, **kwargs):
+        if self == target:
+            reads["n"] += 1
+        return original(self, *args, **kwargs)
+
+    Path.read_text = counting  # type: ignore[method-assign]
+    try:
+        st = target.stat()
+        started = time.perf_counter()
+        full = fs_server.read_file(str(target), max_lines=5)
+        full_s = time.perf_counter() - started
+        assert full.startswith("z")
+        assert reads["n"] == 1
+
+        started = time.perf_counter()
+        skipped = fs_server.read_file(
+            str(target),
+            max_lines=5,
+            known_size=st.st_size,
+            known_mtime_ns=st.st_mtime_ns,
+        )
+        skip_s = time.perf_counter() - started
+        marker = json.loads(skipped)
+        assert marker["unchanged"] is True
+        assert marker["size"] == st.st_size
+        assert reads["n"] == 1
+        assert skip_s < full_s
+
+        changed = fs_server.read_file(
+            str(target),
+            max_lines=5,
+            known_size=st.st_size - 1,
+            known_mtime_ns=st.st_mtime_ns,
+        )
+        assert changed.startswith("z")
+        assert reads["n"] == 2
+    finally:
+        Path.read_text = original  # type: ignore[method-assign]
+    print(
+        f"CHEAP_FILE full_s={full_s:.4f} skip_s={skip_s:.4f} bytes={st.st_size}",
+    )
+    captured = capsys.readouterr()
+    assert "CHEAP_FILE" in captured.out
+
+
 def test_prefix_bypass_rejected(fs_server: FilesystemServer, tmp_path: Path):
     sibling = tmp_path / "allowed_attacker"
     sibling.mkdir()
