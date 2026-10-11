@@ -75,6 +75,8 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # No published installer exists yet, so this job stays a clean install.
+  # Schema upgrade and settings backup are tests/runtime/test_upgrade_and_backup.py.
   verify:
     needs: build
     runs-on: windows-latest
