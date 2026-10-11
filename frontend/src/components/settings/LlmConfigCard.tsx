@@ -412,6 +412,11 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
                             : "留空则使用 .env 中的密钥"
                         }
                       />
+                      {provider.needs_reentry && provider.reentry_reason ? (
+                        <p className="text-xs text-danger mt-1" data-testid="secret-reentry">
+                          {provider.reentry_reason}
+                        </p>
+                      ) : null}
                       {provider.has_api_key && provider.api_key === MASKED_SECRET && (
                         <p className="text-xs text-fg-disabled mt-1">已保存密钥，留空则不修改</p>
                       )}

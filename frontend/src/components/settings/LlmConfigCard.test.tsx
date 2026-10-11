@@ -218,4 +218,24 @@ describe("LlmConfigCard field names", () => {
     expect(barePresets[0]).not.toHaveAttribute("aria-label");
     expect(barePresets[0]?.textContent).toContain("  官方  ");
   });
+
+  it("names the provider key when the desktop wrap cannot be opened", () => {
+    render(
+      <LlmConfigCard
+        llm={settings([
+          provider({
+            id: "deepseek",
+            name: "DeepSeek",
+            needs_reentry: true,
+            reentry_reason:
+              "DeepSeek 的 API Key需要重新填写。它是用桌面的 safeStorage 包过的，当前这个后端进程打不开。重新填写并保存之后就能用。",
+          }),
+        ])}
+        onSaved={() => {}}
+        embedded
+      />,
+    );
+    expect(screen.getByTestId("secret-reentry")).toHaveTextContent("DeepSeek 的 API Key");
+    expect(screen.getByTestId("secret-reentry")).toHaveTextContent("safeStorage");
+  });
 });
