@@ -160,6 +160,8 @@ def test_config_persisted_to_db(isolated_runtime_config):
     key_path = isolated_runtime_config / "settings.key"
     assert key_path.is_file()
     assert key_path.stat().st_mode & 0o777 == 0o600
+    assert key_path.read_text(encoding="utf-8").startswith("os:v1\n")
+    assert "secret" not in key_path.read_text(encoding="utf-8")
     assert rc.get_email_credentials()["password"] == "secret"
 
 
@@ -221,3 +223,48 @@ def test_llm_api_key_is_sealed_in_the_database(isolated_runtime_config):
     assert "enc:v1:" in row["data_json"]
     stored = rc.get_llm_config(masked=False)
     assert stored["providers"][0]["api_key"] == "secret-key-123"
+
+
+def test_legacy_raw_key_file_is_wrapped_and_still_opens(isolated_runtime_config):
+    from cryptography.fernet import Fernet
+
+    from app.core.runtime.runtime_config import RuntimeConfig
+    from app.store.database import db
+
+    key = Fernet.generate_key()
+    sealed = "enc:v1:" + Fernet(key).encrypt(b"app-pass").decode()
+    key_path = isolated_runtime_config / "settings.key"
+    key_path.write_bytes(key + b"\n")
+    with db.get_db() as conn:
+        conn.execute(
+            "INSERT INTO app_settings (category, data_json) VALUES (?, ?)",
+            ("email", json.dumps({"user": "trial@example.com", "password": sealed})),
+        )
+    assert RuntimeConfig().get_email_credentials()["password"] == "app-pass"
+    body = key_path.read_text(encoding="utf-8")
+    assert body.startswith("os:v1\n")
+    assert key.decode() not in body
+
+
+def test_electron_wrapped_key_stays_sealed_without_the_desktop(isolated_runtime_config):
+    from cryptography.fernet import Fernet
+
+    from app.core.runtime.runtime_config import RuntimeConfig
+    from app.store.database import db
+
+    key = Fernet.generate_key()
+    sealed = "enc:v1:" + Fernet(key).encrypt(b"app-pass").decode()
+    key_path = isolated_runtime_config / "settings.key"
+    key_path.write_text("os:v1\nelectron\nAAAA\n", encoding="utf-8")
+    with db.get_db() as conn:
+        conn.execute(
+            "INSERT INTO app_settings (category, data_json) VALUES (?, ?)",
+            ("email", json.dumps({"user": "a@b.c", "password": sealed})),
+        )
+    assert RuntimeConfig().get_email_credentials()["password"] != "app-pass"
+    assert key_path.read_text(encoding="utf-8").startswith("os:v1\nelectron\n")
+    with db.get_db() as conn:
+        row = conn.execute(
+            "SELECT data_json FROM app_settings WHERE category = 'email'"
+        ).fetchone()
+    assert "app-pass" not in row["data_json"]

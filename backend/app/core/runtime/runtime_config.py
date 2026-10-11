@@ -6,9 +6,15 @@ If runtime_config.json exists, it is imported into app_settings on first read.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import logging
 import os
+import secrets
+import shutil
+import subprocess
+import sys
 import threading
 from copy import deepcopy
 from datetime import UTC, datetime
@@ -28,7 +34,13 @@ _CONFIG_FILENAME = "runtime_config.json"
 _lock = threading.Lock()
 _MASKED_SECRET = "••••••••"
 _SEAL_PREFIX = "enc:v1:"
+_KEY_HEADER = "os:v1\n"
 _cache: dict[str, Any] | None = None
+_FERNET: Fernet | None = None
+_FERNET_PATH: str | None = None
+_PROCESS_KEYS: dict[str, bytes] = {}
+_ELECTRON_KEY: bytes | None = None
+_ELECTRON_FD_READ = False
 
 # Provider type → connection semantics (all use OpenAI SDK today).
 PROVIDER_TYPES = {
@@ -185,24 +197,242 @@ def _default_email_from_env() -> dict[str, Any]:
 
 
 
+class SettingsKeyUnavailable(RuntimeError):
+    """The Fernet key is not available in this process."""
+
+
 def _settings_key_path() -> Path:
     return Path(settings.sqlite_path).resolve().parent / "settings.key"
 
 
-def _fernet() -> Fernet:
-    """Key lives next to the database so a data-dir backup can still open settings."""
+def _key_service() -> str:
+    digest = hashlib.sha256(str(_settings_key_path()).encode()).hexdigest()[:16]
+    return f"personal-ai-runtime-{digest}"
+
+
+def _backend_name() -> str:
+    """OS store when this machine has one. Otherwise the key stays in memory.
+
+    Electron safeStorage uses the same OS facilities (DPAPI, login keychain,
+    libsecret). A backend that is not the desktop app calls them directly.
+    Without any of them, nothing on disk can open enc:v1 after this process exits.
+    """
+    forced = os.environ.get("PAR_SETTINGS_KEY_BACKEND", "").strip()
+    if forced in {"process", "dpapi", "keychain", "libsecret"}:
+        return forced
+    if sys.platform == "win32":
+        return "dpapi"
+    if sys.platform == "darwin":
+        return "keychain"
+    if shutil.which("secret-tool"):
+        return "libsecret"
+    return "process"
+
+
+def _write_key_file(body: str) -> None:
     path = _settings_key_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    if path.is_file():
-        raw = path.read_bytes().strip()
-    else:
-        raw = Fernet.generate_key()
-        path.write_bytes(raw + b"\n")
+    tmp = path.with_name("settings.key.tmp")
+    tmp.write_text(body, encoding="utf-8")
     try:
-        path.chmod(0o600)
+        tmp.chmod(0o600)
     except OSError:
         logger.warning("could not restrict settings key file mode")
-    return Fernet(raw)
+    tmp.replace(path)
+
+
+def _dpapi_protect(data: bytes) -> bytes:
+    import ctypes
+    from ctypes import wintypes
+
+    class DATA_BLOB(ctypes.Structure):
+        _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_byte))]
+
+    buf = ctypes.create_string_buffer(data)
+    blob_in = DATA_BLOB(len(data), ctypes.cast(buf, ctypes.POINTER(ctypes.c_byte)))
+    blob_out = DATA_BLOB()
+    crypt32 = getattr(ctypes, "windll").crypt32
+    if not crypt32.CryptProtectData(
+        ctypes.byref(blob_in), None, None, None, None, 0, ctypes.byref(blob_out),
+    ):
+        raise OSError("CryptProtectData failed")
+    try:
+        return ctypes.string_at(blob_out.pbData, blob_out.cbData)
+    finally:
+        getattr(ctypes, "windll").kernel32.LocalFree(blob_out.pbData)
+
+
+def _dpapi_unprotect(data: bytes) -> bytes:
+    import ctypes
+    from ctypes import wintypes
+
+    class DATA_BLOB(ctypes.Structure):
+        _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_byte))]
+
+    buf = ctypes.create_string_buffer(data)
+    blob_in = DATA_BLOB(len(data), ctypes.cast(buf, ctypes.POINTER(ctypes.c_byte)))
+    blob_out = DATA_BLOB()
+    crypt32 = getattr(ctypes, "windll").crypt32
+    if not crypt32.CryptUnprotectData(
+        ctypes.byref(blob_in), None, None, None, None, 0, ctypes.byref(blob_out),
+    ):
+        raise OSError("CryptUnprotectData failed")
+    try:
+        return ctypes.string_at(blob_out.pbData, blob_out.cbData)
+    finally:
+        getattr(ctypes, "windll").kernel32.LocalFree(blob_out.pbData)
+
+
+def _run_secret(args: list[str], *, input_bytes: bytes | None = None) -> bytes:
+    try:
+        completed = subprocess.run(
+            args,
+            input=input_bytes,
+            check=True,
+            capture_output=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise SettingsKeyUnavailable("os key store") from exc
+    return completed.stdout
+
+
+def _keychain_store(key: bytes) -> None:
+    _run_secret([
+        "security", "add-generic-password", "-U",
+        "-s", _key_service(), "-a", "settings", "-w", key.decode(),
+    ])
+
+
+def _keychain_load() -> bytes:
+    return _run_secret([
+        "security", "find-generic-password",
+        "-s", _key_service(), "-a", "settings", "-w",
+    ]).strip()
+
+
+def _libsecret_store(key: bytes) -> None:
+    _run_secret(
+        [
+            "secret-tool", "store",
+            "--label=personal-ai-runtime settings",
+            "service", _key_service(),
+            "account", "settings",
+        ],
+        input_bytes=key + b"\n",
+    )
+
+
+def _libsecret_load() -> bytes:
+    return _run_secret([
+        "secret-tool", "lookup",
+        "service", _key_service(),
+        "account", "settings",
+    ]).strip()
+
+
+def _protect(backend: str, key: bytes) -> str:
+    if backend == "process":
+        ident = secrets.token_hex(16)
+        _PROCESS_KEYS[ident] = key
+        return f"{_KEY_HEADER}process\n{ident}\n"
+    if backend == "dpapi":
+        blob = base64.b64encode(_dpapi_protect(key)).decode()
+        return f"{_KEY_HEADER}dpapi\n{blob}\n"
+    if backend == "keychain":
+        _keychain_store(key)
+        return f"{_KEY_HEADER}keychain\n"
+    if backend == "libsecret":
+        _libsecret_store(key)
+        return f"{_KEY_HEADER}libsecret\n"
+    raise SettingsKeyUnavailable(backend)
+
+
+def _store_key(key: bytes) -> None:
+    backend = _backend_name()
+    try:
+        body = _protect(backend, key)
+    except SettingsKeyUnavailable:
+        if backend == "process":
+            raise
+        logger.warning("OS key store unavailable; the key stays in process memory")
+        body = _protect("process", key)
+    if key.decode() in body:
+        raise SettingsKeyUnavailable("key file still holds the raw key")
+    _write_key_file(body)
+
+
+def _read_electron_fd() -> bytes | None:
+    global _ELECTRON_FD_READ, _ELECTRON_KEY
+    if _ELECTRON_FD_READ:
+        return _ELECTRON_KEY
+    _ELECTRON_FD_READ = True
+    raw_fd = os.environ.pop("PAR_SETTINGS_KEY_FD", "").strip()
+    if not raw_fd:
+        return None
+    fd = int(raw_fd)
+    chunks: list[bytes] = []
+    total = 0
+    try:
+        while total < 512:
+            piece = os.read(fd, 256)
+            if not piece:
+                break
+            chunks.append(piece)
+            total += len(piece)
+    finally:
+        os.close(fd)
+    key = b"".join(chunks).strip()
+    if not key:
+        return None
+    _ELECTRON_KEY = key
+    return key
+
+
+def _unwrap(text: str, handed: bytes | None) -> bytes:
+    lines = text.splitlines()
+    scheme = lines[1] if len(lines) > 1 else ""
+    payload = lines[2] if len(lines) > 2 else ""
+    if scheme == "electron":
+        if not handed:
+            raise SettingsKeyUnavailable("desktop")
+        return handed
+    if scheme == "process":
+        try:
+            return _PROCESS_KEYS[payload]
+        except KeyError as exc:
+            raise SettingsKeyUnavailable("process") from exc
+    if scheme == "dpapi":
+        return _dpapi_unprotect(base64.b64decode(payload))
+    if scheme == "keychain":
+        return _keychain_load()
+    if scheme == "libsecret":
+        return _libsecret_load()
+    raise SettingsKeyUnavailable(scheme or "empty")
+
+
+def _fernet() -> Fernet:
+    """Open the Fernet key. The raw key is not left next to the database."""
+    global _FERNET, _FERNET_PATH
+    path = _settings_key_path()
+    path_key = str(path)
+    if _FERNET is not None and _FERNET_PATH == path_key:
+        return _FERNET
+    handed = _read_electron_fd()
+    if path.is_file():
+        text = path.read_text(encoding="utf-8")
+        if text.startswith(_KEY_HEADER):
+            key = _unwrap(text, handed)
+        else:
+            key = text.strip().encode()
+            Fernet(key)
+            _store_key(key)
+    else:
+        key = handed or Fernet.generate_key()
+        _store_key(key)
+    fernet = Fernet(key.strip())
+    _FERNET = fernet
+    _FERNET_PATH = path_key
+    return fernet
 
 
 def _open_secret(value: Any) -> tuple[Any, bool]:
@@ -213,7 +443,7 @@ def _open_secret(value: Any) -> tuple[Any, bool]:
         return value, True
     try:
         plain = _fernet().decrypt(value[len(_SEAL_PREFIX):].encode()).decode()
-    except (InvalidToken, ValueError):
+    except (InvalidToken, ValueError, SettingsKeyUnavailable):
         logger.warning("stored setting could not be opened")
         return value, False
     return plain, False
@@ -222,8 +452,23 @@ def _open_secret(value: Any) -> tuple[Any, bool]:
 def _seal_secret(value: Any) -> Any:
     if not isinstance(value, str) or not value or value.startswith(_SEAL_PREFIX):
         return value
-    token = _fernet().encrypt(value.encode()).decode()
+    try:
+        fernet = _fernet()
+    except SettingsKeyUnavailable:
+        fernet = _install_fresh_key()
+    token = fernet.encrypt(value.encode()).decode()
     return _SEAL_PREFIX + token
+
+
+def _install_fresh_key() -> Fernet:
+    """Start a new key when the previous one cannot be opened. Disk never gets the raw key."""
+    global _FERNET, _FERNET_PATH
+    key = Fernet.generate_key()
+    _store_key(key)
+    fernet = Fernet(key)
+    _FERNET = fernet
+    _FERNET_PATH = str(_settings_key_path())
+    return fernet
 
 
 def _open_email(email: dict[str, Any]) -> tuple[dict[str, Any], bool]:
@@ -407,8 +652,10 @@ def _save_raw(data: dict[str, Any]) -> None:
 
 def invalidate_runtime_config_cache() -> None:
     """Clear in-memory cache (tests / forced reload)."""
-    global _cache
+    global _cache, _FERNET, _FERNET_PATH
     _cache = None
+    _FERNET = None
+    _FERNET_PATH = None
     try:
         from app.chat.prompt_artifact import invalidate_prompt_artifact_cache
 

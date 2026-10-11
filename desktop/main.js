@@ -11,8 +11,9 @@
  * - Loads the web app in a frameless window
  */
 
-const { app, BrowserWindow, Tray, Menu, globalShortcut, Notification, dialog, nativeImage, protocol, session, shell, net: electronNet } = require("electron");
+const { app, BrowserWindow, Tray, Menu, globalShortcut, Notification, dialog, nativeImage, protocol, session, shell, safeStorage, net: electronNet } = require("electron");
 const { spawn, spawnSync } = require("child_process");
+const { handoffSettingsKey } = require("./settingsKey");
 const fs = require("fs");
 const path = require("path");
 const {
@@ -424,11 +425,20 @@ async function startBackend() {
 
     backendLog = "";
     backendExitCode = null;
+    const handedKey = handoffSettingsKey(dataEnv.DATA_DIR, safeStorage);
+    const stdio = ["ignore", "pipe", "pipe"];
+    if (handedKey) {
+      spawnEnv.PAR_SETTINGS_KEY_FD = "3";
+      stdio.push("pipe");
+    }
     backendProcess = spawn(pythonCmd.executable, [...pythonCmd.args, launcherPath], {
       cwd: backendDir,
       env: spawnEnv,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio,
     });
+    if (handedKey && backendProcess.stdio[3]) {
+      backendProcess.stdio[3].end(handedKey);
+    }
 
     backendProcess.stdout.on("data", (data) => {
       rememberBackendLog(data.toString());

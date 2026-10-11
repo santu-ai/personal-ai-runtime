@@ -23,6 +23,7 @@ def pinned_db(tmp_path, monkeypatch):
     monkeypatch.setenv("SQLITE_PATH", str(db_path))
     monkeypatch.setenv("VECTOR_DIR", str(tmp_path / "vectors"))
     cfg.reset_settings()
+    monkeypatch.setattr("app.core.runtime.runtime_config.settings", cfg.settings)
     runtime.reset()
     invalidate_runtime_config_cache()
     yield tmp_path
@@ -103,32 +104,39 @@ def test_upgrade_from_0001_keeps_settings_and_events(pinned_db):
     assert notes == [("n1", "第一次")]
 
 
-def test_database_backup_restores_settings_and_key(pinned_db):
+def test_database_backup_omits_the_settings_key(pinned_db):
+    from app.core.runtime import runtime_config as keymod
     from app.core.runtime.runtime_config import RuntimeConfig, invalidate_runtime_config_cache
     from app.core.runtime.runtime_container import runtime
 
     rc = RuntimeConfig()
     rc.update_email_config({"user": "trial@example.com", "password": "app-pass"})
     key = pinned_db / "settings.key"
-    if not key.is_file():
-        key.write_bytes(b"local-key\n")
-        key.chmod(0o600)
-    original_key = key.read_bytes()
+    body = key.read_text(encoding="utf-8")
+    lines = body.splitlines()
+    assert lines[0] == "os:v1"
+    assert lines[1] in {"process", "dpapi", "keychain", "libsecret"}
+    secret = keymod._PROCESS_KEYS.get(lines[2] if len(lines) > 2 else "")
 
     dest = pinned_db / "backup"
     copied = runtime.db.backup_to(dest)
+    db_copy = dest / "personal_ai.db"
     assert Path(str(copied["database"])).is_file()
-    assert copied["settings_key"] is True
-    assert (dest / "settings.key").read_bytes() == original_key
+    assert copied["settings_key"] is False
+    assert not (dest / "settings.key").exists()
+    if secret is not None:
+        assert secret not in key.read_bytes()
+        assert secret not in db_copy.read_bytes()
 
     rc.update_email_config({"user": "trial@example.com", "password": "changed"})
-    key.write_bytes(b"other-key\n")
+    (dest / "settings.key").write_bytes(b"stolen-raw-key\n")
     invalidate_runtime_config_cache()
     runtime.db.restore_from(dest)
     invalidate_runtime_config_cache()
 
     assert rc.get_email_credentials()["password"] == "app-pass"
-    assert key.read_bytes() == original_key
+    assert key.read_text(encoding="utf-8") == body
+    assert b"stolen-raw-key" not in key.read_bytes()
 
 
 def test_encrypted_export_roundtrips_settings(pinned_db):

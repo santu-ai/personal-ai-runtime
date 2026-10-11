@@ -113,7 +113,7 @@ make desktop-build   # cd desktop && npm run build  (electron-builder)
 | Docker Compose | `/app/backend/data/personal_ai.db`（卷 `backend-data`） | `/app/backend/data/vectors/`（同卷） |
 | 桌面打包 | 由系统 `DATA_DIR` 决定 | 同 |
 
-数据可经 `POST /api/system/export`（明文 JSON，事件日志）或 `POST /api/system/export/encrypted`（AES-GCM + Argon2id，base64）导出；经 `POST /api/system/import` 或 `/import/encrypted` 导入；`DELETE /api/system/data`（body `{"confirm": "DESTROY_ALL_DATA"}`；若已配置 `AUTH_TOKEN` 则同时需要 Bearer）不可逆销毁。加密快照在事件日志之外带上 LLM 与邮箱设置（未打码，由导出密码保护）。导入时先取出 `app_settings`，事件交给 Kernel，设置经 `RuntimeConfig` 写回。整库副本用 `Database.backup_to` / `restore_from`：SQLite backup API 复制数据库（含 `app_settings`），并复制旁边的 `settings.key`。没有这把密钥时，落在库里的密文设置打不开。详见 [03-subsystems/backend-api.md](../03-subsystems/backend-api.md) 与 [04-data/data-model.md](../04-data/data-model.md)。
+数据可经 `POST /api/system/export`（明文 JSON，事件日志）或 `POST /api/system/export/encrypted`（AES-GCM + Argon2id，base64）导出；经 `POST /api/system/import` 或 `/import/encrypted` 导入；`DELETE /api/system/data`（body `{"confirm": "DESTROY_ALL_DATA"}`；若已配置 `AUTH_TOKEN` 则同时需要 Bearer）不可逆销毁。加密快照在事件日志之外带上 LLM 与邮箱设置（未打码，由导出密码保护）。导入时先取出 `app_settings`，事件交给 Kernel，设置经 `RuntimeConfig` 写回。整库副本用 `Database.backup_to` / `restore_from`：SQLite backup API 复制数据库（含 `app_settings`），不复制 `settings.key`。同一台机器上操作系统仍握着密钥时，恢复后的密文还能打开。否则要重新填写邮箱密码和 API key。加密导出的用户口令是换机器时带走设置的方式。详见 [03-subsystems/backend-api.md](../03-subsystems/backend-api.md) 与 [04-data/data-model.md](../04-data/data-model.md)。
 
 ## 生产安全清单
 

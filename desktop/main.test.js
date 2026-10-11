@@ -138,6 +138,13 @@ describe("Electron main process", () => {
     expect(source).toContain("callback(false)");
   });
 
+  it("hands a wrapped settings key to the backend on a pipe", () => {
+    expect(source).toContain('require("./settingsKey")');
+    expect(source).toContain("handoffSettingsKey");
+    expect(source).toContain('PAR_SETTINGS_KEY_FD');
+    expect(source).not.toContain("console.log(handedKey");
+  });
+
   it("does not enable an auto-update feed", () => {
     expect(source).not.toContain('require("electron-updater")');
     expect(source).not.toContain("autoUpdater");

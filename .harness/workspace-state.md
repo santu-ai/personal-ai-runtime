@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-10-11：Fernet 密钥不再以明文放在数据库旁。Windows DPAPI、macOS 钥匙串、Linux libsecret；没有这些接口时只留在进程内存。整库备份不复制 settings.key。桌面用 safeStorage 包旧密钥，并从管道交给后端。未改 Kernel。
 - 2026-10-11：桌面窗口显式沙箱，app:// 带内容安全策略，不接自动更新。邮箱密码和 API key 以 enc:v1 落在 app_settings，密钥在数据库旁的 settings.key。未改 Kernel。
 - 2026-10-11：封存题 v2（sealed2-）在模型运行前冻住。种子 7，qwen2.5:3b 与 llama3.2:3b 事实命中和证据支持都是 1.0。没有按这组题改提示词。未改 Kernel。
 - 2026-10-11：没有已发布安装包，Windows CI 仍是干净安装。库从 0001 升到当前版本时邮箱设置和试用事件留下。整库 backup_to 复制数据库和 settings.key。加密导出带上 LLM 与邮箱设置。未改 Kernel。

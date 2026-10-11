@@ -123,7 +123,7 @@ CI 报告用 `--cov-report=term-missing` 让缺失部分可见，开发者按需
 | 脚本 | 验证 |
 |---|---|
 | [`verify_export_roundtrip.py`](../../backend/scripts/verify_export_roundtrip.py) | 源 DB 播种 goal+memory+2 消息会话+notification，`snapshot()` → 新 DB `restore(read_only=False)`，验证 event_log/conversations/messages/memories/notifications 计数一致 + work_items 内容可还原 |
-| [`test_upgrade_and_backup.py`](../../backend/tests/runtime/test_upgrade_and_backup.py) | 从 `0001_consolidated` 升到 head：邮箱设置、试用事件留下，重复 `dedup_key` 只留最早一行。`backup_to` 复制数据库和 `settings.key`。加密快照里的设置写回后密码仍是原来的 |
+| [`test_upgrade_and_backup.py`](../../backend/tests/runtime/test_upgrade_and_backup.py) | 从 `0001_consolidated` 升到 head：邮箱设置、试用事件留下，重复 `dedup_key` 只留最早一行。`backup_to` 复制数据库，不复制 `settings.key`，备份里的密钥文件也不会装回去。加密快照里的设置写回后密码仍是原来的 |
 
 ### 审计链
 
