@@ -130,7 +130,9 @@ function resolveDesktopDataEnv() {
 function verifyPythonDependencies(pythonCmd, backendDir, extraEnv) {
   const env = { ...process.env, ...extraEnv, BACKEND_DIR: backendDir };
   const escapedDir = backendDir.replace(/\\/g, "\\\\");
-  const importProbe = `import sys; sys.path.insert(0, r'${escapedDir}'); import uvicorn, chromadb, app.main`;
+  // find_spec checks the install without importing app.main. A full import
+  // here runs again inside the backend process and dominated cold start.
+  const importProbe = `import importlib.util, sys; sys.path.insert(0, r'${escapedDir}'); ok = importlib.util.find_spec('uvicorn') and importlib.util.find_spec('chromadb'); raise SystemExit(0 if ok else 1)`;
   const probe = spawnSync(pythonCmd.executable, [...pythonCmd.args, "-c", importProbe], {
     cwd: backendDir,
     env,
