@@ -697,6 +697,221 @@ SEALED_CASES: list[dict] = [
 
 CASES.extend(SEALED_CASES)
 
+# Sealed tier v2. Written and frozen before any model score.
+# Do not edit these strings to chase a score.
+_GREENHOUSE_NOTES = """# 市立温室周会 2099-04-16
+
+出席：沈予、顾晚、周宁
+缺席：无
+地点：育苗棚东侧
+议程：
+1. 上周回顾
+2. 遮阳
+3. 滴灌
+4. 其他
+
+上周回顾：旧棚膜已经更换，不在本次范围。
+遮阳网还在等到货。
+滴灌管供应商报价还没到。
+通道维持现状。
+茶水还是自备。
+
+决定：备用温湿度计交给沈予。
+
+下次会议 5月6日，仍在育苗棚。
+"""
+
+_GREENHOUSE_CSV = """item,owner,status,due
+灌溉泵,顾晚,done,2026-05-02
+遮阳网,顾晚,open,2026-06-08
+滴灌管,周宁,open,2026-05-18
+育苗盘,周宁,open,2026-06-02
+温湿度计,沈予,open,2026-04-30
+访客牌,顾晚,done,2026-03-28
+工具柜,周宁,open,2026-07-02
+补光灯,沈予,open,2026-08-14
+灭火器,顾晚,open,2026-09-03
+营养液,周宁,done,2026-02-11
+育苗标签,沈予,open,2026-10-06
+备用插排,顾晚,open,2026-11-09
+喷壶,沈予,open,2026-12-02
+手套,周宁,open,2026-12-18
+"""
+
+_IRRIGATION_SPEC = """# 东棚灌溉接口
+
+错误码 409 表示水压不足。
+超时重试 2 次。
+"""
+
+_VENT_SPEC = """# 东棚通风接口
+
+错误码 409 表示风机停转。
+超时重试 4 次。
+"""
+
+SEALED_V2_CASES: list[dict] = [
+    {
+        "id": "sealed2-thread-supersede",
+        "query": "验收",
+        "results": [_inbox([
+            _email(
+                "old",
+                subject="市立温室周报",
+                date="2099-04-02T08:00:00+00:00",
+                body="市立温室验收定在 6月4日。\n负责人暂时未定。",
+            ),
+            _email(
+                "new",
+                subject="Re: 市立温室周报",
+                date="2099-04-09T08:00:00+00:00",
+                body=(
+                    "> 市立温室验收定在 6月4日。\n"
+                    ">\n"
+                    "验收改到 6月19日，已经和现场确认。"
+                ),
+            ),
+        ], scoped=True, query="验收")],
+        "included": {"email:old", "email:new"},
+        "fact_any": ["6月19日"],
+    },
+    {
+        "id": "sealed2-forward-chain",
+        "query": "",
+        "results": [_inbox([
+            _email(
+                "fwd",
+                subject="Fwd: 补苗窗口",
+                body=(
+                    "请看下面的转发。\n"
+                    "\n"
+                    "---------- Forwarded message ----------\n"
+                    "From: old@bench.example\n"
+                    "原计划周五补苗。\n"
+                    "\n"
+                    "补充：补苗已改到下周二，窗口是 6月23日。"
+                ),
+            ),
+        ], scoped=True)],
+        "included": {"email:fwd"},
+        "fact_any": ["6月23日"],
+    },
+    {
+        "id": "sealed2-mixed-language",
+        "query": "",
+        "results": [_inbox([
+            _email(
+                "mix",
+                subject="East bench status",
+                body=(
+                    "接口冻结 freeze 定在 5月11日。\n"
+                    "Owner: Shen Yu.\n"
+                    "风险：温控契约还差 counter-sign。"
+                ),
+            ),
+        ], scoped=True)],
+        "included": {"email:mix"},
+        "fact_any": ["counter-sign"],
+    },
+    {
+        "id": "sealed2-near-duplicate",
+        "query": "检疫",
+        "results": [_inbox([
+            _email(
+                "blocked",
+                subject="市立温室进度",
+                date="2099-04-03T08:00:00+00:00",
+                body="市立温室进度 70%，阻塞在检疫证明。",
+            ),
+            _email(
+                "cleared",
+                subject="市立温室进度更新",
+                date="2099-04-10T08:00:00+00:00",
+                body="市立温室进度 70% 已解除，检疫证明昨天批了。",
+            ),
+        ], scoped=True, query="检疫")],
+        "included": {"email:blocked", "email:cleared"},
+        "fact_any": ["检疫证明昨天批了"],
+    },
+    {
+        "id": "sealed2-date-conflict",
+        "query": "",
+        "files": [{"path": "notes/open-day.md", "label": "开放日记录"}],
+        "results": [
+            _inbox([
+                _email("mail", subject="开放日", body="开放日写成 6月7日。"),
+            ], scoped=True),
+            _file("# 开放日\n会议记录把开放日写成 6月14日。\n"),
+        ],
+        "included": {"email:mail", _file_source_id("notes/open-day.md")},
+        "has_file": True,
+        "fact_all": ["6月7日", "6月14日"],
+    },
+    {
+        "id": "sealed2-meeting-notes",
+        "query": "",
+        "files": [{"path": "meetings/greenhouse-2099-04-16.md", "label": "周会"}],
+        "results": [
+            _inbox([], scoped=True),
+            _file(_GREENHOUSE_NOTES),
+        ],
+        "included": {_file_source_id("meetings/greenhouse-2099-04-16.md")},
+        "has_file": True,
+        "fact_any": ["备用温湿度计交给沈予"],
+    },
+    {
+        "id": "sealed2-csv-export",
+        "query": "",
+        "files": [{"path": "exports/greenhouse-tasks.csv", "label": "任务表"}],
+        "results": [
+            _inbox([], scoped=True),
+            _file(_GREENHOUSE_CSV),
+        ],
+        "included": {_file_source_id("exports/greenhouse-tasks.csv")},
+        "has_file": True,
+        "fact_any": ["育苗盘,周宁,open,2026-06-02"],
+    },
+    {
+        "id": "sealed2-spec-distractor",
+        "query": "",
+        "files": [
+            {"path": "specs/east-bench-irrigation.md", "label": "东棚灌溉接口"},
+            {"path": "specs/east-bench-vent.md", "label": "东棚通风接口"},
+        ],
+        "results": [
+            _inbox([], scoped=True),
+            _file(_IRRIGATION_SPEC),
+            _file(_VENT_SPEC),
+        ],
+        "included": {
+            _file_source_id("specs/east-bench-irrigation.md"),
+            _file_source_id("specs/east-bench-vent.md"),
+        },
+        "has_file": True,
+        "fact_all": ["水压不足", "风机停转"],
+    },
+    {
+        "id": "sealed2-quoted-reply",
+        "query": "肥料",
+        "results": [_inbox([
+            _email(
+                "reply",
+                subject="Re: 肥料预算",
+                body=(
+                    "收到，我同意把肥料预算改成 27万元。\n"
+                    "\n"
+                    "于 2099-04-01 写道：\n"
+                    "> 肥料预算先按 9万元报。"
+                ),
+            ),
+        ], scoped=True, query="肥料")],
+        "included": {"email:reply"},
+        "fact_any": ["27万元"],
+    },
+]
+
+CASES.extend(SEALED_V2_CASES)
+
 def _file_source_id(path: str) -> str:
     return "file:" + hashlib.sha256(path.encode("utf-8")).hexdigest()[:12]
 
@@ -1682,7 +1897,44 @@ def test_eval_set_covers_required_themes():
     assert any(item.startswith("holdout-") for item in ids)
     assert any(item.startswith("sealed-") for item in ids)
     assert len([item for item in ids if item.startswith("sealed-")]) >= 8
+    assert len([item for item in ids if item.startswith("sealed2-")]) >= 9
     assert any(item.startswith("dev-") for item in ids)
+
+
+def test_sealed_v2_facts_are_in_the_prompt_and_not_v1():
+    sealed_ids = {item["id"] for item in SEALED_CASES}
+    banned = ("灯塔", "航标", "栈桥", "码头护栏", "韩雪", "梁秋", "江澄", "样品柜", "泊位占用")
+    assert len(SEALED_V2_CASES) >= 9
+    for case in SEALED_V2_CASES:
+        assert str(case["id"]).startswith("sealed2-")
+        assert case["id"] not in sealed_ids
+        chunks = [
+            json.dumps(
+                {key: value for key, value in case.items() if key != "results"},
+                ensure_ascii=False,
+                default=str,
+            )
+        ]
+        chunks.extend(str(result.result) for result in case["results"])
+        blob = "\n".join(chunks)
+        for word in banned:
+            assert word not in blob
+        sources, bodies, notes, _coverage = prepare_case(case)
+        allowed = {str(src["id"]) for src in sources}
+        assert allowed == set(case["included"])
+        prompt = _build_prompt(
+            contract={
+                "objective": "整理进度、风险和待办",
+                "acceptance_criteria": default_acceptance_criteria(),
+            },
+            rework_notes=[],
+            source_blocks=bodies,
+            source_notes=notes,
+            allowed_ids=sorted(allowed),
+        )
+        spans = list(case.get("fact_any") or []) + list(case.get("fact_all") or [])
+        for span in spans:
+            assert span in prompt, case["id"]
 
 
 def test_plan_searches_mailbox_before_limit_and_widens_files():

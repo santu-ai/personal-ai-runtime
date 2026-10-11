@@ -87,6 +87,10 @@ def _is_sealed(row: dict) -> bool:
     return str(row.get("id") or "").startswith("sealed-")
 
 
+def _is_sealed2(row: dict) -> bool:
+    return str(row.get("id") or "").startswith("sealed2-")
+
+
 def _is_dev(row: dict) -> bool:
     return str(row.get("id") or "").startswith("dev-")
 
@@ -134,6 +138,7 @@ def summarize(rows: list[dict]) -> dict:
         row for row in parsed
         if not _is_holdout(row)
         and not _is_sealed(row)
+        and not _is_sealed2(row)
         and not _is_dev(row)
         and not _is_fresh(row)
         and not _is_field(row)
@@ -142,6 +147,10 @@ def summarize(rows: list[dict]) -> dict:
     sealed_fields = _tier_report(
         [row for row in rows if _is_sealed(row)],
         "sealed_",
+    )
+    sealed2_fields = _tier_report(
+        [row for row in rows if _is_sealed2(row)],
+        "sealed2_",
     )
     dev_fields = _tier_report(
         [row for row in rows if _is_dev(row)],
@@ -187,6 +196,11 @@ def summarize(rows: list[dict]) -> dict:
         "sealed_unsupported_ids": sealed_fields["sealed_unsupported_ids"],
         "sealed_fact_rate": sealed_fields["sealed_fact_rate"],
         "sealed_fact_miss_ids": sealed_fields["sealed_fact_miss_ids"],
+        "sealed2_parsed": sealed2_fields["sealed2_parsed"],
+        "sealed2_evidence_support_rate": sealed2_fields["sealed2_evidence_support_rate"],
+        "sealed2_unsupported_ids": sealed2_fields["sealed2_unsupported_ids"],
+        "sealed2_fact_rate": sealed2_fields["sealed2_fact_rate"],
+        "sealed2_fact_miss_ids": sealed2_fields["sealed2_fact_miss_ids"],
         "dev_parsed": dev_fields["dev_parsed"],
         "dev_evidence_support_rate": dev_fields["dev_evidence_support_rate"],
         "dev_fact_rate": dev_fields["dev_fact_rate"],
