@@ -41,6 +41,31 @@ def test_message_id_from_header_bytes_matches_full_message():
     assert from_header == from_full
 
 
+def test_locked_desktop_password_names_the_secret(monkeypatch):
+    reason = (
+        "邮箱密码需要重新填写。它是用桌面的 safeStorage 包过的，"
+        "当前这个后端进程打不开。重新填写并保存之后就能用。"
+    )
+    monkeypatch.setattr(
+        "app.core.runtime.runtime_config.runtime_config.get_email_credentials",
+        lambda: {
+            "user": "a@b.c",
+            "password": "",
+            "needs_reentry": True,
+            "reentry_reason": reason,
+            "imap_host": "imap.gmail.com",
+            "smtp_host": "smtp.gmail.com",
+            "smtp_port": 465,
+        },
+    )
+    monkeypatch.delenv("EMAIL_PASS", raising=False)
+    server = EmailServer()
+    with pytest.raises(ToolInvokeError, match="邮箱密码需要重新填写") as caught:
+        server.check_inbox()
+    assert "safeStorage" in str(caught.value)
+    assert "not configured" not in str(caught.value).lower()
+
+
 def test_check_inbox_unread_only_includes_all_unread_emails(monkeypatch):
     server = EmailServer()
     monkeypatch.setattr(server, "_connect_inbox", lambda: object())

@@ -77,7 +77,8 @@ def run_startup_checks() -> dict[str, Any]:
         "base_url": default_provider.get("base_url", settings.llm_base_url) if default_provider else settings.llm_base_url,
     }
     if not checks["llm"]["configured"]:
-        warnings.append("LLM API Key 未配置 — 对话将失败直至配置完成")
+        reason = str((default_provider or {}).get("reentry_reason") or "").strip()
+        warnings.append(reason or "LLM API Key 未配置 — 对话将失败直至配置完成")
 
     checks["auth"] = {
         "enabled": bool(settings.auth_token),
