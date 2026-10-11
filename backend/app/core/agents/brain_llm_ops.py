@@ -145,20 +145,35 @@ async def continue_after_tool_result(
         conversation.save_assistant_message(cleaned)
     return cleaned
 
+def _candidates_for_call(router, *, provider, client, include_fallbacks: bool = True):
+    """Resolve a local model against installed names, then add other providers."""
+    prepare = getattr(router, "prepare_call", None)
+    ready = prepare(provider) if prepare is not None else provider
+    candidates = []
+    if ready is not None:
+        candidates.append((client, ready))
+    if not include_fallbacks:
+        return candidates
+    after = getattr(router, "fallbacks_after", None)
+    if after is not None:
+        candidates.extend(after(ready))
+    else:
+        candidates.extend(router.get_fallback_clients())
+    return candidates
+
+
 async def create_stream(llm, messages: list[dict]):
     """Try primary LLM provider (with retries for transient errors), then fallbacks."""
     from openai import APIConnectionError as _OpenAIConnectionError
-    from openai import AsyncOpenAI
 
-    from app.core.agents.llm_failover import LLMProvider
+    from app.core.agents.llm_failover import LOCAL_MODEL_MISSING_MESSAGE
 
     TRANSIENT_ERRORS = (_OpenAIConnectionError, TimeoutError, asyncio.TimeoutError)
     MAX_PRIMARY_ATTEMPTS = 3
 
-    candidates: list[tuple[AsyncOpenAI, LLMProvider]] = [
-        (llm.client, llm.provider),
-        *llm_router.get_fallback_clients(),
-    ]
+    candidates = _candidates_for_call(llm_router, provider=llm.provider, client=llm.client)
+    if not candidates:
+        raise RuntimeError(LOCAL_MODEL_MISSING_MESSAGE)
     errors: list[str] = []
     llm_start = time.time()
     for idx, (client, provider) in enumerate(candidates):
@@ -301,22 +316,23 @@ async def complete_text_with_failover(
 
     Raises ``RuntimeError`` when every configured provider fails.
     """
-    from openai import AsyncOpenAI
-
     from app.core.agents.brain_telemetry import record_llm_outcome
-    from app.core.agents.llm_failover import LLMProvider
+    from app.core.agents.llm_failover import LOCAL_MODEL_MISSING_MESSAGE
     from app.core.agents.token_counter import count_message_tokens, count_text_tokens
 
     try:
         client, provider = llm_router.get_client(provider_name)
-        candidates: list[tuple[AsyncOpenAI, LLMProvider]] = (
-            [(client, provider)]
-            if provider_name
-            else [(client, provider), *llm_router.get_fallback_clients()]
-        )
     except RuntimeError as exc:
         logger.warning("complete_text_with_failover: no provider configured: %s", exc)
         raise
+    candidates = _candidates_for_call(
+        llm_router,
+        provider=provider,
+        client=client,
+        include_fallbacks=provider_name is None,
+    )
+    if not candidates:
+        raise RuntimeError(LOCAL_MODEL_MISSING_MESSAGE)
 
     if temperature is None or max_tokens is None:
         gen_temp, gen_max = runtime_config.get_generation_params()

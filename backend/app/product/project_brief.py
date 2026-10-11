@@ -3525,6 +3525,8 @@ def brief_compile_failure(exc: BaseException, *, retryable: bool) -> str:
     text = f"{type(exc).__name__}: {exc}"
     if isinstance(exc, EgressDeniedError) or "EgressDeniedError" in text or "Cloud egress denied" in text:
         return _EGRESS_DENIED_BRIEF
+    if "还没有可用的本地模型" in str(exc):
+        return str(exc)
     if any(marker in text for marker in _UNREACHABLE_MARKERS):
         return _MODEL_UNREACHABLE_BRIEF
     if retryable:

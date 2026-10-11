@@ -379,7 +379,7 @@ export default function LlmConfigCard({ llm, onSaved, embedded = false }: Props)
                       aria-label={controlName("模型", provider)}
                       value={provider.model}
                       onChange={(e) => updateProvider(index, { model: e.target.value })}
-                      placeholder="deepseek-chat / gpt-4o / qwen2.5:7b"
+                      placeholder="deepseek-chat / gpt-4o / qwen2.5:3b"
                     />
                   )}
                 </NamedField>

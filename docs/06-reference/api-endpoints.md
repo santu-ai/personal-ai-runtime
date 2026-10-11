@@ -145,6 +145,8 @@
 | GET | `/api/system/info` | auth | — | System Info |
 | GET | `/api/system/live` | public | — | Liveness |
 | GET | `/api/system/llm-providers` | auth | — | List Llm Providers |
+| GET | `/api/system/local-models` | auth | — | Local Models |
+| POST | `/api/system/local-models/pull` | auth | — | Pull Local Model |
 | GET | `/api/system/mcp-status` | auth | — | Mcp Status |
 | POST | `/api/system/morning-brief/test` | auth | — | Morning Brief Test |
 | GET | `/api/system/ready` | auth | — | Readiness |

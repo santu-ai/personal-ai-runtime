@@ -224,7 +224,7 @@ class Settings(BaseSettings):
     # OPENAI_API_KEY / ANTHROPIC_API_KEY are read via os.getenv in runtime_config
     # (not Settings fields) so provider keys stay out of the Settings surface.
     ollama_base_url: str = "http://localhost:11434/v1"
-    ollama_model: str = "qwen2.5:7b"
+    ollama_model: str = "qwen2.5:3b"
 
     # --- Email (Gmail IMAP/SMTP) ---
     # Host/port defaults live in runtime_config.GMAIL_DEFAULTS; Settings only
