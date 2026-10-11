@@ -69,6 +69,49 @@ def _stable_message_id(msg: email.message.Message, from_raw: str, subject: str, 
     return f"sha1:{digest}"
 
 
+def _message_id_digest(message_ids: list[str]) -> str:
+    """Short digest of the Message-ID set. Order does not matter."""
+    cleaned = sorted({mid.strip() for mid in message_ids if mid and str(mid).strip()})
+    return hashlib.sha256("\n".join(cleaned).encode("utf-8")).hexdigest()[:16]
+
+
+def _stored_messages(raw: object) -> list[dict]:
+    """Header fields remembered from the previous brief run. No bodies."""
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(raw, list):
+        return []
+    stored: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        mid = str(item.get("message_id") or "").strip()
+        if not mid:
+            continue
+        stored.append({
+            "message_id": mid,
+            "from": str(item.get("from") or ""),
+            "subject": str(item.get("subject") or "(无主题)"),
+            "date": str(item.get("date") or ""),
+            "preview": "",
+            "body": "",
+        })
+    return stored
+
+
+def _optional_int(value: object) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    return None
+
+
 _IMAP_MONTHS = (
     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -231,6 +274,25 @@ class EmailServer:
         return value or None
 
     @staticmethod
+    def _mailbox_highest_modseq(mail) -> str:
+        """HIGHESTMODSEQ when the server exposes it. Empty when it does not."""
+        status = getattr(mail, "status", None)
+        if not callable(status):
+            return ""
+        try:
+            typ, data = status("INBOX", "(HIGHESTMODSEQ)")
+        except Exception:
+            logger.debug("Could not read IMAP HIGHESTMODSEQ", exc_info=True)
+            return ""
+        if str(typ).upper() != "OK" or not data:
+            return ""
+        raw = data[0] if isinstance(data, (list, tuple)) else data
+        if isinstance(raw, bytes):
+            raw = raw.decode(errors="ignore")
+        match = re.search(r"HIGHESTMODSEQ\s+(\d+)", str(raw), flags=re.IGNORECASE)
+        return match.group(1) if match else ""
+
+    @staticmethod
     def _uid_values(raw) -> list[int]:
         if isinstance(raw, bytes):
             raw = raw.decode(errors="ignore")
@@ -346,6 +408,7 @@ class EmailServer:
         unread_only: bool,
         body_max: int = 300,
         sequence_ids: list[bytes] | None = None,
+        include_body: bool = True,
     ) -> list[dict]:
         if sequence_ids is None:
             search_criteria = "UNSEEN" if unread_only else "ALL"
@@ -416,6 +479,20 @@ class EmailServer:
         top_candidates = candidates[:limit]
         if not top_candidates:
             return []
+
+        if not include_body:
+            return [
+                {
+                    "seq_num": c["seq_num"],
+                    "message_id": c["message_id"],
+                    "from": c["from"],
+                    "subject": c["subject"],
+                    "date": _format_date(c["date_raw"]),
+                    "preview": "",
+                    "body": "",
+                }
+                for c in top_candidates
+            ]
 
         # 3. Fetch bodies only for the top candidates in another batch.
         top_ids = ",".join(c["seq_num"] for c in top_candidates)
@@ -495,12 +572,18 @@ class EmailServer:
         query: str = "",
         since: str = "",
         include_unread_index: bool = True,
+        known_uid_validity: str = "",
+        known_id_digest: str = "",
+        known_modseq: str = "",
+        known_messages: list | None = None,
+        known_matched: int | str | None = None,
     ) -> str:
         """Check inbox for recent emails (default: all mail, not unread-only)."""
         try:
             mail = self._connect_inbox()
             try:
                 current_uid_validity = self._mailbox_uid_validity(mail)
+                current_modseq = self._mailbox_highest_modseq(mail)
                 requested_after_uid = None
                 try:
                     if after_uid is not None and int(after_uid) >= 0:
@@ -534,29 +617,88 @@ class EmailServer:
                 scoped_since = str(since or "").strip()
                 use_scope = bool(scoped_query or scoped_since)
                 search_meta = None
+                bodies_skipped = False
+                known_uid = str(known_uid_validity or "").strip()
+                known_digest = str(known_id_digest or "").strip()
+                known_seq = str(known_modseq or "").strip()
+                uid_same = bool(
+                    known_uid
+                    and current_uid_validity
+                    and known_uid == current_uid_validity
+                )
+                stored_messages = _stored_messages(known_messages)
                 if use_scope:
-                    matched_ids = self._search_scope_ids(
-                        mail,
-                        query=scoped_query,
-                        since=scoped_since,
-                        unread_only=unread_only,
-                    )
-                    emails = self._fetch_sorted_emails_connected(
-                        mail,
-                        limit,
-                        unread_only,
-                        body_max=8000,
-                        sequence_ids=matched_ids,
-                    )
-                    search_meta = {
-                        "query": scoped_query,
-                        "since": scoped_since,
-                        "limit": limit,
-                        "matched": len(matched_ids),
-                        "returned": len(emails),
-                        "truncated": len(matched_ids) > limit,
-                    }
-                    next_uid = self._highest_uid_connected(mail)
+                    # MODSEQ plus the same UIDVALIDITY means the mailbox did
+                    # not change. The remembered headers are enough; do not
+                    # download bodies or even header bytes again.
+                    if (
+                        uid_same
+                        and known_seq
+                        and current_modseq
+                        and known_seq == current_modseq
+                        and stored_messages
+                    ):
+                        emails = stored_messages[:limit]
+                        matched_count = _optional_int(known_matched)
+                        if matched_count is None:
+                            matched_count = len(stored_messages)
+                        bodies_skipped = True
+                        search_meta = {
+                            "query": scoped_query,
+                            "since": scoped_since,
+                            "limit": limit,
+                            "matched": matched_count,
+                            "returned": len(emails),
+                            "truncated": matched_count > limit,
+                        }
+                        next_uid = None
+                    else:
+                        matched_ids = self._search_scope_ids(
+                            mail,
+                            query=scoped_query,
+                            since=scoped_since,
+                            unread_only=unread_only,
+                        )
+                        if uid_same and known_digest:
+                            headers = self._fetch_sorted_emails_connected(
+                                mail,
+                                limit,
+                                unread_only,
+                                body_max=8000,
+                                sequence_ids=matched_ids,
+                                include_body=False,
+                            )
+                            digest = _message_id_digest(
+                                [str(item.get("message_id") or "") for item in headers],
+                            )
+                            if digest == known_digest:
+                                emails = headers
+                                bodies_skipped = True
+                            else:
+                                emails = self._fetch_sorted_emails_connected(
+                                    mail,
+                                    limit,
+                                    unread_only,
+                                    body_max=8000,
+                                    sequence_ids=matched_ids,
+                                )
+                        else:
+                            emails = self._fetch_sorted_emails_connected(
+                                mail,
+                                limit,
+                                unread_only,
+                                body_max=8000,
+                                sequence_ids=matched_ids,
+                            )
+                        search_meta = {
+                            "query": scoped_query,
+                            "since": scoped_since,
+                            "limit": limit,
+                            "matched": len(matched_ids),
+                            "returned": len(emails),
+                            "truncated": len(matched_ids) > limit,
+                        }
+                        next_uid = self._highest_uid_connected(mail)
                 elif can_increment:
                     assert requested_after_uid is not None
                     emails, next_uid = self._fetch_sorted_emails_since_uid_connected(
@@ -601,6 +743,13 @@ class EmailServer:
             if search_meta is not None:
                 payload["scoped"] = True
                 payload["search"] = search_meta
+                payload["id_digest"] = _message_id_digest(
+                    [str(item.get("message_id") or "") for item in slim],
+                )
+                if current_modseq:
+                    payload["modseq"] = current_modseq
+                if bodies_skipped:
+                    payload["bodies_skipped"] = True
             return json.dumps(payload, ensure_ascii=False)
         except imaplib.IMAP4.error as e:
             raise ToolInvokeError(

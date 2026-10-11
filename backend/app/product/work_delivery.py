@@ -1296,6 +1296,30 @@ def accept_delivery(
     )
 
 
+_BRIEF_SKIP_KEYS = (
+    "known_uid_validity",
+    "known_id_digest",
+    "known_modseq",
+    "known_messages",
+    "known_matched",
+    "known_source_hashes",
+    "known_size",
+    "known_mtime_ns",
+    "known_hash",
+)
+
+
+def _drop_brief_skip_tokens(plan: dict[str, Any]) -> None:
+    for step in plan.get("steps") or []:
+        if not isinstance(step, dict):
+            continue
+        params = step.get("params")
+        if not isinstance(params, dict):
+            continue
+        for key in _BRIEF_SKIP_KEYS:
+            params.pop(key, None)
+
+
 def request_rework(
     work_id: str,
     delivery_id: str,
@@ -1431,6 +1455,9 @@ def _complete_rework_dispatch(
                 "at": _now(),
             })
             plan["rework_notes"] = notes
+            # A rework must read sources again. Cheap skip tokens would hand
+            # the model empty bodies.
+            _drop_brief_skip_tokens(plan)
             kernel.emit_event(
                 EVENT_WORK_ITEM_UPDATED,
                 AGGREGATE_WORK_ITEM,
