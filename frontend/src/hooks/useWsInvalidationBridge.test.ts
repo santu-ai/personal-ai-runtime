@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { getBriefProgress, resetBriefProgress } from "./briefProgress";
 import { applyWsInvalidation, queryKeys } from "./useWsInvalidationBridge";
 
 function makeQc() {
@@ -73,6 +74,23 @@ describe("applyWsInvalidation", () => {
     expect(keys).toEqual(
       expect.arrayContaining([queryKeys.notifications, queryKeys.goals, queryKeys.dashboard]),
     );
+  });
+
+  it("records brief progress and refreshes tasks", () => {
+    resetBriefProgress();
+    const qc = makeQc();
+    applyWsInvalidation(qc as never, {
+      type: "brief_progress",
+      work_id: "w1",
+      stage: "正在写简报",
+      sources_read: 4,
+      sources_total: 4,
+    });
+    expect(getBriefProgress()?.stage).toBe("正在写简报");
+    expect(getBriefProgress()?.sourcesRead).toBe(4);
+    const keys = qc.invalidateQueries.mock.calls.map((c) => c[0].queryKey);
+    expect(keys).toEqual(expect.arrayContaining([queryKeys.tasks]));
+    resetBriefProgress();
   });
 
   it("ignores unknown event types", () => {

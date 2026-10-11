@@ -21,6 +21,7 @@ from app.core.runtime.kernel_instance import bind_work_delivery_compiler
 from app.product.work_delivery import (
     content_hash,
     contract_from_plan,
+    fold_delivery_history,
     is_project_brief_plan,
     model_cost_for_delivery,
     parse_plan,
@@ -3206,6 +3207,195 @@ def _brief_model_is_too_small() -> bool:
     return any("0.5b" in name.lower() for name in names)
 
 
+_UNCHANGED_NOTE = "来源没有变化，沿用上一版简报。"
+_PARTIAL_NOTE = "未变化的来源沿用上一版结论。"
+_REMOVED_NOTE = "有来源已不在本次范围内，仍沿用未变化来源上的结论。"
+
+
+def _report_brief_progress(
+    work_id: str,
+    stage: str,
+    sources_read: int,
+    sources_total: int,
+) -> None:
+    """Tell the open task page which stage this brief is in.
+
+    The message is transport only. It is not a new event and not a delivery.
+    """
+    try:
+        read_ports.broadcast_event({
+            "type": "brief_progress",
+            "work_id": work_id,
+            "stage": stage,
+            "sources_read": int(sources_read),
+            "sources_total": int(sources_total),
+        })
+    except Exception:
+        logger.debug("brief progress broadcast failed", exc_info=True)
+
+
+def _source_hash_map(sources: list[dict[str, Any]]) -> dict[str, str]:
+    found: dict[str, str] = {}
+    for src in sources:
+        if not isinstance(src, dict):
+            continue
+        sid = str(src.get("id") or "").strip()
+        digest = str(src.get("content_hash") or "").strip()
+        if sid and digest:
+            found[sid] = digest
+    return found
+
+
+def _finding_quote(finding: dict[str, Any]) -> str:
+    evidence = finding.get("evidence") or []
+    if evidence and isinstance(evidence[0], dict):
+        snippet = str(evidence[0].get("snippet") or "").strip()
+        if snippet:
+            return snippet
+    return str(finding.get("quote") or finding.get("text") or "").strip()
+
+
+def _reusable_findings(
+    previous: dict[str, Any],
+    unchanged_ids: set[str],
+    catalog: dict[str, dict[str, str]],
+) -> list[dict[str, Any]]:
+    """Previous conclusions whose sources did not change and whose quote still matches."""
+    kept: list[dict[str, Any]] = []
+    texts = [
+        str(entry.get("text") or "")
+        for sid, entry in catalog.items()
+        if sid in unchanged_ids
+    ]
+    for finding in previous.get("findings") or []:
+        if not isinstance(finding, dict):
+            continue
+        source_ids = [
+            str(sid).strip()
+            for sid in (finding.get("source_ids") or [])
+            if str(sid).strip()
+        ]
+        if not source_ids or any(sid not in unchanged_ids for sid in source_ids):
+            continue
+        quote = _finding_quote(finding)
+        if not quote or not any(quote in text for text in texts):
+            continue
+        kept.append({
+            "text": str(finding.get("text") or quote),
+            "kind": str(finding.get("kind") or "change"),
+            "source_ids": source_ids,
+            "quote": quote,
+        })
+    return kept
+
+
+def _reuse_split(
+    previous: dict[str, Any] | None,
+    sources: list[dict[str, Any]],
+) -> tuple[str, set[str], list[str]] | None:
+    """``same`` when every hash matches. ``partial`` when only some do.
+
+    A failed previous brief is not reused. A missing hash counts as changed.
+    """
+    if not isinstance(previous, dict):
+        return None
+    if str(previous.get("quality_structure") or "") != "passed":
+        return None
+    if not previous.get("findings"):
+        return None
+    prev_map = _source_hash_map(list(previous.get("sources") or []))
+    if not prev_map:
+        return None
+    unchanged: set[str] = set()
+    changed: list[str] = []
+    current_ids: list[str] = []
+    for src in sources:
+        if not isinstance(src, dict):
+            continue
+        sid = str(src.get("id") or "").strip()
+        if not sid:
+            continue
+        current_ids.append(sid)
+        digest = str(src.get("content_hash") or "").strip()
+        if digest and prev_map.get(sid) == digest:
+            unchanged.add(sid)
+        else:
+            changed.append(sid)
+    if not current_ids or not unchanged:
+        return None
+    current_map = _source_hash_map(sources)
+    if current_map == prev_map and not changed:
+        return ("same", unchanged, changed)
+    return ("partial", unchanged, changed)
+
+
+def _content_with_note(content: str, note: str) -> str:
+    text = str(content or "")
+    if note in text:
+        return text
+    return text.rstrip() + "\n\n" + note + "\n"
+
+
+def _limitations_with_note(previous: dict[str, Any], note: str) -> list[str]:
+    limits = [str(item) for item in (previous.get("limitations") or []) if str(item).strip()]
+    if note not in limits:
+        limits.append(note)
+    return limits
+
+
+def _republish_previous_brief(
+    work_id: str,
+    previous: dict[str, Any],
+    *,
+    sources: list[dict[str, Any]],
+    note: str,
+    contract_version: int,
+    execution_id: str | None,
+    retrieval: dict[str, Any],
+    actor: str,
+) -> dict[str, Any]:
+    return publish_delivery(
+        work_id,
+        content=_content_with_note(str(previous.get("content") or ""), note),
+        summary=str(previous.get("summary") or ""),
+        sources=sources,
+        findings=list(previous.get("findings") or []),
+        limitations=_limitations_with_note(previous, note),
+        suggested_actions=list(previous.get("suggested_actions") or []),
+        checks=list(previous.get("checks") or []),
+        contract_version=contract_version,
+        execution_id=execution_id,
+        qualified=bool(previous.get("qualified")),
+        quality_structure=str(previous.get("quality_structure") or ""),
+        quality_evidence=str(previous.get("quality_evidence") or ""),
+        retrieval=retrieval,
+        actor=actor,
+    )
+
+
+def _merge_carried_findings(
+    parsed: dict[str, Any],
+    carried: list[dict[str, Any]],
+) -> dict[str, Any]:
+    raw = parsed.get("findings")
+    fresh = raw if isinstance(raw, list) else []
+    seen = {
+        str(item.get("quote") or "").strip()
+        for item in carried
+        if isinstance(item, dict) and str(item.get("quote") or "").strip()
+    }
+    kept_fresh: list[Any] = []
+    for item in fresh:
+        if isinstance(item, dict):
+            quote = str(item.get("quote") or "").strip()
+            if quote and quote in seen:
+                continue
+        kept_fresh.append(item)
+    merged = dict(parsed)
+    merged["findings"] = list(carried) + kept_fresh
+    return merged
+
+
 def brief_compile_failure(exc: BaseException, *, retryable: bool) -> str:
     """User-facing compile error. Egress and connection failures say what to do next."""
     text = f"{type(exc).__name__}: {exc}"
@@ -3292,12 +3482,120 @@ async def compile_project_brief_delivery(
         )
         return {"ok": True, "delivery": delivery, "qualified": False}
 
+    rework_notes = list(plan.get("rework_notes") or [])
+    source_total = max(len(sources), 1)
+    _report_brief_progress(work_id, "正在读取来源", len(sources), source_total)
+    previous: dict[str, Any] | None = None
+    if not rework_notes:
+        folded = fold_delivery_history(work_id)
+        current = folded.get("current") if isinstance(folded, dict) else None
+        previous = current if isinstance(current, dict) else None
+    reuse = _reuse_split(previous, sources)
+    if reuse is not None and reuse[0] == "same" and isinstance(previous, dict):
+        _report_brief_progress(
+            work_id, "来源没有变化，沿用上一版", len(sources), source_total,
+        )
+        delivery = _republish_previous_brief(
+            work_id,
+            previous,
+            sources=sources,
+            note=_UNCHANGED_NOTE,
+            contract_version=int(contract.get("contract_version") or 1),
+            execution_id=execution_id,
+            retrieval=retrieval,
+            actor=actor,
+        )
+        return {
+            "ok": True,
+            "delivery": delivery,
+            "qualified": bool(previous.get("qualified")),
+            "reused": True,
+        }
+
+    prompt_bodies = bodies
+    prompt_ids = sorted(allowed_ids)
+    carried: list[dict[str, Any]] = []
+    if reuse is not None and reuse[0] == "partial" and isinstance(previous, dict):
+        _mode, unchanged_ids, changed_ids = reuse
+        carried = _reusable_findings(previous, unchanged_ids, catalog)
+        if not changed_ids and carried:
+            notes_for_kept = list(notes)
+            if _REMOVED_NOTE not in notes_for_kept:
+                notes_for_kept.append(_REMOVED_NOTE)
+            _report_brief_progress(
+                work_id, "来源有减少，沿用未变化的结论", len(sources), source_total,
+            )
+            kept_brief: dict[str, Any] | None
+            try:
+                kept_brief = validate_model_brief(
+                    {
+                        "summary": str(previous.get("summary") or ""),
+                        "findings": carried,
+                    },
+                    allowed_ids=allowed_ids,
+                    criteria=list(
+                        contract.get("acceptance_criteria") or default_acceptance_criteria()
+                    ),
+                    source_notes=notes_for_kept,
+                    source_catalog=catalog,
+                    coverage=retrieval,
+                    objective=str(contract.get("objective") or ""),
+                )
+            except Exception:
+                logger.info(
+                    "brief reuse of remaining findings failed for %s",
+                    work_id,
+                    exc_info=True,
+                )
+                kept_brief = None
+            if kept_brief is not None:
+                delivery = publish_delivery(
+                    work_id,
+                    content=kept_brief["content"],
+                    summary=kept_brief["summary"],
+                    sources=sources,
+                    findings=kept_brief["findings"],
+                    limitations=kept_brief["limitations"],
+                    suggested_actions=kept_brief["suggested_actions"],
+                    checks=kept_brief["checks"],
+                    contract_version=int(contract.get("contract_version") or 1),
+                    execution_id=execution_id,
+                    qualified=bool(kept_brief.get("qualified")),
+                    quality_structure=str(kept_brief.get("quality_structure") or ""),
+                    quality_evidence=str(kept_brief.get("quality_evidence") or ""),
+                    retrieval=retrieval,
+                    actor=actor,
+                )
+                return {
+                    "ok": True,
+                    "delivery": delivery,
+                    "qualified": bool(kept_brief.get("qualified")),
+                    "reused": True,
+                }
+            carried = []
+        elif changed_ids:
+            changed_set = set(changed_ids)
+            paired = [
+                (src, body)
+                for src, body in zip(sources, bodies)
+                if str(src.get("id") or "") in changed_set
+            ]
+            if paired:
+                prompt_bodies = [body for _src, body in paired]
+                prompt_ids = [str(src.get("id") or "") for src, _body in paired]
+                if _PARTIAL_NOTE not in notes:
+                    notes.append(_PARTIAL_NOTE)
+            else:
+                carried = []
+        else:
+            carried = []
+
     prompt = _build_prompt(
         contract=contract,
-        rework_notes=list(plan.get("rework_notes") or []),
-        source_blocks=bodies,
+        rework_notes=rework_notes,
+        source_blocks=prompt_bodies,
         source_notes=notes,
-        allowed_ids=sorted(allowed_ids),
+        allowed_ids=prompt_ids,
     )
     if "earlier sources were left out of this prompt" in prompt:
         notes.append("部分较早的来源没有放进模型窗口，简报依据窗口里的来源。")
@@ -3329,6 +3627,7 @@ async def compile_project_brief_delivery(
         )
         return {"ok": True, "delivery": delivery, "qualified": False, "cost_capped": True}
     complete = llm_complete or _complete_brief_json
+    _report_brief_progress(work_id, "正在写简报", len(sources), source_total)
     try:
         if complete is _complete_brief_json:
             declared: list[str] = []
@@ -3344,6 +3643,8 @@ async def compile_project_brief_delivery(
         else:
             raw = await complete(prompt)
         parsed = _extract_json(raw)
+        if carried:
+            parsed = _merge_carried_findings(parsed, carried)
         brief = validate_model_brief(
             parsed,
             allowed_ids=allowed_ids,
