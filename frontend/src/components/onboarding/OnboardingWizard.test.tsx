@@ -49,7 +49,12 @@ vi.mock("../../stores/errorStore", () => ({
     selector({ addError }),
 }));
 
-import { getSystemHealth, getLlmProviders, getLocalModels, createProjectBrief } from "../../api/client";
+import {
+  getSystemHealth,
+  getLlmProviders,
+  getLocalModels,
+  createProjectBrief,
+} from "../../api/client";
 
 const mockHealth = vi.mocked(getSystemHealth);
 const mockLlm = vi.mocked(getLlmProviders);

@@ -333,7 +333,10 @@ export default function OnboardingWizard({ onComplete }: Props) {
                 </p>
               )}
               {step === 1 && localModels && (
-                <div className="mt-3 p-3 bg-surface-overlay/50 border border-border-subtle rounded-lg" data-testid="local-models">
+                <div
+                  className="mt-3 p-3 bg-surface-overlay/50 border border-border-subtle rounded-lg"
+                  data-testid="local-models"
+                >
                   <p className="text-xs text-fg-secondary">{localModels.message}</p>
                   {localModels.installed.length > 0 ? (
                     <p className="text-xs text-fg-tertiary mt-1">
