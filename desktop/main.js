@@ -32,6 +32,11 @@ const {
   smokeUserDataDir,
   writeSmokeResult,
   smokeShouldStop,
+  backendPollMs,
+  todayProbeDelayMs,
+  todayProbeTimeoutMs,
+  todayHeadingScript,
+  coldStartReport,
 } = require("./smokeMode");
 
 if (isDesktopSmokeMode()) {
@@ -125,7 +130,9 @@ function resolveDesktopDataEnv() {
 function verifyPythonDependencies(pythonCmd, backendDir, extraEnv) {
   const env = { ...process.env, ...extraEnv, BACKEND_DIR: backendDir };
   const escapedDir = backendDir.replace(/\\/g, "\\\\");
-  const importProbe = `import sys; sys.path.insert(0, r'${escapedDir}'); import uvicorn, chromadb, app.main`;
+  // find_spec checks the install without importing app.main. A full import
+  // here runs again inside the backend process and dominated cold start.
+  const importProbe = `import importlib.util, sys; sys.path.insert(0, r'${escapedDir}'); ok = importlib.util.find_spec('uvicorn') and importlib.util.find_spec('chromadb'); raise SystemExit(0 if ok else 1)`;
   const probe = spawnSync(pythonCmd.executable, [...pythonCmd.args, "-c", importProbe], {
     cwd: backendDir,
     env,
@@ -335,6 +342,7 @@ let backendProcess = null;
 let backendStarting = false;
 let backendLog = "";
 let backendExitCode = null;
+let backendReadyUptimeMs = null;
 
 function rememberBackendLog(chunk) {
   backendLog = `${backendLog}${chunk}`.slice(-4000);
@@ -365,9 +373,12 @@ async function waitForBackendReady(maxWaitMs = 90000) {
   const started = Date.now();
   while (Date.now() - started < maxWaitMs) {
     const probe = await probeLocalBackend();
-    if (probe.kind === "ours") return true;
+    if (probe.kind === "ours") {
+      backendReadyUptimeMs = Math.round(process.uptime() * 1000);
+      return true;
+    }
     if (probe.kind === "foreign") return false;
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, backendPollMs()));
   }
   return false;
 }
@@ -724,7 +735,41 @@ async function probeLiveBackend() {
   }
 }
 
+async function measureTodayPage() {
+  const win = new BrowserWindow({
+    show: false,
+    width: 1200,
+    height: 800,
+    webPreferences: WINDOW_WEB_PREFERENCES,
+  });
+  installNavigationGuards(win);
+  const deadline = Date.now() + todayProbeTimeoutMs();
+  const script = todayHeadingScript();
+  try {
+    await win.loadURL(briefEntryUrlImpl(RESOLVED_WEB_URL));
+    while (Date.now() < deadline) {
+      let hit = false;
+      try {
+        hit = await win.webContents.executeJavaScript(script, true);
+      } catch {
+        hit = false;
+      }
+      if (hit === true) return { readyAtMs: Math.round(process.uptime() * 1000), error: "" };
+      await new Promise((resolve) => setTimeout(resolve, todayProbeDelayMs()));
+    }
+    return { readyAtMs: null, error: "today-heading-timeout" };
+  } catch (error) {
+    const message = String(error && error.message ? error.message : error).slice(0, 200);
+    return { readyAtMs: null, error: message };
+  } finally {
+    if (!win.isDestroyed()) win.destroy();
+  }
+}
+
 async function finishDesktopSmoke(startStatus, backendReady) {
+  const today = backendReady
+    ? await measureTodayPage()
+    : { readyAtMs: null, error: "backend-not-ready" };
   const health = await probeLocalBackend();
   const live = await probeLiveBackend();
   const ok = startStatus !== "conflict"
@@ -733,11 +778,18 @@ async function finishDesktopSmoke(startStatus, backendReady) {
     && backendReady === true
     && health.kind === "ours"
     && live.ok === true;
+  const coldStart = coldStartReport({
+    backendReadyMs: backendReadyUptimeMs,
+    todayReadyMs: today.readyAtMs,
+    todayError: today.error,
+    nowMs: Math.round(process.uptime() * 1000),
+  });
   writeSmokeResult(process.env, {
     ok,
     packaged: isPackaged,
     startStatus,
     backendReady,
+    coldStart,
     health: {
       kind: health.kind,
       status: health.status,

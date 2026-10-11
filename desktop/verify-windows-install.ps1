@@ -100,6 +100,11 @@ try {
     if (-not $independent) {
         throw "Independent health/live probe failed while the installed app was running"
     }
+    if (-not $result.coldStart -or -not $result.coldStart.todayOk) {
+        throw "Today page was not usable: $(Get-Content -LiteralPath $resultPath -Raw)"
+    }
+    Write-Host ("Cold start backendReadyMs={0} todayReadyMs={1} sinceLaunchMs={2}" -f `
+        $result.coldStart.backendReadyMs, $result.coldStart.todayReadyMs, $result.coldStart.sinceLaunchMs)
     Write-Host "Installed app and embedded backend responded."
 } finally {
     New-Item -ItemType File -Force -Path $donePath | Out-Null

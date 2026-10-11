@@ -183,6 +183,12 @@ describe("Electron main process", () => {
     expect(source).toContain("finishDesktopSmoke");
     expect(source).toContain("if (!smoke)");
     expect(source).toContain("await finishDesktopSmoke(startStatus, backendReady)");
+    expect(source).toContain("measureTodayPage");
+    expect(source).toContain("coldStart");
+    expect(source).toContain("backendPollMs()");
+    expect(source).toContain("show: false");
+    expect(source).toContain("importlib.util.find_spec");
+    expect(source).not.toContain("import uvicorn, chromadb, app.main");
   });
 
   it("packs every local require() from main.js in electron-builder files", () => {

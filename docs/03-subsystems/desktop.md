@@ -50,7 +50,7 @@ AUTH_TOKEN   = process.env.AUTH_TOKEN   || ""
 - **未打包**：`resolvePythonCommand()` 优先仓库根 `.venv`（其次 `backend/.venv`），再按平台回退 `py -3.12` / `python` / `python3`。必须使用 `make install` / `requirements.lock` 安装的依赖（现行 `mcp==2.2.0`）；系统 Python 若仍是 mcp 1.x 会导致 MCP 测试收集失败。
 - **Windows 打包版**：`prebuild.js` 通过 [`bundle-python.js`](../../desktop/bundle-python.js) 捆绑 embeddable CPython 3.12.8（zip 与 `get-pip.py` 均核对 [`pinnedDownloads.js`](../../desktop/pinnedDownloads.js) 里的 sha256）和 `requirements.lock`（`--require-hashes`）到 `extraResources/python/`；`main.js` 在打包且该文件存在时优先使用捆绑的 `python.exe`。
 - **数据目录**：spawn 时注入 `DATA_DIR` / `VECTOR_DIR` / `SQLITE_PATH` 到 `%APPDATA%/Personal AI Runtime/data`（`app.getPath("userData")`），避免写入只读安装目录。
-- **依赖探测**：启动前执行 `import uvicorn, chromadb`；失败时弹出 `dialog.showErrorBox` 并指引运行 [`install.bat`](../../install.bat)（Windows）或 `install.sh`。
+- **依赖探测**：启动前用 `importlib.util.find_spec` 确认有 `uvicorn` 和 `chromadb`，不再把 `app.main` 导入一遍。失败时弹出 `dialog.showErrorBox` 并指引运行 [`install.bat`](../../install.bat)（Windows）或 `install.sh`。打包时 `bundle-python.js` 仍会真正导入一次。
 
 [`main.js`](../../desktop/main.js) 的 `startBackend()`：
 
@@ -133,7 +133,7 @@ electron-builder 配置：
 - 主窗口与迷你窗口经 `installNavigationGuards`：仅允许 `app://` 与开发态 `http://127.0.0.1:5173` 内部导航；其他 `http(s)` 交给系统浏览器，危险 scheme 直接拦截。
 - `quickCapture()` 的 `postMessage` 目标 origin 为 `window.location.origin`（不再用 `'*'`）。
 - `extraResources`：把整个 `../backend` 目录 bundle 为 `backend`（排除 `__pycache__`、`*.pyc`、`data/**`），并把 [`desktop/run-backend.py`](../../desktop/run-backend.py) 单独放到安装包 resources 根目录。打包后的 Python 读这份真实文件，不读 app.asar 里的副本。打包发行版包含 Python 源码和前端构建产物。Windows 安装包同时带捆绑的 `python.exe`；macOS / Linux 仍需系统 Python 3。
-- NSIS 产物名为 `PersonalAIRuntime-Setup-${version}-${arch}.exe`，便携包为 `PersonalAIRuntime-Portable-${version}-${arch}.exe`。`PAR_DESKTOP_SMOKE=1` 时跳过开机自启对话框和窗口，写出启动结果后退出，供干净环境安装验证使用。
+- NSIS 产物名为 `PersonalAIRuntime-Setup-${version}-${arch}.exe`，便携包为 `PersonalAIRuntime-Portable-${version}-${arch}.exe`。`PAR_DESKTOP_SMOKE=1` 时跳过开机自启对话框，不显示窗口。它会拉起内嵌后端，在隐藏窗口里等到今天页标题出现，把 `coldStart.backendReadyMs` 和 `coldStart.todayReadyMs` 写进启动结果后退出，供干净环境安装验证使用。
 - Targets：macOS（`dmg`、`zip`）、Windows（`nsis`、`portable`）、Linux（`AppImage`、`deb`）。
 - `desktop/vitest.config.js` — `globals: true`，包含 `**/*.test.js`。
 

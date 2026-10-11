@@ -1,15 +1,19 @@
 /**
  * Unattended packaged-app launch used by the clean Windows install job.
  *
- * PAR_DESKTOP_SMOKE=1 skips the first-run dialog and does not open a window.
- * The process starts the embedded backend, writes a JSON result, and stays up
- * until PAR_DESKTOP_SMOKE_DONE appears or the hold elapses.
+ * PAR_DESKTOP_SMOKE=1 skips the first-run dialog and does not show a window.
+ * The process starts the embedded backend, waits in a hidden window until the
+ * Today heading is visible, writes a JSON result, and stays up until
+ * PAR_DESKTOP_SMOKE_DONE appears or the hold elapses.
  */
 
 const fs = require("fs");
 const path = require("path");
 
 const DEFAULT_HOLD_MS = 180000;
+const BACKEND_POLL_MS = 500;
+const TODAY_PROBE_DELAY_MS = 200;
+const TODAY_PROBE_TIMEOUT_MS = 60000;
 
 function isDesktopSmokeMode(env = process.env) {
   return String(env.PAR_DESKTOP_SMOKE || "") === "1";
@@ -54,6 +58,38 @@ function smokeShouldStop(env, startedAt, now, existsSync = fs.existsSync) {
   return now - startedAt >= smokeHoldMs(env);
 }
 
+function backendPollMs() {
+  return BACKEND_POLL_MS;
+}
+
+function todayProbeDelayMs() {
+  return TODAY_PROBE_DELAY_MS;
+}
+
+function todayProbeTimeoutMs() {
+  return TODAY_PROBE_TIMEOUT_MS;
+}
+
+function todayHeadingScript() {
+  return `(() => {
+    const nodes = document.querySelectorAll("h1, h2, h3");
+    for (const node of nodes) {
+      if ((node.textContent || "").trim() === "今天") return true;
+    }
+    return false;
+  })()`;
+}
+
+function coldStartReport({ backendReadyMs, todayReadyMs, todayError, nowMs }) {
+  return {
+    sinceLaunchMs: nowMs,
+    backendReadyMs: backendReadyMs == null ? null : backendReadyMs,
+    todayReadyMs: todayReadyMs == null ? null : todayReadyMs,
+    todayOk: todayReadyMs != null && !todayError,
+    todayError: todayError || "",
+  };
+}
+
 module.exports = {
   DEFAULT_HOLD_MS,
   isDesktopSmokeMode,
@@ -63,4 +99,9 @@ module.exports = {
   smokeUserDataDir,
   writeSmokeResult,
   smokeShouldStop,
+  backendPollMs,
+  todayProbeDelayMs,
+  todayProbeTimeoutMs,
+  todayHeadingScript,
+  coldStartReport,
 };

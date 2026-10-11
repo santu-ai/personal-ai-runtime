@@ -4,9 +4,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_HOLD_MS,
+  backendPollMs,
+  coldStartReport,
   isDesktopSmokeMode,
   smokeHoldMs,
   smokeShouldStop,
+  todayHeadingScript,
   writeSmokeResult,
 } from "./smokeMode.js";
 
@@ -45,5 +48,28 @@ describe("desktop smoke mode", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("reports launch-to-today timings without treating a missing heading as ready", () => {
+    expect(backendPollMs()).toBe(500);
+    expect(todayHeadingScript()).toContain('=== "今天"');
+    expect(coldStartReport({
+      backendReadyMs: 1400,
+      todayReadyMs: 2600,
+      todayError: "",
+      nowMs: 2700,
+    })).toEqual({
+      sinceLaunchMs: 2700,
+      backendReadyMs: 1400,
+      todayReadyMs: 2600,
+      todayOk: true,
+      todayError: "",
+    });
+    expect(coldStartReport({
+      backendReadyMs: 1400,
+      todayReadyMs: null,
+      todayError: "today-heading-timeout",
+      nowMs: 62000,
+    }).todayOk).toBe(false);
   });
 });
