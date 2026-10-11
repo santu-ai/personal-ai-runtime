@@ -566,3 +566,245 @@ async def test_compile_returns_egress_denial_without_a_delivery(isolated_kernel)
     assert compiled["ok"] is False
     assert "没有发出" in compiled["error"]
     assert "delivery" not in compiled
+
+
+def _emails_outcome(*emails: tuple[str, str, str]) -> SimpleNamespace:
+    return SimpleNamespace(results=[
+        SimpleNamespace(
+            tool="check_inbox",
+            status="success",
+            result=json.dumps({
+                "emails": [
+                    {
+                        "message_id": mid,
+                        "subject": subject,
+                        "from": "a@b.c",
+                        "date": "2099-01-01T00:00:00+00:00",
+                        "preview": preview,
+                    }
+                    for mid, subject, preview in emails
+                ],
+            }),
+        ),
+    ])
+
+
+def _finding(text: str, source_id: str) -> dict:
+    return {
+        "text": text,
+        "kind": "change",
+        "source_ids": [source_id],
+        "quote": text,
+    }
+
+
+@pytest.mark.asyncio
+async def test_identical_rerun_skips_the_model(isolated_kernel, monkeypatch):
+    import time
+
+    item = create_project_brief_work(
+        title="A",
+        objective="列出变化",
+        source_scope={"email": {"enabled": True, "days": 30}},
+    )
+    outcome = _emails_outcome(("m1", "项目变化", "进度延期"))
+    calls: list[str] = []
+    stages: list[str] = []
+
+    def _capture(event: dict) -> None:
+        stages.append(str(event.get("stage") or ""))
+
+    monkeypatch.setattr(
+        "app.product.project_brief.read_ports.broadcast_event",
+        _capture,
+    )
+
+    async def fake_llm(prompt: str) -> str:
+        calls.append(prompt)
+        time.sleep(0.2)
+        return json.dumps({
+            "summary": "有延期",
+            "findings": [_finding("进度延期", "email:m1")],
+        })
+
+    started = time.perf_counter()
+    first = await compile_project_brief_delivery(
+        item["id"],
+        outcome,
+        execution_id="exec-first",
+        llm_complete=fake_llm,
+    )
+    model_s = time.perf_counter() - started
+    assert first["ok"] is True
+    assert first.get("reused") is not True
+    skipped = time.perf_counter()
+    second = await compile_project_brief_delivery(
+        item["id"],
+        outcome,
+        execution_id="exec-second",
+        llm_complete=fake_llm,
+    )
+    skip_s = time.perf_counter() - skipped
+    assert len(calls) == 1
+    assert second["ok"] is True
+    assert second["reused"] is True
+    assert "进度延期" in second["delivery"]["content"]
+    assert "来源没有变化，沿用上一版简报。" in second["delivery"]["content"]
+    assert "来源没有变化，沿用上一版简报。" in second["delivery"]["limitations"]
+    assert second["delivery"]["version"] == 2
+    assert skip_s < model_s
+    assert skip_s < 0.15
+    assert "正在读取来源" in stages
+    assert "正在写简报" in stages
+    assert "来源没有变化，沿用上一版" in stages
+
+
+@pytest.mark.asyncio
+async def test_partial_rerun_reuses_unchanged_findings(isolated_kernel):
+    item = create_project_brief_work(
+        title="A",
+        objective="列出变化",
+        source_scope={"email": {"enabled": True, "days": 30}},
+    )
+    first_outcome = _emails_outcome(
+        ("m1", "西仓", "西仓已出库三箱"),
+        ("m2", "东闸", "东闸阀门待更换"),
+    )
+    calls: list[str] = []
+
+    async def fake_llm(prompt: str) -> str:
+        calls.append(prompt)
+        if len(calls) == 1:
+            return json.dumps({
+                "summary": "两处都有变化",
+                "findings": [
+                    _finding("西仓已出库三箱", "email:m1"),
+                    _finding("东闸阀门待更换", "email:m2"),
+                ],
+            })
+        assert "西仓已出库三箱" not in prompt
+        assert "东闸阀门已更换完毕" in prompt
+        assert "email:m1" not in prompt
+        return json.dumps({
+            "summary": "东闸已更换",
+            "findings": [_finding("东闸阀门已更换完毕", "email:m2")],
+        })
+
+    first = await compile_project_brief_delivery(
+        item["id"],
+        first_outcome,
+        execution_id="exec-both",
+        llm_complete=fake_llm,
+    )
+    assert first["ok"] is True
+    second = await compile_project_brief_delivery(
+        item["id"],
+        _emails_outcome(
+            ("m1", "西仓", "西仓已出库三箱"),
+            ("m2", "东闸", "东闸阀门已更换完毕"),
+        ),
+        execution_id="exec-one-changed",
+        llm_complete=fake_llm,
+    )
+    assert len(calls) == 2
+    assert second["ok"] is True
+    assert second.get("reused") is not True
+    body = second["delivery"]["content"]
+    assert "西仓已出库三箱" in body
+    assert "东闸阀门已更换完毕" in body
+    assert "未变化的来源沿用上一版结论。" in second["delivery"]["limitations"]
+
+
+@pytest.mark.asyncio
+async def test_removed_source_keeps_remaining_findings_without_a_model(isolated_kernel):
+    item = create_project_brief_work(
+        title="A",
+        objective="列出变化",
+        source_scope={"email": {"enabled": True, "days": 30}},
+    )
+    calls: list[str] = []
+
+    async def fake_llm(prompt: str) -> str:
+        calls.append(prompt)
+        return json.dumps({
+            "summary": "两处都有变化",
+            "findings": [
+                _finding("西仓已出库三箱", "email:m1"),
+                _finding("东闸阀门待更换", "email:m2"),
+            ],
+        })
+
+    await compile_project_brief_delivery(
+        item["id"],
+        _emails_outcome(
+            ("m1", "西仓", "西仓已出库三箱"),
+            ("m2", "东闸", "东闸阀门待更换"),
+        ),
+        execution_id="exec-both",
+        llm_complete=fake_llm,
+    )
+    second = await compile_project_brief_delivery(
+        item["id"],
+        _emails_outcome(("m1", "西仓", "西仓已出库三箱")),
+        execution_id="exec-dropped",
+        llm_complete=fake_llm,
+    )
+    assert len(calls) == 1
+    assert second["reused"] is True
+    body = second["delivery"]["content"]
+    assert "西仓已出库三箱" in body
+    assert "东闸阀门待更换" not in body
+    assert "有来源已不在本次范围内，仍沿用未变化来源上的结论。" in body
+
+
+@pytest.mark.asyncio
+async def test_rework_notes_force_a_full_model_call(isolated_kernel):
+    kernel, _db = isolated_kernel
+    from app.core.runtime import read_ports
+    from app.core.runtime.kernel.constants import (
+        AGGREGATE_WORK_ITEM,
+        EVENT_WORK_ITEM_UPDATED,
+    )
+
+    item = create_project_brief_work(
+        title="A",
+        objective="列出变化",
+        source_scope={"email": {"enabled": True, "days": 30}},
+    )
+    outcome = _emails_outcome(("m1", "项目变化", "进度延期"))
+    calls: list[str] = []
+
+    async def fake_llm(_prompt: str) -> str:
+        calls.append(_prompt)
+        return json.dumps({
+            "summary": "有延期",
+            "findings": [_finding("进度延期", "email:m1")],
+        })
+
+    await compile_project_brief_delivery(
+        item["id"],
+        outcome,
+        execution_id="exec-first",
+        llm_complete=fake_llm,
+    )
+    stored = read_ports.query_work_item(item["id"])
+    assert stored is not None
+    plan = json.loads(stored["executable_plan"])
+    plan["rework_notes"] = [{"reason": "请改写延期那条"}]
+    kernel.emit_event(
+        EVENT_WORK_ITEM_UPDATED,
+        AGGREGATE_WORK_ITEM,
+        item["id"],
+        payload={"executable_plan": json.dumps(plan, ensure_ascii=False)},
+        actor="user",
+    )
+    second = await compile_project_brief_delivery(
+        item["id"],
+        outcome,
+        execution_id="exec-rework",
+        llm_complete=fake_llm,
+    )
+    assert len(calls) == 2
+    assert second["ok"] is True
+    assert second.get("reused") is not True
+    assert "请改写延期那条" in calls[1]

@@ -79,7 +79,7 @@ URL 抓取类工具经 `url_safety.validate_http_url` 校验。相关测试：`t
 - 最小密码 8 字符。
 - 异步执行（线程池），避免阻塞事件循环。
 
-经 `POST /api/system/export/encrypted` 与 `/api/system/import/encrypted` 暴露。确认码 `EXPORT_CONFIRM="EXPORT_ALL_DATA"` / `IMPORT_CONFIRM="DESTROY_AND_IMPORT"`。
+经 `POST /api/system/export/encrypted` 与 `/api/system/import/encrypted` 暴露。确认码 `EXPORT_CONFIRM="EXPORT_ALL_DATA"` / `IMPORT_CONFIRM="DESTROY_AND_IMPORT"`。加密快照额外带上 `app_settings`（LLM 与邮箱，未打码）。口令保护这份明文。导入先取出该字段再交给 Kernel，然后用 `update_llm_config` / `update_email_config` 写回，由本机 `settings.key` 重新封装。
 
 ## 数据主权操作
 
