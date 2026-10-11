@@ -775,6 +775,26 @@ DEV_CASES: list[dict] = [
         "fact_any": ["北门"],
     },
     {
+        "id": "dev-conflicting-dates",
+        "query": "",
+        "results": [_inbox([
+            _email(
+                "east-a",
+                subject="东湖验收",
+                date="2099-05-01T00:00:00+00:00",
+                body="东湖验收写的是 7月1日。\n请按邮件执行。",
+            ),
+            _email(
+                "east-b",
+                subject="东湖验收",
+                date="2099-05-02T00:00:00+00:00",
+                body="东湖验收写的是 7月8日。\n请按邮件执行。",
+            ),
+        ], scoped=True)],
+        "included": {"email:east-a", "email:east-b"},
+        "fact_all": ["7月1日", "7月8日"],
+    },
+    {
         "id": "dev-meeting-decision",
         "query": "",
         "results": [_file("\n".join([
@@ -832,6 +852,19 @@ DEV_CASES: list[dict] = [
         ]))],
         "files": [{"path": _DEV_PUMP_CSV, "label": _DEV_PUMP_CSV}],
         "included": {_file_source_id(_DEV_PUMP_CSV)},
+        "has_file": True,
+        "fact_any": ["泵组,P-17,检修中,2026-06-11"],
+    },
+    {
+        "id": "dev-csv-open-row",
+        "query": "",
+        "results": [_file("\n".join(
+            ["设备,编号,状态,日期"]
+            + [f"阀门,V-{index},完成,2026-03-0{index}" for index in range(1, 7)]
+            + ["泵组,P-17,检修中,2026-06-11"]
+        ))],
+        "files": [{"path": "exports/pump-open.csv", "label": "exports/pump-open.csv"}],
+        "included": {_file_source_id("exports/pump-open.csv")},
         "has_file": True,
         "fact_any": ["泵组,P-17,检修中,2026-06-11"],
     },
@@ -926,10 +959,8 @@ def test_dev_forward_keeps_the_date_inside_the_chain():
 
 def test_dev_near_duplicate_keeps_the_newer_line():
     case = _dev("dev-near-duplicate")
-    _sources, bodies, _notes, _coverage = prepare_case(case)
-    old = next(block for block in bodies if block.startswith("Email email:night-old"))
-    assert "这封已被 email:night-new 取代" in old
-    assert "南门" not in old
+    _sources, _bodies, notes, _coverage = prepare_case(case)
+    assert any("email:night-old 已被 email:night-new 取代" in note for note in notes)
     text = _compile_miss(case, {
         "text": "仓库夜巡走南门",
         "quote": "仓库夜巡走南门。",
@@ -958,6 +989,30 @@ def test_dev_similar_specs_keep_both_prices():
     })
     assert "27万元" in text
     assert "31万元" in text
+
+
+def test_dev_conflicting_dates_both_stay():
+    case = _dev("dev-conflicting-dates")
+    _sources, _bodies, notes, _coverage = prepare_case(case)
+    assert not any("取代" in note for note in notes)
+    text = _compile_miss(case, {
+        "text": "东湖验收写的是 7月1日",
+        "quote": "东湖验收写的是 7月1日。",
+        "source_ids": ["email:east-a"],
+        "kind": "change",
+    })
+    assert "7月1日" in text
+    assert "7月8日" in text
+
+
+def test_dev_csv_keeps_a_late_open_row():
+    text = _compile_miss(_dev("dev-csv-open-row"), {
+        "text": "设备,编号,状态,日期",
+        "quote": "设备,编号,状态,日期",
+        "source_ids": [_file_source_id("exports/pump-open.csv")],
+        "kind": "change",
+    })
+    assert "泵组,P-17,检修中,2026-06-11" in text
 
 
 def test_dev_csv_keeps_the_status_row():
