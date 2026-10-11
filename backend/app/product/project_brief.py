@@ -341,7 +341,7 @@ def _emit_inbox_batch(
         visible = str(item["visible"])
         if item["superseded_by"]:
             prompt = f"Subject: {item['subject']}\nDate: {item['date_raw']}\n{visible}"
-            preferred = []
+            preferred: list[str] = []
             surface = []
             quotable = ""
         else:
