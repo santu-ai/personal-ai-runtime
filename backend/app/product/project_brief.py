@@ -324,11 +324,12 @@ def _emit_inbox_batch(
     notes: list[str],
 ) -> None:
     """Keep the later copy when it covers the earlier one, and surface its new line."""
+    batch.sort(key=lambda item: (_mail_sort_stamp(item), str(item["id"])))
     for item in batch:
         item["superseded_by"] = ""
         item["surface"] = []
     for older in batch:
-        for newer in batch:
+        for newer in reversed(batch):
             if older is newer or not _newer_replaces(older, newer):
                 continue
             older["superseded_by"] = newer["id"]
@@ -350,6 +351,10 @@ def _emit_inbox_batch(
             surface = list(item["surface"])
             if dated and dated[0] not in surface:
                 surface.insert(0, dated[0])
+            for line in _mixed_language_lines(operative):
+                if line not in surface:
+                    surface.insert(0, line)
+            surface = surface[:3]
             preferred = []
             for line in surface + operative:
                 if line not in preferred:
@@ -398,7 +403,9 @@ def _emit_file_batch(
     included_texts: list[str],
 ) -> None:
     """Surface spreadsheet rows, meeting decisions, and lines that differ."""
+    pending.sort(key=lambda item: (str(item["label"]), str(item["id"])))
     line_sets = [list(item["lines"]) for item in pending]
+    labels = [str(item["label"]) for item in pending]
     for index, item in enumerate(pending):
         others: list[list[str]] = []
         for other in range(len(pending)):
@@ -416,6 +423,15 @@ def _emit_file_batch(
                 shared |= set(item["lines"]) & set(peer_lines)
             unique = [line for line in item["lines"] if line not in shared]
             unique.sort(key=_distinctive_rank)
+        family_facts = _family_fact_lines(
+            item["lines"],
+            [
+                line_sets[other]
+                for other in range(len(pending))
+                if other != index and _same_directory(labels[index], labels[other])
+            ],
+        )
+        mixed = _mixed_language_lines(list(item["lines"]))
         visible = str(item["visible"])
         csv_rows = _csv_key_rows(visible) if _looks_like_csv(visible) else []
         decisions = [
@@ -424,7 +440,7 @@ def _emit_file_batch(
         ]
         if csv_rows:
             preferred = csv_rows[:_QUOTABLE_LINE_CAP]
-            surface = preferred[:3]
+            surface = _csv_surface(preferred)
             kind = "csv"
         elif decisions:
             preferred = decisions[:_QUOTABLE_LINE_CAP]
@@ -442,6 +458,20 @@ def _emit_file_batch(
             preferred = []
             surface = []
             kind = "file"
+        if family_facts:
+            if not preferred:
+                preferred = family_facts[:_QUOTABLE_LINE_CAP]
+                kind = "spec"
+            for line in family_facts:
+                if line not in surface:
+                    surface.append(line)
+        for line in mixed:
+            if line not in preferred:
+                preferred.insert(0, line)
+            if line not in surface:
+                surface.insert(0, line)
+        preferred = preferred[:_QUOTABLE_LINE_CAP]
+        surface = surface[:3]
         source_id = str(item["id"])
         sources.append({
             "id": source_id,
@@ -675,6 +705,7 @@ def collect_allowed_sources(
         catalog=catalog,
         included_texts=included_texts,
     )
+    _cover_conflicting_dates(catalog)
 
     if email_scope.get("enabled") and not email_attempted:
         notes.append("任务要求读取邮箱，但执行计划未包含 check_inbox 步骤")
@@ -1189,6 +1220,95 @@ def _distinctive_rank(line: str) -> int:
     return 1
 
 
+def _mail_sort_stamp(item: dict[str, Any]) -> str:
+    """ISO date, then id, so mailbox order cannot change which copy wins."""
+    stamp = item.get("date")
+    if stamp is None:
+        return ""
+    return stamp.isoformat()
+
+
+def _same_directory(left: str, right: str) -> bool:
+    """True when two paths sit in the same folder."""
+    def parent(label: str) -> str:
+        path = str(label or "").replace("\\", "/").rstrip("/")
+        if "/" not in path:
+            return ""
+        return path.rsplit("/", 1)[0]
+
+    folder = parent(left)
+    return bool(folder) and folder == parent(right)
+
+
+def _family_fact_lines(lines: list[str], peers: list[list[str]]) -> list[str]:
+    """Amount, date, or decision lines that this file does not share."""
+    if not peers:
+        return []
+    shared: set[str] = set()
+    for peer in peers:
+        shared |= set(lines) & set(peer)
+    facts = [
+        line for line in lines
+        if line not in shared and _distinctive_rank(line) == 0 and not line.startswith(">")
+    ]
+    return facts[:3]
+
+
+_CJK = re.compile(r"[\u4e00-\u9fff]")
+_LATIN_WORD = re.compile(r"[A-Za-z]{3,}")
+
+
+def _mixed_language_lines(lines: list[str]) -> list[str]:
+    """Lines that mix Chinese and English, or the English line in a Chinese note."""
+    substantive = [line for line in lines if not str(line).startswith(">")]
+    has_cjk = any(_CJK.search(line) for line in substantive)
+    has_latin = any(_LATIN_WORD.search(line) for line in substantive)
+    if not (has_cjk and has_latin):
+        return []
+    chosen: list[str] = []
+    for line in substantive:
+        cjk = bool(_CJK.search(line))
+        latin = bool(_LATIN_WORD.search(line))
+        if (cjk and latin) or (latin and not cjk):
+            chosen.append(line)
+
+    def _rank(line: str) -> int:
+        if _AMOUNT.search(line) or _DATE_TOKEN.search(line) or any(ch.isdigit() for ch in line):
+            return 0
+        return 1
+
+    chosen.sort(key=_rank)
+    return chosen[:3]
+
+
+def _cover_conflicting_dates(catalog: dict[str, dict[str, str]]) -> None:
+    """Keep each source's own date when the sources do not agree."""
+    dated: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for sid, entry in catalog.items():
+        if str(entry.get("superseded_by") or ""):
+            continue
+        lines = [
+            line for line in _quotable_lines(str(entry.get("text") or ""))
+            if _DATE_TOKEN.search(line)
+            and not line.startswith(">")
+            and not _is_forward_boilerplate(line)
+        ]
+        if not lines:
+            continue
+        current = lines[-1]
+        dated.append((sid, current))
+        seen.update(_DATE_TOKEN.findall(current))
+    if len(seen) < 2:
+        return
+    for sid, line in dated:
+        entry = catalog[sid]
+        surface = _surface_lines(entry)
+        if line not in surface:
+            surface.insert(0, line)
+        entry["surface"] = "\n".join(surface[:3])
+
+
 def _looks_like_csv(text: str) -> bool:
     rows = [line.strip() for line in str(text or "").splitlines() if "," in line]
     if len(rows) < 2:
@@ -1206,16 +1326,28 @@ def _csv_key_rows(text: str) -> list[str]:
     def _priority(row: str) -> int:
         if _CSV_OPEN_RE.search(row):
             return 0
-        if _CSV_STATUS_RE.search(row):
+        if _AMOUNT.search(row):
             return 1
-        if _DATE_TOKEN.search(row):
+        if _CSV_STATUS_RE.search(row):
             return 2
-        return 3
+        if _DATE_TOKEN.search(row):
+            return 3
+        return 4
 
-    keyed = [row for row in data if _priority(row) < 3]
+    keyed = [row for row in data if _priority(row) < 4]
     keyed.sort(key=_priority)
     chosen = keyed or data[-1:]
     return chosen[:_QUOTABLE_LINE_CAP]
+
+
+def _csv_surface(rows: list[str]) -> list[str]:
+    """Keep a later amount row when several open rows would hide it."""
+    head = list(rows[:3])
+    for row in rows:
+        if row in head or _CSV_OPEN_RE.search(row) or not _AMOUNT.search(row):
+            continue
+        return [row, *head[:2]]
+    return head
 
 
 def _surface_lines(entry: dict[str, Any]) -> list[str]:
@@ -1389,6 +1521,20 @@ _SCAFFOLD_PREFIXES = (
     "allowed source ids",
     "quotable lines",
 )
+
+
+def _is_collector_note_echo(text: str, notes: list[str] | None) -> bool:
+    """True when the quote is a retrieval note, even with one extra period."""
+    cleaned = _collapsed(_strip_quote_edge(text))
+    if len(cleaned) < 8:
+        return False
+    for note in notes or []:
+        phrase = _collapsed(_strip_quote_edge(note))
+        if len(phrase) < 8:
+            continue
+        if phrase == cleaned or phrase in cleaned or cleaned in phrase:
+            return True
+    return False
 
 
 def _is_scaffold_finding(
@@ -1993,12 +2139,15 @@ def validate_model_brief(
             for entry in (source_catalog or {}).values()
             for candidate in _quote_candidates(quote_for_keep)
         )
-        if not quote_in_catalog and _is_scaffold_finding(
-            str(item.get("text") or ""),
-            source_catalog or {},
-            objective,
-            criteria,
-            source_notes,
+        if not quote_in_catalog and (
+            _is_scaffold_finding(
+                str(item.get("text") or ""),
+                source_catalog or {},
+                objective,
+                criteria,
+                source_notes,
+            )
+            or _is_collector_note_echo(quote_for_keep, source_notes)
         ):
             continue
         quote = str(item.get("quote") or "").strip()
@@ -2324,6 +2473,7 @@ def _build_prompt(
             "- When quotable lines are listed, copy quote from one of those lines.\n"
             "- If a later line gives a newer date, quote that later line, not the quoted history.\n"
             "- When two files share some lines, quote a line that only one file contains, and cite that file.\n"
+            "- If sources disagree on a date or an amount, quote each of those lines.\n"
             "- Do not copy the objective, the acceptance criteria, or these rules into quote.\n"
             "- Write at most 6 findings. Do not repeat a quote.\n"
             "- Each finding lists only the source ids that contain that quote."

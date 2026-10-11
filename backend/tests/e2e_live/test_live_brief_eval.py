@@ -61,6 +61,17 @@ _SYSTEM = (
 )
 
 
+def _completion_kwargs() -> dict:
+    kwargs: dict = {
+        "temperature": 0,
+        "max_tokens": BRIEF_COMPILE_MAX_TOKENS,
+    }
+    raw_seed = os.environ.get("BRIEF_EVAL_SEED", "").strip()
+    if raw_seed:
+        kwargs["seed"] = int(raw_seed)
+    return kwargs
+
+
 def _local_client():
     from openai import AsyncOpenAI
 
@@ -105,15 +116,15 @@ async def test_live_brief_eval_reports_quality_rates():
                 allowed_ids=sorted(allowed),
             )
             try:
+                kwargs = _completion_kwargs()
                 resp = await client.chat.completions.create(
                     model=model,
                     messages=[
                         {"role": "system", "content": _SYSTEM},
                         {"role": "user", "content": prompt},
                     ],
-                    temperature=0,
-                    max_tokens=BRIEF_COMPILE_MAX_TOKENS,
                     response_format={"type": "json_object"},
+                    **kwargs,
                 )
             except Exception as exc:
                 status = getattr(exc, "status_code", None)
@@ -125,8 +136,7 @@ async def test_live_brief_eval_reports_quality_rates():
                                 {"role": "system", "content": _SYSTEM},
                                 {"role": "user", "content": prompt},
                             ],
-                            temperature=0,
-                            max_tokens=BRIEF_COMPILE_MAX_TOKENS,
+                            **kwargs,
                         )
                     except Exception as retry_exc:
                         exc = retry_exc
@@ -188,6 +198,8 @@ async def test_live_brief_eval_reports_quality_rates():
 
     report = summarize(rows)
     report["model"] = model
+    raw_seed = os.environ.get("BRIEF_EVAL_SEED", "").strip()
+    report["seed"] = int(raw_seed) if raw_seed else None
     line = "BRIEF_EVAL " + json.dumps(report, ensure_ascii=False)
     print(line)
     destination = (os.environ.get("BRIEF_EVAL_REPORT") or "").strip()
