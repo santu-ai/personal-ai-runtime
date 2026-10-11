@@ -695,6 +695,15 @@ SEALED_CASES: list[dict] = [
 
 CASES.extend(SEALED_CASES)
 
+def _file_source_id(path: str) -> str:
+    return "file:" + hashlib.sha256(path.encode("utf-8")).hexdigest()[:12]
+
+
+_DEV_EAST_SPEC = "specs/east-pump.md"
+_DEV_WEST_SPEC = "specs/west-pump.md"
+_DEV_MEETING = "notes/east-lake-review.md"
+_DEV_PUMP_CSV = "exports/pump-work.csv"
+
 DEV_CASES: list[dict] = [
     {
         "id": "dev-objective-wrapper",
@@ -704,6 +713,127 @@ DEV_CASES: list[dict] = [
         ], scoped=True, query="值班")],
         "included": {"email:duty"},
         "fact_any": ["陈禾"],
+    },
+    {
+        "id": "dev-thread-reschedule",
+        "query": "",
+        "results": [_inbox([
+            _email(
+                "pump",
+                subject="东湖泵站检修",
+                date="2099-04-02T08:00:00+00:00",
+                body=(
+                    "> 东湖泵站检修定在 5月20日。\n"
+                    ">\n"
+                    "值班室确认：检修改到 6月2日。"
+                ),
+            ),
+        ], scoped=True)],
+        "included": {"email:pump"},
+        "fact_any": ["6月2日"],
+    },
+    {
+        "id": "dev-forward-date",
+        "query": "",
+        "results": [_inbox([
+            _email(
+                "filter",
+                subject="Fwd: 滤芯",
+                date="2099-04-04T08:00:00+00:00",
+                body=(
+                    "请同事看一下。\n"
+                    "\n"
+                    "---------- Forwarded message ----------\n"
+                    "From: duty@plant.example\n"
+                    "原定周三更换滤芯。\n"
+                    "\n"
+                    "补充：滤芯更换改到 6月9日。"
+                ),
+            ),
+        ], scoped=True)],
+        "included": {"email:filter"},
+        "fact_any": ["6月9日"],
+    },
+    {
+        "id": "dev-near-duplicate",
+        "query": "",
+        "results": [_inbox([
+            _email(
+                "night-old",
+                subject="仓库夜巡",
+                date="2099-04-01T08:00:00+00:00",
+                body="仓库夜巡走南门。\n钥匙在门岗。",
+            ),
+            _email(
+                "night-new",
+                subject="仓库夜巡",
+                date="2099-04-03T08:00:00+00:00",
+                body="仓库夜巡走南门。\n钥匙在门岗。\n夜巡已改走北门。",
+            ),
+        ], scoped=True)],
+        "included": {"email:night-old", "email:night-new"},
+        "fact_any": ["北门"],
+    },
+    {
+        "id": "dev-meeting-decision",
+        "query": "",
+        "results": [_file("\n".join([
+            "东湖泵站周会",
+            "时间：2099-04-05",
+            "出席：周凯",
+            "一、上周巡检",
+            "泵组运行平稳。",
+            "二、备件",
+            "库存还够两周。",
+            "三、讨论",
+            "有人建议再观察。",
+            "四、其他",
+            "下次仍在周四。",
+            "五、记录人",
+            "记录人 周凯。",
+            "决定：备件库存下限调到 12 件。",
+        ]))],
+        "files": [{"path": _DEV_MEETING, "label": _DEV_MEETING}],
+        "included": {_file_source_id(_DEV_MEETING)},
+        "has_file": True,
+        "fact_any": ["12 件"],
+    },
+    {
+        "id": "dev-similar-specs",
+        "query": "",
+        "results": [
+            _file("\n".join([
+                "适用范围：清水。",
+                "电压 380V。",
+                "东区泵组报价 27万元。",
+            ])),
+            _file("\n".join([
+                "适用范围：清水。",
+                "电压 380V。",
+                "西区泵组报价 31万元。",
+            ])),
+        ],
+        "files": [
+            {"path": _DEV_EAST_SPEC, "label": _DEV_EAST_SPEC},
+            {"path": _DEV_WEST_SPEC, "label": _DEV_WEST_SPEC},
+        ],
+        "included": {_file_source_id(_DEV_EAST_SPEC), _file_source_id(_DEV_WEST_SPEC)},
+        "has_file": True,
+        "fact_all": ["27万元", "31万元"],
+    },
+    {
+        "id": "dev-csv-row",
+        "query": "",
+        "results": [_file("\n".join([
+            "设备,编号,状态,日期",
+            "阀门,V-1,备用,2026-01-02",
+            "泵组,P-17,检修中,2026-06-11",
+            "仪表,M-3,在用,2026-02-02",
+        ]))],
+        "files": [{"path": _DEV_PUMP_CSV, "label": _DEV_PUMP_CSV}],
+        "included": {_file_source_id(_DEV_PUMP_CSV)},
+        "has_file": True,
+        "fact_any": ["泵组,P-17,检修中,2026-06-11"],
     },
 ]
 
@@ -750,6 +880,94 @@ def _rendered_scope(coverage: dict) -> str:
     from app.product.project_brief import _retrieval_lines
 
     return "\n".join(_retrieval_lines(coverage))
+
+
+def _dev(case_id: str) -> dict:
+    return next(item for item in DEV_CASES if item["id"] == case_id)
+
+
+def _compile_miss(case: dict, finding: dict) -> str:
+    sources, _bodies, notes, coverage = prepare_case(case)
+    result = validate_model_brief(
+        {
+            "summary": "模型摘了另一句",
+            "content": "模型摘了另一句",
+            "findings": [finding],
+        },
+        allowed_ids={str(item["id"]) for item in sources},
+        criteria=default_acceptance_criteria(),
+        source_notes=notes,
+        source_catalog=dict(coverage["_catalog"]),
+        objective="整理进度、风险和待办",
+    )
+    return "\n".join(str(item.get("text") or "") for item in result["findings"])
+
+
+def test_dev_thread_keeps_the_later_date():
+    text = _compile_miss(_dev("dev-thread-reschedule"), {
+        "text": "东湖泵站检修定在 5月20日",
+        "quote": "> 东湖泵站检修定在 5月20日。",
+        "source_ids": ["email:pump"],
+        "kind": "change",
+    })
+    assert "6月2日" in text
+    assert "5月20日" not in text
+
+
+def test_dev_forward_keeps_the_date_inside_the_chain():
+    text = _compile_miss(_dev("dev-forward-date"), {
+        "text": "请同事看一下",
+        "quote": "请同事看一下。",
+        "source_ids": ["email:filter"],
+        "kind": "change",
+    })
+    assert "6月9日" in text
+
+
+def test_dev_near_duplicate_keeps_the_newer_line():
+    case = _dev("dev-near-duplicate")
+    _sources, bodies, _notes, _coverage = prepare_case(case)
+    old = next(block for block in bodies if block.startswith("Email email:night-old"))
+    assert "这封已被 email:night-new 取代" in old
+    assert "南门" not in old
+    text = _compile_miss(case, {
+        "text": "仓库夜巡走南门",
+        "quote": "仓库夜巡走南门。",
+        "source_ids": ["email:night-old"],
+        "kind": "change",
+    })
+    assert "北门" in text
+
+
+def test_dev_meeting_decision_is_kept_when_the_model_quotes_the_agenda():
+    text = _compile_miss(_dev("dev-meeting-decision"), {
+        "text": "出席：周凯",
+        "quote": "出席：周凯",
+        "source_ids": [_file_source_id(_DEV_MEETING)],
+        "kind": "change",
+    })
+    assert "12 件" in text
+
+
+def test_dev_similar_specs_keep_both_prices():
+    text = _compile_miss(_dev("dev-similar-specs"), {
+        "text": "适用范围：清水",
+        "quote": "适用范围：清水。",
+        "source_ids": [_file_source_id(_DEV_EAST_SPEC)],
+        "kind": "change",
+    })
+    assert "27万元" in text
+    assert "31万元" in text
+
+
+def test_dev_csv_keeps_the_status_row():
+    text = _compile_miss(_dev("dev-csv-row"), {
+        "text": "设备,编号,状态,日期",
+        "quote": "设备,编号,状态,日期",
+        "source_ids": [_file_source_id(_DEV_PUMP_CSV)],
+        "kind": "change",
+    })
+    assert "泵组,P-17,检修中,2026-06-11" in text
 
 
 def test_sealed_long_files_do_not_list_every_line():

@@ -295,6 +295,166 @@ def _email_read_failure_note(raw: str) -> str:
     return f"邮箱读取失败：{text[:300] or 'unknown error'}"
 
 
+def _emit_inbox_batch(
+    batch: list[dict[str, Any]],
+    *,
+    query: str,
+    sources: list[dict[str, Any]],
+    bodies: list[str],
+    catalog: dict[str, dict[str, str]],
+    included_texts: list[str],
+) -> None:
+    """Keep the later near-duplicate, and surface its new line and current date."""
+    for item in batch:
+        item["superseded_by"] = ""
+        item["surface"] = []
+    for older in batch:
+        for newer in batch:
+            if older is newer or older["date"] is None or newer["date"] is None:
+                continue
+            if older["date"] >= newer["date"]:
+                continue
+            if not _near_duplicate_lines(older["lines"], newer["lines"]):
+                continue
+            older["superseded_by"] = newer["id"]
+            for line in newer["lines"]:
+                if line not in older["lines"] and line not in newer["surface"]:
+                    newer["surface"].append(line)
+            break
+    for item in batch:
+        visible = str(item["visible"])
+        if item["superseded_by"]:
+            prompt = (
+                f"Subject: {item['subject']}\nDate: {item['date_raw']}\n"
+                f"这封已被 {item['superseded_by']} 取代，请改读后一封。"
+            )
+            preferred: list[str] = []
+            surface: list[str] = []
+            quotable = ""
+        else:
+            operative = _operative_lines(visible)
+            dated = [line for line in operative if _DATE_TOKEN.search(line)]
+            surface = list(item["surface"])
+            if dated and dated[0] not in surface:
+                surface.insert(0, dated[0])
+            preferred = []
+            for line in surface + operative:
+                if line not in preferred:
+                    preferred.append(line)
+            preferred = preferred[:_QUOTABLE_LINE_CAP]
+            prompt = f"Subject: {item['subject']}\nDate: {item['date_raw']}\n{visible}"
+            quotable = "\n".join(preferred)
+        line_label, hit_snippet = _locate_query(visible, query)
+        locator = _locator_with_line(str(item["sender"] or item["id"]), line_label)
+        source_id = str(item["id"])
+        sources.append({
+            "id": source_id,
+            "type": "email",
+            "title": item["subject"],
+            "locator": locator,
+            "retrieved_at": item["retrieved_at"],
+            "content_hash": item["content_hash"],
+            "body_complete": item["body_complete"],
+        })
+        bodies.append(
+            _source_block(
+                f"Email {source_id} ({item['sender']})",
+                prompt,
+                quotable=quotable,
+            )
+        )
+        included_texts.append(visible)
+        catalog[source_id] = {
+            "text": visible,
+            "locator": locator,
+            "title": str(item["subject"]),
+            "hit_snippet": hit_snippet,
+            "preferred": "\n".join(preferred),
+            "surface": "\n".join(surface),
+            "superseded_by": str(item["superseded_by"]),
+            "source_kind": "email",
+        }
+
+
+def _emit_file_batch(
+    pending: list[dict[str, Any]],
+    *,
+    sources: list[dict[str, Any]],
+    bodies: list[str],
+    catalog: dict[str, dict[str, str]],
+    included_texts: list[str],
+) -> None:
+    """Surface spreadsheet rows, meeting decisions, and lines that differ."""
+    line_sets = [list(item["lines"]) for item in pending]
+    for index, item in enumerate(pending):
+        others = [
+            line_sets[other]
+            for other in range(len(pending))
+            if other != index and _near_duplicate_lines(item["lines"], line_sets[other])
+        ]
+        unique: list[str] = []
+        if others:
+            shared: set[str] = set()
+            for other in others:
+                shared |= set(item["lines"]) & set(other)
+            unique = [line for line in item["lines"] if line not in shared]
+        visible = str(item["visible"])
+        csv_rows = _csv_key_rows(visible) if _looks_like_csv(visible) else []
+        decisions = [
+            line for line in item["lines"]
+            if _DECISION_RE.search(line) and not line.startswith(">")
+        ]
+        if csv_rows:
+            preferred = csv_rows[:_QUOTABLE_LINE_CAP]
+            surface = preferred[:3]
+            kind = "csv"
+        elif decisions:
+            preferred = decisions[:_QUOTABLE_LINE_CAP]
+            surface = preferred[:3]
+            kind = "meeting"
+        elif unique:
+            preferred = unique[:_QUOTABLE_LINE_CAP]
+            surface = preferred[:3]
+            kind = "spec"
+        elif len(item["lines"]) <= _QUOTABLE_LINE_CAP:
+            preferred = list(item["lines"])
+            surface = []
+            kind = "file"
+        else:
+            preferred = []
+            surface = []
+            kind = "file"
+        source_id = str(item["id"])
+        sources.append({
+            "id": source_id,
+            "type": "file",
+            "title": item["label"],
+            "locator": item["locator"],
+            "retrieved_at": item["retrieved_at"],
+            "content_hash": item["content_hash"],
+            "truncated": item["truncated"],
+            "max_lines": item["max_lines"],
+        })
+        bodies.append(
+            _source_block(
+                f"File {source_id} ({item['label']})",
+                visible,
+                quotable="\n".join(preferred),
+            )
+        )
+        included_texts.append(visible)
+        catalog[source_id] = {
+            "text": visible,
+            "locator": str(item["locator"]),
+            "title": str(item["label"]),
+            "hit_snippet": str(item["hit_snippet"]),
+            "preferred": "\n".join(preferred),
+            "surface": "\n".join(surface),
+            "superseded_by": "",
+            "source_kind": kind,
+        }
+
+
 def collect_allowed_sources(
     *,
     contract: dict[str, Any],
@@ -348,6 +508,7 @@ def collect_allowed_sources(
     email_truncated = False
     email_scoped = False
     file_coverage: list[dict[str, Any]] = []
+    file_pending: list[dict[str, Any]] = []
     included_texts: list[str] = []
     catalog: dict[str, dict[str, str]] = {}
 
@@ -374,6 +535,7 @@ def collect_allowed_sources(
                 email_matched = search.get("matched")
                 email_truncated = bool(search.get("truncated"))
             matched = 0
+            batch: list[dict[str, Any]] = []
             for email in emails:
                 if not isinstance(email, dict):
                     continue
@@ -404,32 +566,27 @@ def collect_allowed_sources(
                 else:
                     preview_only += 1
                 visible = redact_sensitive_text(text)
-                line_label, hit_snippet = _locate_query(visible, query)
-                locator = _locator_with_line(sender or mid, line_label)
-                sources.append({
+                batch.append({
                     "id": source_id,
-                    "type": "email",
-                    "title": subject,
-                    "locator": locator,
+                    "subject": subject,
+                    "sender": sender,
+                    "date_raw": date_raw,
+                    "date": dt,
+                    "visible": visible,
+                    "lines": _quotable_lines(visible),
                     "retrieved_at": retrieved_at,
                     "content_hash": content_hash(text or mid),
                     "body_complete": used_full,
                 })
-                bodies.append(
-                    _source_block(
-                        f"Email {source_id} ({sender})",
-                        f"Subject: {subject}\nDate: {date_raw}\n{visible}",
-                        quotable=visible,
-                    )
-                )
-                included_texts.append(visible)
-                catalog[source_id] = {
-                    "text": visible,
-                    "locator": locator,
-                    "title": subject,
-                    "hit_snippet": hit_snippet,
-                }
                 matched += 1
+            _emit_inbox_batch(
+                batch,
+                query=query,
+                sources=sources,
+                bodies=bodies,
+                catalog=catalog,
+                included_texts=included_texts,
+            )
             email_included = matched
             if email_truncated:
                 gaps.append(
@@ -479,24 +636,26 @@ def collect_allowed_sources(
             })
             if truncation:
                 gaps.append(f"文件 {label} 被截断：{truncation}")
-            sources.append({
+            file_pending.append({
                 "id": source_id,
-                "type": "file",
-                "title": label,
+                "label": label,
+                "visible": visible,
+                "lines": _quotable_lines(visible),
                 "locator": locator,
                 "retrieved_at": retrieved_at,
                 "content_hash": content_hash(raw),
                 "truncated": truncation is not None,
                 "max_lines": requested_lines,
-            })
-            bodies.append(_source_block(f"File {source_id} ({label})", visible))
-            included_texts.append(visible)
-            catalog[source_id] = {
-                "text": visible,
-                "locator": locator,
-                "title": label,
                 "hit_snippet": hit_snippet,
-            }
+            })
+
+    _emit_file_batch(
+        file_pending,
+        sources=sources,
+        bodies=bodies,
+        catalog=catalog,
+        included_texts=included_texts,
+    )
 
     if email_scope.get("enabled") and not email_attempted:
         notes.append("任务要求读取邮箱，但执行计划未包含 check_inbox 步骤")
@@ -951,6 +1110,148 @@ def _quotable_lines(text: str) -> list[str]:
     return lines
 
 
+_FORWARD_BOILERPLATE = re.compile(
+    r"(?i)^(?:"
+    r"from:|sent:|to:|cc:|subject:|date:"
+    r"|发件人|收件人|抄送|主题|发送时间"
+    r"|-{2,}\s*(?:forwarded message|original message)"
+    r"|begin forwarded message"
+    r"|原始邮件|转发的邮件|转发邮件"
+    r")"
+)
+_DECISION_RE = re.compile(r"决定|决议|结论|行动项|decision|decided", re.I)
+_CSV_STATUS_RE = re.compile(
+    r"检修|完成|延期|暂停|进行|open|closed|blocked|done|delayed",
+    re.I,
+)
+
+
+def _is_forward_boilerplate(line: str) -> bool:
+    return bool(_FORWARD_BOILERPLATE.search(line.strip()))
+
+
+def _operative_lines(text: str) -> list[str]:
+    """Lines from the current message. Quoted history and the earlier date lose."""
+    unquoted = [
+        line for line in _quotable_lines(text)
+        if not line.startswith(">") and not _is_forward_boilerplate(line)
+    ]
+    dated = [line for line in unquoted if _DATE_TOKEN.search(line)]
+    if not dated:
+        return unquoted[:_QUOTABLE_LINE_CAP]
+    current = dated[-1]
+    earlier = set(dated[:-1])
+    ordered = [current] + [line for line in unquoted if line not in earlier and line != current]
+    return ordered[:_QUOTABLE_LINE_CAP]
+
+
+def _near_duplicate_lines(left: list[str], right: list[str]) -> bool:
+    """True when the shorter note mostly repeats the other."""
+    shared = set(left) & set(right)
+    smaller = min(len(left), len(right))
+    if smaller <= 0 or not shared:
+        return False
+    return len(shared) / smaller >= 0.5
+
+
+def _looks_like_csv(text: str) -> bool:
+    rows = [line.strip() for line in str(text or "").splitlines() if "," in line]
+    if len(rows) < 2:
+        return False
+    counts = [line.count(",") for line in rows[:8]]
+    return max(counts) >= 2 and max(counts) - min(counts) <= 2
+
+
+def _csv_key_rows(text: str) -> list[str]:
+    rows = [line.strip() for line in str(text or "").splitlines() if line.strip() and "," in line]
+    if len(rows) < 2:
+        return []
+    data = rows[1:]
+    keyed = [
+        row for row in data
+        if _DATE_TOKEN.search(row) or _CSV_STATUS_RE.search(row)
+    ]
+    chosen = keyed or data[-1:]
+    return chosen[:_QUOTABLE_LINE_CAP]
+
+
+def _surface_lines(entry: dict[str, Any]) -> list[str]:
+    return _quotable_lines(str(entry.get("surface") or ""))
+
+
+def _prefer_current_fact(
+    item: dict[str, Any],
+    catalog: dict[str, dict[str, str]],
+) -> dict[str, Any]:
+    """Point a stale date, or a superseded copy, at the later line."""
+    source_ids = [
+        str(sid).strip()
+        for sid in (item.get("source_ids") or [])
+        if str(sid).strip()
+    ]
+    sid = next((candidate for candidate in source_ids if candidate in catalog), "")
+    entry = catalog.get(sid) or {}
+    newer_id = str(entry.get("superseded_by") or "")
+    if newer_id and newer_id in catalog:
+        lines = _surface_lines(catalog[newer_id]) or _quotable_lines(
+            str(catalog[newer_id].get("preferred") or "")
+        )
+        if lines:
+            updated = dict(item)
+            updated["quote"] = lines[0]
+            updated["text"] = lines[0]
+            updated["source_ids"] = [newer_id]
+            return updated
+    if str(entry.get("source_kind") or "") != "email":
+        return item
+    lines = _surface_lines(entry)
+    if not lines or not sid:
+        return item
+    current = lines[0]
+    blob = f"{item.get('text') or ''}\n{item.get('quote') or ''}"
+    if current in blob:
+        return item
+    current_dates = set(_DATE_TOKEN.findall(current))
+    blob_dates = set(_DATE_TOKEN.findall(blob))
+    if current_dates and blob_dates and not current_dates <= blob_dates:
+        updated = dict(item)
+        updated["quote"] = current
+        updated["text"] = current
+        updated["source_ids"] = [sid]
+        return updated
+    return item
+
+
+def _missing_surface_items(
+    findings_raw: list[Any],
+    catalog: dict[str, dict[str, str]],
+    allowed_ids: set[str],
+) -> list[dict[str, Any]]:
+    """Lines the compiler already picked out, when the model did not copy them."""
+    covered = "\n".join(
+        f"{item.get('text') or ''}\n{item.get('quote') or ''}"
+        for item in findings_raw
+        if isinstance(item, dict)
+    )
+    extra: list[dict[str, Any]] = []
+    for sid, entry in catalog.items():
+        if allowed_ids and sid not in allowed_ids:
+            continue
+        if str(entry.get("superseded_by") or ""):
+            continue
+        for line in _surface_lines(entry):
+            if line in covered:
+                continue
+            extra.append({
+                "text": line,
+                "quote": line,
+                "kind": "change",
+                "source_ids": [sid],
+            })
+            covered += "\n" + line
+    return extra
+
+
 _PROMPT_ECHOES = (
     "Write a project change/risk/todo brief",
     "Copy one source line into quote",
@@ -1202,7 +1503,9 @@ def _brief_from_catalog_line(
 ) -> tuple[str, list[dict[str, Any]]]:
     """One real source line when the model returned an empty brief."""
     for sid, entry in catalog.items():
-        lines = _quotable_lines(str(entry.get("text") or ""))
+        lines = _surface_lines(entry) or _quotable_lines(str(entry.get("preferred") or ""))
+        if not lines:
+            lines = _quotable_lines(str(entry.get("text") or ""))
         if not lines:
             continue
         line = lines[0]
@@ -1538,6 +1841,12 @@ def validate_model_brief(
     else:
         raise ValueError("summary and content must be strings")
     findings_raw = _coerce_findings(obj)
+    if source_catalog:
+        findings_raw = list(findings_raw) + _missing_surface_items(
+            findings_raw,
+            source_catalog,
+            allowed_ids,
+        )
     if not summary:
         summary = _first_finding_text(findings_raw)
     if not content:
@@ -1585,6 +1894,7 @@ def validate_model_brief(
                 criteria=criteria,
                 notes=source_notes,
             )
+            item = _prefer_current_fact(item, source_catalog)
         quote_for_keep = str(item.get("quote") or "")
         quote_in_catalog = any(
             candidate in str(entry.get("text") or "")
@@ -1920,6 +2230,7 @@ def _build_prompt(
             "- Never invent an id. Copy ids only from that list.\n"
             "- Do not leave findings empty. Copy one source line into quote.\n"
             "- When quotable lines are listed, copy quote from one of those lines.\n"
+            "- If a later line gives a newer date, quote that later line, not the quoted history.\n"
             "- Do not copy the objective, the acceptance criteria, or these rules into quote.\n"
             "- Write at most 6 findings. Do not repeat a quote.\n"
             "- Each finding lists only the source ids that contain that quote."
