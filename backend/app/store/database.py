@@ -10,6 +10,7 @@
 """
 
 import logging
+import shutil
 import sqlite3
 import sys
 import threading
@@ -20,6 +21,17 @@ from typing import TYPE_CHECKING, BinaryIO, Generator
 from app.store.bound_proxy import BoundProxy
 
 logger = logging.getLogger(__name__)
+
+def _sqlite_backup(src: str | Path, dest: str | Path) -> None:
+    source = sqlite3.connect(str(src))
+    target = sqlite3.connect(str(dest))
+    try:
+        source.backup(target)
+    finally:
+        target.close()
+        source.close()
+
+
 
 
 # ── 单实例文件锁（INV-W6：控制面单进程，运行时强制） ──────────────────────
@@ -194,6 +206,45 @@ class Database:
                 conn.close()
             except Exception:
                 logger.debug("Error closing database connection", exc_info=True)
+
+    def backup_to(self, dest_dir: str | Path) -> dict[str, str | bool]:
+        """Copy this database, and settings.key when it sits beside it.
+
+        Uses SQLite's backup API so a live file is a consistent snapshot.
+        The event-log export does not include app_settings; this copy does.
+        """
+        dest = Path(dest_dir)
+        dest.mkdir(parents=True, exist_ok=True)
+        db_dest = dest / Path(self.db_path).name
+        _sqlite_backup(self.db_path, db_dest)
+        key_src = Path(self.db_path).resolve().parent / "settings.key"
+        copied = False
+        if key_src.is_file():
+            key_dest = dest / "settings.key"
+            shutil.copy2(key_src, key_dest)
+            try:
+                key_dest.chmod(0o600)
+            except OSError:
+                logger.warning("could not restrict backed-up settings key mode")
+            copied = True
+        return {"database": str(db_dest), "settings_key": copied}
+
+    def restore_from(self, src_dir: str | Path) -> None:
+        """Replace this database from a directory written by backup_to."""
+        src = Path(src_dir)
+        db_src = src / Path(self.db_path).name
+        if not db_src.is_file():
+            raise FileNotFoundError(db_src)
+        self.close()
+        _sqlite_backup(db_src, Path(self.db_path))
+        key_src = src / "settings.key"
+        if key_src.is_file():
+            key_dest = Path(self.db_path).resolve().parent / "settings.key"
+            shutil.copy2(key_src, key_dest)
+            try:
+                key_dest.chmod(0o600)
+            except OSError:
+                logger.warning("could not restrict restored settings key mode")
 
     @contextmanager
     def get_db(self) -> Generator[sqlite3.Connection, None, None]:

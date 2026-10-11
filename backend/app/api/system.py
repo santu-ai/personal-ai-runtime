@@ -207,11 +207,17 @@ async def import_all_data(body: ImportRequest, request: Request):
                 status_code=400,
                 detail=f"Set confirm='{IMPORT_CONFIRM}' for write import",
             )
-    return await asyncio.to_thread(
+    data = dict(body.data)
+    settings_blob = data.pop("app_settings", None)
+    result = await asyncio.to_thread(
         kernel.restore,
-        body.data,
+        data,
         read_only=read_only,
     )
+    if not read_only and _apply_imported_settings(settings_blob):
+        if isinstance(result, dict):
+            result = {**result, "settings_restored": True}
+    return result
 
 
 @router.delete("/data")
@@ -229,6 +235,33 @@ async def destroy_all_data(body: DestroyDataRequest, request: Request):
             detail=f"Set confirm='{DESTROY_CONFIRM}' in request body",
         )
     return await asyncio.to_thread(kernel.erase)
+
+
+def _settings_for_export() -> dict:
+    """Plain settings for a backup blob. The blob's own passphrase protects them."""
+    from app.core.runtime.runtime_config import runtime_config
+
+    return {
+        "llm": runtime_config.get_llm_config(masked=False),
+        "email": runtime_config.get_email_config(masked=False),
+    }
+
+
+def _apply_imported_settings(blob: object) -> bool:
+    if not isinstance(blob, dict):
+        return False
+    from app.core.runtime.runtime_config import runtime_config
+
+    llm = blob.get("llm")
+    email = blob.get("email")
+    applied = False
+    if isinstance(llm, dict):
+        runtime_config.update_llm_config(llm)
+        applied = True
+    if isinstance(email, dict):
+        runtime_config.update_email_config(email)
+        applied = True
+    return applied
 
 
 # --- Encrypted Sync ---
@@ -255,6 +288,7 @@ async def export_encrypted(body: EncryptedExportRequest):
     )
 
     snapshot = kernel.snapshot()
+    snapshot["app_settings"] = _settings_for_export()
 
     try:
         blob = await encrypt_snapshot(snapshot, body.password)
@@ -287,8 +321,14 @@ async def import_encrypted(body: EncryptedImportRequest, request: Request):
     except EncryptedSyncError as exc:
         raise HTTPException(status_code=400, detail="Decryption failed — check password and data integrity") from exc
 
+    settings_blob = snapshot.pop("app_settings", None) if isinstance(snapshot, dict) else None
     result = await asyncio.to_thread(kernel.restore, snapshot, read_only=False)
-    return {"status": "ok", "events_imported": result.get("events_imported", 0)}
+    settings_restored = await asyncio.to_thread(_apply_imported_settings, settings_blob)
+    return {
+        "status": "ok",
+        "events_imported": result.get("events_imported", 0),
+        "settings_restored": settings_restored,
+    }
 
 
 # --- Demo endpoint (Model Continuity Demo) ---
