@@ -486,8 +486,8 @@ def _emit_file_batch(
         unique: list[str] = []
         if others:
             shared: set[str] = set()
-            for peer_lines in others:
-                shared |= set(item["lines"]) & set(peer_lines)
+            for peer in others:
+                shared |= set(item["lines"]) & set(peer)
             unique = [line for line in item["lines"] if line not in shared]
             unique.sort(key=_distinctive_rank)
         family_facts = _family_fact_lines(
@@ -499,8 +499,8 @@ def _emit_file_batch(
             ],
         )
         mixed = _mixed_language_lines(list(item["lines"]))
-        peer_lines = [
-            line_sets[other]
+        peer_lines: list[list[str]] = [
+            list(line_sets[other])
             for other in range(len(pending))
             if other != index and _same_directory(labels[index], labels[other])
         ]
