@@ -4,6 +4,7 @@ import asyncio
 import json
 import platform
 import secrets
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Request
@@ -168,7 +169,7 @@ def _support_eval() -> dict:
 
 def build_support_bundle() -> dict:
     """Redacted bug-report bundle. No mail, file body, or secret."""
-    sections: dict[str, object] = {
+    sections: dict[str, Callable[[], object]] = {
         "settings": _support_settings,
         "recent_errors": _support_errors,
         "trial": _support_trial,

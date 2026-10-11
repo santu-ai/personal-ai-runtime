@@ -186,7 +186,7 @@ def test_diagnostics_bundle_omits_mail_file_and_secrets(client: TestClient, monk
                 "type": "openai_compatible",
                 "model": "x",
                 "base_url": "https://example.test/v1",
-                "api_key": "sk-live-secret123",
+                "api_key": "sk-test-key",
                 "has_api_key": True,
                 "enabled": True,
             }],
@@ -236,7 +236,7 @@ def test_diagnostics_bundle_omits_mail_file_and_secrets(client: TestClient, monk
     assert "items" not in body["trial"]
     assert body["eval"]["stored_case_scores"] is False
     assert "total_calls" in body["eval"]["llm"]
-    assert "sk-live" not in text
+    assert "sk-test-key" not in text
     assert "owner@example.com" not in text
     assert "app-password" not in text
     assert "s3cret" not in text
