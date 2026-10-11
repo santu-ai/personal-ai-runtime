@@ -104,6 +104,7 @@ function coldStartReport({
   nowMs,
   probeMs,
   dashboardMs,
+  splashReadyMs,
   phases,
 }) {
   return {
@@ -114,6 +115,7 @@ function coldStartReport({
     todayError: todayError || "",
     probeMs: finiteMs(probeMs),
     dashboardMs: finiteMs(dashboardMs),
+    splashReadyMs: finiteMs(splashReadyMs),
     phases: phaseMap(phases),
   };
 }

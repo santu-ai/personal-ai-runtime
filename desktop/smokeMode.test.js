@@ -61,6 +61,7 @@ describe("desktop smoke mode", () => {
       nowMs: 2700,
       probeMs: 12.4,
       dashboardMs: 240,
+      splashReadyMs: 180.2,
       phases: { migration: 80, chroma_client: 400, embed: 0, secret: "no", "Bad-Name": 1 },
     })).toEqual({
       sinceLaunchMs: 2700,
@@ -70,6 +71,7 @@ describe("desktop smoke mode", () => {
       todayError: "",
       probeMs: 12,
       dashboardMs: 240,
+      splashReadyMs: 180,
       phases: { migration: 80, chroma_client: 400, embed: 0 },
     });
     expect(coldStartReport({

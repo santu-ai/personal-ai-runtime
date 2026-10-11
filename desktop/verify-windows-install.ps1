@@ -156,6 +156,9 @@ for ($run = 1; $run -le $ColdStartRuns; $run++) {
         if (-not $result.coldStart -or -not $result.coldStart.todayOk) {
             throw "Today page was not usable on run ${run}: $raw"
         }
+        if ($null -eq $result.coldStart.splashReadyMs) {
+            throw "Splash was not visible on run ${run}: $raw"
+        }
         $backendReady = [int]$result.coldStart.backendReadyMs
         $todayReady = [int]$result.coldStart.todayReadyMs
         $backendSamples.Add($backendReady)
@@ -169,8 +172,8 @@ for ($run = 1; $run -le $ColdStartRuns; $run++) {
         if ($result.coldStart.phases) {
             $phases = $result.coldStart.phases | ConvertTo-Json -Compress
         }
-        Write-Host ("Cold start run={0} backendReadyMs={1} todayReadyMs={2} dashboardMs={3} probeMs={4} sinceLaunchMs={5} phases={6}" -f `
-            $run, $backendReady, $todayReady, $dashboardText, $result.coldStart.probeMs, $result.coldStart.sinceLaunchMs, $phases)
+        Write-Host ("Cold start run={0} backendReadyMs={1} todayReadyMs={2} splashReadyMs={3} dashboardMs={4} probeMs={5} sinceLaunchMs={6} phases={7}" -f `
+            $run, $backendReady, $todayReady, $result.coldStart.splashReadyMs, $dashboardText, $result.coldStart.probeMs, $result.coldStart.sinceLaunchMs, $phases)
     } finally {
         New-Item -ItemType File -Force -Path $donePath | Out-Null
         if (-not $proc.HasExited) {

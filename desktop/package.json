@@ -33,6 +33,8 @@
       "preload.js",
       "runtimePaths.js",
       "smokeMode.js",
+      "splash.js",
+      "splash.html",
       "run-backend.py",
       "icon.png",
       "generate_icon.py",
@@ -58,7 +60,8 @@
       "oneClick": true,
       "perMachine": false,
       "allowElevation": false,
-      "artifactName": "PersonalAIRuntime-Setup-${version}-${arch}.${ext}"
+      "artifactName": "PersonalAIRuntime-Setup-${version}-${arch}.${ext}",
+      "include": "installer.nsh"
     },
     "portable": {
       "artifactName": "PersonalAIRuntime-Portable-${version}-${arch}.${ext}"
