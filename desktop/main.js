@@ -15,7 +15,6 @@ const { app, BrowserWindow, Tray, Menu, globalShortcut, Notification, dialog, na
 const { spawn, spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
-const { pathToFileURL } = require("url");
 const {
   resolvePythonCommand: resolvePythonCommandImpl,
   resolveFrontendFile: resolveFrontendFileImpl,
@@ -168,6 +167,51 @@ const RESOLVED_BACKEND_DIR = resolveBackendDir();
 
 let _appProtocolRegistered = false;
 
+// Updates are a fresh installer. There is no update feed.
+const APP_CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:* http://localhost:* ws://localhost:*",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+].join("; ");
+
+const APP_MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".map": "application/json",
+  ".txt": "text/plain; charset=utf-8",
+  ".webmanifest": "application/manifest+json",
+};
+
+function frontendFileResponse(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  const body = fs.readFileSync(filePath);
+  return new Response(body, {
+    headers: {
+      "Content-Type": APP_MIME[ext] || "application/octet-stream",
+      "Content-Security-Policy": APP_CSP,
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
 function registerAppProtocol() {
   if (_appProtocolRegistered || !isPackaged) return;
 
@@ -191,7 +235,7 @@ function registerAppProtocol() {
     }
 
     const filePath = resolveFrontendFileImpl(distRoot, relPath);
-    return electronNet.fetch(pathToFileURL(filePath).href);
+    return frontendFileResponse(filePath);
   });
   _appProtocolRegistered = true;
 }
@@ -199,6 +243,21 @@ function registerAppProtocol() {
 function resolveFrontendFile(distRoot, relPath) {
   return resolveFrontendFileImpl(distRoot, relPath);
 }
+
+function installSessionHardening() {
+  const ses = session.defaultSession;
+  ses.setPermissionRequestHandler((_contents, _permission, callback) => {
+    callback(false);
+  });
+}
+
+const WINDOW_WEB_PREFERENCES = {
+  nodeIntegration: false,
+  contextIsolation: true,
+  sandbox: true,
+  webSecurity: true,
+  preload: path.join(__dirname, "preload.js"),
+};
 
 function installNavigationGuards(win) {
   const opts = { isPackaged, devOrigin: "http://127.0.0.1:5173" };
@@ -455,11 +514,7 @@ function createMainWindow() {
     minWidth: 800,
     minHeight: 600,
     title: "Personal AI Runtime",
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, "preload.js"),
-    },
+    webPreferences: WINDOW_WEB_PREFERENCES,
     frame: true,
     show: false,
   };
@@ -500,11 +555,7 @@ function createMiniWindow() {
     frame: false,
     alwaysOnTop: true,
     skipTaskbar: true,
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, "preload.js"),
-    },
+    webPreferences: WINDOW_WEB_PREFERENCES,
   });
   installNavigationGuards(miniWindow);
   miniWindow.loadURL(briefEntryUrlImpl(RESOLVED_WEB_URL));
@@ -702,6 +753,7 @@ async function finishDesktopSmoke(startStatus, backendReady) {
 app.whenReady().then(async () => {
   // Register custom protocol + API proxy before any window is created.
   registerAppProtocol();
+  installSessionHardening();
   installApiProxy();
 
   const smoke = isDesktopSmokeMode();

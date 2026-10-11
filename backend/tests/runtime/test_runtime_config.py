@@ -154,3 +154,70 @@ def test_config_persisted_to_db(isolated_runtime_config):
     assert row is not None
     data = json.loads(row["data_json"])
     assert data["user"] == "persist@gmail.com"
+    assert data["password"] != "secret"
+    assert str(data["password"]).startswith("enc:v1:")
+    assert "secret" not in row["data_json"]
+    key_path = isolated_runtime_config / "settings.key"
+    assert key_path.is_file()
+    assert key_path.stat().st_mode & 0o777 == 0o600
+    assert rc.get_email_credentials()["password"] == "secret"
+
+
+def test_legacy_plaintext_secret_is_sealed_on_read(isolated_runtime_config):
+    from app.core.runtime.runtime_config import RuntimeConfig
+    from app.store.database import db
+
+    rc = RuntimeConfig()
+    rc.update_email_config({
+        "user": "legacy@gmail.com",
+        "password": "first",
+    })
+    legacy = {
+        "provider": "gmail",
+        "user": "legacy@gmail.com",
+        "password": "secret-legacy",
+        "imap_host": "imap.gmail.com",
+        "smtp_host": "smtp.gmail.com",
+        "smtp_port": 587,
+    }
+    with db.get_db() as conn:
+        conn.execute(
+            "UPDATE app_settings SET data_json = ? WHERE category = 'email'",
+            (json.dumps(legacy),),
+        )
+    invalidate_runtime_config_cache()
+    assert rc.get_email_credentials()["password"] == "secret-legacy"
+    with db.get_db() as conn:
+        row = conn.execute(
+            "SELECT data_json FROM app_settings WHERE category = 'email'"
+        ).fetchone()
+    assert "secret-legacy" not in row["data_json"]
+    assert "enc:v1:" in row["data_json"]
+    invalidate_runtime_config_cache()
+    assert rc.get_email_credentials()["password"] == "secret-legacy"
+
+
+def test_llm_api_key_is_sealed_in_the_database(isolated_runtime_config):
+    from app.core.runtime.runtime_config import RuntimeConfig
+    from app.store.database import db
+
+    rc = RuntimeConfig()
+    rc.update_llm_config({
+        "providers": [{
+            "id": "deepseek",
+            "name": "DeepSeek",
+            "type": "openai_compatible",
+            "base_url": "https://api.deepseek.com/v1",
+            "model": "deepseek-chat",
+            "api_key": "secret-key-123",
+            "enabled": True,
+        }],
+    })
+    with db.get_db() as conn:
+        row = conn.execute(
+            "SELECT data_json FROM app_settings WHERE category = 'llm'"
+        ).fetchone()
+    assert "secret-key-123" not in row["data_json"]
+    assert "enc:v1:" in row["data_json"]
+    stored = rc.get_llm_config(masked=False)
+    assert stored["providers"][0]["api_key"] == "secret-key-123"
