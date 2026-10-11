@@ -1583,6 +1583,64 @@ def test_bilingual_done_row_does_not_hide_a_later_open_row():
     assert "三号泵,open,2026-04-11" in text
 
 
+def test_glued_rows_do_not_count_as_copied_lines():
+    body = "\n".join([
+        "设备,状态,日期",
+        "旧泵,done,2026-01-01",
+        "一号泵,open,2026-02-01",
+        "二号泵,open,2026-03-01",
+        "三号泵,open,2026-04-11",
+    ])
+    path = "exports/pump-bilingual.csv"
+    glued = "\\n".join([
+        "旧泵,done,2026-01-01",
+        "一号泵,open,2026-02-01",
+        "二号泵,open,2026-03-01",
+        "三号泵,open,2026-04-11",
+    ])
+    text = _compile_miss({
+        "query": "",
+        "files": [{"path": path, "label": "泵表"}],
+        "results": [_inbox([], scoped=True), _file(body)],
+        "plan_steps": [
+            {"tool": "check_inbox"},
+            {"tool": "read_file", "params": {"path": path}},
+        ],
+    }, {
+        "text": "表格里有几行",
+        "quote": glued,
+        "source_ids": [_file_source_id(path)],
+        "kind": "change",
+    })
+    assert "三号泵,open,2026-04-11" in text
+
+
+def test_multiline_quote_does_not_hide_a_selected_row():
+    body = "\n".join([
+        "设备,状态,日期",
+        "旧泵,done,2026-01-01",
+        "一号泵,open,2026-02-01",
+        "二号泵,open,2026-03-01",
+        "三号泵,open,2026-04-11",
+    ])
+    path = "exports/pump-bilingual.csv"
+    text = _compile_miss({
+        "query": "",
+        "files": [{"path": path, "label": "泵表"}],
+        "results": [_inbox([], scoped=True), _file(body)],
+        "plan_steps": [
+            {"tool": "check_inbox"},
+            {"tool": "read_file", "params": {"path": path}},
+        ],
+    }, {
+        "text": "表格里有几行",
+        "quote": body,
+        "source_ids": [_file_source_id(path)],
+        "kind": "change",
+    })
+    assert "三号泵,open,2026-04-11" in text
+
+
 def test_dev_csv_keeps_a_late_open_row():
     text = _compile_miss(_dev("dev-csv-open-row"), {
         "text": "设备,编号,状态,日期",
@@ -2429,7 +2487,9 @@ def test_short_file_lists_quotable_lines_inside_a_data_fence():
     )
     assert "Quotable lines in File file:abc" in prompt
     assert "Do not copy the objective" in prompt
-    assert "at most 6 findings" in prompt
+    assert "at most 4 findings" in prompt
+    assert "Do not write content, suggested_actions, or limitations." in prompt
+    assert '"content":""' not in prompt
     start = prompt.find("Quotable lines")
     fence = prompt.find("<<<", start)
     close = prompt.find(">>>", fence)
@@ -2442,6 +2502,45 @@ def test_long_file_does_not_repeat_every_line_as_quotable():
     block = _source_block("File file:abc (笔记)", body)
     assert "Quotable lines" not in block
     assert "第1行进度正常" in block
+
+
+def test_compact_reply_fills_content_and_an_action():
+    result = validate_model_brief(
+        {
+            "summary": "材料未交",
+            "findings": [{
+                "text": "材料要交",
+                "kind": "action",
+                "source_ids": ["email:m1"],
+                "quote": "材料要交",
+            }],
+        },
+        allowed_ids={"email:m1"},
+        criteria=default_acceptance_criteria(),
+        source_notes=["邮箱只返回了主题"],
+        source_catalog={"email:m1": {"text": "材料要交", "locator": "a", "title": "待办"}},
+    )
+    assert result["content"].startswith("# 项目简报")
+    assert "材料要交" in result["content"]
+    assert result["suggested_actions"][0]["title"] == "材料要交"
+    assert "邮箱只返回了主题" in result["limitations"]
+
+
+def test_truncated_findings_keep_the_closed_ones():
+    raw = (
+        '{"summary":"进度","findings":['
+        '{"text":"北岸进度 80%","kind":"change","source_ids":["email:m1"],'
+        '"quote":"北岸进度 80%"},'
+        '{"text":"许可证'
+    )
+    obj = _extract_json(raw)
+    assert obj["summary"] == "进度"
+    assert obj["findings"] == [{
+        "text": "北岸进度 80%",
+        "kind": "change",
+        "source_ids": ["email:m1"],
+        "quote": "北岸进度 80%",
+    }]
 
 
 def test_blank_summary_uses_the_finding_text():

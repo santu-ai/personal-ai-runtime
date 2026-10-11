@@ -35,9 +35,15 @@ DEFAULT_TIMEZONE = "Asia/Shanghai"
 DEFAULT_DAYS = 3
 DEFAULT_EMAIL_LIMIT = 30
 BRIEF_FILE_MAX_LINES = 2000
-# 900 completion tokens ran past the 60s client timeout on a 3B CPU model
-# that repeats one finding. 600 still finishes, and a cut-off array is closed.
-BRIEF_COMPILE_MAX_TOKENS = 600
+# A 3B model on CPU writes about 12 tokens a second. Asking it to repeat the
+# brief as content, then findings, then one suggested action per line, took
+# ~570 tokens (~45s). A folder of similar specs hit 600 with the JSON still
+# open. The compiler rebuilds the body and fills an empty action list from
+# findings marked action, so the model only writes a short summary and at
+# most four findings. 320 tokens fits that object. num_predict is this cap;
+# the prompt already fits in the loaded 4096 context, so a smaller num_ctx
+# would not shorten prompt eval.
+BRIEF_COMPILE_MAX_TOKENS = 320
 BRIEF_MEMORY_LIMIT = 3
 DEFAULT_CRITERIA = (
     "每条关键结论附来源",
@@ -1745,17 +1751,32 @@ def _prefer_current_fact(
     return item
 
 
+def _copied_lines(findings_raw: list[Any]) -> set[str]:
+    """Surface lines the model kept as a whole finding line.
+
+    A quote that pastes several rows, with real line breaks or with the
+    characters backslash-n, still contains each row. The brief only keeps a
+    short snippet of that quote, so those rows are not copied yet.
+    """
+    copied: set[str] = set()
+    for item in findings_raw:
+        if not isinstance(item, dict):
+            continue
+        for part in (item.get("quote"), item.get("text")):
+            raw = str(part or "").strip()
+            if not raw or "\n" in raw:
+                continue
+            copied.add(raw)
+    return copied
+
+
 def _missing_surface_items(
     findings_raw: list[Any],
     catalog: dict[str, dict[str, str]],
     allowed_ids: set[str],
 ) -> list[dict[str, Any]]:
     """Lines the compiler already picked out, when the model did not copy them."""
-    covered = "\n".join(
-        f"{item.get('text') or ''}\n{item.get('quote') or ''}"
-        for item in findings_raw
-        if isinstance(item, dict)
-    )
+    copied = _copied_lines(findings_raw)
     extra: list[dict[str, Any]] = []
     for sid, entry in catalog.items():
         if allowed_ids and sid not in allowed_ids:
@@ -1763,7 +1784,7 @@ def _missing_surface_items(
         if str(entry.get("superseded_by") or ""):
             continue
         for line in _surface_lines(entry):
-            if line in covered:
+            if line in copied:
                 continue
             extra.append({
                 "text": line,
@@ -1771,7 +1792,7 @@ def _missing_surface_items(
                 "kind": "change",
                 "source_ids": [sid],
             })
-            covered += "\n" + line
+            copied.add(line)
     return extra
 
 
@@ -2350,6 +2371,25 @@ def _arrange_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return kept
 
 
+def _actions_from_action_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Open items already marked as actions, when the model did not write a second list."""
+    actions: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for finding in findings:
+        if str(finding.get("kind") or "") != "action":
+            continue
+        title = str(finding.get("text") or "").strip()
+        if not title or title in seen:
+            continue
+        seen.add(title)
+        actions.append({
+            "title": title,
+            "reason": "",
+            "source_ids": list(finding.get("source_ids") or []),
+        })
+    return actions
+
+
 def _attach_action_facts(action: dict[str, Any], catalog: dict[str, dict[str, str]] | None) -> None:
     if not catalog:
         return
@@ -2610,6 +2650,10 @@ def validate_model_brief(
         }
         _attach_action_facts(action, source_catalog)
         actions.append(action)
+    if not actions:
+        for action in _actions_from_action_findings(findings):
+            _attach_action_facts(action, source_catalog)
+            actions.append(action)
 
     limitations = []
     for item in obj.get("limitations") or []:
@@ -2933,8 +2977,21 @@ def _build_prompt(
             "- When two files share some lines, quote a line that only one file contains, and cite that file.\n"
             "- If sources disagree on a date or an amount, quote each of those lines.\n"
             "- Do not copy the objective, the acceptance criteria, or these rules into quote.\n"
-            "- Write at most 6 findings. Do not repeat a quote.\n"
-            "- Each finding lists only the source ids that contain that quote."
+            "- Write at most 4 findings. Do not repeat a quote.\n"
+            "- Each finding lists only the source ids that contain that quote.\n"
+            "- summary is one short sentence.\n"
+            "- Do not write content, suggested_actions, or limitations."
+        )
+        shape = (
+            '{"summary":"","findings":[{"text":"","kind":"change",'
+            '"source_ids":[],"quote":""}]}'
+        )
+        shape_note = (
+            "Replace the empty strings. summary is one short sentence.\n"
+            "Put conclusions only in findings. Each finding has text, kind, source_ids, and quote.\n"
+            "kind is change, risk, or action. Use action for an open item.\n"
+            "Do not add content, suggested_actions, or limitations.\n"
+            "quote copies one contiguous source line and keeps its spaces."
         )
     else:
         cite_rules = (
@@ -2944,6 +3001,14 @@ def _build_prompt(
             "- content and limitations must say there are no sources.\n"
             "- Do not invent an id."
         )
+        shape = '{"summary":"","content":"","findings":[],"suggested_actions":[],"limitations":[]}'
+        shape_note = (
+            "Replace the empty strings. summary and content are strings, not arrays.\n"
+            "Put conclusions only in findings. Each finding has text, kind, source_ids, and quote.\n"
+            "kind is change, risk, or action.\n"
+            "quote copies one contiguous source line and keeps its spaces."
+        )
+
     def render(source_section: str, omitted: int) -> str:
         omitted_rule = ""
         if omitted:
@@ -2974,11 +3039,8 @@ Source materials:
 {source_section}
 
 Reply with one JSON object and no other text. The shape is:
-{{"summary":"","content":"","findings":[],"suggested_actions":[],"limitations":[]}}
-Replace the empty strings. summary and content are strings, not arrays.
-Put conclusions only in findings. Each finding has text, kind, source_ids, and quote.
-kind is change, risk, or action.
-quote copies one contiguous source line and keeps its spaces.
+{shape}
+{shape_note}
 
 Rules:
 {cite_rules}
