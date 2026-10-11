@@ -80,14 +80,55 @@ function todayHeadingScript() {
   })()`;
 }
 
-function coldStartReport({ backendReadyMs, todayReadyMs, todayError, nowMs }) {
+function finiteMs(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return Math.round(value);
+}
+
+function phaseMap(phases) {
+  const out = {};
+  if (!phases || typeof phases !== "object") return out;
+  for (const [key, value] of Object.entries(phases)) {
+    const ms = finiteMs(value);
+    if (ms == null) continue;
+    if (!/^[a-z][a-z0-9_]{0,31}$/.test(key)) continue;
+    out[key] = ms;
+  }
+  return out;
+}
+
+function coldStartReport({
+  backendReadyMs,
+  todayReadyMs,
+  todayError,
+  nowMs,
+  probeMs,
+  dashboardMs,
+  phases,
+}) {
   return {
     sinceLaunchMs: nowMs,
     backendReadyMs: backendReadyMs == null ? null : backendReadyMs,
     todayReadyMs: todayReadyMs == null ? null : todayReadyMs,
     todayOk: todayReadyMs != null && !todayError,
     todayError: todayError || "",
+    probeMs: finiteMs(probeMs),
+    dashboardMs: finiteMs(dashboardMs),
+    phases: phaseMap(phases),
   };
+}
+
+function coldStartDistribution(samples) {
+  const nums = (Array.isArray(samples) ? samples : [])
+    .filter((value) => typeof value === "number" && Number.isFinite(value))
+    .map((value) => Math.round(value))
+    .sort((a, b) => a - b);
+  if (nums.length === 0) return { median: null, max: null, count: 0 };
+  const mid = Math.floor(nums.length / 2);
+  const median = nums.length % 2 === 1
+    ? nums[mid]
+    : Math.round((nums[mid - 1] + nums[mid]) / 2);
+  return { median, max: nums[nums.length - 1], count: nums.length };
 }
 
 module.exports = {
@@ -104,4 +145,5 @@ module.exports = {
   todayProbeTimeoutMs,
   todayHeadingScript,
   coldStartReport,
+  coldStartDistribution,
 };

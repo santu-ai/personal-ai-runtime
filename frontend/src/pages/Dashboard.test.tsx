@@ -315,10 +315,17 @@ describe("DashboardPage", () => {
     expect(screen.getByTestId("period-comparison")).toHaveTextContent("+1");
   });
 
-  it("shows loading state", () => {
-    mockDashboardData({ loading: true });
+  it("shows the today title while panels are still loading", () => {
+    mockDashboardData({
+      loading: true,
+      notifications: [],
+      notificationsLoaded: false,
+      notificationsPending: true,
+    });
     renderDashboard();
+    expect(screen.getByRole("heading", { name: "今天" })).toBeInTheDocument();
     expect(screen.getAllByText("加载中...")[0]).toBeInTheDocument();
+    expect(screen.queryByText("今天暂无紧急事项")).not.toBeInTheDocument();
   });
 
   it("shows error state with retry button", async () => {
@@ -326,6 +333,7 @@ describe("DashboardPage", () => {
     mockDashboardData({ error: "后端连接失败", loading: false, refresh: mockRefresh });
     renderDashboard();
     const alert = screen.getByTestId("dashboard-load-error");
+    expect(screen.getByRole("heading", { name: "今天" })).toBeInTheDocument();
     expect(alert).toHaveTextContent("后端连接失败");
     expect(screen.queryByText("今天暂无紧急事项")).not.toBeInTheDocument();
     const retry = within(alert).getByRole("button", { name: /^重试(：|$)/ });

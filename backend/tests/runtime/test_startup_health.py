@@ -120,3 +120,25 @@ def test_enrich_with_mcp_status_marks_disconnected_as_degraded(monkeypatch):
     result = enrich_with_mcp_status(snapshot)
     assert result["status"] == "degraded"
     assert any("calendar" in w for w in result["warnings"])
+
+
+def test_public_health_includes_phase_milliseconds():
+    import time
+
+    from app.core.startup_health import clear_phase_ms, note_phase_ms, note_phase_since
+
+    clear_phase_ms()
+    note_phase_ms("migration", 12.8)
+    note_phase_ms("migration", 4)
+    note_phase_ms("../secret", 99)
+    note_phase_ms("embed", -4)
+    started = time.perf_counter()
+    note_phase_since("chroma_client", started)
+    public = sanitize_startup_for_public({"status": "ok", "warnings": [], "checks": {}})
+    assert public is not None
+    assert public["phases"]["migration"] == 12
+    assert public["phases"]["embed"] == 0
+    assert "secret" not in public["phases"]
+    assert "../secret" not in public["phases"]
+    assert public["phases"]["chroma_client"] >= 0
+    clear_phase_ms()

@@ -189,6 +189,10 @@ describe("Electron main process", () => {
     expect(source).toContain("show: false");
     expect(source).toContain("importlib.util.find_spec");
     expect(source).not.toContain("import uvicorn, chromadb, app.main");
+    expect(source).toContain("pythonProbeMs");
+    expect(source).toContain("measureDashboard");
+    expect(source).toContain("/api/dashboard");
+    expect(source).toContain("dashboardMs");
   });
 
   it("packs every local require() from main.js in electron-builder files", () => {

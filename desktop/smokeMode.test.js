@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_HOLD_MS,
   backendPollMs,
+  coldStartDistribution,
   coldStartReport,
   isDesktopSmokeMode,
   smokeHoldMs,
@@ -58,12 +59,18 @@ describe("desktop smoke mode", () => {
       todayReadyMs: 2600,
       todayError: "",
       nowMs: 2700,
+      probeMs: 12.4,
+      dashboardMs: 240,
+      phases: { migration: 80, chroma_client: 400, embed: 0, secret: "no", "Bad-Name": 1 },
     })).toEqual({
       sinceLaunchMs: 2700,
       backendReadyMs: 1400,
       todayReadyMs: 2600,
       todayOk: true,
       todayError: "",
+      probeMs: 12,
+      dashboardMs: 240,
+      phases: { migration: 80, chroma_client: 400, embed: 0 },
     });
     expect(coldStartReport({
       backendReadyMs: 1400,
@@ -71,5 +78,19 @@ describe("desktop smoke mode", () => {
       todayError: "today-heading-timeout",
       nowMs: 62000,
     }).todayOk).toBe(false);
+  });
+
+  it("summarizes a cold-start sample as median and max", () => {
+    expect(coldStartDistribution([8152, 6110, 8827, 7000, 6400])).toEqual({
+      median: 7000,
+      max: 8827,
+      count: 5,
+    });
+    expect(coldStartDistribution([1000, 3000])).toEqual({ median: 2000, max: 3000, count: 2 });
+    expect(coldStartDistribution([1500, null, 2500])).toEqual({ median: 2000, max: 2500, count: 2 });
+    expect(coldStartDistribution([])).toEqual({ median: null, max: null, count: 0 });
+    const verify = readFileSync(join(__dirname, "verify-windows-install.ps1"), "utf8");
+    expect(verify).toContain("$ColdStartRuns = 5");
+    expect(verify).toContain("function Get-Median");
   });
 });

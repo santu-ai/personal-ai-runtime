@@ -133,11 +133,13 @@ function verifyPythonDependencies(pythonCmd, backendDir, extraEnv) {
   // find_spec checks the install without importing app.main. A full import
   // here runs again inside the backend process and dominated cold start.
   const importProbe = `import importlib.util, sys; sys.path.insert(0, r'${escapedDir}'); ok = importlib.util.find_spec('uvicorn') and importlib.util.find_spec('chromadb'); raise SystemExit(0 if ok else 1)`;
+  const started = Date.now();
   const probe = spawnSync(pythonCmd.executable, [...pythonCmd.args, "-c", importProbe], {
     cwd: backendDir,
     env,
     stdio: "ignore",
   });
+  pythonProbeMs = Date.now() - started;
   return probe.status === 0;
 }
 
@@ -343,6 +345,7 @@ let backendStarting = false;
 let backendLog = "";
 let backendExitCode = null;
 let backendReadyUptimeMs = null;
+let pythonProbeMs = null;
 
 function rememberBackendLog(chunk) {
   backendLog = `${backendLog}${chunk}`.slice(-4000);
@@ -766,10 +769,23 @@ async function measureTodayPage() {
   }
 }
 
+async function measureDashboard() {
+  const started = Date.now();
+  try {
+    const res = await electronNet.fetch(`http://127.0.0.1:${BACKEND_PORT}/api/dashboard`);
+    await res.text();
+    return Date.now() - started;
+  } catch {
+    return null;
+  }
+}
+
 async function finishDesktopSmoke(startStatus, backendReady) {
-  const today = backendReady
-    ? await measureTodayPage()
-    : { readyAtMs: null, error: "backend-not-ready" };
+  const todayPromise = backendReady
+    ? measureTodayPage()
+    : Promise.resolve({ readyAtMs: null, error: "backend-not-ready" });
+  const dashboardPromise = backendReady ? measureDashboard() : Promise.resolve(null);
+  const [today, dashboardMs] = await Promise.all([todayPromise, dashboardPromise]);
   const health = await probeLocalBackend();
   const live = await probeLiveBackend();
   const ok = startStatus !== "conflict"
@@ -778,11 +794,15 @@ async function finishDesktopSmoke(startStatus, backendReady) {
     && backendReady === true
     && health.kind === "ours"
     && live.ok === true;
+  const startup = health.payload && health.payload.startup;
   const coldStart = coldStartReport({
     backendReadyMs: backendReadyUptimeMs,
     todayReadyMs: today.readyAtMs,
     todayError: today.error,
     nowMs: Math.round(process.uptime() * 1000),
+    probeMs: pythonProbeMs,
+    dashboardMs,
+    phases: startup && startup.phases,
   });
   writeSmokeResult(process.env, {
     ok,

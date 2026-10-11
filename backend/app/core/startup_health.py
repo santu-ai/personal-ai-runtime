@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +15,10 @@ from app.core.runtime.runtime_config import runtime_config
 logger = logging.getLogger(__name__)
 
 _MCP_FAILURE_STATUSES = frozenset({"disconnected", "unavailable"})
+
+# Millisecond timings for boot phases. Public health exposes these numbers only.
+_PHASE_MS: dict[str, int] = {}
+_PHASE_NAME = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
 # Fields allowed on the unauthenticated /health startup payload.
 _PUBLIC_STORAGE_FIELDS = frozenset({
@@ -39,6 +45,40 @@ def _mcp_server_failed(server: dict[str, Any]) -> bool:
 
 def _pick_fields(source: dict[str, Any], allowed: frozenset[str]) -> dict[str, Any]:
     return {key: source[key] for key in allowed if key in source}
+
+
+def note_phase_ms(name: str, elapsed_ms: float) -> None:
+    """Record one boot phase in milliseconds. Never raises."""
+    try:
+        key = str(name)
+        if _PHASE_NAME.fullmatch(key) is None:
+            return
+        ms = int(elapsed_ms)
+        if ms < 0:
+            ms = 0
+        if ms > 600_000:
+            ms = 600_000
+        # 同名阶段可能再跑一次很快的幂等调用。留下更慢的那次，避免把冷启动盖掉。
+        previous = _PHASE_MS.get(key)
+        if previous is None or ms > previous:
+            _PHASE_MS[key] = ms
+    except Exception:
+        logger.debug("startup phase was not recorded", exc_info=True)
+
+
+def note_phase_since(name: str, started: float) -> None:
+    """Record ``name`` as the milliseconds since ``started`` (perf counter)."""
+    note_phase_ms(name, (time.perf_counter() - started) * 1000.0)
+
+
+def phase_ms() -> dict[str, int]:
+    """Copy of recorded boot phases."""
+    return {key: int(value) for key, value in _PHASE_MS.items()}
+
+
+def clear_phase_ms() -> None:
+    """Drop recorded phases. Tests use this so one case cannot leak into the next."""
+    _PHASE_MS.clear()
 
 
 def run_startup_checks() -> dict[str, Any]:
@@ -218,4 +258,5 @@ def sanitize_startup_for_public(snapshot: dict[str, Any] | None) -> dict[str, An
         "status": snapshot.get("status"),
         "warning_count": len(snapshot.get("warnings", [])),
         "checks": public_checks,
+        "phases": phase_ms(),
     }

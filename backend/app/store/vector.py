@@ -4,7 +4,9 @@ import json
 import logging
 import os
 import sqlite3
+import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -39,6 +41,29 @@ from chromadb.config import Settings as ChromaSettings  # noqa: E402
 from chromadb.utils.embedding_functions import DefaultEmbeddingFunction  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+
+_note_phase_since: Callable[[str, float], None] | None = None
+_phase_note_bound = False
+
+
+def _bind_phase_note() -> None:
+    """Import the phase recorder before the clock starts, so the import is not the phase."""
+    global _note_phase_since, _phase_note_bound
+    if _phase_note_bound:
+        return
+    _phase_note_bound = True
+    try:
+        from app.core.startup_health import note_phase_since
+
+        _note_phase_since = note_phase_since
+    except Exception:
+        logger.debug("startup phase recorder unavailable", exc_info=True)
+
+
+def _note_phase(name: str, started: float) -> None:
+    if _note_phase_since is not None:
+        _note_phase_since(name, started)
 
 # 钉死 Chroma 0.5.x / 1.x 自带的默认 ONNX MiniLM L6 v2 路径，
 # 防止升级时悄悄切换 embedding 模型或维度。
@@ -108,11 +133,16 @@ class VectorStore:
                 settings.vector_dir,
             )
 
-        self.client = chromadb.PersistentClient(
-            path=settings.vector_dir,
-            settings=ChromaSettings(anonymized_telemetry=False),
-        )
-        self._init_collections()
+        _bind_phase_note()
+        started = time.perf_counter()
+        try:
+            self.client = chromadb.PersistentClient(
+                path=settings.vector_dir,
+                settings=ChromaSettings(anonymized_telemetry=False),
+            )
+            self._init_collections()
+        finally:
+            _note_phase("chroma_client", started)
 
     def _init_collections(self):
         """若 collection 不存在则创建。"""
@@ -166,11 +196,25 @@ class VectorStore:
         """
         if not queries:
             return []
-        results = self.memory_collection.query(
-            query_texts=queries,
-            n_results=n_results,
-        )
-        return self._parse_search_results(results, len(queries))
+        # 空库没有可召回的记忆。跳过 query 就不会加载默认的 ONNX embedding。
+        _bind_phase_note()
+        started = time.perf_counter()
+        try:
+            empty = False
+            try:
+                empty = int(self.memory_collection.count()) == 0
+            except Exception:
+                logger.debug("memory collection count failed", exc_info=True)
+                empty = False
+            if empty:
+                return [[] for _ in queries]
+            results = self.memory_collection.query(
+                query_texts=queries,
+                n_results=n_results,
+            )
+            return self._parse_search_results(results, len(queries))
+        finally:
+            _note_phase("embed", started)
 
     def _parse_search_results(self, results: Any, num_queries: int) -> list[list[VectorSearchResult]]:
         """将 ChromaDB QueryResult 解析为嵌套列表的内部辅助。"""
