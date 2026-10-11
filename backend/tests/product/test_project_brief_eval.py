@@ -1828,6 +1828,36 @@ def test_trailing_period_on_a_source_line_still_matches():
     assert result["findings"][0]["evidence"][0]["snippet"] == "负责人 林晚"
 
 
+def test_note_quoted_with_a_period_does_not_sink_a_real_line():
+    result = validate_model_brief(
+        {
+            "summary": "负责人 林晚",
+            "content": "负责人 林晚",
+            "findings": [
+                {
+                    "text": "The mailbox step is missing.",
+                    "source_ids": ["email:m1"],
+                    "quote": "邮箱已配置，但检索范围内没有邮件.",
+                },
+                {
+                    "text": "负责人 林晚",
+                    "source_ids": ["email:m1"],
+                    "quote": "负责人 林晚",
+                },
+            ],
+        },
+        allowed_ids={"email:m1"},
+        criteria=default_acceptance_criteria(),
+        source_notes=["邮箱已配置，但检索范围内没有邮件"],
+        source_catalog={
+            "email:m1": {"text": "负责人 林晚", "locator": "m1", "title": "分工"},
+        },
+        objective="整理进度、风险和待办",
+    )
+    assert result["quality_evidence"] == "pending"
+    assert all(row["evidence"][0]["quote_in_source"] for row in result["findings"])
+
+
 def test_collector_note_echo_does_not_sink_a_real_line():
     result = validate_model_brief(
         {

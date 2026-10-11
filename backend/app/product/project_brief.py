@@ -2125,12 +2125,15 @@ def validate_model_brief(
             for entry in (source_catalog or {}).values()
             for candidate in _quote_candidates(quote_for_keep)
         )
-        if not quote_in_catalog and _is_scaffold_finding(
-            str(item.get("text") or ""),
-            source_catalog or {},
-            objective,
-            criteria,
-            source_notes,
+        if not quote_in_catalog and (
+            _is_scaffold_finding(
+                str(item.get("text") or ""),
+                source_catalog or {},
+                objective,
+                criteria,
+                source_notes,
+            )
+            or _is_prompt_echo(quote_for_keep, objective, criteria, source_notes)
         ):
             continue
         quote = str(item.get("quote") or "").strip()
