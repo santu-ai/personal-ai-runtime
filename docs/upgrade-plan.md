@@ -392,6 +392,6 @@ llama3.2:3b 在当前主分支（#385）上、修复前：37 例里 30 例能解
 
 - [x] 试用说明对齐当前应用。引导里检测并拉取 `qwen2.5:3b`、系统保管密钥且整库备份不带走 `settings.key`、桌面 `safeStorage` 打不开时要重填哪一项、运行中可取消、超时不删上一版、试用导出仍是 `trial-record-` JSON。补上排查：没有模型、邮箱登录失效、密钥要重填、内容没有发出、简报很慢或超时。`configuration.md`、`deployment.md`、`security.md` 里这几项已经是现在的行为，没有改写
 - [ ] 一键导出打码后的诊断包：版本、去掉密钥的设置、最近的错误和日志、评测和试用统计。不含邮件或文件正文。日志要轮转并保持有界
-- [x] 量从启动应用到今天页可用的时间（Windows CI 和本机），再改真正的热点，记下前后。今天页标题要等整页加载结束才出现。Windows 改前 `backendReadyMs=8827`、`todayReadyMs=9690`。热点是启动前同步执行 `import uvicorn, chromadb, app.main`，本机 1.14–1.30 秒，服务进程还要再导入一次。改为 `find_spec` 后本机探测 0.014 秒。Windows 改后数字在这次干净安装日志的 `Cold start` 行
+- [x] 量从启动应用到今天页可用的时间（Windows CI 和本机），再改真正的热点，记下前后。今天页标题要等整页加载结束才出现。Windows 改前 `backendReadyMs=8827`、`todayReadyMs=9690`。热点是启动前同步执行 `import uvicorn, chromadb, app.main`，本机 1.14–1.30 秒，服务进程还要再导入一次。改为 `find_spec` 后本机探测 0.014 秒。Windows 改后 `backendReadyMs=6110`、`todayReadyMs=7802`
 - [ ] 引导、任务、来源和今天页的键盘、焦点顺序、标签和对比度。只修真问题并补测试
 - [ ] 仍不做：通用工作流画布、多用户、大批连接器、只为缩小文件的重构
