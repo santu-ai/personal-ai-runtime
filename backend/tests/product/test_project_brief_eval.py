@@ -701,6 +701,8 @@ def _file_source_id(path: str) -> str:
 
 _DEV_EAST_SPEC = "specs/east-pump.md"
 _DEV_WEST_SPEC = "specs/west-pump.md"
+_DEV_NORTH_BASIN = "specs/north-basin.md"
+_DEV_SOUTH_BASIN = "specs/south-basin.md"
 _DEV_MEETING = "notes/east-lake-review.md"
 _DEV_PUMP_CSV = "exports/pump-work.csv"
 
@@ -840,6 +842,40 @@ DEV_CASES: list[dict] = [
         "included": {_file_source_id(_DEV_EAST_SPEC), _file_source_id(_DEV_WEST_SPEC)},
         "has_file": True,
         "fact_all": ["27万元", "31万元"],
+    },
+    {
+        "id": "dev-partial-specs",
+        "query": "",
+        "results": [
+            _file("\n".join([
+                "北区清水池说明书",
+                "池深 4 米。",
+                "有盖板。",
+                "进水口在东侧。",
+                "北区清淤报价 18万元。",
+                "池壁为混凝土。",
+                "巡检每周一次。",
+            ])),
+            _file("\n".join([
+                "南区清水池说明书",
+                "池深 6 米。",
+                "无盖板。",
+                "进水口在西侧。",
+                "南区清淤报价 22万元。",
+                "池壁为混凝土。",
+                "巡检每周一次。",
+            ])),
+        ],
+        "files": [
+            {"path": _DEV_NORTH_BASIN, "label": _DEV_NORTH_BASIN},
+            {"path": _DEV_SOUTH_BASIN, "label": _DEV_SOUTH_BASIN},
+        ],
+        "included": {
+            _file_source_id(_DEV_NORTH_BASIN),
+            _file_source_id(_DEV_SOUTH_BASIN),
+        },
+        "has_file": True,
+        "fact_all": ["18万元", "22万元"],
     },
     {
         "id": "dev-csv-row",
@@ -1002,6 +1038,47 @@ def test_dev_meeting_decision_is_kept_when_the_model_quotes_the_agenda():
         "kind": "change",
     })
     assert "12 件" in text
+
+
+def test_dev_partial_specs_keep_both_prices():
+    case = _dev("dev-partial-specs")
+    _sources, bodies, _notes, _coverage = prepare_case(case)
+    joined = "\n".join(bodies)
+    assert "specs/north-basin.md" in joined
+    assert "specs/south-basin.md" in joined
+    text = _compile_miss(case, {
+        "text": "池壁为混凝土",
+        "quote": "池壁为混凝土。",
+        "source_ids": [_file_source_id(_DEV_NORTH_BASIN)],
+        "kind": "change",
+    })
+    assert "18万元" in text
+    assert "22万元" in text
+
+
+def test_dev_partial_spec_quote_stays_with_the_file_that_contains_it():
+    case = _dev("dev-partial-specs")
+    sources, _bodies, notes, coverage = prepare_case(case)
+    by_title = {str(item["title"]): str(item["id"]) for item in sources}
+    result = validate_model_brief(
+        {
+            "summary": "北区清淤报价 18万元",
+            "content": "北区清淤报价 18万元。",
+            "findings": [{
+                "text": "北区清淤报价 18万元。",
+                "quote": "北区清淤报价 18万元。",
+                "source_ids": [by_title[_DEV_SOUTH_BASIN]],
+                "kind": "change",
+            }],
+        },
+        allowed_ids={str(item["id"]) for item in sources},
+        criteria=default_acceptance_criteria(),
+        source_notes=notes,
+        source_catalog=dict(coverage["_catalog"]),
+        objective="整理进度、风险和待办",
+    )
+    assert result["quality_evidence"] == "pending"
+    assert result["findings"][0]["source_ids"] == [by_title[_DEV_NORTH_BASIN]]
 
 
 def test_dev_similar_specs_keep_both_prices():

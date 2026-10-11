@@ -400,17 +400,22 @@ def _emit_file_batch(
     """Surface spreadsheet rows, meeting decisions, and lines that differ."""
     line_sets = [list(item["lines"]) for item in pending]
     for index, item in enumerate(pending):
-        others = [
-            line_sets[other]
-            for other in range(len(pending))
-            if other != index and _near_duplicate_lines(item["lines"], line_sets[other])
-        ]
+        others: list[list[str]] = []
+        for other in range(len(pending)):
+            if other == index:
+                continue
+            peer = line_sets[other]
+            if _near_duplicate_lines(item["lines"], peer) or _short_files_share_a_line(
+                item["lines"], peer,
+            ):
+                others.append(peer)
         unique: list[str] = []
         if others:
             shared: set[str] = set()
-            for other in others:
-                shared |= set(item["lines"]) & set(other)
+            for peer_lines in others:
+                shared |= set(item["lines"]) & set(peer_lines)
             unique = [line for line in item["lines"] if line not in shared]
+            unique.sort(key=_distinctive_rank)
         visible = str(item["visible"])
         csv_rows = _csv_key_rows(visible) if _looks_like_csv(visible) else []
         decisions = [
@@ -1170,6 +1175,20 @@ def _near_duplicate_lines(left: list[str], right: list[str]) -> bool:
     return len(shared) / smaller >= 0.5
 
 
+def _short_files_share_a_line(left: list[str], right: list[str]) -> bool:
+    """Two short files that share a line still need their differing lines."""
+    if len(left) > _QUOTABLE_LINE_CAP or len(right) > _QUOTABLE_LINE_CAP:
+        return False
+    return bool(set(left) & set(right))
+
+
+def _distinctive_rank(line: str) -> int:
+    """Amounts, dates, and decisions outrank a repeated description."""
+    if _AMOUNT.search(line) or _DATE_TOKEN.search(line) or _DECISION_RE.search(line):
+        return 0
+    return 1
+
+
 def _looks_like_csv(text: str) -> bool:
     rows = [line.strip() for line in str(text or "").splitlines() if "," in line]
     if len(rows) < 2:
@@ -1662,6 +1681,36 @@ def _retrieval_lines(coverage: dict[str, Any] | None) -> list[str]:
     return lines
 
 
+def _retarget_unique_quote(
+    item: dict[str, Any],
+    catalog: dict[str, dict[str, str]],
+) -> dict[str, Any]:
+    """Cite the only source that contains this quote."""
+    quote = str(item.get("quote") or "").strip()
+    if not quote or not catalog:
+        return item
+    owners = [
+        sid
+        for sid, entry in catalog.items()
+        if any(
+            candidate in str(entry.get("text") or "")
+            for candidate in _quote_candidates(quote)
+        )
+    ]
+    if len(owners) != 1:
+        return item
+    current = [
+        str(sid).strip()
+        for sid in (item.get("source_ids") or [])
+        if str(sid).strip()
+    ]
+    if current == [owners[0]]:
+        return item
+    updated = dict(item)
+    updated["source_ids"] = [owners[0]]
+    return updated
+
+
 def _canonicalize_source_id(sid: str, allowed_ids: set[str]) -> str:
     """Drop the sender or path we print next to an id in the prompt label."""
     cleaned = str(sid or "").strip()
@@ -1937,6 +1986,7 @@ def validate_model_brief(
                 notes=source_notes,
             )
             item = _prefer_current_fact(item, source_catalog)
+            item = _retarget_unique_quote(item, source_catalog)
         quote_for_keep = str(item.get("quote") or "")
         quote_in_catalog = any(
             candidate in str(entry.get("text") or "")
@@ -2273,6 +2323,7 @@ def _build_prompt(
             "- Do not leave findings empty. Copy one source line into quote.\n"
             "- When quotable lines are listed, copy quote from one of those lines.\n"
             "- If a later line gives a newer date, quote that later line, not the quoted history.\n"
+            "- When two files share some lines, quote a line that only one file contains, and cite that file.\n"
             "- Do not copy the objective, the acceptance criteria, or these rules into quote.\n"
             "- Write at most 6 findings. Do not repeat a quote.\n"
             "- Each finding lists only the source ids that contain that quote."
