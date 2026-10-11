@@ -101,7 +101,7 @@ make desktop-build   # cd desktop && npm run build  (electron-builder)
 
 可复现输入：`npm ci`、`pip install --require-hashes`、embeddable CPython 与 `get-pip.py` 的 sha256（[`desktop/pinnedDownloads.js`](../../desktop/pinnedDownloads.js)）、提交时间作为 `SOURCE_DATE_EPOCH`、关闭签名自动发现。CI 里输出目录清不掉就失败，不用带时间戳的备用目录。NSIS 安装包本身不保证跨机器逐字节相同。
 
-同一工作流也会在改到桌面、后端、前端或该工作流的 pull request 上跑构建和干净安装，不创建 Release。无人值守启动认 `PAR_DESKTOP_SMOKE=1`：跳过开机自启对话框，不打开窗口，把结果写到 `PAR_DESKTOP_SMOKE_RESULT`，看到 `PAR_DESKTOP_SMOKE_DONE` 后退出。
+同一工作流也会在改到桌面、后端、前端或该工作流的 pull request 上跑构建和干净安装，不创建 Release。仓库目前没有已发布的安装包，所以 CI 不能先装上一版再升到当前构建。库从 `0001_consolidated` 升到当前版本、以及设置和试用事件留下，由 [`test_upgrade_and_backup.py`](../../backend/tests/runtime/test_upgrade_and_backup.py) 覆盖。无人值守启动认 `PAR_DESKTOP_SMOKE=1`：跳过开机自启对话框，不打开窗口，把结果写到 `PAR_DESKTOP_SMOKE_RESULT`，看到 `PAR_DESKTOP_SMOKE_DONE` 后退出。
 
 主人在 Windows 上开始 14 天试用时，按 [trial-guide.md](trial-guide.md) 安装、接上 Gmail 和项目文件、跑第一份简报，并导出今天页的试用记录。
 
@@ -113,7 +113,7 @@ make desktop-build   # cd desktop && npm run build  (electron-builder)
 | Docker Compose | `/app/backend/data/personal_ai.db`（卷 `backend-data`） | `/app/backend/data/vectors/`（同卷） |
 | 桌面打包 | 由系统 `DATA_DIR` 决定 | 同 |
 
-数据可经 `POST /api/system/export`（明文 JSON）或 `POST /api/system/export/encrypted`（AES-GCM + Argon2id，base64）导出；经 `POST /api/system/import` 或 `/import/encrypted` 导入；`DELETE /api/system/data`（body `{"confirm": "DESTROY_ALL_DATA"}`；若已配置 `AUTH_TOKEN` 则同时需要 Bearer）不可逆销毁。详见 [03-subsystems/backend-api.md](../03-subsystems/backend-api.md) 与 [04-data/data-model.md](../04-data/data-model.md)。
+数据可经 `POST /api/system/export`（明文 JSON，事件日志）或 `POST /api/system/export/encrypted`（AES-GCM + Argon2id，base64）导出；经 `POST /api/system/import` 或 `/import/encrypted` 导入；`DELETE /api/system/data`（body `{"confirm": "DESTROY_ALL_DATA"}`；若已配置 `AUTH_TOKEN` 则同时需要 Bearer）不可逆销毁。加密快照在事件日志之外带上 LLM 与邮箱设置（未打码，由导出密码保护）。导入时先取出 `app_settings`，事件交给 Kernel，设置经 `RuntimeConfig` 写回。整库副本用 `Database.backup_to` / `restore_from`：SQLite backup API 复制数据库（含 `app_settings`），并复制旁边的 `settings.key`。没有这把密钥时，落在库里的密文设置打不开。详见 [03-subsystems/backend-api.md](../03-subsystems/backend-api.md) 与 [04-data/data-model.md](../04-data/data-model.md)。
 
 ## 生产安全清单
 
