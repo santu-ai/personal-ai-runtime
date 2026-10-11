@@ -15,6 +15,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from cryptography.fernet import Fernet, InvalidToken
+
 from app.config import settings
 from app.core.runtime import kernel_instance as _kernel_module
 from app.core.runtime.runtime_container import _LazyProxy, runtime
@@ -25,6 +27,7 @@ logger = logging.getLogger(__name__)
 _CONFIG_FILENAME = "runtime_config.json"
 _lock = threading.Lock()
 _MASKED_SECRET = "••••••••"
+_SEAL_PREFIX = "enc:v1:"
 _cache: dict[str, Any] | None = None
 
 # Provider type → connection semantics (all use OpenAI SDK today).
@@ -181,6 +184,105 @@ def _default_email_from_env() -> dict[str, Any]:
     }
 
 
+
+def _settings_key_path() -> Path:
+    return Path(settings.sqlite_path).resolve().parent / "settings.key"
+
+
+def _fernet() -> Fernet:
+    """Key lives next to the database so a data-dir backup can still open settings."""
+    path = _settings_key_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_file():
+        raw = path.read_bytes().strip()
+    else:
+        raw = Fernet.generate_key()
+        path.write_bytes(raw + b"\n")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        logger.warning("could not restrict settings key file mode")
+    return Fernet(raw)
+
+
+def _open_secret(value: Any) -> tuple[Any, bool]:
+    """Return plaintext and whether a legacy plaintext value still needs sealing."""
+    if not isinstance(value, str) or not value:
+        return value, False
+    if not value.startswith(_SEAL_PREFIX):
+        return value, True
+    try:
+        plain = _fernet().decrypt(value[len(_SEAL_PREFIX):].encode()).decode()
+    except (InvalidToken, ValueError):
+        logger.warning("stored setting could not be opened")
+        return value, False
+    return plain, False
+
+
+def _seal_secret(value: Any) -> Any:
+    if not isinstance(value, str) or not value or value.startswith(_SEAL_PREFIX):
+        return value
+    token = _fernet().encrypt(value.encode()).decode()
+    return _SEAL_PREFIX + token
+
+
+def _open_email(email: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    out = deepcopy(email)
+    opened, dirty = _open_secret(out.get("password", ""))
+    out["password"] = opened
+    return out, dirty
+
+
+def _open_llm(llm: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    out = deepcopy(llm)
+    dirty = False
+    providers = []
+    for provider in out.get("providers") or []:
+        if not isinstance(provider, dict):
+            providers.append(provider)
+            continue
+        item = dict(provider)
+        opened, changed = _open_secret(item.get("api_key", ""))
+        item["api_key"] = opened
+        dirty = dirty or changed
+        providers.append(item)
+    out["providers"] = providers
+    return out, dirty
+
+
+def _seal_email(email: dict[str, Any]) -> dict[str, Any]:
+    out = deepcopy(email)
+    out["password"] = _seal_secret(out.get("password", ""))
+    return out
+
+
+def _seal_llm(llm: dict[str, Any]) -> dict[str, Any]:
+    out = deepcopy(llm)
+    providers = []
+    for provider in out.get("providers") or []:
+        if not isinstance(provider, dict):
+            providers.append(provider)
+            continue
+        item = dict(provider)
+        item["api_key"] = _seal_secret(item.get("api_key", ""))
+        providers.append(item)
+    out["providers"] = providers
+    return out
+
+
+def _persist_sealed_category(category: str, payload: dict[str, Any]) -> None:
+    now = datetime.now(UTC).isoformat()
+    with db.get_db() as conn:
+        conn.execute(
+            """INSERT INTO app_settings (category, data_json, updated_at)
+               VALUES (?, ?, ?)
+               ON CONFLICT(category) DO UPDATE SET
+                 data_json = excluded.data_json,
+                 updated_at = excluded.updated_at""",
+            (category, json.dumps(payload, ensure_ascii=False), now),
+        )
+
+
 def _defaults() -> dict[str, Any]:
     return {
         "llm": _default_llm_from_env(),
@@ -210,6 +312,16 @@ def _load_from_db() -> dict[str, Any] | None:
         if llm is None and email is None:
             return None
         defaults = _defaults()
+        email_dirty = False
+        llm_dirty = False
+        if isinstance(email, dict):
+            email, email_dirty = _open_email(email)
+        if isinstance(llm, dict):
+            llm, llm_dirty = _open_llm(llm)
+        if email_dirty and isinstance(email, dict):
+            _persist_sealed_category("email", _seal_email(email))
+        if llm_dirty and isinstance(llm, dict):
+            _persist_sealed_category("llm", _seal_llm(llm))
         return {
             "llm": llm if llm is not None else defaults["llm"],
             "email": email if email is not None else defaults["email"],
@@ -262,6 +374,10 @@ def _save_raw(data: dict[str, Any]) -> None:
     global _cache
     now = datetime.now(UTC).isoformat()
     with db.get_db() as conn:
+        sealed = {
+            "llm": _seal_llm(data["llm"]),
+            "email": _seal_email(data["email"]),
+        }
         for category in ("llm", "email"):
             conn.execute(
                 """INSERT INTO app_settings (category, data_json, updated_at)
@@ -269,7 +385,7 @@ def _save_raw(data: dict[str, Any]) -> None:
                    ON CONFLICT(category) DO UPDATE SET
                      data_json = excluded.data_json,
                      updated_at = excluded.updated_at""",
-                (category, json.dumps(data[category], ensure_ascii=False), now),
+                (category, json.dumps(sealed[category], ensure_ascii=False), now),
             )
     _cache = deepcopy(data)
     # B2: emit audit event to event_log for config change traceability

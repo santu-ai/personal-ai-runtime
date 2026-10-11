@@ -157,7 +157,7 @@ token/chat id 不写数据库且 API 不回显。网关每分钟 long-poll，失
 
 ## 运行时 DB 配置（runtime_config）
 
-[`backend/app/core/runtime/runtime_config.py`](../../backend/app/core/runtime/runtime_config.py) 把 LLM 与邮件设置持久化于 SQLite `app_settings` 表。env 播种默认值，UI 编辑持久化到 DB。若存在 `runtime_config.json`，首次读取时自动导入 `app_settings`。
+[`backend/app/core/runtime/runtime_config.py`](../../backend/app/core/runtime/runtime_config.py) 把 LLM 与邮件设置持久化于 SQLite `app_settings` 表。env 播种默认值，UI 编辑持久化到 DB。若存在 `runtime_config.json`，首次读取时自动导入 `app_settings`。 邮箱密码和各提供方的 `api_key` 以 `enc:v1:` 写入库；密钥文件是数据库旁边的 `settings.key`（权限 0600）。旧的明文行在下次读取时改写成密文。备份要连同这个密钥文件一起带走。
 
 **DB 行一旦存在即覆盖 env。** `llm` / `email` 任一类有行，启动不再从 `.env` 重新播种该类。邮件没有 placeholder 回退；LLM 仅当存储的 `api_key` 属于 `test-key` / `keep-this-key` / `ollama` / 空时才回退 `.env`，`base_url` / `model` 仍以 DB 为准。测试必须把 `SQLITE_PATH` 指到临时文件；误写入日后删除这两行即可让 `.env` 重新播种。
 

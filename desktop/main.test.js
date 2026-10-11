@@ -121,6 +121,31 @@ describe("Electron main process", () => {
     expect(source).toContain("function resolveFrontendFile");
   });
 
+  it("sandboxes both windows and does not enable node integration", () => {
+    expect(source).toContain("nodeIntegration: false");
+    expect(source).toContain("contextIsolation: true");
+    expect(source).toContain("sandbox: true");
+    expect(source).toContain("webSecurity: true");
+    expect(source).toContain("WINDOW_WEB_PREFERENCES");
+  });
+
+  it("sends a content security policy with app:// files and denies extra permissions", () => {
+    expect(source).toContain("Content-Security-Policy");
+    expect(source).toContain("script-src 'self'");
+    expect(source).toContain("object-src 'none'");
+    expect(source).toContain("function installSessionHardening");
+    expect(source).toContain("setPermissionRequestHandler");
+    expect(source).toContain("callback(false)");
+  });
+
+  it("does not enable an auto-update feed", () => {
+    expect(source).not.toContain('require("electron-updater")');
+    expect(source).not.toContain("autoUpdater");
+    const preload = readFileSync(join(__dirname, "preload.js"), "utf-8");
+    expect(preload).not.toContain("contextBridge");
+    expect(preload).not.toContain("ipcRenderer");
+  });
+
   it("installs navigation guards that open external links in the system browser", () => {
     expect(source).toContain("function installNavigationGuards");
     expect(source).toContain("will-navigate");
