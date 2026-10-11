@@ -28,7 +28,7 @@
   /* —— Foreground —— */
   --token-fg-primary: #eceef2;
   --token-fg-secondary: #9aa3b5;
-  --token-fg-tertiary: #6b7385;
+  --token-fg-tertiary: #818ba0;
   --token-fg-disabled: #4b5363;
   --token-fg-on-accent: #ffffff;
 
@@ -79,13 +79,13 @@
 
     --token-fg-primary: #111827;
     --token-fg-secondary: #4b5563;
-    --token-fg-tertiary: #6b7280;
+    --token-fg-tertiary: #626875;
     --token-fg-disabled: #9ca3af;
     --token-fg-on-accent: #ffffff;
 
-    --token-success: #059669;
-    --token-warning: #d97706;
-    --token-danger: #dc2626;
+    --token-success: #047857;
+    --token-warning: #92400e;
+    --token-danger: #c81e1e;
     --token-insight: #4f46e5;
     --token-insight-strong: #4338ca;
     --token-focus-ring: #4f46e5;
@@ -113,13 +113,13 @@ html[data-theme="light"] {
 
   --token-fg-primary: #111827;
   --token-fg-secondary: #4b5563;
-  --token-fg-tertiary: #6b7280;
+  --token-fg-tertiary: #626875;
   --token-fg-disabled: #9ca3af;
   --token-fg-on-accent: #ffffff;
 
-  --token-success: #059669;
-  --token-warning: #d97706;
-  --token-danger: #dc2626;
+  --token-success: #047857;
+  --token-warning: #92400e;
+  --token-danger: #c81e1e;
   --token-insight: #4f46e5;
   --token-insight-strong: #4338ca;
   --token-focus-ring: #4f46e5;

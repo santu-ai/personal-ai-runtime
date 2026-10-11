@@ -148,6 +148,8 @@ describe("OnboardingWizard", () => {
     fireEvent.click(screen.getByText("运行检查"));
     await waitFor(() => {
       expect(screen.getByText("前往设置页面配置")).toBeInTheDocument();
+      expect(screen.getByText(/拉取 qwen2\.5:3b/)).toBeInTheDocument();
+      expect(screen.queryByText(/免费额度/)).not.toBeInTheDocument();
     });
     fireEvent.click(screen.getByText("前往设置页面配置"));
     expect(localStorage.getItem("onboarding_done")).toBe("1");

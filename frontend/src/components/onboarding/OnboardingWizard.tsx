@@ -365,8 +365,7 @@ export default function OnboardingWizard({ onComplete }: Props) {
               {step === 1 && !messageOk && checkBusy === null && (
                 <div className="mt-3 p-3 bg-warning/10 border border-warning/30 rounded-lg">
                   <p className="text-xs text-warning mb-2">
-                    推荐使用 DeepSeek（注册即送免费额度），或在设置中添加你想用的任何兼容 OpenAI API
-                    的模型。
+                    检查没有通过。可以在这一步拉取 qwen2.5:3b，或到设置里改成已经安装的模型。
                   </p>
                   <Button size="sm" variant="secondary" onClick={goToSettings}>
                     前往设置页面配置
