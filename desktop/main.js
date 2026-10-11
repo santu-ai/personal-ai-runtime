@@ -38,6 +38,13 @@ const {
   todayHeadingScript,
   coldStartReport,
 } = require("./smokeMode");
+const {
+  SPLASH_BACKEND,
+  SPLASH_DATA,
+  SPLASH_FAILED,
+  splashReadyScript,
+  splashStatusScript,
+} = require("./splash");
 
 if (isDesktopSmokeMode()) {
   app.disableHardwareAcceleration();
@@ -502,6 +509,8 @@ function stopBackend() {
 
 let mainWindow = null;
 let miniWindow = null;
+let splashWindow = null;
+let splashReadyMs = null;
 let tray = null;
 let isQuitting = false;
 
@@ -530,6 +539,68 @@ function createFallbackIcon() {
   return nativeImage.createEmpty();
 }
 
+function openSplash(show) {
+  splashWindow = new BrowserWindow({
+    width: 440,
+    height: 240,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    frame: false,
+    show: false,
+    center: true,
+    backgroundColor: "#1c2230",
+    title: "Personal AI Runtime",
+    webPreferences: WINDOW_WEB_PREFERENCES,
+  });
+  installNavigationGuards(splashWindow);
+  splashWindow.loadFile(path.join(__dirname, "splash.html"));
+  splashWindow.once("ready-to-show", () => {
+    if (show && splashWindow && !splashWindow.isDestroyed()) splashWindow.show();
+  });
+}
+
+function measureSplash() {
+  const deadline = Date.now() + 15000;
+  const script = splashReadyScript();
+  return (async () => {
+    while (Date.now() < deadline) {
+      if (!splashWindow || splashWindow.isDestroyed()) return null;
+      try {
+        const hit = await splashWindow.webContents.executeJavaScript(script, true);
+        if (hit === true) {
+          splashReadyMs = Math.round(process.uptime() * 1000);
+          return splashReadyMs;
+        }
+      } catch {
+        // The splash document is still loading.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return null;
+  })();
+}
+
+async function setSplashStatus(message) {
+  const deadline = Date.now() + 1000;
+  while (Date.now() < deadline) {
+    if (!splashWindow || splashWindow.isDestroyed()) return;
+    try {
+      const ok = await splashWindow.webContents.executeJavaScript(splashStatusScript(message), true);
+      if (ok === true) return;
+    } catch {
+      // The splash document is still loading.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
+function closeSplash() {
+  if (splashWindow && !splashWindow.isDestroyed()) splashWindow.destroy();
+  splashWindow = null;
+}
+
 function createMainWindow() {
   const iconPath = path.join(__dirname, "icon.png");
   const winOpts = {
@@ -551,6 +622,7 @@ function createMainWindow() {
   mainWindow.loadURL(RESOLVED_WEB_URL);
 
   mainWindow.on("ready-to-show", () => {
+    closeSplash();
     mainWindow.show();
   });
 
@@ -803,6 +875,7 @@ async function finishDesktopSmoke(startStatus, backendReady) {
     probeMs: pythonProbeMs,
     dashboardMs,
     phases: startup && startup.phases,
+    splashReadyMs,
   });
   writeSmokeResult(process.env, {
     ok,
@@ -825,6 +898,7 @@ async function finishDesktopSmoke(startStatus, backendReady) {
   while (!smokeShouldStop(process.env, started, Date.now())) {
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
+  closeSplash();
   isQuitting = true;
   await stopBackend();
   app.exit(ok ? 0 : 1);
@@ -839,52 +913,64 @@ app.whenReady().then(async () => {
   installApiProxy();
 
   const smoke = isDesktopSmokeMode();
+  openSplash(!smoke);
+  const splashMeasured = measureSplash();
+  void setSplashStatus(SPLASH_BACKEND);
 
-  // First-run: ask for auto-launch consent (was previously forced).
-  if (!smoke) {
-    try {
-      const settings = app.getLoginItemSettings();
-      if (!settings.openAtLogin && !settings.wasOpenedAtLogin) {
-        const result = await dialog.showMessageBox({
-          type: "question",
-          title: "Personal AI Runtime",
-          message: "是否允许开机自启？",
-          detail: "开机自启后，AI 可以在后台持续为你工作。你可以在托盘菜单中随时切换。",
-          buttons: ["允许", "暂不"],
-          defaultId: 0,
-          cancelId: 1,
-        });
-        if (result.response === 0) {
-          app.setLoginItemSettings({ openAtLogin: true });
-        }
-      }
-    } catch {
-      // login item settings not supported on this platform — skip silently
-    }
-  }
-
-  // Auto-start backend and wait until health responds (migrations can take a while).
+  // Backend starts while the splash paints. The python probe is short; the
+  // process itself keeps running after this function returns.
   const startStatus = await startBackend();
   let backendReady = false;
+  if (startStatus === "failed" || startStatus === "conflict") {
+    await setSplashStatus(SPLASH_FAILED);
+  } else {
+    await setSplashStatus(SPLASH_DATA);
+  }
   if (startStatus !== "conflict") {
     backendReady = await waitForBackendReady(smoke ? 180000 : 90000);
-    if (!backendReady && !smoke) {
-      dialog.showMessageBox({
-        type: "warning",
-        title: "Personal AI Runtime",
-        message: "后端启动较慢或失败",
-        detail:
-          "应用界面已打开，但暂时无法连接后端。请稍后在托盘菜单选择「重启后端」，或查看 README 中的安装说明。",
-      });
+    if (!backendReady) {
+      await setSplashStatus(SPLASH_FAILED);
+      if (!smoke) {
+        dialog.showMessageBox({
+          type: "warning",
+          title: "Personal AI Runtime",
+          message: "后端启动较慢或失败",
+          detail:
+            "应用界面已打开，但暂时无法连接后端。请稍后在托盘菜单选择「重启后端」，或查看 README 中的安装说明。",
+        });
+      }
     }
   }
 
   if (smoke) {
+    await splashMeasured;
     await finishDesktopSmoke(startStatus, backendReady);
     return;
   }
 
   createMainWindow();
+
+  // First-run auto-launch consent waits until the window is up, so it does not
+  // sit in front of a blank screen while the backend starts.
+  try {
+    const settings = app.getLoginItemSettings();
+    if (!settings.openAtLogin && !settings.wasOpenedAtLogin) {
+      const result = await dialog.showMessageBox({
+        type: "question",
+        title: "Personal AI Runtime",
+        message: "是否允许开机自启？",
+        detail: "开机自启后，AI 可以在后台持续为你工作。你可以在托盘菜单中随时切换。",
+        buttons: ["允许", "暂不"],
+        defaultId: 0,
+        cancelId: 1,
+      });
+      if (result.response === 0) {
+        app.setLoginItemSettings({ openAtLogin: true });
+      }
+    }
+  } catch {
+    // login item settings not supported on this platform — skip silently
+  }
   createTray();
   registerGlobalShortcuts();
   connectWebSocket();

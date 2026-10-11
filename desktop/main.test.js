@@ -193,6 +193,10 @@ describe("Electron main process", () => {
     expect(source).toContain("measureDashboard");
     expect(source).toContain("/api/dashboard");
     expect(source).toContain("dashboardMs");
+    expect(source).toContain("openSplash");
+    expect(source).toContain("splashReadyMs");
+    expect(source).toContain("SPLASH_FAILED");
+    expect(source).toContain('require("./splash")');
   });
 
   it("packs every local require() from main.js in electron-builder files", () => {
