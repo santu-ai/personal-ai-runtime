@@ -75,6 +75,7 @@ export {
   getLocalModels,
   pullRecommendedModel,
   getMcpStatus,
+  downloadDiagnostics,
   downloadExport,
   exportEncryptedData,
   importData,

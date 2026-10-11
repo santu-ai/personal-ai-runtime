@@ -50,9 +50,10 @@ def test_stdlib_and_structlog_share_handler():
         if getattr(h, "_par_structlog_handler", False)
     ]
     assert owned, "root logger should have a ProcessorFormatter handler"
-    formatter = owned[0].formatter
+    stream = next(h for h in owned if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler))
+    formatter = stream.formatter
     assert formatter is not None
-    assert formatter.__class__.__name__ == "ProcessorFormatter"
+    assert formatter.inner.__class__.__name__ == "ProcessorFormatter"
 
     stdlib_logger = logging.getLogger("app.core.test_logging_bridge")
     stdlib_logger.info("stdlib bridge smoke")
@@ -72,7 +73,7 @@ def test_configure_logging_preserves_foreign_handlers():
             for h in root.handlers
             if getattr(h, "_par_structlog_handler", False)
         ]
-        assert len(owned) == 1
+        assert len(owned) == 2
     finally:
         root.removeHandler(foreign)
         foreign.close()
@@ -94,6 +95,37 @@ def test_json_logs_are_parseable_and_include_request_id(capsys):
     payload = json.loads(matching[-1])
     assert payload.get("event") == "json-log-line" or payload.get("message") == "json-log-line" or "json-log-line" in payload.values()
     assert payload.get("request_id") == "rid-json-42"
+
+
+def test_log_file_rotates_and_redacts(tmp_path):
+    import logging
+
+    configure_logging(log_dir=str(tmp_path), max_bytes=1200, backup_count=2)
+    logger = logging.getLogger("app.test.rotate")
+    for index in range(80):
+        logger.error(
+            "password=s3cret-%s mailbox=owner@example.com enc:v1:AAAASECRET line %s",
+            index,
+            "x" * 40,
+        )
+
+    files = sorted(path.name for path in tmp_path.iterdir())
+    assert "runtime.log" in files
+    assert len(files) <= 3
+    total = sum(path.stat().st_size for path in tmp_path.iterdir())
+    assert total < 1200 * 4
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in tmp_path.iterdir())
+    assert "s3cret" not in combined
+    assert "owner@example.com" not in combined
+    assert "AAAASECRET" not in combined
+    assert "password=[redacted]" in combined
+    assert "[email]" in combined
+
+    from app.core.logging_config import recent_log_lines
+
+    remembered = "\n".join(recent_log_lines(limit=80))
+    assert "s3cret" not in remembered
+    assert len(recent_log_lines(limit=80)) <= 80
 
 
 def test_request_id_processor_reads_context_module():

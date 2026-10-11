@@ -137,6 +137,7 @@
 |---|---|---|---|---|
 | DELETE | `/api/system/data` | auth | — | Destroy All Data |
 | GET | `/api/system/demo/model-continuity` | auth | — | Model Continuity Demo |
+| GET | `/api/system/diagnostics` | auth | — | Diagnostics Bundle |
 | POST | `/api/system/export` | auth | — | Export All Data |
 | POST | `/api/system/export/encrypted` | auth | — | Export Encrypted |
 | GET | `/api/system/health` | public | — | Health Check |

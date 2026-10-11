@@ -173,6 +173,78 @@ def test_destroy_success_with_confirm(authed_client: TestClient, monkeypatch):
     assert r.json()["status"] == "destroyed"
 
 
+def test_diagnostics_bundle_omits_mail_file_and_secrets(client: TestClient, monkeypatch):
+    import logging
+
+    monkeypatch.setattr(
+        "app.core.runtime.runtime_config.runtime_config.get_llm_config",
+        lambda masked=True: {
+            "default_provider": "cloud",
+            "providers": [{
+                "id": "cloud",
+                "name": "Cloud",
+                "type": "openai_compatible",
+                "model": "x",
+                "base_url": "https://example.test/v1",
+                "api_key": "sk-live-secret123",
+                "has_api_key": True,
+                "enabled": True,
+            }],
+        },
+    )
+    monkeypatch.setattr(
+        "app.core.runtime.runtime_config.runtime_config.get_email_config",
+        lambda masked=True: {
+            "user": "owner@example.com",
+            "password": "app-password",
+            "configured": True,
+        },
+    )
+
+    def _metrics(days: int = 14):
+        return {
+            "window_days": days,
+            "reviewed_tasks": 1,
+            "accepted_tasks": 1,
+            "success_rate": 1.0,
+            "reviews": [{"title": "预算", "note": "西仓已出库三箱"}],
+            "items": [{"title": "note.txt", "body": "东闸阀门已关闭"}],
+            "capped": False,
+        }
+
+    monkeypatch.setattr(
+        "app.product.work_delivery.summarize_delivery_metrics",
+        _metrics,
+    )
+    logging.getLogger("diag.bundle").error(
+        "password=s3cret mailbox=owner@example.com enc:v1:AAAASECRET"
+    )
+
+    response = client.get("/api/system/diagnostics")
+    assert response.status_code == 200
+    assert "diagnostics-" in response.headers.get("content-disposition", "")
+    body = response.json()
+    text = response.text
+    assert body["kind"] == "support-bundle"
+    assert body["versions"]["app"]
+    assert body["settings"]["providers"][0]["model"] == "x"
+    assert "api_key" not in body["settings"]["providers"][0]
+    assert body["settings"]["email"] == {"configured": True, "needs_reentry": False, "reentry_reason": ""}
+    assert "user" not in body["settings"]["email"]
+    assert body["trial"]["success_rate"] == 1.0
+    assert "reviews" not in body["trial"]
+    assert "items" not in body["trial"]
+    assert body["eval"]["stored_case_scores"] is False
+    assert "total_calls" in body["eval"]["llm"]
+    assert "sk-live" not in text
+    assert "owner@example.com" not in text
+    assert "app-password" not in text
+    assert "s3cret" not in text
+    assert "AAAASECRET" not in text
+    assert "西仓已出库" not in text
+    assert "东闸阀门" not in text
+
+
 def test_health_includes_startup_diagnostics(client: TestClient):
     r = client.get("/api/system/health")
     assert r.status_code == 200
