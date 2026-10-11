@@ -1662,6 +1662,17 @@ def _retrieval_lines(coverage: dict[str, Any] | None) -> list[str]:
     return lines
 
 
+def _canonicalize_source_id(sid: str, allowed_ids: set[str]) -> str:
+    """Drop the sender or path we print next to an id in the prompt label."""
+    cleaned = str(sid or "").strip()
+    if cleaned in allowed_ids:
+        return cleaned
+    head = cleaned.split(" (", 1)[0].strip()
+    if head in allowed_ids:
+        return head
+    return cleaned
+
+
 def _cited_source_ids(*texts: str) -> list[str]:
     found: list[str] = []
     for text in texts:
@@ -1910,6 +1921,13 @@ def validate_model_brief(
     for item in findings_raw:
         if not isinstance(item, dict):
             raise ValueError("each finding must be an object")
+        if isinstance(item.get("source_ids"), list):
+            item = dict(item)
+            item["source_ids"] = [
+                _canonicalize_source_id(str(sid), allowed_ids)
+                for sid in item["source_ids"]
+                if str(sid).strip()
+            ]
         if source_catalog is not None:
             item = _ground_instruction_echo(
                 item,
@@ -1988,7 +2006,7 @@ def validate_model_brief(
         if not title:
             continue
         action_ids = [
-            str(sid).strip()
+            _canonicalize_source_id(str(sid), allowed_ids)
             for sid in (item.get("source_ids") or [])
             if str(sid).strip()
         ]

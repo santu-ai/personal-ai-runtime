@@ -936,6 +936,30 @@ def _compile_miss(case: dict, finding: dict) -> str:
     return "\n".join(str(item.get("text") or "") for item in result["findings"])
 
 
+def test_prompt_label_suffix_on_a_source_id_is_removed():
+    result = validate_model_brief(
+        {
+            "summary": "值班人 陈禾",
+            "content": "值班人 陈禾",
+            "findings": [{
+                "text": "值班人 陈禾",
+                "quote": "值班人 陈禾",
+                "source_ids": ["email:duty (a@b.c)"],
+                "kind": "change",
+            }],
+        },
+        allowed_ids={"email:duty"},
+        criteria=default_acceptance_criteria(),
+        source_notes=[],
+        source_catalog={
+            "email:duty": {"text": "值班人 陈禾", "locator": "a@b.c", "title": "值班表"},
+        },
+        objective="整理进度、风险和待办",
+    )
+    assert result["quality_evidence"] == "pending"
+    assert result["findings"][0]["source_ids"] == ["email:duty"]
+
+
 def test_dev_thread_keeps_the_later_date():
     text = _compile_miss(_dev("dev-thread-reschedule"), {
         "text": "东湖泵站检修定在 5月20日",
