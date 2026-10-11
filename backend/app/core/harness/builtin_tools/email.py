@@ -179,6 +179,7 @@ class EmailServer:
         self._smtp_port = 465
         self._user = ""
         self._password = ""
+        self._reentry_reason = ""
         self._config_loaded_at = 0.0
         self._refresh_config(force=True)
 
@@ -199,6 +200,8 @@ class EmailServer:
         self._smtp_port = int(str(creds.get("smtp_port") or os.getenv("EMAIL_SMTP_PORT", "465")))
         self._user = str(creds.get("user") or os.getenv("EMAIL_USER", ""))
         self._password = str(creds.get("password") or os.getenv("EMAIL_PASS", ""))
+        reason = str(creds.get("reentry_reason") or "")
+        self._reentry_reason = reason if creds.get("needs_reentry") and not self._password else ""
         self._config_loaded_at = now
 
     def _get_credentials(self):
@@ -207,6 +210,8 @@ class EmailServer:
 
     def _connect_inbox(self) -> imaplib.IMAP4_SSL:
         user, password = self._get_credentials()
+        if self._reentry_reason and not password:
+            raise ValueError(self._reentry_reason)
         if not user or not password:
             raise ValueError("Email credentials not configured (EMAIL_USER/EMAIL_PASS)")
 
@@ -975,6 +980,8 @@ class EmailServer:
     def send_email(self, to: str, subject: str, body: str) -> str:
         """Send an email via SMTP (requires user approval)."""
         user, password = self._get_credentials()
+        if self._reentry_reason and not password:
+            raise ToolInvokeError(OUTCOME_TOOL_EXECUTION_FAILURE, self._reentry_reason)
         if not user or not password:
             raise ToolInvokeError(
                 OUTCOME_TOOL_EXECUTION_FAILURE,

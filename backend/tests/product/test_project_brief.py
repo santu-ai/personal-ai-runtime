@@ -118,6 +118,22 @@ def test_collect_sources_records_unconfigured_failure():
     assert all("应用专用密码" not in note for note in notes)
 
 
+def test_collect_sources_keeps_desktop_reentry_sentence():
+    reason = (
+        "邮箱密码需要重新填写。它是用桌面的 safeStorage 包过的，"
+        "当前这个后端进程打不开。重新填写并保存之后就能用。"
+    )
+    results = [
+        SimpleNamespace(tool="check_inbox", status="failed", result=reason),
+    ]
+    _sources, _bodies, notes, _coverage = collect_allowed_sources(
+        contract={"source_scope": {"email": {"enabled": True, "days": 3}, "files": []}},
+        step_results=results,
+        retrieved_at="t0",
+    )
+    assert notes == [reason]
+
+
 def test_collect_sources_explains_expired_mailbox_login():
     results = [
         SimpleNamespace(

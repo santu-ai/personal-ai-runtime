@@ -41,6 +41,16 @@ LOCAL_MODEL_MISSING_MESSAGE = (
     "推荐拉取 qwen2.5:3b，今天的评测用的是它。"
     "在首次引导里拉取，或到设置里改成已经安装的模型，然后重新执行。"
 )
+
+
+def call_blocked_message(router) -> str:
+    """User-facing reason when no provider can be called."""
+    locked = getattr(router, "locked_secret_message", None)
+    if callable(locked):
+        text = locked()
+        if isinstance(text, str) and text.strip():
+            return text.strip()
+    return LOCAL_MODEL_MISSING_MESSAGE
 _STOCK_LOCAL_MODELS = frozenset({"qwen2.5:7b", "qwen2.5:3b"})
 _TAGS_TTL_SECONDS = 15.0
 _tags_lock = threading.Lock()
@@ -299,6 +309,7 @@ class LLMProvider:
     # 默认值按 DeepSeek 定价估算，若接入其他厂商应显式传值。
     price_per_prompt_token: float = _DEFAULT_PROMPT_TOKEN_PRICE
     price_per_completion_token: float = _DEFAULT_COMPLETION_TOKEN_PRICE
+    reentry_reason: str = ""
 
 
 class LLMRouter:
@@ -323,6 +334,9 @@ class LLMRouter:
             if not item.get("enabled", True):
                 continue
             api_key = self._resolve_api_key(item)
+            reason = ""
+            if item.get("needs_reentry") and not str(api_key or "").strip():
+                reason = str(item.get("reentry_reason") or "")
             self.providers.append(
                 LLMProvider(
                     name=item["id"],
@@ -331,6 +345,7 @@ class LLMRouter:
                     model=item.get("model", ""),
                     provider_type=item.get("type", "openai_compatible"),
                     is_default=item["id"] == default_id,
+                    reentry_reason=reason,
                 )
             )
 
@@ -350,8 +365,13 @@ class LLMRouter:
         """
         from app.config import settings
 
+        api_key = (provider.api_key or "").strip()
+        if not api_key and (provider.reentry_reason or "").strip():
+            # The client is built so fallbacks can still be considered. prepare_call
+            # drops this provider, so the placeholder is never sent.
+            api_key = "reentry"
         return AsyncOpenAI(
-            api_key=provider.api_key,
+            api_key=api_key,
             base_url=provider.base_url,
             timeout=float(settings.llm_timeout_seconds),
             max_retries=3,
@@ -379,7 +399,11 @@ class LLMRouter:
     def prepare_call(self, provider: LLMProvider) -> LLMProvider | None:
         """Model to call. Local names come from `/api/tags`, not a stock default."""
         if not is_ollama_endpoint(provider.provider_type, provider.base_url):
-            return provider if (provider.model or "").strip() else None
+            if not (provider.model or "").strip():
+                return None
+            if (provider.reentry_reason or "").strip() and not (provider.api_key or "").strip():
+                return None
+            return provider
         installed = fetch_installed_model_names(provider.base_url)
         explicit = model_name_is_explicit(provider.model)
         if installed is None:
@@ -433,6 +457,16 @@ class LLMRouter:
     def get_fallback_clients(self) -> list[tuple[AsyncOpenAI, LLMProvider]]:
         """Non-default providers whose model can actually be called."""
         return self.fallbacks_after(None)
+
+    def locked_secret_message(self) -> str | None:
+        """Why the default provider cannot be called, when its key is desktop-wrapped."""
+        for provider in self.providers:
+            if not provider.is_default:
+                continue
+            reason = (provider.reentry_reason or "").strip()
+            if reason and not (provider.api_key or "").strip():
+                return reason
+        return None
 
     def _provider_available(self, provider: LLMProvider) -> bool:
         if provider.provider_type == "ollama":

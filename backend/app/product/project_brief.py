@@ -350,6 +350,11 @@ _EMAIL_AUTH_MARKERS = (
 def _email_read_failure_note(raw: str) -> str:
     """Chinese next step when the mailbox rejected the login."""
     text = (raw or "").strip()
+    if "需要重新填写" in text and "safeStorage" in text:
+        at = text.find("需要重新填写")
+        head = text[:at]
+        cut = max(head.rfind("\n"), head.rfind("："), head.rfind(":"), head.rfind("。"))
+        return text[cut + 1:].strip()
     lowered = text.lower()
     if any(marker in lowered for marker in _EMAIL_AUTH_MARKERS):
         detail = f"（{text[:180]}）" if text else ""
@@ -3532,7 +3537,7 @@ def brief_compile_failure(exc: BaseException, *, retryable: bool) -> str:
     text = f"{type(exc).__name__}: {exc}"
     if isinstance(exc, EgressDeniedError) or "EgressDeniedError" in text or "Cloud egress denied" in text:
         return _EGRESS_DENIED_BRIEF
-    if "还没有可用的本地模型" in str(exc):
+    if "还没有可用的本地模型" in str(exc) or "需要重新填写" in str(exc):
         return str(exc)
     if any(marker in text for marker in _UNREACHABLE_MARKERS):
         return _MODEL_UNREACHABLE_BRIEF

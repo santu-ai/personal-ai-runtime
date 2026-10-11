@@ -3,6 +3,7 @@
 from app.core.agents.llm_failover import (
     LLMProvider,
     LLMRouter,
+    call_blocked_message,
     choose_local_model,
     describe_local_models,
     iter_recommended_pull,
@@ -81,6 +82,39 @@ def test_the_same_installed_model_is_not_a_second_call(monkeypatch):
     candidates = _router(primary, _ollama()).callable_candidates()
     assert len(candidates) == 1
     assert candidates[0][1].model == "qwen2.5:3b"
+
+
+def _locked_cloud() -> LLMProvider:
+    return LLMProvider(
+        name="deepseek",
+        api_key="",
+        base_url="https://api.deepseek.com/v1",
+        model="deepseek-chat",
+        provider_type="openai_compatible",
+        is_default=True,
+        reentry_reason=(
+            "DeepSeek 的 API Key需要重新填写。它是用桌面的 safeStorage 包过的，"
+            "当前这个后端进程打不开。重新填写并保存之后就能用。"
+        ),
+    )
+
+
+def test_locked_default_key_is_skipped_when_a_local_model_is_installed(monkeypatch):
+    monkeypatch.setattr(
+        "app.core.agents.llm_failover.fetch_installed_model_names",
+        lambda base_url, timeout=1.5: ["qwen2.5:3b"],
+    )
+    candidates = _router(_locked_cloud(), _ollama("qwen2.5:3b")).callable_candidates()
+    assert [provider.model for _client, provider in candidates] == ["qwen2.5:3b"]
+
+
+def test_only_a_locked_key_names_the_secret_instead_of_a_missing_model():
+    router = _router(_locked_cloud())
+    assert router.callable_candidates() == []
+    message = call_blocked_message(router)
+    assert message.startswith("DeepSeek 的 API Key需要重新填写")
+    assert "safeStorage" in message
+    assert "还没有可用的本地模型" not in message
 
 
 def test_unreachable_stock_model_is_not_called(monkeypatch):

@@ -538,6 +538,18 @@ def test_brief_compile_failure_tells_the_user_what_to_do():
     assert "重新执行" in offline
     assert "模型输出非法" not in offline
 
+    reentry = brief_compile_failure(
+        RuntimeError(
+            "DeepSeek 的 API Key需要重新填写。它是用桌面的 safeStorage 包过的，"
+            "当前这个后端进程打不开。重新填写并保存之后就能用。"
+        ),
+        retryable=True,
+    )
+    assert reentry.startswith("DeepSeek 的 API Key需要重新填写")
+    assert "safeStorage" in reentry
+    assert "没有本地模型" not in reentry
+    assert "模型输出非法" not in reentry
+
     other = brief_compile_failure(ValueError("missing summary"), retryable=True)
     assert other.startswith("模型输出非法或不可用，可重试：")
     quiet = brief_compile_failure(ValueError("missing summary"), retryable=False)

@@ -174,7 +174,8 @@ async def test_llm_connection(body: TestLlmRequest | None = None):
     p = providers[0]
     api_key = p.get("api_key") or ("ollama" if p.get("type") == "ollama" else "")
     if not api_key and p.get("type") != "ollama":
-        return {"ok": False, "provider": provider_id, "error": "API Key 未配置"}
+        reason = str(p.get("reentry_reason") or "").strip()
+        return {"ok": False, "provider": provider_id, "error": reason or "API Key 未配置"}
 
     client = None
     provider_meta = None

@@ -166,14 +166,14 @@ async def create_stream(llm, messages: list[dict]):
     """Try primary LLM provider (with retries for transient errors), then fallbacks."""
     from openai import APIConnectionError as _OpenAIConnectionError
 
-    from app.core.agents.llm_failover import LOCAL_MODEL_MISSING_MESSAGE
+    from app.core.agents.llm_failover import call_blocked_message
 
     TRANSIENT_ERRORS = (_OpenAIConnectionError, TimeoutError, asyncio.TimeoutError)
     MAX_PRIMARY_ATTEMPTS = 3
 
     candidates = _candidates_for_call(llm_router, provider=llm.provider, client=llm.client)
     if not candidates:
-        raise RuntimeError(LOCAL_MODEL_MISSING_MESSAGE)
+        raise RuntimeError(call_blocked_message(llm_router))
     errors: list[str] = []
     llm_start = time.time()
     for idx, (client, provider) in enumerate(candidates):
@@ -317,7 +317,7 @@ async def complete_text_with_failover(
     Raises ``RuntimeError`` when every configured provider fails.
     """
     from app.core.agents.brain_telemetry import record_llm_outcome
-    from app.core.agents.llm_failover import LOCAL_MODEL_MISSING_MESSAGE
+    from app.core.agents.llm_failover import call_blocked_message
     from app.core.agents.token_counter import count_message_tokens, count_text_tokens
 
     try:
@@ -332,7 +332,7 @@ async def complete_text_with_failover(
         include_fallbacks=provider_name is None,
     )
     if not candidates:
-        raise RuntimeError(LOCAL_MODEL_MISSING_MESSAGE)
+        raise RuntimeError(call_blocked_message(llm_router))
 
     if temperature is None or max_tokens is None:
         gen_temp, gen_max = runtime_config.get_generation_params()
