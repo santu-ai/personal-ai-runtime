@@ -35,6 +35,12 @@ if (-not (Test-Path -LiteralPath $exe)) {
     throw "Installed executable missing: $exe"
 }
 
+$compileMarker = Join-Path (Split-Path -Parent $exe) "resources\backend\.compileall-ok"
+if (-not (Test-Path -LiteralPath $compileMarker)) {
+    throw "Installer did not compile the bundled backend: $compileMarker"
+}
+Write-Host "compileall marker present"
+
 $root = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
 $work = Join-Path $root "par-desktop-smoke"
 New-Item -ItemType Directory -Force -Path $work | Out-Null
@@ -94,6 +100,7 @@ $env:BACKEND_URL = "http://127.0.0.1:8765"
 $backendSamples = New-Object System.Collections.Generic.List[int]
 $todaySamples = New-Object System.Collections.Generic.List[int]
 $dashboardSamples = New-Object System.Collections.Generic.List[int]
+$splashSamples = New-Object System.Collections.Generic.List[int]
 
 for ($run = 1; $run -le $ColdStartRuns; $run++) {
     $userData = Join-Path $work "user-data-$run"
@@ -163,6 +170,7 @@ for ($run = 1; $run -le $ColdStartRuns; $run++) {
         $todayReady = [int]$result.coldStart.todayReadyMs
         $backendSamples.Add($backendReady)
         $todaySamples.Add($todayReady)
+        $splashSamples.Add([int]$result.coldStart.splashReadyMs)
         $dashboardText = "null"
         if ($null -ne $result.coldStart.dashboardMs) {
             $dashboardSamples.Add([int]$result.coldStart.dashboardMs)
@@ -185,13 +193,15 @@ for ($run = 1; $run -le $ColdStartRuns; $run++) {
 
 $backendMedian = Get-Median $backendSamples.ToArray()
 $todayMedian = Get-Median $todaySamples.ToArray()
+$splashMedian = Get-Median $splashSamples.ToArray()
 $backendMax = ($backendSamples | Measure-Object -Maximum).Maximum
 $todayMax = ($todaySamples | Measure-Object -Maximum).Maximum
+$splashMax = ($splashSamples | Measure-Object -Maximum).Maximum
 $dashboardMedian = Get-Median $dashboardSamples.ToArray()
 $dashboardMax = $null
 if ($dashboardSamples.Count -gt 0) {
     $dashboardMax = ($dashboardSamples | Measure-Object -Maximum).Maximum
 }
-Write-Host ("Cold start median backendReadyMs={0} todayReadyMs={1} dashboardMs={2} max backendReadyMs={3} todayReadyMs={4} dashboardMs={5} runs={6}" -f `
-    $backendMedian, $todayMedian, $dashboardMedian, $backendMax, $todayMax, $dashboardMax, $ColdStartRuns)
+Write-Host ("Cold start median backendReadyMs={0} todayReadyMs={1} splashReadyMs={2} dashboardMs={3} max backendReadyMs={4} todayReadyMs={5} splashReadyMs={6} dashboardMs={7} runs={8}" -f `
+    $backendMedian, $todayMedian, $splashMedian, $dashboardMedian, $backendMax, $todayMax, $splashMax, $dashboardMax, $ColdStartRuns)
 Write-Host "Installed app and embedded backend responded."

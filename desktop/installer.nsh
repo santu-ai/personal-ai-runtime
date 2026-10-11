@@ -4,4 +4,9 @@
   DetailPrint "Compiling bundled backend modules"
   ExecWait '"$INSTDIR\resources\python\python.exe" -m compileall -q "$INSTDIR\resources\backend"' $0
   DetailPrint "compileall exit $0"
+  ${If} $0 == 0
+    FileOpen $1 "$INSTDIR\resources\backend\.compileall-ok" w
+    FileWrite $1 "ok$\r$\n"
+    FileClose $1
+  ${EndIf}
 !macroend
