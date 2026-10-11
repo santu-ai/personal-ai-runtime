@@ -103,6 +103,42 @@ def test_policy_for_chat_requested_matches_tool_loop_budget():
     assert chat.timeout_seconds == float(settings.total_tool_loop_timeout)
     assert chat.max_retries == 2
     assert policy_for_event("TimerFired") == ExecutionPolicy.default()
+    assert policy_for_event("ExecuteRequested") == ExecutionPolicy.default()
+
+
+def test_project_brief_execute_covers_the_model_timeout(monkeypatch):
+    from app.config import settings
+    from app.core.runtime.scheduled_execution import ExecutionPolicy, policy_for_event
+
+    class _Event:
+        def __init__(self, action_id: str) -> None:
+            self.payload = {"action_id": action_id}
+
+    def _lookup(action_id: str) -> dict:
+        if action_id == "brief":
+            return {"executable_plan": {"kind": "project_brief", "steps": []}}
+        if action_id == "contract":
+            return {
+                "executable_plan": {
+                    "contract": {"output_kind": "project_brief"},
+                },
+            }
+        return {"executable_plan": {"steps": [{"tool": "read_file"}]}}
+
+    monkeypatch.setattr(
+        "app.core.runtime.read_ports.query_work_item",
+        _lookup,
+    )
+    expected = float(settings.total_tool_loop_timeout)
+    brief = policy_for_event("ExecuteRequested", _Event("brief"))
+    assert brief.timeout_seconds == expected
+    assert brief.max_retries == 1
+    contract = policy_for_event("ExecuteRequested", _Event("contract"))
+    assert contract.timeout_seconds == expected
+    assert contract.max_retries == 1
+    other = policy_for_event("ExecuteRequested", _Event("file"))
+    assert other == ExecutionPolicy.default()
+    assert policy_for_event("ExecuteRequested", _Event("")) == ExecutionPolicy.default()
 
 
 def test_message_appended_updates_conversation_ts(isolated_kernel):

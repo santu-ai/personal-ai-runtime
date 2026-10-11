@@ -322,7 +322,7 @@ class Scheduler:
                 handler_name=handler.__name__,
                 instance_id=instance_id,
                 correlation_id=event.correlation_id or "",
-                policy=policy if policy is not None else policy_for_event(event.type),
+                policy=policy if policy is not None else policy_for_event(event.type, event),
                 _event=event,
             )
             self._pending.append(item)
@@ -358,7 +358,7 @@ class Scheduler:
                 handler_name=handler.__name__,
                 instance_id=instance_id,
                 correlation_id=event.correlation_id or "",
-                policy=policy if policy is not None else policy_for_event(event.type),
+                policy=policy if policy is not None else policy_for_event(event.type, event),
                 _event=event,
                 error=QUEUE_FULL_ERROR,
             )

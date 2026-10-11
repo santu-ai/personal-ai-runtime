@@ -44,7 +44,7 @@ class ExecutionPolicy:
         return cls()
 
 
-def policy_for_event(event_type: str) -> ExecutionPolicy:
+def policy_for_event(event_type: str, event: object | None = None) -> ExecutionPolicy:
     """Choose an ExecutionPolicy for a newly enqueued event."""
     if event_type == "ChatRequested":
         from app.config import settings
@@ -57,7 +57,40 @@ def policy_for_event(event_type: str) -> ExecutionPolicy:
             max_retries=2,
             retry_delay_seconds=2.0,
         )
+    if event_type == "ExecuteRequested" and _is_project_brief_execute(event):
+        from app.config import settings
+
+        # The model client retries inside this one handler. 30s (and 60s+30s)
+        # dead-letter the write stage while the page still says it is writing.
+        # One extra handler retry is enough; the client already retries.
+        return ExecutionPolicy(
+            timeout_seconds=float(settings.total_tool_loop_timeout),
+            max_retries=1,
+            retry_delay_seconds=2.0,
+        )
     return ExecutionPolicy.default()
+
+
+def _is_project_brief_execute(event: object | None) -> bool:
+    """True when this ExecuteRequested runs a project brief. False keeps 30s."""
+    if event is None:
+        return False
+    payload = getattr(event, "payload", None)
+    if not isinstance(payload, dict):
+        return False
+    action_id = payload.get("action_id")
+    if not isinstance(action_id, str) or not action_id:
+        return False
+    try:
+        from app.core.runtime import read_ports
+        from app.core.runtime.handlers.execute_handlers import _is_project_brief_plan
+
+        action = read_ports.query_work_item(action_id)
+    except Exception:
+        return False
+    if not action:
+        return False
+    return _is_project_brief_plan(action.get("executable_plan"))
 
 
 @dataclass
