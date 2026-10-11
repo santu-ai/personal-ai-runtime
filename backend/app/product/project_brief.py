@@ -401,22 +401,22 @@ def _emit_inbox_batch(
         else:
             operative = _operative_lines(visible)
             dated = [line for line in operative if _DATE_TOKEN.search(line)]
-            surface = list(item["surface"])
-            if dated and dated[0] not in surface:
-                surface.insert(0, dated[0])
-            for line in _mixed_language_lines(operative):
-                if line not in surface:
-                    surface.insert(0, line)
             quoted_amounts: set[str] = set()
             for line in _quotable_lines(visible):
                 if line.startswith(">"):
                     quoted_amounts |= _amount_keys(line)
+            amount_lines: list[str] = []
             if quoted_amounts:
                 for line in operative:
                     own = _amount_keys(line)
-                    if own and own != quoted_amounts and line not in surface:
-                        surface.append(line)
-            surface = surface[:3]
+                    if own and own != quoted_amounts:
+                        amount_lines.append(line)
+            surface = _take_lines(
+                list(item["surface"]),
+                [dated[0]] if dated else [],
+                amount_lines,
+                _mixed_language_lines(operative),
+            )
             preferred = []
             for line in surface + operative:
                 if line not in preferred:
@@ -543,16 +543,14 @@ def _emit_file_batch(
             if not preferred:
                 preferred = family_facts[:_QUOTABLE_LINE_CAP]
                 kind = "spec"
-            for line in family_facts:
-                if line not in surface:
-                    surface.append(line)
-        for line in revisions + mixed:
+        for line in list(revisions) + list(family_facts):
             if line not in preferred:
                 preferred.insert(0, line)
-            if line not in surface:
-                surface.insert(0, line)
+        for line in mixed:
+            if line not in preferred:
+                preferred.append(line)
         preferred = preferred[:_QUOTABLE_LINE_CAP]
-        surface = surface[:3]
+        surface = _take_lines(revisions, family_facts, surface, mixed)
         source_id = str(item["id"])
         label = str(item["label"] or "")
         sources.append({
@@ -1636,8 +1634,10 @@ def _cover_conflicting_dates(catalog: dict[str, dict[str, str]]) -> None:
         entry = catalog[sid]
         surface = _surface_lines(entry)
         if line not in surface:
-            surface.insert(0, line)
-        entry["surface"] = "\n".join(surface[:3])
+            surface = _take_lines([line], surface)
+        else:
+            surface = surface[:3]
+        entry["surface"] = "\n".join(surface)
 
 
 def _looks_like_csv(text: str) -> bool:
@@ -1679,6 +1679,23 @@ def _csv_surface(rows: list[str]) -> list[str]:
             continue
         return [row, *head[:2]]
     return head
+
+
+def _take_lines(*groups: list[str], limit: int = 3) -> list[str]:
+    """Fill the surface from earlier groups. Later groups only use free slots.
+
+    A bilingual status word must not push a spreadsheet's own open row
+    out of the three lines the brief keeps.
+    """
+    chosen: list[str] = []
+    for group in groups:
+        for line in group:
+            if not line or line in chosen:
+                continue
+            chosen.append(line)
+            if len(chosen) >= limit:
+                return chosen
+    return chosen
 
 
 def _surface_lines(entry: dict[str, Any]) -> list[str]:
