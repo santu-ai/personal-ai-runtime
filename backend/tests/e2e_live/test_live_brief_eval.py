@@ -29,7 +29,7 @@ from tests.product.test_project_brief_eval import CASES, prepare_case
 
 
 def _selected_cases() -> list[dict]:
-    """Full set, or one tier such as sealed / dev / holdout."""
+    """Full set, or one tier such as sealed / sealed2 / dev / holdout."""
     tier = os.environ.get("BRIEF_EVAL_TIER", "").strip()
     if not tier:
         return CASES

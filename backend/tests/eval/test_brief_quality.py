@@ -200,3 +200,22 @@ def test_sealed_fact_miss_stays_out_of_the_tracked_rate():
     assert report["sealed_fact_miss_ids"] == ["sealed-thread-supersede"]
     assert report["sealed_evidence_support_rate"] == 1.0
     assert report["dev_parsed"] == 0
+
+
+def test_sealed2_stays_out_of_sealed_and_tracked():
+    missed = score_case(
+        case_id="sealed2-quoted-reply",
+        source_text="肥料预算改成 27万元",
+        collector_gaps=[],
+        included_empty=False,
+        parsed=True,
+        quality_evidence="pending",
+        brief_text="肥料预算先按 9万元报",
+        fact_any=["27万元"],
+    )
+    report = summarize([missed, _row()])
+    assert report["tracked_parsed"] == 1
+    assert report["sealed_parsed"] == 0
+    assert report["sealed2_parsed"] == 1
+    assert report["sealed2_fact_rate"] == 0.0
+    assert report["sealed2_fact_miss_ids"] == ["sealed2-quoted-reply"]
