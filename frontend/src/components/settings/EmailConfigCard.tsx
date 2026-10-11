@@ -115,6 +115,11 @@ export default function EmailConfigCard({ email, onSaved, embedded = false }: Pr
       <p className="text-xs text-fg-tertiary mb-4">
         {email.help || "使用 Gmail 应用专用密码连接 IMAP/SMTP。"}
       </p>
+      {email.config.needs_reentry && email.config.reentry_reason ? (
+        <p className="text-sm text-danger mb-3" data-testid="secret-reentry" role="status">
+          {email.config.reentry_reason}
+        </p>
+      ) : null}
 
       <div className="space-y-3">
         <NamedField label="Gmail 地址">

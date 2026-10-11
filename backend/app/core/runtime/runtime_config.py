@@ -35,6 +35,16 @@ _lock = threading.Lock()
 _MASKED_SECRET = "••••••••"
 _SEAL_PREFIX = "enc:v1:"
 _KEY_HEADER = "os:v1\n"
+# Shown when a backend-only process cannot unwrap a desktop safeStorage key.
+# The value stays sealed until the user types it again and saves.
+
+
+def reentry_message(label: str) -> str:
+    """Which secret to type again, and why this process cannot open it."""
+    return (
+        f"{label}需要重新填写。它是用桌面的 safeStorage 包过的，"
+        "当前这个后端进程打不开。重新填写并保存之后就能用。"
+    )
 _cache: dict[str, Any] | None = None
 _FERNET: Fernet | None = None
 _FERNET_PATH: str | None = None
@@ -114,10 +124,44 @@ def _env_api_key_for_provider(provider_id: str) -> str:
     return env_map.get(provider_id, "")
 
 
+def _desktop_key_locked() -> bool:
+    """True when settings.key is an Electron wrap and this process has no handoff.
+
+    Reading does not replace the file. A later save may write a key this
+    process can open.
+    """
+    handed = _read_electron_fd()
+    path = _settings_key_path()
+    if not path.is_file():
+        return False
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    if not text.startswith(_KEY_HEADER):
+        return False
+    lines = text.splitlines()
+    scheme = lines[1] if len(lines) > 1 else ""
+    if scheme != "electron":
+        return False
+    return not handed
+
+
+def secret_needs_reentry(value: Any) -> bool:
+    """A sealed value this process cannot open because the desktop wrapped the key."""
+    return (
+        isinstance(value, str)
+        and value.startswith(_SEAL_PREFIX)
+        and _desktop_key_locked()
+    )
+
+
 def effective_api_key(provider: dict[str, Any]) -> str:
     """Resolve API key: DB value wins, else fall back to .env for known providers."""
     ptype = provider.get("type", "openai_compatible")
     stored = (provider.get("api_key") or "").strip()
+    if secret_needs_reentry(stored):
+        stored = ""
     if ptype == "ollama":
         return stored or "ollama"
     if stored and stored not in _PLACEHOLDER_API_KEYS:
@@ -668,9 +712,38 @@ class RuntimeConfig:
     """Thread-safe runtime configuration store."""
 
     @staticmethod
+    def _present_locked_llm(llm: dict[str, Any]) -> dict[str, Any]:
+        """Drop ciphertext the desktop wrap still holds, and name the field."""
+        presented = deepcopy(llm)
+        for provider in presented.get("providers", []):
+            if not isinstance(provider, dict):
+                continue
+            if not secret_needs_reentry(provider.get("api_key", "")):
+                continue
+            label = str(provider.get("name") or provider.get("id") or "模型")
+            provider["needs_reentry"] = True
+            provider["reentry_reason"] = reentry_message(f"{label} 的 API Key")
+            provider["api_key"] = ""
+        return presented
+
+    @staticmethod
+    def _present_locked_email(email_cfg: dict[str, Any]) -> dict[str, Any]:
+        presented = deepcopy(email_cfg)
+        if not secret_needs_reentry(presented.get("password", "")):
+            return presented
+        presented["needs_reentry"] = True
+        presented["reentry_reason"] = reentry_message("邮箱密码")
+        presented["password"] = ""
+        return presented
+
+    @staticmethod
     def _apply_llm_mask(llm: dict[str, Any]) -> dict[str, Any]:
         masked = deepcopy(llm)
         for p in masked.get("providers", []):
+            if p.get("needs_reentry"):
+                p["has_api_key"] = False
+                p["api_key"] = ""
+                continue
             raw_key = effective_api_key(p)
             p["has_api_key"] = bool(raw_key)
             p["api_key"] = _mask_secret(raw_key)
@@ -687,6 +760,7 @@ class RuntimeConfig:
     def get_llm_config(self, masked: bool = True) -> dict[str, Any]:
         with _lock:
             llm = deepcopy(_load_raw()["llm"])
+        llm = self._present_locked_llm(llm)
         if masked:
             return self._apply_llm_mask(llm)
         return llm
@@ -694,6 +768,7 @@ class RuntimeConfig:
     def get_email_config(self, masked: bool = True) -> dict[str, Any]:
         with _lock:
             email_cfg = deepcopy(_load_raw()["email"])
+        email_cfg = self._present_locked_email(email_cfg)
         if masked:
             return self._apply_email_mask(email_cfg)
         return email_cfg

@@ -29,4 +29,24 @@ describe("EmailConfigCard field names", () => {
     expect(screen.getByText("应用专用密码")).toHaveAttribute("for", password.id);
     expect(screen.getByRole("button", { name: "显示密码" })).not.toBe(password);
   });
+
+  it("names the mailbox password when the desktop wrap cannot be opened", () => {
+    render(
+      <EmailConfigCard
+        email={{
+          ...email,
+          config: {
+            ...email.config,
+            needs_reentry: true,
+            reentry_reason:
+              "邮箱密码需要重新填写。它是用桌面的 safeStorage 包过的，当前这个后端进程打不开。重新填写并保存之后就能用。",
+          },
+        }}
+        onSaved={() => {}}
+        embedded
+      />,
+    );
+    expect(screen.getByTestId("secret-reentry")).toHaveTextContent("邮箱密码需要重新填写");
+    expect(screen.getByTestId("secret-reentry")).toHaveTextContent("safeStorage");
+  });
 });

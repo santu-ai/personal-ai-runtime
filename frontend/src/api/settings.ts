@@ -10,6 +10,8 @@ export interface LlmProviderConfig {
   model: string;
   api_key: string;
   has_api_key?: boolean;
+  needs_reentry?: boolean;
+  reentry_reason?: string;
   enabled: boolean;
 }
 
@@ -44,6 +46,8 @@ export interface EmailConfig {
   smtp_host: string;
   smtp_port: number;
   configured?: boolean;
+  needs_reentry?: boolean;
+  reentry_reason?: string;
 }
 
 export interface EmailSettingsResponse {
