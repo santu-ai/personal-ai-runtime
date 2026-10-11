@@ -414,25 +414,21 @@ export default function DashboardPage() {
   }
 
   // 整页还没有数据时，重试会把查询错误清掉并把加载态再置上。原因留在钩子里，先画失败。
+  // 标题马上出现。各块自己显示加载或失败，不再等全部读完才画出「今天」。
   if (error) {
     return (
-      <div className="flex flex-1 items-center justify-center p-6">
-        <div className="w-full max-w-lg">
-          <LoadErrorNotice
-            message={error}
-            busy={errorBusy}
-            onRetry={refresh}
-            testId="dashboard-load-error"
-          />
+      <div className="page-shell">
+        <div className="page-container">
+          <PageHeader title="今天" description={getDateString()} />
+          <div className="mx-auto w-full max-w-lg py-6">
+            <LoadErrorNotice
+              message={error}
+              busy={errorBusy}
+              onRetry={refresh}
+              testId="dashboard-load-error"
+            />
+          </div>
         </div>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <div className="animate-pulse text-fg-secondary">加载中...</div>
       </div>
     );
   }

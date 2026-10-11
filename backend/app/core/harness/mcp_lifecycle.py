@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 import logging
+import time
+from collections.abc import Callable
 
 from app.core.harness.mcp_config import mcp_external_enabled
 from app.core.harness.mcp_mesh import mcp_mesh
@@ -15,10 +17,23 @@ logger = logging.getLogger(__name__)
 
 async def start_mcp_mesh() -> int:
     """连接配置为 startup 的外部 MCP server；惰性 server 在后台连接。"""
-    if not mcp_external_enabled():
-        return 0
-    await mcp_mesh.start()
-    return len(mcp_mesh.discovered_tools)
+    note_phase: Callable[[str, float], None] | None = None
+    try:
+        from app.core.startup_health import note_phase_since
+
+        note_phase = note_phase_since
+    except Exception:
+        logger.debug("mcp phase recorder unavailable", exc_info=True)
+
+    started = time.perf_counter()
+    try:
+        if not mcp_external_enabled():
+            return 0
+        await mcp_mesh.start()
+        return len(mcp_mesh.discovered_tools)
+    finally:
+        if note_phase is not None:
+            note_phase("mcp", started)
 
 
 async def stop_mcp_mesh() -> None:

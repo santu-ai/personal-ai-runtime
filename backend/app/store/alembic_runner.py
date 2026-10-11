@@ -2,6 +2,8 @@
 
 import logging
 import os
+import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Optional
 
@@ -62,6 +64,15 @@ def run_migrations(db_url: Optional[str] = None) -> Optional[str]:
     if db_url:
         alembic_cfg.set_main_option("sqlalchemy.url", db_url)
 
+    note_phase: Callable[[str, float], None] | None = None
+    try:
+        from app.core.startup_health import note_phase_since
+
+        note_phase = note_phase_since
+    except Exception:
+        logger.debug("migration phase recorder unavailable", exc_info=True)
+
+    started = time.perf_counter()
     try:
         command.upgrade(alembic_cfg, "head")
 
@@ -75,3 +86,6 @@ def run_migrations(db_url: Optional[str] = None) -> Optional[str]:
     except Exception as exc:
         logger.error("Alembic schema setup failed on %s: %s", _ALEMBIC_INI, exc)
         raise
+    finally:
+        if note_phase is not None:
+            note_phase("migration", started)
