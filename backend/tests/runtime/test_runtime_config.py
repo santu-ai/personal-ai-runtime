@@ -261,10 +261,59 @@ def test_electron_wrapped_key_stays_sealed_without_the_desktop(isolated_runtime_
             "INSERT INTO app_settings (category, data_json) VALUES (?, ?)",
             ("email", json.dumps({"user": "a@b.c", "password": sealed})),
         )
-    assert RuntimeConfig().get_email_credentials()["password"] != "app-pass"
+    creds = RuntimeConfig().get_email_credentials()
+    assert creds["password"] == ""
+    assert creds["needs_reentry"] is True
+    assert "邮箱密码" in creds["reentry_reason"]
+    assert "safeStorage" in creds["reentry_reason"]
+    shown = RuntimeConfig().get_email_config(masked=True)
+    assert shown["password"] == ""
+    assert shown["configured"] is False
+    assert shown["needs_reentry"] is True
     assert key_path.read_text(encoding="utf-8").startswith("os:v1\nelectron\n")
     with db.get_db() as conn:
         row = conn.execute(
             "SELECT data_json FROM app_settings WHERE category = 'email'"
         ).fetchone()
     assert "app-pass" not in row["data_json"]
+
+
+def test_electron_wrapped_api_key_names_the_provider(isolated_runtime_config):
+    from cryptography.fernet import Fernet
+
+    from app.core.runtime.runtime_config import RuntimeConfig, effective_api_key
+    from app.store.database import db
+
+    key = Fernet.generate_key()
+    sealed = "enc:v1:" + Fernet(key).encrypt(b"sk-live").decode()
+    key_path = isolated_runtime_config / "settings.key"
+    key_path.write_text("os:v1\nelectron\nAAAA\n", encoding="utf-8")
+    with db.get_db() as conn:
+        conn.execute(
+            "INSERT INTO app_settings (category, data_json) VALUES (?, ?)",
+            ("llm", json.dumps({
+                "default_provider": "deepseek",
+                "providers": [{
+                    "id": "deepseek",
+                    "name": "DeepSeek",
+                    "type": "openai_compatible",
+                    "base_url": "https://api.deepseek.com/v1",
+                    "model": "deepseek-chat",
+                    "api_key": sealed,
+                    "enabled": True,
+                }],
+            })),
+        )
+    shown = RuntimeConfig().get_llm_config(masked=True)
+    provider = shown["providers"][0]
+    assert provider["api_key"] == ""
+    assert provider["has_api_key"] is False
+    assert provider["needs_reentry"] is True
+    assert "DeepSeek 的 API Key" in provider["reentry_reason"]
+    assert "safeStorage" in provider["reentry_reason"]
+    raw = RuntimeConfig().get_llm_config(masked=False)
+    assert raw["providers"][0]["api_key"] == ""
+    usable = effective_api_key(raw["providers"][0])
+    assert usable != sealed
+    assert "sk-live" not in usable
+    assert key_path.read_text(encoding="utf-8").startswith("os:v1\nelectron\n")
