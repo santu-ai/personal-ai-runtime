@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -1215,6 +1216,39 @@ def test_dev_forward_keeps_the_date_inside_the_chain():
         "kind": "change",
     })
     assert "6月9日" in text
+
+
+def test_rare_revision_survives_a_long_inbox():
+    """One rewritten line among hundreds of mails is still kept, and the scan stays cheap."""
+    emails = []
+    for index in range(200):
+        if index == 12:
+            body = "西栈桥护栏已到货，编号 QZ-4417，先入库。"
+        elif index == 160:
+            body = "西栈桥护栏已装好，编号 QZ-4417，可以验收。"
+        elif index == 20:
+            body = "报价定为 18万元，项目仍是西栈桥照明。"
+        elif index == 140:
+            body = "报价定为 42万元，项目仍是西栈桥照明。"
+        else:
+            body = f"第{index:04d}条巡检。" * 20
+        day = (index // 24) + 1
+        hour = index % 24
+        emails.append(_email(
+            f"m{index:03d}",
+            subject=f"巡检 {index}",
+            date=f"2099-06-{day:02d}T{hour:02d}:00:00+00:00",
+            body=body,
+        ))
+    started = time.perf_counter()
+    _sources, _notes, coverage = _collect([_inbox(emails, scoped=True, limit=200)])
+    elapsed = time.perf_counter() - started
+    catalog = coverage["_catalog"]
+    assert "已装好" in catalog["email:m160"]["surface"]
+    assert "已到货" not in catalog["email:m160"]["surface"]
+    assert "42万元" in catalog["email:m140"]["surface"]
+    assert "18万元" in catalog["email:m020"]["surface"]
+    assert elapsed < 3.0
 
 
 def test_field_paraphrase_keeps_the_later_line():

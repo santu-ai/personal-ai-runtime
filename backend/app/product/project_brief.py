@@ -1296,6 +1296,22 @@ def _collapsed_chars(text: str) -> str:
     return "".join(str(text or "").split())
 
 
+_REVISION_SPAN = 6
+# Small inboxes still compare every pair. A larger inbox only keeps the latest
+# lines for a fragment that shows up everywhere, so boilerplate does not force
+# a full scan of every mail.
+_REVISION_EXACT_LINES = 96
+_REVISION_POSTING_CAP = 24
+
+
+def _span_pieces(collapsed: str, span: int = _REVISION_SPAN) -> frozenset[str]:
+    if len(collapsed) < span:
+        return frozenset()
+    return frozenset(
+        collapsed[index:index + span] for index in range(len(collapsed) - span + 1)
+    )
+
+
 def _shared_span_len(left: str, right: str) -> int:
     """Longest contiguous span shared by two lines, ignoring spaces."""
     a = _collapsed_chars(left)
@@ -1319,9 +1335,23 @@ def _shared_span_len(left: str, right: str) -> int:
 
 def _is_line_revision(left: str, right: str) -> bool:
     """Two different lines that still share a long stretch of the same words."""
-    if not left or not right or _collapsed_chars(left) == _collapsed_chars(right):
+    if not left or not right:
         return False
-    return _shared_span_len(left, right) >= 6
+    left_collapsed = _collapsed_chars(left)
+    right_collapsed = _collapsed_chars(right)
+    if (
+        not left_collapsed
+        or left_collapsed == right_collapsed
+        or len(left_collapsed) < _REVISION_SPAN
+        or len(right_collapsed) < _REVISION_SPAN
+    ):
+        return False
+    pieces = _span_pieces(left_collapsed)
+    width = _REVISION_SPAN
+    return any(
+        right_collapsed[index:index + width] in pieces
+        for index in range(len(right_collapsed) - width + 1)
+    )
 
 
 def _line_facts_conflict(left: str, right: str) -> bool:
@@ -1341,28 +1371,145 @@ def _remember_surface(item: dict[str, Any], line: str) -> None:
         surface.append(line)
 
 
+def _revision_rows(
+    batch: list[dict[str, Any]],
+) -> list[list[tuple[str, frozenset[str]] | None]]:
+    """Collapsed text and its fragments, for lines that can be a revision."""
+    prepared: list[list[tuple[str, frozenset[str]] | None]] = []
+    for item in batch:
+        usable = not item["superseded_by"] and item["date"] is not None
+        rows: list[tuple[str, frozenset[str]] | None] = []
+        for line in item["lines"]:
+            if not usable or str(line).startswith(">"):
+                rows.append(None)
+                continue
+            collapsed = _collapsed_chars(line)
+            pieces = _span_pieces(collapsed)
+            rows.append((collapsed, pieces) if pieces else None)
+        prepared.append(rows)
+    return prepared
+
+
+def _revision_index(
+    prepared: list[list[tuple[str, frozenset[str]] | None]],
+) -> dict[str, list[tuple[int, int]]]:
+    """Map a short fragment to the mails that contain it.
+
+    When a fragment is on more mails than the cap, only the latest ones stay.
+    A rare fragment still points at every mail, which is how one rewritten
+    line is found inside a long inbox.
+    """
+    counts: dict[str, int] = {}
+    active = 0
+    for rows in prepared:
+        for row in rows:
+            if row is None:
+                continue
+            active += 1
+            for piece in row[1]:
+                counts[piece] = counts.get(piece, 0) + 1
+    exact = active <= _REVISION_EXACT_LINES
+    hot = {
+        piece for piece, count in counts.items()
+        if not exact and count > _REVISION_POSTING_CAP
+    }
+    index: dict[str, list[tuple[int, int]]] = {}
+    hot_lists: dict[str, list[tuple[int, int]]] = {piece: [] for piece in hot}
+    for email_index, rows in enumerate(prepared):
+        for line_index, row in enumerate(rows):
+            if row is None:
+                continue
+            for piece in row[1]:
+                slot = hot_lists.get(piece)
+                if slot is None:
+                    index.setdefault(piece, []).append((email_index, line_index))
+                else:
+                    slot.append((email_index, line_index))
+    for piece, posting in hot_lists.items():
+        index[piece] = posting[-_REVISION_POSTING_CAP:]
+    return index
+
+
+def _revision_hits(
+    *,
+    newer_index: int,
+    line_index: int,
+    prepared: list[list[tuple[str, frozenset[str]] | None]],
+    index: dict[str, list[tuple[int, int]]],
+) -> dict[int, set[int]]:
+    row = prepared[newer_index][line_index]
+    if row is None:
+        return {}
+    hits: dict[int, set[int]] = {}
+    seen: set[tuple[int, int]] = set()
+    for piece in row[1]:
+        for email_index, older_line_index in index.get(piece, ()):
+            if email_index == newer_index:
+                continue
+            key = (email_index, older_line_index)
+            if key in seen:
+                continue
+            seen.add(key)
+            hits.setdefault(email_index, set()).add(older_line_index)
+    return hits
+
+
 def _mark_email_revisions(batch: list[dict[str, Any]]) -> None:
     """Keep a later line that rewrites an earlier one, and both lines when they disagree."""
-    for older in batch:
+    prepared = _revision_rows(batch)
+    index = _revision_index(prepared)
+    # Attribution is a property of the line, not of the pair. Checking it inside
+    # the pair loop repeats the same regular expressions for every earlier mail.
+    eligible: list[tuple[int, int]] = []
+    for newer_index, newer in enumerate(batch):
+        if newer["superseded_by"] or newer["date"] is None:
+            continue
+        for line_index, newer_line in enumerate(newer["lines"]):
+            if newer_line.startswith(">") or _is_attribution_line(newer_line):
+                continue
+            if prepared[newer_index][line_index] is None:
+                continue
+            eligible.append((newer_index, line_index))
+    cached: dict[tuple[int, int], dict[int, set[int]]] = {}
+    for older_index, older in enumerate(batch):
         if older["superseded_by"] or older["date"] is None:
             continue
-        for newer in batch:
-            if older is newer or newer["date"] is None or older["date"] >= newer["date"]:
+        older_date = older["date"]
+        for newer_index, line_index in eligible:
+            newer = batch[newer_index]
+            if older_index == newer_index or older_date >= newer["date"]:
                 continue
-            if newer["superseded_by"]:
+            cache_key = (newer_index, line_index)
+            hits = cached.get(cache_key)
+            if hits is None:
+                hits = _revision_hits(
+                    newer_index=newer_index,
+                    line_index=line_index,
+                    prepared=prepared,
+                    index=index,
+                )
+                cached[cache_key] = hits
+            line_ids = hits.get(older_index)
+            if not line_ids:
                 continue
-            for newer_line in newer["lines"]:
-                if newer_line.startswith(">") or _is_attribution_line(newer_line):
+            newer_line = newer["lines"][line_index]
+            newer_row = prepared[newer_index][line_index]
+            for older_line_index, older_line in enumerate(older["lines"]):
+                if older_line_index not in line_ids or older_line.startswith(">"):
                     continue
-                for older_line in older["lines"]:
-                    if older_line.startswith(">") or not _is_line_revision(older_line, newer_line):
-                        continue
-                    if _line_facts_conflict(older_line, newer_line):
-                        _remember_surface(older, older_line)
-                        _remember_surface(newer, newer_line)
-                    else:
-                        _remember_surface(newer, newer_line)
-                    break
+                older_row = prepared[older_index][older_line_index]
+                if (
+                    older_row is None
+                    or newer_row is None
+                    or older_row[0] == newer_row[0]
+                ):
+                    continue
+                if _line_facts_conflict(older_line, newer_line):
+                    _remember_surface(older, older_line)
+                    _remember_surface(newer, newer_line)
+                else:
+                    _remember_surface(newer, newer_line)
+                break
 
 
 def _operative_lines(text: str) -> list[str]:
