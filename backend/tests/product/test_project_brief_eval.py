@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -1033,8 +1034,72 @@ FRESH_CASES: list[dict] = [
     },
 ]
 
+_FIELD_EAST_VALVE = "specs/east-valve.md"
+_FIELD_WEST_VALVE = "specs/west-valve.md"
+
+FIELD_CASES: list[dict] = [
+    {
+        "id": "field-near-paraphrase",
+        "query": "出库",
+        "results": [_inbox([
+            _email(
+                "held",
+                subject="西仓出库",
+                date="2099-05-01T08:00:00+00:00",
+                body="西仓出库停在查验，货单号 W-19。",
+            ),
+            _email(
+                "cleared",
+                subject="西仓出库更新",
+                date="2099-05-08T08:00:00+00:00",
+                body="西仓出库已经放行，货单号 W-19。",
+            ),
+        ], scoped=True, query="出库")],
+        "included": {"email:held", "email:cleared"},
+        "fact_any": ["已经放行"],
+    },
+    {
+        "id": "field-parallel-specs",
+        "query": "",
+        "files": [
+            {"path": _FIELD_EAST_VALVE, "label": "东闸阀门"},
+            {"path": _FIELD_WEST_VALVE, "label": "西闸阀门"},
+        ],
+        "results": [
+            _inbox([], scoped=True),
+            _file("# 东闸阀门\n故障码 12 表示阀杆卡死。\n复位等待 4 秒。\n"),
+            _file("# 西闸阀门\n故障码 12 表示电源脱落。\n复位等待 9 秒。\n"),
+        ],
+        "included": {
+            _file_source_id(_FIELD_EAST_VALVE),
+            _file_source_id(_FIELD_WEST_VALVE),
+        },
+        "has_file": True,
+        "fact_all": ["阀杆卡死", "电源脱落"],
+    },
+    {
+        "id": "field-quoted-reply",
+        "query": "备件",
+        "results": [_inbox([
+            _email(
+                "parts",
+                subject="Re: 备件",
+                body=(
+                    "备件可以按 86万元 购置。\n"
+                    "\n"
+                    "于 2099-06-01 写道：\n"
+                    "> 备件先按 20万元 报。"
+                ),
+            ),
+        ], scoped=True, query="备件")],
+        "included": {"email:parts"},
+        "fact_any": ["86万元"],
+    },
+]
+
 CASES.extend(DEV_CASES)
 CASES.extend(FRESH_CASES)
+CASES.extend(FIELD_CASES)
 
 
 @pytest.mark.parametrize("case", CASES, ids=[item["id"] for item in CASES])
@@ -1085,6 +1150,10 @@ def _dev(case_id: str) -> dict:
 
 def _fresh(case_id: str) -> dict:
     return next(item for item in FRESH_CASES if item["id"] == case_id)
+
+
+def _field(case_id: str) -> dict:
+    return next(item for item in FIELD_CASES if item["id"] == case_id)
 
 
 def _compile_miss(case: dict, finding: dict) -> str:
@@ -1147,6 +1216,88 @@ def test_dev_forward_keeps_the_date_inside_the_chain():
         "kind": "change",
     })
     assert "6月9日" in text
+
+
+def test_rare_revision_survives_a_long_inbox():
+    """One rewritten line among hundreds of mails is still kept, and the scan stays cheap."""
+    emails = []
+    for index in range(200):
+        if index == 12:
+            body = "西栈桥护栏已到货，编号 QZ-4417，先入库。"
+        elif index == 160:
+            body = "西栈桥护栏已装好，编号 QZ-4417，可以验收。"
+        elif index == 20:
+            body = "报价定为 18万元，项目仍是西栈桥照明。"
+        elif index == 140:
+            body = "报价定为 42万元，项目仍是西栈桥照明。"
+        else:
+            body = f"第{index:04d}条巡检。" * 20
+        day = (index // 24) + 1
+        hour = index % 24
+        emails.append(_email(
+            f"m{index:03d}",
+            subject=f"巡检 {index}",
+            date=f"2099-06-{day:02d}T{hour:02d}:00:00+00:00",
+            body=body,
+        ))
+    started = time.perf_counter()
+    _sources, _notes, coverage = _collect([_inbox(emails, scoped=True, limit=200)])
+    elapsed = time.perf_counter() - started
+    catalog = coverage["_catalog"]
+    assert "已装好" in catalog["email:m160"]["surface"]
+    assert "已到货" not in catalog["email:m160"]["surface"]
+    assert "42万元" in catalog["email:m140"]["surface"]
+    assert "18万元" in catalog["email:m020"]["surface"]
+    assert elapsed < 3.0
+
+
+def test_field_paraphrase_keeps_the_later_line():
+    text = _compile_miss(_field("field-near-paraphrase"), {
+        "text": "西仓出库停在查验",
+        "quote": "西仓出库停在查验，货单号 W-19。",
+        "source_ids": ["email:held"],
+        "kind": "change",
+    })
+    assert "已经放行" in text
+
+
+def test_field_parallel_specs_keep_both_faults():
+    text = _compile_miss(_field("field-parallel-specs"), {
+        "text": "东闸阀门",
+        "quote": "# 东闸阀门",
+        "source_ids": [_file_source_id(_FIELD_EAST_VALVE)],
+        "kind": "change",
+    })
+    assert "阀杆卡死" in text
+    assert "电源脱落" in text
+
+
+def test_field_quoted_reply_paraphrase_uses_the_source_line():
+    case = _field("field-quoted-reply")
+    sources, _bodies, notes, coverage = prepare_case(case)
+    result = validate_model_brief(
+        {
+            "summary": "备件预算有更新",
+            "content": "备件预算有更新",
+            "findings": [{
+                "text": "可以按86万元购置",
+                "quote": "可以按86万元购置",
+                "source_ids": ["email:parts"],
+                "kind": "change",
+            }],
+        },
+        allowed_ids={str(item["id"]) for item in sources},
+        criteria=default_acceptance_criteria(),
+        source_notes=notes,
+        source_catalog=dict(coverage["_catalog"]),
+        objective="整理进度、风险和待办",
+    )
+    assert result["quality_evidence"] == "pending"
+    snippet = result["findings"][0]["evidence"][0]["snippet"]
+    assert "86万元" in snippet
+    assert "备件可以按 86万元 购置" in snippet
+    joined = "\n".join(str(item.get("text") or "") for item in result["findings"])
+    assert "86万元" in joined
 
 
 def test_dev_near_duplicate_keeps_the_newer_line():

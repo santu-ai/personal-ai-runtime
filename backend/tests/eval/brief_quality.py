@@ -95,6 +95,10 @@ def _is_fresh(row: dict) -> bool:
     return str(row.get("id") or "").startswith("fresh-")
 
 
+def _is_field(row: dict) -> bool:
+    return str(row.get("id") or "").startswith("field-")
+
+
 def _tier_report(rows: list[dict], prefix: str) -> dict:
     parsed = [row for row in rows if row["parsed"]]
     fields = _support_fields(parsed, prefix)
@@ -128,7 +132,11 @@ def summarize(rows: list[dict]) -> dict:
     parsed = [row for row in rows if row["parsed"]]
     tracked = [
         row for row in parsed
-        if not _is_holdout(row) and not _is_sealed(row) and not _is_dev(row) and not _is_fresh(row)
+        if not _is_holdout(row)
+        and not _is_sealed(row)
+        and not _is_dev(row)
+        and not _is_fresh(row)
+        and not _is_field(row)
     ]
     holdout = [row for row in parsed if _is_holdout(row)]
     sealed_fields = _tier_report(
@@ -142,6 +150,10 @@ def summarize(rows: list[dict]) -> dict:
     fresh_fields = _tier_report(
         [row for row in rows if _is_fresh(row)],
         "fresh_",
+    )
+    field_fields = _tier_report(
+        [row for row in rows if _is_field(row)],
+        "field_",
     )
     supported = [row for row in parsed if row["evidence_supported"]]
     miss_rows = [row for row in parsed if row["miss_applicable"]]
@@ -183,4 +195,9 @@ def summarize(rows: list[dict]) -> dict:
         "fresh_evidence_support_rate": fresh_fields["fresh_evidence_support_rate"],
         "fresh_fact_rate": fresh_fields["fresh_fact_rate"],
         "fresh_fact_miss_ids": fresh_fields["fresh_fact_miss_ids"],
+        "field_parsed": field_fields["field_parsed"],
+        "field_evidence_support_rate": field_fields["field_evidence_support_rate"],
+        "field_fact_rate": field_fields["field_fact_rate"],
+        "field_fact_miss_ids": field_fields["field_fact_miss_ids"],
+        "field_unsupported_ids": field_fields["field_unsupported_ids"],
     }

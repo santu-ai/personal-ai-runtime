@@ -390,6 +390,7 @@ def _emit_inbox_batch(
                     newer["surface"].append(line)
             notes.append(f"{older['id']} 已被 {newer['id']} 取代，请改读后一封。")
             break
+    _mark_email_revisions(batch)
     for item in batch:
         visible = str(item["visible"])
         if item["superseded_by"]:
@@ -406,6 +407,15 @@ def _emit_inbox_batch(
             for line in _mixed_language_lines(operative):
                 if line not in surface:
                     surface.insert(0, line)
+            quoted_amounts: set[str] = set()
+            for line in _quotable_lines(visible):
+                if line.startswith(">"):
+                    quoted_amounts |= _amount_keys(line)
+            if quoted_amounts:
+                for line in operative:
+                    own = _amount_keys(line)
+                    if own and own != quoted_amounts and line not in surface:
+                        surface.append(line)
             surface = surface[:3]
             preferred = []
             for line in surface + operative:
@@ -461,7 +471,8 @@ def _emit_file_batch(
     """Surface spreadsheet rows, meeting decisions, and lines that differ."""
     pending.sort(key=lambda item: (str(item["label"]), str(item["id"])))
     line_sets = [list(item["lines"]) for item in pending]
-    labels = [str(item["label"]) for item in pending]
+    # Directory grouping follows the file path. A display label is not a path.
+    labels = [str(item.get("path") or item["label"]) for item in pending]
     for index, item in enumerate(pending):
         others: list[list[str]] = []
         for other in range(len(pending)):
@@ -475,8 +486,8 @@ def _emit_file_batch(
         unique: list[str] = []
         if others:
             shared: set[str] = set()
-            for peer_lines in others:
-                shared |= set(item["lines"]) & set(peer_lines)
+            for peer in others:
+                shared |= set(item["lines"]) & set(peer)
             unique = [line for line in item["lines"] if line not in shared]
             unique.sort(key=_distinctive_rank)
         family_facts = _family_fact_lines(
@@ -488,6 +499,20 @@ def _emit_file_batch(
             ],
         )
         mixed = _mixed_language_lines(list(item["lines"]))
+        peer_lines: list[list[str]] = [
+            list(line_sets[other])
+            for other in range(len(pending))
+            if other != index and _same_directory(labels[index], labels[other])
+        ]
+        revisions = [
+            line for line in item["lines"]
+            if not str(line).startswith(">")
+            and any(
+                _is_line_revision(line, other)
+                for peer in peer_lines
+                for other in peer
+            )
+        ]
         visible = str(item["visible"])
         csv_rows = _csv_key_rows(visible) if _looks_like_csv(visible) else []
         decisions = [
@@ -521,7 +546,7 @@ def _emit_file_batch(
             for line in family_facts:
                 if line not in surface:
                     surface.append(line)
-        for line in mixed:
+        for line in revisions + mixed:
             if line not in preferred:
                 preferred.insert(0, line)
             if line not in surface:
@@ -747,6 +772,7 @@ def collect_allowed_sources(
                 gaps.append(f"文件 {label} 被截断：{truncation}")
             file_pending.append({
                 "id": source_id,
+                "path": path,
                 "label": label,
                 "visible": visible,
                 "lines": _quotable_lines(visible),
@@ -1256,11 +1282,242 @@ def _is_forward_boilerplate(line: str) -> bool:
     return bool(_FORWARD_BOILERPLATE.search(line.strip()))
 
 
+_ATTRIBUTION_RE = re.compile(r"写道|写到|wrote|writes", re.I)
+
+
+def _is_attribution_line(line: str) -> bool:
+    """A 'wrote on this date' line is not the fact that follows it."""
+    if _AMOUNT.search(line) or _DECISION_RE.search(line):
+        return False
+    return bool(_ATTRIBUTION_RE.search(line))
+
+
+def _collapsed_chars(text: str) -> str:
+    return "".join(str(text or "").split())
+
+
+_REVISION_SPAN = 6
+# Small inboxes still compare every pair. A larger inbox only keeps the latest
+# lines for a fragment that shows up everywhere, so boilerplate does not force
+# a full scan of every mail.
+_REVISION_EXACT_LINES = 96
+_REVISION_POSTING_CAP = 24
+
+
+def _span_pieces(collapsed: str, span: int = _REVISION_SPAN) -> frozenset[str]:
+    if len(collapsed) < span:
+        return frozenset()
+    return frozenset(
+        collapsed[index:index + span] for index in range(len(collapsed) - span + 1)
+    )
+
+
+def _shared_span_len(left: str, right: str) -> int:
+    """Longest contiguous span shared by two lines, ignoring spaces."""
+    a = _collapsed_chars(left)
+    b = _collapsed_chars(right)
+    if len(a) < 2 or len(b) < 2:
+        return 0
+    best = 0
+    prev = [0] * (len(b) + 1)
+    for ch in a:
+        curr = [0] * (len(b) + 1)
+        for index, other in enumerate(b):
+            if ch != other:
+                continue
+            length = prev[index] + 1
+            curr[index + 1] = length
+            if length > best:
+                best = length
+        prev = curr
+    return best
+
+
+def _is_line_revision(left: str, right: str) -> bool:
+    """Two different lines that still share a long stretch of the same words."""
+    if not left or not right:
+        return False
+    left_collapsed = _collapsed_chars(left)
+    right_collapsed = _collapsed_chars(right)
+    if (
+        not left_collapsed
+        or left_collapsed == right_collapsed
+        or len(left_collapsed) < _REVISION_SPAN
+        or len(right_collapsed) < _REVISION_SPAN
+    ):
+        return False
+    pieces = _span_pieces(left_collapsed)
+    width = _REVISION_SPAN
+    return any(
+        right_collapsed[index:index + width] in pieces
+        for index in range(len(right_collapsed) - width + 1)
+    )
+
+
+def _line_facts_conflict(left: str, right: str) -> bool:
+    """True when the two lines name different dates or different amounts."""
+    dates_left = set(_DATE_TOKEN.findall(left))
+    dates_right = set(_DATE_TOKEN.findall(right))
+    if dates_left and dates_right and dates_left != dates_right:
+        return True
+    amounts_left = _amount_keys(left)
+    amounts_right = _amount_keys(right)
+    return bool(amounts_left and amounts_right and amounts_left != amounts_right)
+
+
+def _remember_surface(item: dict[str, Any], line: str) -> None:
+    surface = item["surface"]
+    if line and line not in surface:
+        surface.append(line)
+
+
+def _revision_rows(
+    batch: list[dict[str, Any]],
+) -> list[list[tuple[str, frozenset[str]] | None]]:
+    """Collapsed text and its fragments, for lines that can be a revision."""
+    prepared: list[list[tuple[str, frozenset[str]] | None]] = []
+    for item in batch:
+        usable = not item["superseded_by"] and item["date"] is not None
+        rows: list[tuple[str, frozenset[str]] | None] = []
+        for line in item["lines"]:
+            if not usable or str(line).startswith(">"):
+                rows.append(None)
+                continue
+            collapsed = _collapsed_chars(line)
+            pieces = _span_pieces(collapsed)
+            rows.append((collapsed, pieces) if pieces else None)
+        prepared.append(rows)
+    return prepared
+
+
+def _revision_index(
+    prepared: list[list[tuple[str, frozenset[str]] | None]],
+) -> dict[str, list[tuple[int, int]]]:
+    """Map a short fragment to the mails that contain it.
+
+    When a fragment is on more mails than the cap, only the latest ones stay.
+    A rare fragment still points at every mail, which is how one rewritten
+    line is found inside a long inbox.
+    """
+    counts: dict[str, int] = {}
+    active = 0
+    for rows in prepared:
+        for row in rows:
+            if row is None:
+                continue
+            active += 1
+            for piece in row[1]:
+                counts[piece] = counts.get(piece, 0) + 1
+    exact = active <= _REVISION_EXACT_LINES
+    hot = {
+        piece for piece, count in counts.items()
+        if not exact and count > _REVISION_POSTING_CAP
+    }
+    index: dict[str, list[tuple[int, int]]] = {}
+    hot_lists: dict[str, list[tuple[int, int]]] = {piece: [] for piece in hot}
+    for email_index, rows in enumerate(prepared):
+        for line_index, row in enumerate(rows):
+            if row is None:
+                continue
+            for piece in row[1]:
+                slot = hot_lists.get(piece)
+                if slot is None:
+                    index.setdefault(piece, []).append((email_index, line_index))
+                else:
+                    slot.append((email_index, line_index))
+    for piece, posting in hot_lists.items():
+        index[piece] = posting[-_REVISION_POSTING_CAP:]
+    return index
+
+
+def _revision_hits(
+    *,
+    newer_index: int,
+    line_index: int,
+    prepared: list[list[tuple[str, frozenset[str]] | None]],
+    index: dict[str, list[tuple[int, int]]],
+) -> dict[int, set[int]]:
+    row = prepared[newer_index][line_index]
+    if row is None:
+        return {}
+    hits: dict[int, set[int]] = {}
+    seen: set[tuple[int, int]] = set()
+    for piece in row[1]:
+        for email_index, older_line_index in index.get(piece, ()):
+            if email_index == newer_index:
+                continue
+            key = (email_index, older_line_index)
+            if key in seen:
+                continue
+            seen.add(key)
+            hits.setdefault(email_index, set()).add(older_line_index)
+    return hits
+
+
+def _mark_email_revisions(batch: list[dict[str, Any]]) -> None:
+    """Keep a later line that rewrites an earlier one, and both lines when they disagree."""
+    prepared = _revision_rows(batch)
+    index = _revision_index(prepared)
+    # Attribution is a property of the line, not of the pair. Checking it inside
+    # the pair loop repeats the same regular expressions for every earlier mail.
+    eligible: list[tuple[int, int]] = []
+    for newer_index, newer in enumerate(batch):
+        if newer["superseded_by"] or newer["date"] is None:
+            continue
+        for line_index, newer_line in enumerate(newer["lines"]):
+            if newer_line.startswith(">") or _is_attribution_line(newer_line):
+                continue
+            if prepared[newer_index][line_index] is None:
+                continue
+            eligible.append((newer_index, line_index))
+    cached: dict[tuple[int, int], dict[int, set[int]]] = {}
+    for older_index, older in enumerate(batch):
+        if older["superseded_by"] or older["date"] is None:
+            continue
+        older_date = older["date"]
+        for newer_index, line_index in eligible:
+            newer = batch[newer_index]
+            if older_index == newer_index or older_date >= newer["date"]:
+                continue
+            cache_key = (newer_index, line_index)
+            hits = cached.get(cache_key)
+            if hits is None:
+                hits = _revision_hits(
+                    newer_index=newer_index,
+                    line_index=line_index,
+                    prepared=prepared,
+                    index=index,
+                )
+                cached[cache_key] = hits
+            line_ids = hits.get(older_index)
+            if not line_ids:
+                continue
+            newer_line = newer["lines"][line_index]
+            newer_row = prepared[newer_index][line_index]
+            for older_line_index, older_line in enumerate(older["lines"]):
+                if older_line_index not in line_ids or older_line.startswith(">"):
+                    continue
+                older_row = prepared[older_index][older_line_index]
+                if (
+                    older_row is None
+                    or newer_row is None
+                    or older_row[0] == newer_row[0]
+                ):
+                    continue
+                if _line_facts_conflict(older_line, newer_line):
+                    _remember_surface(older, older_line)
+                    _remember_surface(newer, newer_line)
+                else:
+                    _remember_surface(newer, newer_line)
+                break
+
+
 def _operative_lines(text: str) -> list[str]:
     """Lines from the current message. Quoted history and the earlier date lose."""
     unquoted = [
         line for line in _quotable_lines(text)
         if not line.startswith(">") and not _is_forward_boilerplate(line)
+        and not _is_attribution_line(line)
     ]
     dated = [line for line in unquoted if _DATE_TOKEN.search(line)]
     if not dated:
@@ -1901,6 +2158,49 @@ def _retrieval_lines(coverage: dict[str, Any] | None) -> list[str]:
     return lines
 
 
+def _retarget_similar_quote(
+    item: dict[str, Any],
+    catalog: dict[str, dict[str, str]],
+) -> dict[str, Any]:
+    """Use the source line when a quote is that line with a few words changed.
+
+    A shared amount, or a short overlap, is not enough. Two lines that name
+    different amounts stay apart.
+    """
+    quote = str(item.get("quote") or "").strip()
+    if not quote or not catalog:
+        return item
+    if any(
+        candidate in str(entry.get("text") or "")
+        for entry in catalog.values()
+        for candidate in _quote_candidates(quote)
+    ):
+        return item
+    if any(
+        _longest_line_in_quote(quote, str(entry.get("text") or ""))
+        for entry in catalog.values()
+    ):
+        return item
+    found: list[tuple[str, str]] = []
+    for sid, entry in catalog.items():
+        for line in _quotable_lines(str(entry.get("text") or "")):
+            if line.startswith(">") or _is_attribution_line(line):
+                continue
+            if _shared_span_len(quote, line) < 8:
+                continue
+            if _line_facts_conflict(quote, line):
+                continue
+            found.append((sid, line))
+    lines = {line for _sid, line in found}
+    if len(lines) != 1:
+        return item
+    sid, line = found[0]
+    updated = dict(item)
+    updated["quote"] = line
+    updated["source_ids"] = [sid]
+    return updated
+
+
 def _retarget_unique_quote(
     item: dict[str, Any],
     catalog: dict[str, dict[str, str]],
@@ -2207,6 +2507,7 @@ def validate_model_brief(
             )
             item = _prefer_current_fact(item, source_catalog)
             item = _retarget_unique_quote(item, source_catalog)
+            item = _retarget_similar_quote(item, source_catalog)
         quote_for_keep = str(item.get("quote") or "")
         quote_in_catalog = any(
             candidate in str(entry.get("text") or "")
