@@ -79,7 +79,7 @@ PROVIDER_PRESETS: dict[str, dict[str, str]] = {
         "name": "Ollama",
         "type": "ollama",
         "base_url": "http://localhost:11434/v1",
-        "model": "qwen2.5:7b",
+        "model": "qwen2.5:3b",
     },
 }
 
@@ -740,6 +740,42 @@ class RuntimeConfig:
             raw["llm"] = new_llm
             _save_raw(raw)
             return self._apply_llm_mask(new_llm)
+
+    def adopt_local_model(self, name: str) -> dict[str, Any]:
+        """Point the local provider at a model that was just installed."""
+        cfg = self.get_llm_config(masked=False)
+        providers = [dict(item) for item in (cfg.get("providers") or [])]
+        for provider in providers:
+            base = str(provider.get("base_url") or "")
+            if provider.get("type") == "ollama" or ":11434" in base:
+                provider["model"] = name
+        if not any(item.get("id") == "ollama" for item in providers):
+            providers.append({
+                "id": "ollama",
+                "name": "Ollama",
+                "type": "ollama",
+                "base_url": settings.ollama_base_url,
+                "model": name,
+                "api_key": "ollama",
+                "enabled": True,
+            })
+        payload: dict[str, Any] = {"providers": providers}
+        default_id = str(cfg.get("default_provider") or "")
+        default = next((item for item in providers if item.get("id") == default_id), None)
+        key = str((default or {}).get("api_key") or "")
+        base = str((default or {}).get("base_url") or "")
+        cloud = (
+            key not in _PLACEHOLDER_API_KEYS
+            and ":11434" not in base
+        )
+        if not cloud:
+            payload["default_provider"] = "ollama"
+        saved = self.update_llm_config(payload)
+        from app.core.agents.llm_failover import clear_installed_model_cache, llm_router
+
+        clear_installed_model_cache()
+        llm_router.reload()
+        return saved
 
     def update_email_config(self, payload: dict[str, Any]) -> dict[str, Any]:
         with _lock:

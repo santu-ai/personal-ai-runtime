@@ -23,6 +23,8 @@ vi.mock("react-router-dom", async () => {
 vi.mock("../../api/client", () => ({
   getSystemHealth: vi.fn(),
   getLlmProviders: vi.fn(),
+  getLocalModels: vi.fn(),
+  pullRecommendedModel: vi.fn(),
   createProjectBrief: vi.fn(),
   ApiError: MockApiError,
 }));
@@ -47,11 +49,21 @@ vi.mock("../../stores/errorStore", () => ({
     selector({ addError }),
 }));
 
-import { getSystemHealth, getLlmProviders, createProjectBrief } from "../../api/client";
+import { getSystemHealth, getLlmProviders, getLocalModels, createProjectBrief } from "../../api/client";
 
 const mockHealth = vi.mocked(getSystemHealth);
 const mockLlm = vi.mocked(getLlmProviders);
+const mockLocalModels = vi.mocked(getLocalModels);
 const mockCreateBrief = vi.mocked(createProjectBrief);
+
+const unreachableModels = {
+  reachable: false,
+  installed: [] as string[],
+  recommended: "qwen2.5:3b",
+  recommended_installed: false,
+  selected: null,
+  message: "这台电脑上还没连上 Ollama。先启动它，或到设置里填写一个能用的模型地址。",
+};
 
 function OnboardingHost() {
   const [open, setOpen] = useState(false);
@@ -69,6 +81,7 @@ describe("OnboardingWizard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    mockLocalModels.mockResolvedValue(unreachableModels);
   });
 
   it("shows step 1 initially", () => {
@@ -134,6 +147,46 @@ describe("OnboardingWizard", () => {
     fireEvent.click(screen.getByText("前往设置页面配置"));
     expect(localStorage.getItem("onboarding_done")).toBe("1");
     expect(mockNavigate).toHaveBeenCalledWith("/settings");
+  });
+
+  it("explains when no local model is installed and offers the recommended pull", async () => {
+    mockHealth.mockResolvedValue({
+      status: "ok",
+      auth_required: false,
+      startup: { checks: { llm: { configured: false } } },
+    } as Awaited<ReturnType<typeof getSystemHealth>>);
+    mockLocalModels.mockResolvedValue({
+      reachable: true,
+      installed: [],
+      recommended: "qwen2.5:3b",
+      recommended_installed: false,
+      selected: null,
+      message: "Ollama 已启动，但还没有模型。可以拉取 qwen2.5:3b。今天的评测用的是这个模型。",
+    });
+    renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByText("下一步"));
+    expect(await screen.findByTestId("local-models")).toHaveTextContent("还没有模型");
+    expect(screen.getByRole("button", { name: "拉取 qwen2.5:3b" })).toBeInTheDocument();
+  });
+
+  it("does not offer a pull when the recommended model is already installed", async () => {
+    mockHealth.mockResolvedValue({
+      status: "ok",
+      auth_required: false,
+      startup: { checks: { llm: { configured: false } } },
+    } as Awaited<ReturnType<typeof getSystemHealth>>);
+    mockLocalModels.mockResolvedValue({
+      reachable: true,
+      installed: ["qwen2.5:3b"],
+      recommended: "qwen2.5:3b",
+      recommended_installed: true,
+      selected: "qwen2.5:3b",
+      message: "已安装 qwen2.5:3b。今天的评测用的是它，建议就用这个。",
+    });
+    renderWithRouter(<OnboardingWizard onComplete={vi.fn()} />);
+    fireEvent.click(screen.getByText("下一步"));
+    expect(await screen.findByText("已安装：qwen2.5:3b")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "拉取 qwen2.5:3b" })).not.toBeInTheDocument();
   });
 
   it("writes the full starter prompt when the topic is keyboard focused", async () => {

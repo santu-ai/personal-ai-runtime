@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from app.api.models import (
     DestroyDataRequest,
@@ -101,6 +102,56 @@ async def list_llm_providers():
         "providers": llm_router.list_providers(),
         "default": llm_router.get_default_model(),
     }
+
+
+class PullLocalModelRequest(BaseModel):
+    name: str
+
+
+def _local_model_base() -> str:
+    """Prefer a configured Ollama address, then the settings default."""
+    from app.core.agents.llm_failover import is_ollama_endpoint
+    from app.core.runtime.runtime_config import runtime_config
+
+    base = settings.ollama_base_url
+    try:
+        llm = runtime_config.get_llm_config(masked=True)
+    except Exception:
+        return base
+    for provider in llm.get("providers") or []:
+        provider_base = str(provider.get("base_url") or "")
+        if is_ollama_endpoint(str(provider.get("type") or ""), provider_base) and provider_base:
+            return provider_base
+    return base
+
+
+@router.get("/local-models")
+async def local_models():
+    """Installed Ollama models and the recommended local model."""
+    from app.core.agents.llm_failover import describe_local_models, fetch_installed_model_names
+
+    base = _local_model_base()
+    installed = fetch_installed_model_names(base)
+    described = describe_local_models(base, installed)
+    described.pop("base_url", None)
+    return described
+
+
+@router.post("/local-models/pull")
+async def pull_local_model(body: PullLocalModelRequest):
+    """Pull the recommended local model and stream progress."""
+    from app.core.agents.llm_failover import RECOMMENDED_LOCAL_MODEL, iter_recommended_pull
+
+    if body.name != RECOMMENDED_LOCAL_MODEL:
+        raise HTTPException(
+            status_code=400,
+            detail=f"只能拉取推荐模型 {RECOMMENDED_LOCAL_MODEL}",
+        )
+    base = _local_model_base()
+    return StreamingResponse(
+        iter_recommended_pull(base, body.name),
+        media_type="application/x-ndjson",
+    )
 
 
 @router.get("/info")

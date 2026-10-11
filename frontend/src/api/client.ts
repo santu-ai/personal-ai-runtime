@@ -72,6 +72,8 @@ export {
   getSystemHealth,
   fetchSystemInfo,
   getLlmProviders,
+  getLocalModels,
+  pullRecommendedModel,
   getMcpStatus,
   downloadExport,
   exportEncryptedData,

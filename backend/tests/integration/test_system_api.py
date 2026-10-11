@@ -3,6 +3,25 @@
 from fastapi.testclient import TestClient
 
 
+def test_local_models_lists_only_what_is_installed(client: TestClient, monkeypatch):
+    monkeypatch.setattr(
+        "app.core.agents.llm_failover.fetch_installed_model_names",
+        lambda base_url, timeout=1.5: ["llama3.2:3b"],
+    )
+    body = client.get("/api/system/local-models").json()
+    assert body["reachable"] is True
+    assert body["installed"] == ["llama3.2:3b"]
+    assert body["recommended"] == "qwen2.5:3b"
+    assert body["selected"] == "llama3.2:3b"
+    assert "还没有 qwen2.5:3b" in body["message"]
+
+
+def test_pull_rejects_a_model_other_than_the_recommended_one(client: TestClient):
+    response = client.post("/api/system/local-models/pull", json={"name": "qwen2.5:7b"})
+    assert response.status_code == 400
+    assert "qwen2.5:3b" in response.json()["detail"]
+
+
 def test_export_requires_confirm(client: TestClient):
     r = client.post("/api/system/export", json={})
     assert r.status_code == 400
