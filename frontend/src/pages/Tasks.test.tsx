@@ -8,6 +8,7 @@ const { addError } = vi.hoisted(() => ({
 }));
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { renderWithRouter } from "../test-utils";
+import { formatTime } from "../utils/time";
 import { queryKeys } from "../hooks/useWsInvalidationBridge";
 import TasksPage, { taskPageLayoutFocus } from "./Tasks";
 import {
@@ -2506,6 +2507,9 @@ describe("TasksPage", () => {
       expect(scheduleBriefRepeat).toHaveBeenCalledWith("brief_1", { hours: 2, minutes: 0 }),
     );
     expect(await screen.findByTestId("scheduled-repeat-note")).toHaveTextContent(
+      formatTime("2026-09-24T08:00:00Z"),
+    );
+    expect(screen.getByTestId("scheduled-repeat-note")).not.toHaveTextContent(
       "2026-09-24T08:00:00Z",
     );
     expect(rerunProjectBrief).not.toHaveBeenCalled();
@@ -4310,6 +4314,9 @@ describe("TasksPage", () => {
 
     fireEvent.click(within(dialog).getByRole("button", { name: "确认定时" }));
     expect(await screen.findByTestId("scheduled-repeat-note")).toHaveTextContent(
+      formatTime("2026-09-24T08:00:00Z"),
+    );
+    expect(screen.getByTestId("scheduled-repeat-note")).not.toHaveTextContent(
       "2026-09-24T08:00:00Z",
     );
     expect(

@@ -980,6 +980,39 @@ def test_same_amount_does_not_keep_a_false_inconsistency_claim():
     assert result["quality_evidence"] == "pending"
 
 
+def test_meta_limitation_sentence_is_dropped():
+    result = validate_model_brief(
+        {
+            "summary": "北岸码头验收改期",
+            "content": "正文",
+            "findings": [{
+                "text": "验收改到 4月18日",
+                "source_ids": ["file:a"],
+                "quote": "北岸码头验收改到 4月18日",
+            }],
+            "limitations": [
+                "No limitations are identified in the provided information.",
+                "没有发现限制",
+                "验收日期只出现在这一份笔记里",
+            ],
+        },
+        allowed_ids={"file:a"},
+        criteria=["每条关键结论附来源"],
+        source_notes=[],
+        source_catalog={
+            "file:a": {
+                "text": "北岸码头验收改到 4月18日。",
+                "locator": "pier.md:1",
+                "title": "笔记",
+            },
+        },
+    )
+    notes = result["limitations"]
+    assert "验收日期只出现在这一份笔记里" in notes
+    assert not any("No limitations" in note for note in notes)
+    assert not any(note == "没有发现限制" for note in notes)
+
+
 def test_real_amount_conflict_keeps_the_disagreement():
     result = validate_model_brief(
         {

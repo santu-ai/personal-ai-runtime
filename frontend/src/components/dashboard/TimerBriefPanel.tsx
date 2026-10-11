@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Clock, RefreshCw } from "lucide-react";
 import type { RerunnableBrief, TimerStatusItem } from "../../api/types";
 import { handlerLabel } from "../../utils/handlerLabels";
+import { formatTime } from "../../utils/time";
 import { isImeKeyboardEvent } from "../../utils/imeKey";
 
 /** 平时一行。键盘落到这一行时写出整句。鼠标悬停仍是一行。 */
@@ -32,7 +33,7 @@ function taskPath(workId: string): string {
 
 function TimerRow({ item }: { item: TimerStatusItem }) {
   const text = `${timerLabel(item.handler_name)} · ${scheduleLabel(item.schedule_type)} · ${
-    item.fire_at || "时间未定"
+    (item.fire_at ? formatTime(item.fire_at) : "") || "时间未定"
   }`;
   const workId = item.work_id?.trim();
   const line = <span className={revealOnFocus}>{text}</span>;
