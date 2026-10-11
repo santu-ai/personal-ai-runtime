@@ -35,7 +35,9 @@ import {
   type WorkItem,
 } from "../api/client";
 import { useErrorStore } from "../stores/errorStore";
+import { useBriefProgress } from "../hooks/briefProgress";
 import { useInvalidateTasks, useTaskDetailQuery, useTasksQuery } from "../hooks/useTasksQuery";
+import { briefRunLabel } from "./briefRunLabel";
 import Button from "../components/ui/Button";
 import Dialog from "../components/ui/Dialog";
 import Disclosure from "../components/ui/Disclosure";
@@ -1340,6 +1342,7 @@ export default function TasksPage() {
     refetch: refetchTask,
   } = useTaskDetailQuery(urlTaskId);
   const invalidate = useInvalidateTasks();
+  const briefProgress = useBriefProgress();
   const addError = useErrorStore((s) => s.addError);
   const [busy, setBusy] = useState(false);
   const dialogLock = useRef(false);
@@ -2060,6 +2063,16 @@ export default function TasksPage() {
   const execution = selected?.execution;
   const steps = execution?.steps ?? [];
   const resumeFrom = execution?.resume_from ?? 0;
+  const briefRunLine = selected
+    ? briefRunLabel({
+        status: selected.status,
+        isBrief: isProjectBrief(selected),
+        workId: selected.id,
+        steps,
+        resumeFrom,
+        progress: briefProgress,
+      })
+    : null;
   const previousOutput = execution?.previous_output ?? {};
   const outputEntries = Object.entries(previousOutput).filter(
     ([, v]) => v !== undefined && v !== null && String(v).length > 0,
@@ -2461,6 +2474,11 @@ export default function TasksPage() {
                             <span className="text-danger"> · 死信</span>
                           ) : null}
                         </p>
+                        {briefRunLine ? (
+                          <p className="text-sm text-fg-secondary" data-testid="brief-run-progress">
+                            {briefRunLine}
+                          </p>
+                        ) : null}
                       </div>
                       <div className="flex gap-2 shrink-0">
                         {canComplete && (
