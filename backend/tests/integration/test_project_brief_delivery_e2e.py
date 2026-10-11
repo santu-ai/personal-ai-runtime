@@ -498,11 +498,6 @@ async def test_fake_mailbox_and_folder_cover_the_brief_loop(
             _finding("联调延期两周", email_id, "联调延期两周", "risk"),
             _finding("供应商延期", file_id, "供应商延期", "risk"),
         ]),
-        _sourced_json("第二期", [
-            _finding("联调延期两周", email_id, "联调延期两周", "risk"),
-            _finding("供应商延期", file_id, "供应商延期", "risk"),
-            _finding("预算口径不一致", file_id, "另有预算 200元", "risk"),
-        ]),
     ]
 
     async def stub_llm(messages, **kwargs):
@@ -600,14 +595,15 @@ async def test_fake_mailbox_and_folder_cover_the_brief_loop(
     again = _bundle(client, work_id)
     assert again["current"]["version"] == 2
     assert again["current"]["supersedes_delivery_id"] == current["delivery_id"]
-    assert any(
-        finding["text"] == "预算口径不一致"
+    assert "来源没有变化，沿用上一版简报。" in again["current"]["content"]
+    assert all(
+        finding["text"] != "预算口径不一致"
         for finding in again["current"]["findings"]
     )
     summary = brief_changes_summary(work_id)
     assert summary.startswith("相对 v1")
-    assert "新增结论 1" in summary
+    assert "新增限制 1" in summary
     assert invokes == [
         "check_inbox", "read_file", "set_timer", "check_inbox", "read_file",
     ]
-    assert egress_calls[1]["data_sources"] == ["email", "file"]
+    assert len(egress_calls) == 1
