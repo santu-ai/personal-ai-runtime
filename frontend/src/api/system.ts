@@ -129,6 +129,33 @@ export async function getPeriodComparison(days = 7): Promise<PeriodComparison> {
  * Stream plaintext snapshot to a file download without JSON.parse + re-stringify.
  * Response body is already valid snapshot JSON from the server.
  */
+export async function downloadDiagnostics(filename?: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/system/diagnostics`, {
+    headers: authHeaders(),
+  });
+  if (res.status === 401) {
+    throw new ApiError("认证失败，请检查 AUTH_TOKEN 与 VITE_AUTH_TOKEN 是否一致", 401);
+  }
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body = await res.json();
+      detail = body.detail || body.message || "";
+    } catch {
+      // not JSON
+    }
+    throw new ApiError(detail || `请求失败 (HTTP ${res.status})`, res.status);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const day = new Date().toISOString().slice(0, 10);
+  a.download = filename ?? `diagnostics-${day}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export async function downloadExport(filename?: string): Promise<void> {
   const res = await fetch(`${API_BASE}/system/export`, {
     method: "POST",

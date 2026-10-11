@@ -5,8 +5,13 @@ import {
   useSettingsHealthQuery,
   useMcpStatusQuery,
 } from "../hooks/useSettingsQuery";
-import type { LlmSettingsResponse, EmailSettingsResponse } from "../api/client";
+import {
+  downloadDiagnostics,
+  type EmailSettingsResponse,
+  type LlmSettingsResponse,
+} from "../api/client";
 import Badge from "../components/ui/Badge";
+import Button from "../components/ui/Button";
 import Spinner from "../components/ui/Spinner";
 import Disclosure from "../components/ui/Disclosure";
 import LoadErrorNotice, {
@@ -203,6 +208,24 @@ export default function SettingsPage() {
         </Disclosure>
 
         <Disclosure title="数据主权" description="导出 / 导入 / 销毁个人数据">
+          <div className="mb-4">
+            <Button
+              variant="secondary"
+              size="sm"
+              data-testid="export-diagnostics"
+              onClick={() => {
+                void downloadDiagnostics().catch((err: unknown) => {
+                  addError(err instanceof Error ? err.message : "导出诊断失败", "设置");
+                });
+              }}
+            >
+              导出诊断
+            </Button>
+            <p className="mt-1 text-xs text-fg-tertiary">
+              给排错用的
+              JSON。含版本、去掉密钥的设置、最近的错误和日志、评测和试用的统计。不含邮件或文件正文。
+            </p>
+          </div>
           <DataSovereigntyCard embedded onAfterImport={() => void refetchCore()} />
         </Disclosure>
       </div>

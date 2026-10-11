@@ -1,11 +1,14 @@
 """System API — health checks, LLM providers, data sovereignty, and system info."""
 
 import asyncio
+import json
+import platform
 import secrets
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from app.api.models import (
@@ -17,9 +20,27 @@ from app.api.models import (
 )
 from app.config import settings
 from app.core.agents.llm_failover import llm_router
+from app.core.logging_config import recent_log_lines, redact_text
 from app.core.runtime.kernel_instance import kernel
 from app.core.startup_health import sanitize_startup_for_public
 from app.version import VERSION
+
+_TRIAL_STAT_KEYS = (
+    "window_days",
+    "reviewed_tasks",
+    "accepted_tasks",
+    "success_rate",
+    "first_reviewed_tasks",
+    "first_version_accepted_tasks",
+    "first_version_acceptance_rate",
+    "cost_per_accepted_delivery",
+    "rework_count",
+    "adopted_action_count",
+    "average_review_latency_hours",
+    "review_time_trend",
+    "self_reported_time_saved",
+    "capped",
+)
 
 router = APIRouter(tags=["system"])
 
@@ -71,6 +92,123 @@ async def health_check(request: Request):
         "auth_required": bool(settings.auth_token),
         "startup": startup,
     }
+
+
+def _support_settings() -> dict:
+    """Model and mailbox flags. No key, password, address, or message."""
+    from app.core.runtime.runtime_config import runtime_config
+
+    llm = runtime_config.get_llm_config(masked=True)
+    email = runtime_config.get_email_config(masked=True)
+    providers = []
+    for item in llm.get("providers") or []:
+        if not isinstance(item, dict):
+            continue
+        providers.append({
+            "id": item.get("id"),
+            "name": item.get("name"),
+            "type": item.get("type"),
+            "model": item.get("model"),
+            "base_url": redact_text(str(item.get("base_url") or "")),
+            "enabled": bool(item.get("enabled")),
+            "has_api_key": bool(item.get("has_api_key")),
+            "needs_reentry": bool(item.get("needs_reentry")),
+            "reentry_reason": redact_text(str(item.get("reentry_reason") or "")),
+        })
+    return {
+        "default_provider": llm.get("default_provider"),
+        "providers": providers,
+        "email": {
+            "configured": bool(email.get("configured")),
+            "needs_reentry": bool(email.get("needs_reentry")),
+            "reentry_reason": redact_text(str(email.get("reentry_reason") or "")),
+        },
+    }
+
+
+def _support_errors(*, limit: int = 8) -> list[dict]:
+    from app.core.runtime.read_ports.events import query_execution_trust_summary
+
+    summary = query_execution_trust_summary(recent_limit=limit)
+    rows: list[dict] = []
+    for bucket in ("failed", "dead_letter", "in_retry"):
+        for item in summary.get(bucket) or []:
+            if not isinstance(item, dict):
+                continue
+            rows.append({
+                "bucket": bucket,
+                "status": item.get("status"),
+                "handler_name": item.get("handler_name"),
+                "event_type": item.get("event_type"),
+                "error": redact_text(str(item.get("error") or "")),
+                "dead_letter": bool(item.get("dead_letter")),
+                "created_at": item.get("created_at"),
+            })
+            if len(rows) >= limit:
+                return rows
+    return rows
+
+
+def _support_trial() -> dict:
+    from app.product.work_delivery import summarize_delivery_metrics
+
+    metrics = summarize_delivery_metrics(days=14)
+    return {key: metrics.get(key) for key in _TRIAL_STAT_KEYS}
+
+
+def _support_eval() -> dict:
+    from app.core.runtime import read_ports
+
+    return {
+        "stored_case_scores": False,
+        "llm": read_ports.summarize_llm_calls(days=14),
+        "by_model": read_ports.summarize_llm_calls_by_model(days=14),
+        "failures": read_ports.summarize_call_failure_rates(days=14),
+    }
+
+
+def build_support_bundle() -> dict:
+    """Redacted bug-report bundle. No mail, file body, or secret."""
+    sections: dict[str, Callable[[], object]] = {
+        "settings": _support_settings,
+        "recent_errors": _support_errors,
+        "trial": _support_trial,
+        "eval": _support_eval,
+    }
+    body: dict[str, object] = {
+        "kind": "support-bundle",
+        "generated_at": datetime.now(UTC).isoformat(),
+        "versions": {
+            "app": VERSION,
+            "python": platform.python_version(),
+            "system": platform.system(),
+            "release": platform.release(),
+            "machine": platform.machine(),
+        },
+        "logs": recent_log_lines(limit=40),
+    }
+    for name, builder in sections.items():
+        try:
+            body[name] = builder()
+        except Exception as exc:
+            body[name] = {"unavailable": True, "reason": redact_text(str(exc))}
+    return body
+
+
+@router.get("/diagnostics")
+async def diagnostics_bundle(request: Request):
+    """One-click redacted bundle an owner can attach to a bug report."""
+    _require_auth_when_configured(request, "export diagnostics")
+    payload = build_support_bundle()
+    raw = json.dumps(payload, ensure_ascii=False, indent=2)
+    day = datetime.now(UTC).date().isoformat()
+    return Response(
+        content=raw,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="diagnostics-{day}.json"',
+        },
+    )
 
 
 @router.get("/live")

@@ -9,6 +9,7 @@ import uuid
 from asyncio import Lock
 from collections.abc import MutableMapping
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -50,7 +51,10 @@ from app.core.startup_health import (
 )
 from app.version import VERSION
 
-configure_logging(json_logs=settings.log_json)
+configure_logging(
+    json_logs=settings.log_json,
+    log_dir=str(Path(settings.data_dir) / "logs"),
+)
 logger = logging.getLogger(__name__)
 
 # WebSocket connection manager for real-time notifications

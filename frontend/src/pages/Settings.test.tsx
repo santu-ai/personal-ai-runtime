@@ -4,6 +4,7 @@ import { renderWithRouter } from "../test-utils";
 import SettingsPage from "./Settings";
 import {
   ApiError,
+  downloadDiagnostics,
   getCapabilityPolicy,
   getLlmSettings,
   getMcpStatus,
@@ -23,6 +24,7 @@ import {
 } from "../api/settings";
 
 vi.mock("../api/client", () => ({
+  downloadDiagnostics: vi.fn().mockResolvedValue(undefined),
   getSystemHealth: vi.fn().mockResolvedValue({
     status: "ok",
     service: "personal-ai-runtime",
@@ -211,6 +213,10 @@ describe("SettingsPage", () => {
 
     await expandSection("数据主权");
     expect(await screen.findByText("导出全部数据")).toBeInTheDocument();
+    const diagnostics = screen.getByRole("button", { name: "导出诊断" });
+    expect(diagnostics).toHaveClass("focus-visible:ring-focus-ring");
+    fireEvent.click(diagnostics);
+    expect(downloadDiagnostics).toHaveBeenCalledTimes(1);
   });
 
   it("shows editable LLM and Gmail config sections", async () => {
