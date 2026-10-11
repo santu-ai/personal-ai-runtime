@@ -83,6 +83,7 @@ def _on_work_item_status_changed(event):
     没有依赖的待执行任务不会被别人的完成拉起。``rerun_restore`` 只是把
     再次运行失败的简报收回 ``completed``，不是新的完成。``rework_restore``
     把返工打开收回打开前的 ``completed`` 或 ``failed``，同样不是新的终态。
+    ``brief_cancel`` 是用户取消进行中的简报，也不是新的终态。
     """
     if getattr(event, "type", None) != "WorkItemStatusChanged":
         return
@@ -93,6 +94,7 @@ def _on_work_item_status_changed(event):
     if payload.get("reason") in {
         read_ports.WORK_STATUS_REASON_RERUN_RESTORE,
         read_ports.WORK_STATUS_REASON_REWORK_RESTORE,
+        read_ports.WORK_STATUS_REASON_BRIEF_CANCEL,
     }:
         return
     changed_id = str(getattr(event, "aggregate_id", "") or "")

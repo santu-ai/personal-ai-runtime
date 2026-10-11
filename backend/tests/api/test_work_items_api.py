@@ -764,6 +764,22 @@ def test_cancel_background_work_item(client):
     assert r.json()["status"] == "cancelled"
 
 
+def test_cancel_running_project_brief_without_delivery(client):
+    create = client.post("/api/work-items/project-brief", json={
+        "title": "项目简报",
+        "objective": "列出变化",
+    })
+    assert create.status_code == 200, create.text
+    item_id = create.json()["id"]
+    running = client.post(f"/api/work-items/{item_id}/status", json={"status": "running"})
+    assert running.status_code == 200, running.text
+    cancelled = client.post(f"/api/work-items/{item_id}/cancel")
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["status"] == "failed"
+    again = client.post(f"/api/work-items/{item_id}/cancel")
+    assert again.status_code == 409
+
+
 def test_cancel_rejects_non_background(client):
     create = client.post("/api/work-items/", json={
         "title": "Task",

@@ -37,7 +37,7 @@ import {
 import { useErrorStore } from "../stores/errorStore";
 import { useBriefProgress } from "../hooks/briefProgress";
 import { useInvalidateTasks, useTaskDetailQuery, useTasksQuery } from "../hooks/useTasksQuery";
-import { briefRunLabel } from "./briefRunLabel";
+import { briefRunLabel, briefStopNotice } from "./briefRunLabel";
 import Button from "../components/ui/Button";
 import Dialog from "../components/ui/Dialog";
 import Disclosure from "../components/ui/Disclosure";
@@ -2093,8 +2093,12 @@ export default function TasksPage() {
   const canComplete = Boolean(
     selected && isAdoptedSuggestion(selected) && selected.status === "pending",
   );
-  const canCancel =
-    selected && selected.work_type === "background" && !TERMINAL_STATUSES.has(selected.status);
+  const canCancel = Boolean(
+    selected &&
+    !TERMINAL_STATUSES.has(selected.status) &&
+    (selected.work_type === "background" ||
+      (isProjectBrief(selected) && selected.status === "running")),
+  );
   const bundle = selected?.delivery_bundle;
   const reviewVisible = bundle?.current_review_status
     ? reviewLabel(bundle.current_review_status).trim()
@@ -2108,6 +2112,10 @@ export default function TasksPage() {
     historyId && currentDelivery && historyId !== currentDelivery.delivery_id,
   );
   const shownDelivery = viewingHistory ? historyFull : currentDelivery;
+  const briefNotice =
+    selected && isProjectBrief(selected) && !viewingHistory
+      ? briefStopNotice(handler?.error ?? "", Boolean(currentDelivery))
+      : null;
   const openDeliveryId = viewingHistory ? historyId : currentDelivery?.delivery_id;
   const citeSources = shownDelivery
     ? citationLookupSources(
@@ -2475,7 +2483,11 @@ export default function TasksPage() {
                           ) : null}
                         </p>
                         {briefRunLine ? (
-                          <p className="text-sm text-fg-secondary" data-testid="brief-run-progress">
+                          <p
+                            className="text-sm text-fg-secondary"
+                            data-testid="brief-run-progress"
+                            aria-busy="true"
+                          >
                             {briefRunLine}
                           </p>
                         ) : null}
@@ -2604,7 +2616,16 @@ export default function TasksPage() {
                         </Button>
                       </div>
                     ) : null}
-                    {shownDelivery && failureReason ? (
+                    {briefNotice ? (
+                      <p
+                        className="text-sm text-danger"
+                        data-testid="brief-stop-notice"
+                        role="status"
+                      >
+                        {briefNotice}
+                      </p>
+                    ) : null}
+                    {shownDelivery && failureReason && !briefNotice ? (
                       <RerunFailureReason reason={failureReason} />
                     ) : null}
                     {shownDelivery ? (
@@ -2806,14 +2827,16 @@ export default function TasksPage() {
                         </section>
                       </OpeningMailSourceContext.Provider>
                     ) : viewingHistory ? null : isProjectBrief(selected) ? (
-                      <div className="space-y-2">
-                        <p className="text-sm text-fg-tertiary">
-                          {selected.status === "failed" || executionFailed
-                            ? "执行失败，尚未发布合格交付。可查看执行日志后重试。"
-                            : "还没有交付结果。确认资料范围后执行任务。"}
-                        </p>
-                        <RerunFailureReason reason={failureReason} />
-                      </div>
+                      briefNotice ? null : (
+                        <div className="space-y-2">
+                          <p className="text-sm text-fg-tertiary">
+                            {selected.status === "failed" || executionFailed
+                              ? "执行失败，尚未发布合格交付。可查看执行日志后重试。"
+                              : "还没有交付结果。确认资料范围后执行任务。"}
+                          </p>
+                          <RerunFailureReason reason={failureReason} />
+                        </div>
+                      )
                     ) : selected.status === "failed" && canExecute ? (
                       <div className="space-y-2">
                         <p className="text-sm text-danger">上次执行已失败。可以重新执行。</p>

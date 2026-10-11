@@ -21,11 +21,13 @@ from app.core.runtime.kernel_instance import bind_work_delivery_compiler
 from app.product.work_delivery import (
     content_hash,
     contract_from_plan,
+    existing_delivery_for_execution,
     fold_delivery_history,
     is_project_brief_plan,
     model_cost_for_delivery,
     parse_plan,
     publish_delivery,
+    successful_brief_llm_calls,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,6 +47,11 @@ BRIEF_FILE_MAX_LINES = 2000
 # the prompt already fits in the loaded 4096 context, so a smaller num_ctx
 # would not shorten prompt eval.
 BRIEF_COMPILE_MAX_TOKENS = 320
+# A scheduler retry of the same execution must not call the model again
+# after a successful record, and must not replace the previous delivery.
+ALREADY_BILLED_BRIEF = (
+    "这次写简报已经调用过模型。重试没有再调用，也没有改掉上一版交付。可以重新执行。"
+)
 BRIEF_MEMORY_LIMIT = 3
 DEFAULT_CRITERIA = (
     "每条关键结论附来源",
@@ -3711,6 +3718,15 @@ async def compile_project_brief_delivery(
     if not is_project_brief_plan(item.get("executable_plan")):
         return {"ok": True, "skipped": True}
 
+    prior = existing_delivery_for_execution(work_id, execution_id)
+    if prior is not None:
+        return {
+            "ok": True,
+            "delivery": prior,
+            "qualified": bool(prior.get("qualified")),
+            "already_published": True,
+        }
+
     plan = parse_plan(item.get("executable_plan"))
     contract = contract_from_plan(plan) or {}
     results = list(getattr(outcome, "results", None) or [])
@@ -3900,6 +3916,8 @@ async def compile_project_brief_delivery(
     )
     if "earlier sources were left out of this prompt" in prompt:
         notes.append("部分较早的来源没有放进模型窗口，简报依据窗口里的来源。")
+    if successful_brief_llm_calls(execution_id):
+        return {"ok": False, "error": ALREADY_BILLED_BRIEF}
     blocked = cost_cap_block_reason(contract, execution_id, prompt)
     if blocked:
         brief = _fallback_brief(
