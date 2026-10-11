@@ -8,6 +8,7 @@
  */
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { noteBriefProgress } from "./briefProgress";
 
 // Keys are intentionally broad; concrete queries opt in via queryKey prefixes.
 export const queryKeys = {
@@ -78,6 +79,10 @@ export function applyWsInvalidation(qc: QueryClient, raw: unknown): void {
       invalidate(qc, queryKeys.trustReport);
       invalidate(qc, queryKeys.dashboard);
       invalidate(qc, queryKeys.governance);
+      break;
+    case "brief_progress":
+      noteBriefProgress(raw);
+      invalidate(qc, queryKeys.tasks);
       break;
     case "notification": {
       invalidate(qc, queryKeys.notifications);
