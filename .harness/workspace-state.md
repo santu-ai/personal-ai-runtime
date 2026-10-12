@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-10-12：Dependabot #343、#347–#359 收成一条依赖升级。后端 fastapi 0.142.2、uvicorn 0.54.0、openai 3.24.0、sqlalchemy 2.1.2，并重生带哈希的 lock。前端 vitest 对齐桌面 5.0.3，jsdom 升到 30.1.1。未关原来的 Dependabot PR。未改 Kernel。
 - 2026-10-12：安装后先显示启动页，字节码编译挪到安装阶段。改前第一次后端 7564 毫秒、标题 11542 毫秒。改后启动页 303 毫秒，后端 5907，标题 6546。未改 Kernel。
 - 2026-10-12：空记忆库不再做向量检索。同一次进程里空查询从 0.317 秒降到 0.002 秒，仪表盘第二次生成从约 0.174 秒降到 0.005 秒。今天页先画出标题。Windows 连续 5 次，后端健康中位数 4287 毫秒、最大 7564；标题中位数 4609、最大 11542。慢的是第一次打开，不是仪表盘。未改 Kernel。
 - 2026-10-11：启动前不再整包导入 app.main。Windows 到今天页从 9690 毫秒降到 7802 毫秒，后端健康从 8827 毫秒降到 6110 毫秒。本机探测从 1.14–1.30 秒降到 0.014 秒。未改 Kernel。
@@ -338,7 +339,7 @@
 - 2026-09-22：前端 UI 刷新 PR #87（`cursor/frontend-ui-refresh-fcd9`）：tokens 表面层次 + 侧栏分组/收起 + PageHeader/SegmentedControl；主页面视觉统一；lint/tsc/vitest/build/e2e 已绿。无后端/Kernel 改动。
 - 2026-09-22：前端依赖范围内 patch/minor 已升（react-query 5.103.2、vite 8.3.0、vitest 5.0.1、eslint 10.11.0 等）；跳过 typescript 7（typescript-eslint 仍要 TS 6 API）与 jsdom 30（engines 要求 Node ≥22.22.2，镜像是 node:20）。
 - 2026-09-22：`main` 已包含 #80–#86。简报自己的近 30 日首版采纳、返工、已转任务和评审耗时在 `GET /api/work-items/delivery-metrics`，任务页有评审时展示。审批、恢复和模型成本已能按交付 `execution_id` 归因；无 `caused_by` 的历史简报调用另计次数，不把已归因金额改成 unavailable。全局周期对比、Chat `ask_user`、工具/记忆采纳率仍是另一组指标。
-- 依赖 pin 以 `backend/requirements.txt` / `frontend/package.json` / `desktop/package.json` 为准：`openai==3.16.2`、`mcp==2.2.0`、`pypdf==6.19.0`、`cryptography==50.0.1`；前端 React 19.3 / Vite 8 / lucide-react 1.47；桌面 Electron 44。
+- 依赖 pin 以 `backend/requirements.txt` / `frontend/package.json` / `desktop/package.json` 为准：`openai==3.24.0`、`fastapi==0.142.2`、`sqlalchemy==2.1.2`、`mcp==2.2.0`；前端 Vite 8.3 / vitest 5.0.3 / lucide-react 1.48 / jsdom 30；桌面 Electron 44.5 / vitest 5.0.3。
 - 本机若用系统 `mcp` 1.x，mypy 可能误报；lock 钉 `mcp==2.2.0`，CI 用 lock。
 - 仍待用户试用：真 LLM、真实邮箱日用。无 Telegram token 时真实收发仍 blocked。soak 默认空库 `data/personal_ai.db`，日用库不在仓库里。
 
