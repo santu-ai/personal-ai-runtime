@@ -1,6 +1,9 @@
 version: 2
 updates:
-  # Backend Python dependencies
+  # Backend Python dependencies.
+  # Dependabot updates requirements.txt and pyproject.toml only.
+  # requirements.lock (hashes + input SHA-256) is committed by
+  # .github/workflows/dependabot-lockfile.yml via `make lockfile`.
   - package-ecosystem: "pip"
     directory: "/backend"
     schedule:

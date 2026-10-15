@@ -62,6 +62,18 @@ tag `v*.*.*` 触发：
 - **每月**：`github-actions`（labels `dependencies` + `ci`）。
 - commit-message prefix 分别为 `deps(backend)` / `deps(frontend)` / `deps(desktop)` / `deps(ci)`。
 
+`pip` 只改 `backend/requirements.txt` 和 `backend/pyproject.toml`。带哈希的 `backend/requirements.lock` 还要写入两份输入文件的 SHA-256，并补上 Windows 条件依赖。这两步由 `make lockfile` 完成，Dependabot 不会跑，所以只改 pin 的 PR 会在 `check_dependency_sync` 失败。
+
+[`.github/workflows/dependabot-lockfile.yml`](../../.github/workflows/dependabot-lockfile.yml) 在后续 backend Dependabot PR 上补上 lock：
+
+1. 触发是 `pull_request_target`。工作流定义取自默认分支，job 不执行 PR 里的脚本。
+2. 只处理 `dependabot[bot]` 且头分支以 `dependabot/pip/` 开头的 PR。变更文件只能是 `requirements.txt`、`requirements-dev.txt`、`pyproject.toml`、`requirements.lock`。清单里的依赖必须是 exact pin，拒绝 URL 和 editable。
+3. 在 base SHA 的检出上覆盖这三份清单，运行 `make lockfile`（`pip-tools==7.5.3`、`--generate-hashes`、`--stamp-lock`）。
+4. 只把 `requirements.lock` 提交回该 PR 分支。workflow 的 `permissions` 把 `GITHUB_TOKEN` 升到 `contents: write` 和 `actions: write`。不使用 PAT，也不读取 Dependabot secrets。
+5. 用 `GITHUB_TOKEN` 推出的提交不会再次触发 `pull_request` 或 `push`。工作流接着 `workflow_dispatch` [`ci.yml`](../../.github/workflows/ci.yml) 和 [`desktop-windows.yml`](../../.github/workflows/desktop-windows.yml)，检查记在新提交上。`workflow_dispatch` 是 `GITHUB_TOKEN` 允许发起的事件。
+
+frontend 与 desktop 的 npm 更新会自己改 `package-lock.json`，不走这条工作流。
+
 ## Git Hooks
 
 [`.githooks/`](../../.githooks/) + 安装脚本 [`scripts/install_hooks.sh`](../../scripts/install_hooks.sh) / [`scripts/install_hooks.ps1`](../../scripts/install_hooks.ps1) / [`install-hooks.cmd`](../../install-hooks.cmd)（Windows shim，绕过执行策略调 PowerShell 安装器）。

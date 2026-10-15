@@ -11,11 +11,11 @@ name = "personal-ai-runtime-backend"
 requires-python = ">=3.12"
 # Canonical pinned set: requirements.txt (used by make install / CI).
 dependencies = [
-    "fastapi==0.142.2",
+    "fastapi==0.143.0",
     "uvicorn[standard]==0.54.0",
-    "uvloop==0.22.1 ; sys_platform != 'win32' and implementation_name == 'cpython'",
+    "uvloop==0.23.0 ; sys_platform != 'win32' and implementation_name == 'cpython'",
     "colorama==0.4.6 ; sys_platform == 'win32'",
-    "openai==3.24.0",
+    "openai==3.28.0",
     "pydantic==2.13.5",
     "pydantic-settings==2.15.0",
     "python-dotenv==1.2.3",
@@ -23,11 +23,11 @@ dependencies = [
     "httpx==0.28.1",
     "mcp==2.2.0",
     "alembic==1.20.0",
-    "sqlalchemy==2.1.2",
+    "sqlalchemy==2.1.4",
     "tiktoken==0.14.0",
     "structlog==26.1.0",
     "cryptography==50.0.1",
-    "pypdf==6.19.0",
+    "pypdf==6.20.0",
     "python-docx==1.2.0",
 ]
 
