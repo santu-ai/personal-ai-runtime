@@ -1,0 +1,162 @@
+name: Dependabot lockfile
+
+# Dependabot's pip updates change requirements.txt and pyproject.toml.
+# CI installs with `pip install --require-hashes -r requirements.lock` and
+# rejects a lock whose input SHA-256 stamp is stale. `make lockfile` is the
+# only generator that keeps --generate-hashes and that stamp.
+#
+# pull_request_target runs this file from the default branch, so the PR
+# cannot change the job. The job never executes the PR tree: it copies the
+# three manifest files onto a checkout of the base SHA and runs make there.
+# Dependabot-triggered pull_request workflows get a read-only GITHUB_TOKEN;
+# pull_request_target does not. A GITHUB_TOKEN push does not start
+# pull_request or push workflows, so the new commit is tested via
+# workflow_dispatch (an event GITHUB_TOKEN is allowed to create).
+
+on:
+  pull_request_target:
+    branches: [main]
+    paths:
+      - "backend/requirements.txt"
+      - "backend/pyproject.toml"
+      - "backend/requirements-dev.txt"
+      - "backend/requirements.lock"
+
+permissions:
+  contents: write
+  actions: write
+  pull-requests: read
+
+concurrency:
+  group: dependabot-lock-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    if: >-
+      github.actor == 'dependabot[bot]' &&
+      startsWith(github.head_ref, 'dependabot/pip/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Accept only manifest edits
+        id: guard
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --jq '.[].filename')
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No files on the pull request; skipping."
+            exit 0
+          fi
+          for file in "${files[@]}"; do
+            case "$file" in
+              backend/requirements.txt|backend/pyproject.toml|backend/requirements-dev.txt|backend/requirements.lock)
+                ;;
+              *)
+                echo "skip=true" >> "$GITHUB_OUTPUT"
+                echo "Skipping lock refresh; pull request also changes ${file}."
+                exit 0
+                ;;
+            esac
+          done
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout base toolchain
+        if: steps.guard.outputs.skip != 'true'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted
+          persist-credentials: false
+
+      - name: Checkout Dependabot branch
+        if: steps.guard.outputs.skip != 'true'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+          path: pr
+          persist-credentials: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v7
+        if: steps.guard.outputs.skip != 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Overlay Dependabot manifests onto the base tree
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          for file in backend/requirements.txt backend/pyproject.toml backend/requirements-dev.txt; do
+            gh api -H "Accept: application/vnd.github.raw" \
+              "repos/${GITHUB_REPOSITORY}/contents/${file}?ref=${HEAD_SHA}" \
+              > "trusted/${file}"
+          done
+          python3 - <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          exact = re.compile(
+              r"^[A-Za-z0-9][A-Za-z0-9._-]*(?:\[[A-Za-z0-9._,-]+\])?"
+              r"==[^<>=!~;\s]+(?:\s*;\s*.+)?$"
+          )
+          for name in ("requirements.txt", "requirements-dev.txt"):
+              path = Path("trusted/backend") / name
+              for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                  stripped = line.strip()
+                  if not stripped or stripped.startswith("#"):
+                      continue
+                  if stripped.startswith(("-r ", "--requirement ")):
+                      continue
+                  if (
+                      "://" in stripped
+                      or stripped.startswith(("-e ", "--editable", "--index-url", "--extra-index-url"))
+                  ):
+                      sys.exit(f"{name}:{lineno} refuses a non-registry requirement")
+                  if not exact.fullmatch(stripped):
+                      sys.exit(f"{name}:{lineno} is not an exact pin")
+          PY
+
+      - name: Regenerate the hashed lock
+        if: steps.guard.outputs.skip != 'true'
+        working-directory: trusted
+        run: make lockfile
+
+      - name: Commit the lock onto the Dependabot branch
+        id: commit
+        if: steps.guard.outputs.skip != 'true'
+        working-directory: pr
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          cp ../trusted/backend/requirements.lock backend/requirements.lock
+          git add backend/requirements.lock
+          if git diff --cached --quiet; then
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            echo "requirements.lock already matches make lockfile."
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "chore(deps): refresh requirements.lock"
+          git push origin "HEAD:${HEAD_REF}"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch CI on the lock commit
+        if: steps.guard.outputs.skip != 'true' && steps.commit.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          gh workflow run ci.yml --ref "${HEAD_REF}"
+          gh workflow run desktop-windows.yml --ref "${HEAD_REF}"

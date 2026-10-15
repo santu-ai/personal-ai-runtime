@@ -167,3 +167,25 @@ def test_stamp_adds_hf_xet_omitted_on_windows_host(tmp_path, monkeypatch):
     assert "hf-xet==1.5.1" in stamped
     assert "--hash=sha256:xet" in stamped
     assert sync.main([]) == 0
+
+
+def test_uvloop_fallback_block_matches_committed_lock():
+    """Windows pip-compile omits uvloop; the injected block must be that lock entry."""
+    lock_lines = sync.LOCK_PATH.read_text(encoding="utf-8").splitlines()
+    start = next(index for index, line in enumerate(lock_lines) if line.startswith("uvloop=="))
+    end = start + 1
+    while end < len(lock_lines) and lock_lines[end].startswith("    "):
+        end += 1
+    assert sync.PLATFORM_ONLY_LOCK_BLOCKS["uvloop"].splitlines() == lock_lines[start:end]
+
+    pins = {}
+    for line in sync.REQUIREMENTS_PATH.read_text(encoding="utf-8").splitlines():
+        match = sync.EXACT_REQUIREMENT.fullmatch(line.strip())
+        if match:
+            pins[sync._normalize_name(match.group("name"))] = match.group("version")
+    for name, block in sync.PLATFORM_ONLY_LOCK_BLOCKS.items():
+        if name not in pins:
+            continue
+        header = sync.LOCK_PACKAGE.match(block.strip().splitlines()[0])
+        assert header is not None
+        assert header.group("version") == pins[name]

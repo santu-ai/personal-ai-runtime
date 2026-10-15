@@ -1,6 +1,9 @@
 name: CI
 
 on:
+  # dependabot-lockfile.yml pushes with GITHUB_TOKEN, which does not
+  # re-trigger pull_request. That workflow dispatches this one instead.
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
