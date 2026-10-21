@@ -5,6 +5,7 @@
 
 ## 当前状态
 
+- 2026-10-21：#435 补上 Dependabot #436 electron 44.8.0 和 #437 桌面 vitest 5.0.5。前端 vitest 仍是 5.0.3。未关原来的 Dependabot PR。未改 Kernel。
 - 2026-10-15：Dependabot #424–#434 收成一条依赖升级，并用 `make lockfile` 重生带哈希的 requirements.lock。之后的 backend Dependabot PR 由 dependabot-lockfile 工作流补 lock，再用 workflow_dispatch 重跑 CI 和 Windows 安装验证。未关原来的 Dependabot PR。未改 Kernel。
 - 2026-10-12：Dependabot #343、#347–#359 收成一条依赖升级。后端 fastapi 0.142.2、uvicorn 0.54.0、openai 3.24.0、sqlalchemy 2.1.2，并重生带哈希的 lock。前端 vitest 对齐桌面 5.0.3，jsdom 升到 30.1.1。未关原来的 Dependabot PR。未改 Kernel。
 - 2026-10-12：安装后先显示启动页，字节码编译挪到安装阶段。改前第一次后端 7564 毫秒、标题 11542 毫秒。改后启动页 303 毫秒，后端 5907，标题 6546。未改 Kernel。
