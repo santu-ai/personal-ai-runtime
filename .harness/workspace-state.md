@@ -5,6 +5,8 @@
 
 ## 当前状态
 
+- 2026-10-23：合并所有 Dependabot 依赖分支（包含 actions/download-artifact 8、actions/upload-artifact 7、electron 44.9.1、eslint 10.13.0、jsdom 30.1.3、playwright 1.64.1、react/react-dom 19.3.1、cryptography 50.0.2、openai 3.35.1、pydantic 2.14.1、pydantic-settings 2.16.0、pypdf 6.21.1）到 main 并同步 requirements.lock 哈希。清理远端已合并分支。未改 Kernel。
+
 - 2026-10-23：合并 Dependabot 批量升级分支（cursor/dependabot-lockfile-24e4，包含 Dependabot #424–#437 及 get-pip.py sha256 修复）到 main。未改 Kernel。
 - 2026-10-23：清理远端已合入及历史废弃分支。批量删除 276 个历史 cursor/* 分支，远端仅保留 main、活跃开发分支 cursor/dependabot-lockfile-24e4 及 12 个 dependabot/* 依赖分支，并完成本地 git fetch --prune。未改 Kernel。
 - 2026-10-21：#435 补上 Dependabot #436 electron 44.8.0 和 #437 桌面 vitest 5.0.5。前端 vitest 仍是 5.0.3。get-pip.py 的 sha256 换成当前 bootstrap 文件（内嵌 pip 26.2.2）。未关原来的 Dependabot PR。未改 Kernel。
