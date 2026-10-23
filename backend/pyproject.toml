@@ -17,7 +17,7 @@ dependencies = [
     "colorama==0.4.6 ; sys_platform == 'win32'",
     "openai==3.28.0",
     "pydantic==2.13.5",
-    "pydantic-settings==2.15.0",
+    "pydantic-settings==2.16.0",
     "python-dotenv==1.2.3",
     "chromadb==1.5.9",
     "httpx==0.28.1",
