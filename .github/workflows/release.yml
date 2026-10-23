@@ -50,7 +50,7 @@ jobs:
           print(text[start:end].strip())
           PY
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: desktop-windows-installer
           path: desktop-windows-installer
