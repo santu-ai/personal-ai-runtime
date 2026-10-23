@@ -16,9 +16,9 @@
     "ws": "^8.22.0"
   },
   "devDependencies": {
-    "electron": "^44.5.1",
+    "electron": "^44.8.0",
     "electron-builder": "^26.15.3",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.5"
   },
   "build": {
     "appId": "com.personalairuntime.desktop",

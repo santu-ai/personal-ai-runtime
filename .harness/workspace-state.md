@@ -5,6 +5,10 @@
 
 ## 当前状态
 
+- 2026-10-23：合并 Dependabot 批量升级分支（cursor/dependabot-lockfile-24e4，包含 Dependabot #424–#437 及 get-pip.py sha256 修复）到 main。未改 Kernel。
+- 2026-10-23：清理远端已合入及历史废弃分支。批量删除 276 个历史 cursor/* 分支，远端仅保留 main、活跃开发分支 cursor/dependabot-lockfile-24e4 及 12 个 dependabot/* 依赖分支，并完成本地 git fetch --prune。未改 Kernel。
+- 2026-10-21：#435 补上 Dependabot #436 electron 44.8.0 和 #437 桌面 vitest 5.0.5。前端 vitest 仍是 5.0.3。get-pip.py 的 sha256 换成当前 bootstrap 文件（内嵌 pip 26.2.2）。未关原来的 Dependabot PR。未改 Kernel。
+- 2026-10-15：Dependabot #424–#434 收成一条依赖升级，并用 `make lockfile` 重生带哈希的 requirements.lock。之后的 backend Dependabot PR 由 dependabot-lockfile 工作流补 lock，再用 workflow_dispatch 重跑 CI 和 Windows 安装验证。未关原来的 Dependabot PR。未改 Kernel。
 - 2026-10-12：Dependabot #343、#347–#359 收成一条依赖升级。后端 fastapi 0.142.2、uvicorn 0.54.0、openai 3.24.0、sqlalchemy 2.1.2，并重生带哈希的 lock。前端 vitest 对齐桌面 5.0.3，jsdom 升到 30.1.1。未关原来的 Dependabot PR。未改 Kernel。
 - 2026-10-12：安装后先显示启动页，字节码编译挪到安装阶段。改前第一次后端 7564 毫秒、标题 11542 毫秒。改后启动页 303 毫秒，后端 5907，标题 6546。未改 Kernel。
 - 2026-10-12：空记忆库不再做向量检索。同一次进程里空查询从 0.317 秒降到 0.002 秒，仪表盘第二次生成从约 0.174 秒降到 0.005 秒。今天页先画出标题。Windows 连续 5 次，后端健康中位数 4287 毫秒、最大 7564；标题中位数 4609、最大 11542。慢的是第一次打开，不是仪表盘。未改 Kernel。
@@ -368,5 +372,10 @@
 - 开发期 Alembic squash SOP：`.harness/task-recipes.md` §9
 - Windows 提交走 `git -c core.hooksPath=.githooks commit -F`
 - 2026-09-28：浮层按打开顺序接管 Tab/Esc（`useOverlayKeyboard`）；动态通知改用常驻 `LiveStatus`（先空再填，同文案靠 announcementId 重播）。组件测试与 e2e/accessibility-regressions 已补；真读屏仍待人工验。
+
+- 2026-10-14：检查本地 Git hooks：继承全局 user-git-hooks/hooks（Lefthook 入口），本仓库无 Lefthook 配置，dump 报错；仓库 .githooks 未默认生效，PATH 未发现 ocr。建议仓库级 hooksPath + pre-push 接 OCR，按推送 refs 评审并解析 JSON 判定；本次仅调研，未安装或改 hook 配置。
+- 2026-10-19：评估项目时代适配性（HEAD 4b11a82），对照 Anthropic / LangChain 官方 runtime 与 harness 资料并抽查 project_brief/work_delivery：机制方向仍适用，通用运行时差异化收窄；建议以真实周期简报验证来源支持、人工修订时间及持续使用价值。本次未运行测试或真模型，未修改业务代码。
+
+- 2026-10-23：只读评估 HEAD 4b11a82 的技术助理/多 Agent 适配：已有单进程并发 Scheduler、定时/reaction、受治理工具与简报交付评审；未见专用编码执行器、worktree 生命周期及多角色开发闭环。建议复用 Work/Capability 接外部执行器，不增第二套调度总线；发现 backend-core 文档 agent:primary 与代码 runtime:primary 不一致。未运行测试/真模型/Mac 部署；保留已有未提交文件。
 - 2026-10-23：以 HEAD 61f3e3bc 重建文档：删除旧架构章节与历史 ADR，新增当前 snapshot、共享 PostgreSQL/pgvector 多设备 Runtime 方案及重构地图；明确每设备单实例、云端 execution key/lease/fencing、Application/Connection/DeviceBinding。同步 CI 文档引用与 concept baseline 守卫；docs guards、architecture-check、single-process-control-plane 均通过。保留任务开始前已有未提交文件。
 - 2026-10-23：二次 Review 修正 identity/提交序、command 多事件、fencing 入日志时机、持久派发与跨设备结果、embedding 重试、效果幂等阶段、应用版本/内建目标等设计遗漏，并补回 docs README 版本号。全后端 2019 passed/4 failed/9 skipped/7 deselected；版本与两项简报测试在显式禁用测试进程个人数据外发后 7 passed，剩余 Windows POSIX 0600 断言及简报环境隔离作为测试债。lint、文档/生成物、架构/边界/层依赖、投影来源/重建通过；未更改用户配置或业务实现。
