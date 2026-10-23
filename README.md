@@ -1,6 +1,6 @@
 # Personal AI Runtime
 
-本地优先、单用户、事件溯源的个人 AI 运行时。所有个人数据（对话、记忆、目标、收件箱、审批、知识库）存于本机，由统一 Kernel 写入，LLM 与工具调用受治理与审计。
+单用户、事件溯源的个人 AI 运行时。当前实现把个人数据存于本机，由统一 Kernel 写入，LLM 与工具调用受治理与审计；下一阶段将切换到多设备共享云数据。
 
 当前版本：**1.0.0**（权威源：[`backend/app/version.py`](backend/app/version.py)）
 
@@ -34,10 +34,9 @@ Coding Agent 入口：[`AGENTS.md`](AGENTS.md)
 
 | 主题 | 文档 |
 |------|------|
-| 项目概览 | [docs/01-overview/project-overview.md](docs/01-overview/project-overview.md) |
-| 架构 | [docs/01-overview/architecture.md](docs/01-overview/architecture.md) |
-| Runtime Algebra | [docs/02-concepts/runtime-algebra.md](docs/02-concepts/runtime-algebra.md) |
-| 开发指南 | [docs/05-engineering/development.md](docs/05-engineering/development.md) |
+| 当前实现快照 | [docs/current-snapshot.md](docs/current-snapshot.md) |
+| 共享云数据与多设备 Runtime 方案 | [docs/shared-cloud-runtime-plan.md](docs/shared-cloud-runtime-plan.md) |
+| 当前数据模型 | [docs/04-data/data-model.md](docs/04-data/data-model.md) |
 | API 参考 | [docs/06-reference/api-endpoints.md](docs/06-reference/api-endpoints.md)（`make docs-gen` 自动生成） |
 
 ## 常用命令

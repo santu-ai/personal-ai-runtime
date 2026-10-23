@@ -1,25 +1,14 @@
-# 决策日志（ADR 一行式摘要）
+# 当前架构决定摘要
 
-> 完整决策记录见 [`docs/07-adr/`](../docs/07-adr/README.md)。此处只留"决策 + 影响"一行式，用于快速判断改动是否触及某条决策。
+> 旧 ADR 已随历史文档删除。当前目标的完整论证在 [共享云数据与多设备 Runtime 方案](../docs/shared-cloud-runtime-plan.md)；下表只用于快速判断改动方向。
 
-| ID | 决策（一句话） | 对你的影响 | 状态 |
-|---|---|---|---|
-| [R009](../docs/07-adr/ADR-R009-single-process-control-plane.md) | 单进程控制面：Scheduler/RuntimeLoop/cancel flags 跑在 FastAPI 同进程，不做分布式 lease 或多 worker | 别引入第二控制面 worker 入口（CI 守护 `single-process-control-plane`） | Yes |
-| [R010](../docs/07-adr/ADR-R010-durable-lane-a-cancel.md) | Lane A 取消先 emit `ExecutionFailed(cancelled)` 再 `task.cancel()` | 取消意图要进 governed 投影，恢复路径才能跳过 | Yes |
-| [R011](../docs/07-adr/ADR-R011-chat-approval-continuation.md) | 审批后续写恢复同一 Chat 工具环；拒绝只写 denied tool result + 说明，不调 LLM；`ask_user` 复用同一 checkpoint，批准携带自由文本，取消同样不调 LLM；`chat_ckpt:{correlation_id}` 同时服务 interrupt 重放与审批续写 | 批准后可以再次弹出需确认工具；上限走 `max_tool_iterations`；崩溃续跑靠 checkpoint + Scheduler retry（`max_retries=2`） | Yes |
-| [R012](../docs/07-adr/ADR-R012-god-subsystem-budgets.md) | 保留 God façade LOC 红线，另对 `query_builder`/`sovereignty_ops`/`builtin_registration` 锁定分项预算 | 抬预算需改脚本 + docs §4.4 同步 | Yes |
-| [R014](../docs/07-adr/ADR-R014-handler-executions-soft-prune.md) | `handler_executions` 终端态过期行可被 Kernel-space soft-prune（维护特权），不删 `event_log` | 与「投影只由 projector 写入」字面冲突→已登记为唯一维护特权例外 | Yes until event compaction |
-| [R015](../docs/07-adr/ADR-R015-policy-register-idempotent.md) | Policy 注册幂等：MCP 重启默认 in-memory 清理（`persist=True` 才持久 revoke），避免 event_log 被 Created/revoked 刷屏 | 显式移除工具必须调 revoke；历史污染用 `compact_policy_events --apply`（需备份） | Accepted |
-| [R016](../docs/07-adr/ADR-R016-defer-mcp-v2.md) | 已迁入 mcp 2.x（现行 pin `mcp==2.2.0`）：snake_case 字段、`MCPServer`、`MCPError` 回传 | v1 外部 stdio server 靠 v2 client `mode='auto'` 回退握手；字段命名用 snake_case；补丁号以 `requirements.txt` 为准 | 已执行 |
-| [R017](../docs/07-adr/ADR-R017-execution-trustworthiness.md) | 执行可信化：**零新增事件类型**，复用 `Execution*` payload；步骤幂等/进度用 `plan_resumes` 合成键（`idem:{corr}:{step}` / `progress:{action_id}` / `rerun_stash:{work_id}`）；`ExecutionFailed.dead_letter` + `handler_executions.dead_letter` + `replay_dead_letters`；lease TTL `running_lease_ttl_seconds` → `Scheduler.reclaim_stale_leases` | DLQ 人工重放 `python -m scripts.replay_dead_letters`（跳过已终态领域 Work 与非当前尝试）；lease 实现放 Scheduler（可 cancel inflight），Kernel 侧留轻量事件路径 | Accepted |
-| [R018](../docs/07-adr/ADR-R018-telegram-scoped-consent.md) | Telegram 入站复用单进程 Timer/Chat，`telegram:{update_id}` 去重；自动回复只为配置 chat id 的精确回复消费一次预批准 | token/chat id 仅来自环境；`telegram_send` 保持 high；关闭 auto-reply 后逐条人工审批 | Accepted |
+| 决定 | 影响 | 状态 |
+|---|---|---|
+| 云端共享数据是唯一的跨设备协调媒介 | Runtime 之间不直接调用，不引入中央 scheduler | 已确认 |
+| 每台设备只保证本机单实例 | 保留本机进程锁；跨设备一致性全部由 PostgreSQL 事务、唯一键、lease 和 fencing 提供 | 已确认 |
+| 开发期直接替换存储，不迁移旧数据 | 不做旧数据兼容；PostgreSQL + pgvector 是本次推荐的具体实现 | 用户确认可替换存储；技术选型为建议 |
+| 延续现有 Work、`handler_executions`、Kernel 与 Capability governance | 不建立第三套 task/job/agent 总线；现有执行表扩展为共享 claim | 已确认 |
+| 本地应用通过 Application / Connection / DeviceBinding 接入 | 建议凭据留在系统凭据库，逐设备授权；内建目标应用仍可独立存在 | 应用接入方向已确认，具体 schema/凭据策略为建议 |
+| 外部效果使用幂等与对账 | 网络结果不确定时进入 `unknown`，不能用 lease 宣称严格 exactly-once | 已确认 |
 
-## 判断提示
-
-改到以下领域前，先回读对应 ADR 全文：
-- **调度/取消** → R009、R010
-- **审批流** → R011
-- **投影表维护/DML** → R014（维护特权例外，别扩大）
-- **MCP 生命周期** → R015、R016
-- **执行重试/幂等/DLQ/lease** → [R017](../docs/07-adr/ADR-R017-execution-trustworthiness.md)（E-1~E-11；触 Event/投影面时按零新增事件类型约束）
-- 概念预算抬升 → R012（改脚本 + docs §4.4 同步）
+旧的“分布式 lease / 多 worker 是非目标”决定已被替代。代码中的对应 fitness rule 和 guard 需要在共享执行阶段一起重写。

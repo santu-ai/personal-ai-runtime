@@ -1,217 +1,83 @@
-# 数据模型
+# 当前数据模型
 
-本文档列出仓库中的全部持久化数据结构。表分类详见 [02-concepts/kernel-boundary.md](../02-concepts/kernel-boundary.md)；本文聚焦具体列与 ChromaDB collections。
+> 基线：HEAD `61f3e3bc`。本文件满足 schema/document guard，只描述当前 SQLite 实现；目标 PostgreSQL schema 见[共享云数据与多设备 Runtime 方案](../shared-cloud-runtime-plan.md)。
 
-## 存储后端
+当前 registry 共 19 张表：15 张 governed 表和 4 张 app storage 表。governed 表由 Kernel 事件与投影维护；app storage 用于本地配置、缓存或恢复坐标。
 
-| 后端 | 用途 | 配置 |
-|---|---|---|
-| SQLite（WAL 模式） | 全部业务表 + 事件日志 + 投影 | `settings.sqlite_path`（默认 `<data_dir>/personal_ai.db`） |
-| ChromaDB（PersistentClient） | 记忆与知识的向量索引 | `settings.vector_dir`（默认 `<data_dir>/vectors`） |
-
-`data_dir` 默认 `<repo>/backend/data`，所有相对路径 resolve 到 `BASE_DIR`（[`backend/app/config.py`](../../backend/app/config.py)）。
-
-SQLite 启用 WAL + `synchronous=NORMAL`（[`backend/app/store/database.py`](../../backend/app/store/database.py)），线程局部连接缓存。`event_log` 表的两个触发器 `event_log_no_update`/`event_log_no_delete` 对 UPDATE/DELETE 执行 `RAISE(ABORT)` 强制 append-only（[`backend/app/store/schema_ddl.py`](../../backend/app/store/schema_ddl.py)）。
-
-## 表分类总览
-
-全部 19 张表必须归入 GOVERNED 或 APP_STORAGE（[`backend/app/store/table_registry.py`](../../backend/app/store/table_registry.py)）。
-
-| 类别 | 表数 | 写入权 |
-|---|---|---|
-| GOVERNED_TABLES | 15 | 仅 Kernel（事件溯源投影） |
-| APP_STORAGE_TABLES | 4 | 任意模块直访 |
-
-## GOVERNED 表（事件溯源投影）
-
-预期列契约定义于 [`table_registry.py`](../../backend/app/store/table_registry.py) 的 `GOVERNED_SCHEMA`。
-
-### `event_log`（真相之源）
-
-```python
-frozenset({
-    "seq", "id", "type", "aggregate_type", "aggregate_id", "actor", "payload",
-    "caused_by", "correlation_id", "ts",
-})
-```
-
-append-only。索引：`idx_event_log_aggregate`、`idx_event_log_correlation`。
+## GOVERNED
 
 ### `work_items`
 
-```python
-frozenset({
-    "id", "title", "description", "work_type", "parent_work_id",
-    "status", "priority", "dependencies_json",
-    "executable_plan", "created_at", "updated_at", "completed_at",
-    "progress", "importance", "urgency", "deadline", "last_activity_at",
-})
-```
-
-`work_type` 区分 `task` / `action` / `background` / `goal`。目标通过 `query_state("work_items", work_type="goal", ...)` 读取（[`kernel_query_state.py`](../../backend/app/core/runtime/kernel/kernel_query_state.py)）。
-
-项目资料简报的**任务要求**存在 `executable_plan` JSON 的 `contract` 字段（与 `steps` 并列），用户可见说明仍在 `description`。交付版本与验收决定不另开表：它们作为 `WorkItemUpdated` payload 的 `delivery_published` / `delivery_decision` 写入 `event_log`。把当前交付里的一条建议待办转成任务时，子任务仍是普通 `WorkItemCreated`；关联记在父任务的 `suggested_action_adopted` payload 上。投影器忽略这些键，因此 `work_items` 行形状不变；读取经 Product 折叠事件。完整正文在事件 payload 中，不能用步骤预览代替。同一交付下标重复采纳返回已有子任务。近 N 日首版采纳、返工、已转任务和评审耗时由这些事件现算，不另存指标表。审批次数、恢复次数和模型成本同样不另存表，按交付 `execution_id` 关联既有事件。同一次中断的 handler replay（`ExecutionRetried(reason=interrupted, status=retrying)` 或 `ExecutionFailed(error=interrupted)`）与带同一执行、同一 `retry_count` 的 `CapabilityFailed(error=interrupted_before_audit)` 只计一次恢复；没有这些字段的旧审计缺口仍按 correlation 并入已有 handler replay。读上限打满时审批、恢复、模型成本、未归因简报调用次数和未归因金额都是 unavailable。能关联到交付执行的成功 `purpose=project_brief` 调用仍计入模型成本；同一回看窗口里缺少 `caused_by` 的成功调用另计 `unattributed_project_brief_calls`，其金额合计为 `unattributed_project_brief_cost`，不并入已归因金额，也不把已归因金额改成 unavailable。任务详情读出的每个交付版本另带 `model_cost`：只计该版本 `execution_id` 的已归因金额 `llm_cost` 和恢复次数 `recovery_interventions`，时间从该执行最早的 `ExecutionRequested` 起（没有这条事件时从发布时间起）；其它执行以及缺少 `caused_by` 的金额不并入。这一读打满上限时两项都是 unavailable，不写成 0。没有 `execution_id` 时为 0。近 N 日汇总仍是窗口内各次交付的合计。对外读出的每个交付版本带该版本最新决定 `latest_decision`（含 `reason`）；没有决定时为 null。同一事件里的 `checks`（`criterion` / `result` / `detail`）随版本读出，不另开表。有上一版时另带 `changes_from_previous`：读取时对照 `supersedes_delivery_id` 现算 findings、sources、limitations、suggested_actions 的增删改，以及摘要、正文是否变化。对比结果不复制任一版全文，也不另存事件。第一版或上一版缺失时为 null。
+领域 Work 与 goal 的投影，包含状态、优先级、依赖、计划、进度和 deadline。
 
 ### `memories`
 
-```python
-frozenset({
-    "id", "category", "content", "source", "embedding_id", "created_at",
-    "confidence", "derived_from_event", "decayed_at", "status", "origin",
-    "claim_status", "source_document_id", "source_document_name",
-})
-```
-
-`category` 取值 `{fact, preference, habit, belief, insight, work, personal}`（[`backend/app/api/models.py`](../../backend/app/api/models.py)）。
+记忆事实、置信度、来源、claim 状态和 Chroma embedding 引用。
 
 ### `approvals`
 
-```python
-frozenset({
-    "id", "task_id", "action", "params", "proposed_by", "status",
-    "created_at", "expires_at", "resolved_at", "resolved_by",
-})
-```
+高风险能力或交互续跑的审批状态。
 
-24h TTL，RuntimeLoop 每 ~10s 调 `expire_stale_approvals`。
+### `conversations`
 
-### `conversations` / `messages`
+会话标题、摘要和时间。
 
-```python
-# conversations
-frozenset({"id", "title", "summary", "created_at", "updated_at"})
+### `messages`
 
-# messages
-frozenset({
-    "id", "conversation_id", "role", "content", "tool_calls", "tool_call_id",
-    "created_at", "source_event_id", "sources",
-})
-```
+消息、工具调用、来源与对应事件。
 
 ### `notifications`
 
-```python
-frozenset({
-    "id", "type", "title", "content", "read",
-    "related_id", "related_type", "notification_type", "created_at",
-})
-```
+通知、已读状态、去重键和关联对象。
 
-### `inbox_emails`
+### `event_log`
 
-```python
-frozenset({
-    "id", "server_id", "sender", "subject", "date", "preview",
-    "full_text", "status", "category", "importance", "reason",
-    "notified", "digested", "created_at", "received_at",
-})
-```
-
-由 [`projectors_inbox.py`](../../backend/app/core/runtime/kernel/projectors_inbox.py) 从 `InboxEmailRecorded` 事件投影。
+append-only 事件日志。当前 `seq` 是 SQLite 自增主键。
 
 ### `projection_checkpoints`
 
-```python
-frozenset({"agent_id", "aggregate_type", "last_applied_seq", "snapshot_json", "created_at"})
-```
-
-PK 在 `(agent_id, aggregate_type)`。增量重建水位。
+投影重建的 checkpoint 和 snapshot。
 
 ### `handler_executions`
 
-```python
-frozenset({
-    "id", "event_seq", "event_id", "event_type", "handler_name",
-    "instance_id", "status", "retry_count", "policy_json",
-    "correlation_id", "created_at", "started_at", "completed_at", "error",
-})
-```
-
-WorkItem 持久化，崩溃恢复源。
+Scheduler 的 durable execution 投影。当前只保存固定 instance id 和执行状态，没有跨设备 lease/fencing 字段。
 
 ### `timer_events`
 
-```python
-frozenset({
-    "id", "handler_name", "schedule_type", "cron_expr", "delay_seconds",
-    "fire_at", "status", "payload_json", "created_at", "fired_at",
-})
-```
+cron/delay timer 的定义与触发状态。
 
-`payload_json` 是 `TimerCreated` 的嵌套 `payload`。内置 cron 不写入任务 id。`set_timer` 只在调用方传入已经存在的 `work_id` 时写入该键；空白或不存在的 id 不写入，也不改用别的键。任务页为已完成且已有交付的项目简报设定「定时再次运行」时，走的就是这次调用。触发后：payload 里已有非空 `work_id` 且任务仍在时，若该简报仍已完成且已有交付，则再次运行同一份任务；清计划游标失败，或执行请求在打开之后失败时，任务仍是 `completed`（`reason=rerun_restore`）。清没有提交时不覆盖游标。当前交付不变，别的待执行任务保持原状态，提醒只打开这一份。否则只打开这一份。任务已删除、`work_id` 空白，或没有该键时，仍是普通提醒，不改去读 `action_id`。不新建任务，也不为这次触发另建交付。仪表盘只在该对象里已有非空 `work_id`（没有该键时才看 `action_id`）且 `work_items` 仍有该行时带上 `work_id`。空白或指向已删除任务的键不会改去读另一个键。定时器 id 与 `correlation_id` 不当作任务 id。
+### `policy_events`
 
-### `policy_events`（治理事件溯源根）
+能力策略的当前投影。
 
-```python
-frozenset({"id", "capability", "risk_level", "status", "created_at", "updated_at"})
-```
+### `inbox_emails`
 
-### `tool_calls` / `llm_calls`
+收件箱邮件及分类、重要度、通知和摘要状态。
 
-Governed 投影，分别由 `CapabilityInvoked/Failed/Denied` 与 `LLMCallRecorded` 事件驱动。
+### `tool_calls`
+
+能力调用的审计投影。
+
+### `llm_calls`
+
+模型调用、token、成本、时延和结果审计。
 
 ### `user_profile`
 
-```python
-frozenset({
-    "id", "category", "data_json", "confidence", "created_at", "updated_at",
-})
-```
+用户 profile 的分类数据与置信度。
 
-由 [`projectors_core.py`](../../backend/app/core/runtime/kernel/projectors_core.py) 从 `UserProfileUpdated` 事件投影。结构化画像类别袋；经 `query_state("user_profile")` / read_ports 读取。
+## APP_STORAGE
 
-## APP_STORAGE 表（可直访）
-
-| 表 | 用途 | 为何不事件溯源 |
+| 表 | 当前用途 | 目标处理 |
 |---|---|---|
-| `activity_log` | 人类可读活动日志 | event_log 投影派生 |
-| `app_settings` | UI 偏好、LLM/Email 连接配置 | 本地运营配置 |
-| `memory_index_repairs` | ChromaDB 索引修复队列 | 权威记录是 `MemoryDerived/Updated` 事件；由 RuntimeLoop 重试 |
-| `plan_resumes` | 审批暂停后的计划续跑坐标，以及再次运行或返工清游标时的 `rerun_stash:{work_id}` | 运营续跑态；审批行仍是治理权威；跨进程恢复即可。暂存行 `action_id` 为空，行在 `previous_output_json`；清与写入同一事务，空的清会删掉更早的暂存。`ExecuteRequested` 落库后删除。半开恢复只在清已提交且原行已空时写回；原行还在则只删暂存。返工与再次运行共用该键；返工收回的 reason 是 `rework_restore`，再次运行收回是 `rerun_restore` |
+| `activity_log` | event log 的可读活动缓存 | 可继续作为共享派生投影 |
+| `app_settings` | UI、LLM、邮件和 monitor 配置 | 拆为云端共享配置、本机凭据和本机缓存 |
+| `memory_index_repairs` | Chroma 索引失败修复队列 | 改造为持久 embedding 重试或并入共享 execution；只删除 Chroma 专用职责 |
+| `plan_resumes` | 审批暂停后的续跑坐标与步骤幂等 | 重新归类为共享执行状态 |
 
-## ChromaDB Collections
+## 当前持久化边界
 
-`VectorStore`（[`backend/app/store/vector.py`](../../backend/app/store/vector.py)）单例管理两个 collection：
-
-| Collection | 内容 | 写入者 | 主权 |
-|---|---|---|---|
-| `memories` | 记忆向量 | Kernel（`_sync_memory_index`） | State 派生（INV-S3） |
-
-## 非主权附件
-
-登记于 [`table_registry.py`](../../backend/app/store/table_registry.py) 的 `NON_SOVEREIGN_ATTACHMENTS`。**不能**仅靠 `event_log` 重建；不得当作第二真相源（INV-S4）。
-
-当前无登记项（知识库功能已于 `252b17c` 移除）。
-
-## Schema 初始化
-
-初始 Schema 定义在 [`backend/alembic/versions/`](../../backend/alembic/versions/)：
-
-| Revision | down_revision | 内容 |
-|---|---|---|
-| `0001_consolidated` | — | 单一初始 schema：全部应用表 + kernel 表 + 投影表 + `plan_resumes` + append-only 触发器 |
-
-开发阶段保持**唯一 head**（增量变更折叠回 `0001_consolidated`，不保留兼容 revision）。`alembic upgrade head` 一次应用完整 schema。
-
-列真相以 [`schema_ddl.py`](../../backend/app/store/schema_ddl.py) 为准；Alembic `0001` 与 raw DDL 双路径必须列契约一致（见下节）。
-
-`run_migrations()`（[`backend/app/store/alembic_runner.py`](../../backend/app/store/alembic_runner.py)）用 `backend/alembic.ini`，`command.upgrade(cfg, "head")`，幂等。
-
-## Schema 初始化策略
-
-[`backend/app/store/schema_init.py`](../../backend/app/store/schema_init.py) 的 `ensure_schema(db)`：
-
-- 若 `db_path == settings.sqlite_path`（生产路径）→ **只**走 Alembic（失败即中止启动，**不**回退 raw DDL，避免不可见偏离）。
-- 否则（测试/自定义路径）→ 跑 `apply_raw_ddl`。
-- 两路径列契约由 [`test_projection_schema_contract.py`](../../backend/tests/runtime/test_projection_schema_contract.py) 双跑对齐；[`scripts/verify_alembic.py`](../../backend/scripts/verify_alembic.py) 另校验线性 revision 链与 orphan `__pycache__`。
-
-## 一致性验证
-
-| 脚本 | 验证 |
-|---|---|
-| [`scripts/verify_alembic.py`](../../backend/scripts/verify_alembic.py) | 必需表存在 + `PRAGMA foreign_keys=1` + 线性 Alembic 链 + 无 orphan `__pycache__` |
-| [`scripts/check_projection_provenance.py`](../../backend/scripts/check_projection_provenance.py) | 每条 governed 投影行有对应 `event_log` 事件 |
-| [`scripts/verify_vector_consistency.py`](../../backend/scripts/verify_vector_consistency.py) | SQLite memories 集合 = Chroma `memories` collection 集合 |
-| [`scripts/verify_export_roundtrip.py`](../../backend/scripts/verify_export_roundtrip.py) | export → import 后 event_log/conversations/messages/work_items/memories/notifications 计数一致 |
-
-详见 [05-engineering/testing.md](../05-engineering/testing.md)。
+- SQLite schema 由 [schema_ddl.py](../../backend/app/store/schema_ddl.py)和 Alembic 管理。
+- 表分类权威来自 [table_registry.py](../../backend/app/store/table_registry.py)。
+- Chroma 数据位于 `VECTOR_DIR`，不是共享数据库。
+- snapshot/restore 会操作 SQLite、event log 和本地向量目录，属于备份/恢复，不是多设备同步协议。

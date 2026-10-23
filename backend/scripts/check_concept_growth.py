@@ -1,17 +1,17 @@
 """Architecture Contract Gate — enforces the Runtime Algebra concept-compression contract.
 
-Reads the current concept baseline from ``runtime-algebra.md`` §4.4 and
+Reads the current concept baseline from ``current-snapshot.md`` and
 fails if any tracked metric has grown since the last recorded baseline.
 
 This script is the CI enforcement of the Concept Compression Contract
 (§5.2). When you intentionally reduce a metric, update the baseline AND
-the table in docs/02-concepts/runtime-algebra.md §4.4.
+the Architecture contract baseline table in docs/current-snapshot.md.
 
 Usage:
     python -m scripts.check_concept_growth            # check against baseline
     python -m scripts.check_concept_growth --snapshot # print current values
     python -m scripts.check_concept_growth --strict   # also fail on non-zero dead_code_files
-    python -m scripts.check_concept_growth --ratchet  # preview baseline + docs §4.4 changes (no write)
+    python -m scripts.check_concept_growth --ratchet  # preview baseline + snapshot changes (no write)
     python -m scripts.check_concept_growth --ratchet --yes  # apply the reduction
     python -m scripts.check_concept_growth --record   # append JSONL history snapshot
 """
@@ -114,7 +114,7 @@ def count_god_object_max_loc() -> int:
 
 
 # Locked subsystem file sets (G2). Adding a sibling file without updating this
-# map is an intentional budget change — update BASELINE docs §4.4 subsystem note.
+# map is an intentional budget change — update BASELINE and the snapshot note.
 SUBSYSTEM_LOC_FILES: dict[str, tuple[Path, ...]] = {
     "read_model_sql": (
         ROOT / "backend/app/core/runtime/kernel/query_builder.py",
@@ -191,10 +191,10 @@ def count_dead_code_files() -> int:
     return sum(1 for p in _KNOWN_DEAD_FILES if (ROOT / p).exists())
 
 
-# ── Baseline (sourced from runtime-algebra.md §4.4) ──────────────────────
+# ── Baseline (mirrored in docs/current-snapshot.md) ──────────────────────
 
 # When you *reduce* a metric, update these baselines AND
-# the table in docs/02-concepts/runtime-algebra.md §4.4.
+# the Architecture contract baseline table in docs/current-snapshot.md.
 
 BASELINE = {
     # read_ports/ domain-scoped package — same Read Port concept.
@@ -215,7 +215,7 @@ BASELINE = {
     "dead_code_files": 0,
 }
 
-# Doc §4.4 row label → BASELINE key (CI is the single authority).
+# Snapshot row label → BASELINE key (CI is the single authority).
 _DOC_SECTION_4_4_KEYS: dict[str, str] = {
     "runtime_files": "runtime_files",
     "event_types": "event_types",
@@ -228,21 +228,21 @@ _DOC_SECTION_4_4_KEYS: dict[str, str] = {
 
 
 def check_docs_baseline_sync(verbose: bool = True) -> int:
-    """Fail when docs/02-concepts/runtime-algebra.md §4.4 drifts from BASELINE.
+    """Fail when the current snapshot architecture table drifts from BASELINE.
 
     Parses the markdown table column ``对应 BASELINE 键`` and the limit column.
     """
-    doc = ROOT / "docs" / "02-concepts" / "runtime-algebra.md"
+    doc = ROOT / "docs" / "current-snapshot.md"
     text = doc.read_text(encoding="utf-8")
     # Rows like: | `core/runtime/` 文件数 | 63 | `runtime_files` |
     row_re = re.compile(
         r"^\|\s*[^|]+\|\s*(\d+)\s*\|\s*`([a-z_]+)`\s*\|",
         re.MULTILINE,
     )
-    section = text.split("### 4.4", 1)
+    section = text.split("## Architecture contract baseline", 1)
     if len(section) < 2:
         if verbose:
-            print("  [FAIL] docs missing ### 4.4 section")
+            print("  [FAIL] current snapshot missing Architecture contract baseline")
         return 1
     body = section[1].split("\n---", 1)[0].split("\n## ", 1)[0]
     found: dict[str, int] = {}
@@ -257,17 +257,17 @@ def check_docs_baseline_sync(verbose: bool = True) -> int:
         if key not in found:
             violations += 1
             if verbose:
-                print(f"  [FAIL] docs §4.4 missing BASELINE key `{key}`")
+                print(f"  [FAIL] snapshot baseline missing BASELINE key `{key}`")
             continue
         if found[key] != expected:
             violations += 1
             if verbose:
                 print(
-                    f"  [FAIL] docs §4.4 `{key}`={found[key]} "
+                    f"  [FAIL] snapshot baseline `{key}`={found[key]} "
                     f"!= BASELINE {expected}"
                 )
     if verbose and not violations:
-        print("  [OK] docs §4.4 synced with BASELINE")
+        print("  [OK] current snapshot baseline synced with BASELINE")
     return 1 if violations else 0
 
 
@@ -328,7 +328,7 @@ def check(verbose: bool = True, strict: bool = False) -> int:
                 f"FAIL: {violations} metric(s) exceed baseline.\n"
                 "If this increase is intentional (e.g. a new concept), the PR must\n"
                 "also DELETE an existing concept so the net change is ≤ 0.\n"
-                "See docs/02-concepts/runtime-algebra.md §3.2 (Concept Addition Cost)."
+                "See docs/shared-cloud-runtime-plan.md and remove superseded concepts."
             )
         else:
             print("PASS: all metrics within baseline.")
@@ -380,7 +380,7 @@ def snapshot():
 
 
 def _ratchet_baseline() -> int:
-    """Lower BASELINE (and docs §4.4) to match current measurements.
+    """Lower BASELINE and the snapshot table to match current measurements.
 
     Only decreases values — never raises a ceiling. Refuses to write anything
     unless ``--yes`` is passed; run without it to preview the exact edits.
@@ -413,12 +413,13 @@ def _ratchet_baseline() -> int:
         print("No baselines to ratchet (current >= baseline for all metrics).")
         return 0
 
-    # Compute the docs §4.4 rewrite as well; only write files when confirmed.
-    doc = ROOT / "docs" / "02-concepts" / "runtime-algebra.md"
+    # Compute the snapshot table rewrite as well; only write files when confirmed.
+    doc = ROOT / "docs" / "current-snapshot.md"
     doc_text = doc.read_text(encoding="utf-8")
-    section_parts = doc_text.split("### 4.4", 1)
+    heading = "## Architecture contract baseline"
+    section_parts = doc_text.split(heading, 1)
     if len(section_parts) < 2:
-        print("  [FAIL] docs missing ### 4.4 section")
+        print("  [FAIL] current snapshot missing Architecture contract baseline")
         return 1
     head, rest = section_parts
     body_end_markers = ["\n---", "\n## "]
@@ -440,13 +441,13 @@ def _ratchet_baseline() -> int:
         r"^\|\s*[^|]+\|\s*(\d+)\s*\|\s*`([a-z_]+)`\s*\|",
         re.MULTILINE,
     )
-    new_doc = head + "### 4.4" + row_re.sub(repl_row, body) + tail
+    new_doc = head + heading + row_re.sub(repl_row, body) + tail
 
     if "--yes" not in sys.argv:
         print("Would ratchet the following — pass --yes to apply:")
         for line in lowered:
             print(f"  {line}")
-        print(f"  docs §4.4 → {doc.relative_to(ROOT)}")
+        print(f"  snapshot baseline → {doc.relative_to(ROOT)}")
         return 1
 
     script_path.write_text(text, encoding="utf-8", newline="\n")
@@ -454,7 +455,7 @@ def _ratchet_baseline() -> int:
     for line in lowered:
         print(f"  {line}")
     doc.write_text(new_doc, encoding="utf-8", newline="\n")
-    print(f"Synced docs §4.4 → {doc.relative_to(ROOT)}")
+    print(f"Synced snapshot baseline → {doc.relative_to(ROOT)}")
     return 0
 
 

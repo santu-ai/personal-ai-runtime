@@ -4,21 +4,23 @@
 
 ## 必读顺序（冷启动）
 
-1. [`docs/README.md`](docs/README.md) — 文档地图与阅读路径
-2. [`.harness/architecture-redlines.md`](.harness/architecture-redlines.md) — 改代码前的红线（**必读**）
-3. [`.harness/project-map.md`](.harness/project-map.md) — 目录地图与任务→代码定位
+1. [`docs/README.md`](docs/README.md) — 文档入口
+2. [`docs/current-snapshot.md`](docs/current-snapshot.md) — 当前代码事实
+3. [`docs/shared-cloud-runtime-plan.md`](docs/shared-cloud-runtime-plan.md) — 已确认的目标方案与重构顺序
+4. [`.harness/architecture-redlines.md`](.harness/architecture-redlines.md) — 改代码前的红线（**必读**）
+5. [`.harness/project-map.md`](.harness/project-map.md) — 目录地图与任务→代码定位
 
-架构权威：[`docs/01-overview/architecture.md`](docs/01-overview/architecture.md)、[`docs/02-concepts/runtime-algebra.md`](docs/02-concepts/runtime-algebra.md)。
+架构权威：当前事实以代码和 [`current-snapshot.md`](docs/current-snapshot.md) 为准；目标架构以 [`shared-cloud-runtime-plan.md`](docs/shared-cloud-runtime-plan.md) 为准。
 
 ## 三个高价值 harness 文件（docs 没有的增量）
 
 | 文件 | 何时读 |
 |---|---|
 | [`.harness/powershell-tips.md`](.harness/powershell-tips.md) | Windows / PowerShell 下执行任何 shell 命令前 |
-| [`.harness/decision-log.md`](.harness/decision-log.md) | 需要快速确认 ADR 状态时（完整 ADR 在 `docs/07-adr/`） |
+| [`.harness/decision-log.md`](.harness/decision-log.md) | 快速确认当前架构决定 |
 | [`.harness/workspace-state.md`](.harness/workspace-state.md) | 跨会话恢复；任务结束后**写回一行** |
 
-其余 `.harness/` 内容多为 `docs/` 的指针或浓缩，不要当第二套 SSOT。
+其余 `.harness/` 内容是过程记录，不要当第二套 SSOT；其中指向已删除历史文档的链接只代表历史上下文。
 
 ## 入口与边界
 

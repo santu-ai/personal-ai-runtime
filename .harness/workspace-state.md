@@ -368,3 +368,5 @@
 - 开发期 Alembic squash SOP：`.harness/task-recipes.md` §9
 - Windows 提交走 `git -c core.hooksPath=.githooks commit -F`
 - 2026-09-28：浮层按打开顺序接管 Tab/Esc（`useOverlayKeyboard`）；动态通知改用常驻 `LiveStatus`（先空再填，同文案靠 announcementId 重播）。组件测试与 e2e/accessibility-regressions 已补；真读屏仍待人工验。
+- 2026-10-23：以 HEAD 61f3e3bc 重建文档：删除旧架构章节与历史 ADR，新增当前 snapshot、共享 PostgreSQL/pgvector 多设备 Runtime 方案及重构地图；明确每设备单实例、云端 execution key/lease/fencing、Application/Connection/DeviceBinding。同步 CI 文档引用与 concept baseline 守卫；docs guards、architecture-check、single-process-control-plane 均通过。保留任务开始前已有未提交文件。
+- 2026-10-23：二次 Review 修正 identity/提交序、command 多事件、fencing 入日志时机、持久派发与跨设备结果、embedding 重试、效果幂等阶段、应用版本/内建目标等设计遗漏，并补回 docs README 版本号。全后端 2019 passed/4 failed/9 skipped/7 deselected；版本与两项简报测试在显式禁用测试进程个人数据外发后 7 passed，剩余 Windows POSIX 0600 断言及简报环境隔离作为测试债。lint、文档/生成物、架构/边界/层依赖、投影来源/重建通过；未更改用户配置或业务实现。

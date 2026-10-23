@@ -9,7 +9,7 @@
 
 ## Runtime Algebra 审查
 
-见 [docs/02-concepts/runtime-algebra.md](docs/02-concepts/runtime-algebra.md)。
+涉及当前行为或目标架构时，同步 [当前实现快照](docs/current-snapshot.md) 或 [共享云数据与多设备 Runtime 方案](docs/shared-cloud-runtime-plan.md)。
 
 ### 概念影响
 

@@ -1,6 +1,6 @@
 # 高频任务 SOP
 
-> 扩展点权威细节：[`docs/05-engineering/extending.md`](../docs/05-engineering/extending.md)。此处只保留检查命令清单。
+> 当前实现见 [`current-snapshot.md`](../docs/current-snapshot.md)，目标重构见 [`shared-cloud-runtime-plan.md`](../docs/shared-cloud-runtime-plan.md)。此处只保留检查命令清单。
 
 ## 1. 新增投影器 / 事件类型
 
@@ -36,8 +36,8 @@
 
 ```bash
 make architecture-snapshot                                   # 看当前值
-python -m scripts.check_concept_growth --ratchet             # 预览将写入的 baseline + docs §4.4（不写盘，返回 1）
-python -m scripts.check_concept_growth --ratchet --yes       # 确认后应用并同步 docs §4.4
+python -m scripts.check_concept_growth --ratchet             # 预览 baseline 变化（不写盘，返回 1）
+python -m scripts.check_concept_growth --ratchet --yes       # 确认后应用
 ```
 
 **注意**：`--ratchet` 自 2026-08 起必须加 `--yes` 才写盘；无 `--yes` 只是 dry-run 预览。
@@ -49,7 +49,7 @@ python -m scripts.check_concept_growth --ratchet --yes       # 确认后应用�
 1. **逐项对照 plan/报告**：每个问题 → 源码里找到对应修复 + 防回归（pytest 断言或静态守卫）。找不到防回归的修复视为未完成。
 2. **grep 断言全仓清零**：对"统一/删除"类目标（如 `parent_goal_id`、已删别名、死字段），用磁盘扫描（`Get-ChildItem | Select-String`）断言只剩历史迁移/文档白名单，别信 IDE grep 索引。
 3. **跑完整验证矩阵**：静态守卫（boundary / layer-deps / concept-growth / event-schema / unused-config / projection-provenance）+ 后端 pytest + rebuild-verify + 前端 test + docs-gen。
-4. **概念指标变化零和登记**：指标因修复净增（如新增执行可信化功能）时，同步 `BASELINE` + `docs/02-concepts/runtime-algebra.md` §4.4 + `SUBSYSTEM_LOC_BUDGETS`，并说明替代的旧概念/为什么净增合理。
+4. **概念指标变化登记**：指标因修复净增时，同步 `BASELINE` 与 `SUBSYSTEM_LOC_BUDGETS`，并在当前 snapshot 或目标方案中说明新增概念替代了什么。
 5. **复核报告**：按严重度列出"已闭环 / 部分闭环 / 漏项"，漏项给明确处置（删或注明 ABI 保留），不要让"部分闭环"悬空。
 
 ## 9. 开发期合并 Alembic（squash）
@@ -71,7 +71,7 @@ python -m scripts.check_concept_growth --ratchet --yes       # 确认后应用�
 1. 配置落 `app_settings`（APP_STORAGE），**不要**为过滤器/URL 列表新开 governed 表或事件类型。
 2. 求值挂在已有触发点：`inbox_poll` 落库后、或 `cron_registry.SCHEDULES` + `timer_trigger_handler`。
 3. 通知经 `read_ports.push_notification(..., dedup_key=...)`；变化类监控用「基线首次不通知 + hash/id 进 dedup_key」。
-4. **Timer 路径**：handler 必须 fire-and-forget（见 [conventions.md](conventions.md) §TimerFired）；cron 每 tick 设 `max_checks`。
+4. **Timer 路径**：避免长 I/O 占用触发 handler，实际工作进入持久 execution；现有 fire-and-forget 路径是共享 lease 改造项，不能作为新能力模板。cron 每 tick 设 `max_checks`。
 5. 出站 URL 必须走 SSRF-safe 客户端（`url_safety` / `FetchServer`），创建时只做 scheme/host 校验不够。
 6. 前端：Dashboard `?tab=monitors`；通知路由写 `notificationRoutes.ts`。
 7. 自证：`tests/product/test_*_monitors.py` + `tests/api/test_monitors_api.py`；改路由后 `make docs-gen`。

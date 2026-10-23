@@ -1,7 +1,7 @@
 """开发期 dogfood soak 报告（只读）。
 
 对当前日用 SQLite 输出只读计数报告，用于核对
-docs/05-engineering/development.md「开发期自用检查」表中的主观判断
+开发期 dogfood 记录中的主观判断
 是否与库内数据一致。
 
 解析顺序：``--db`` → 环境变量 ``SQLITE_PATH`` → 仓库根 ``.env`` 的

@@ -26,7 +26,7 @@
 | [project-map.md](project-map.md) | 任务→代码快捷定位 | 指针 + 增量 |
 | [powershell-tips.md](powershell-tips.md) | Windows PowerShell 实战陷阱 | **高价值增量** |
 | [architecture-redlines.md](architecture-redlines.md) | 红线速查（**改代码前必读**） | 浓缩（权威在 docs） |
-| [decision-log.md](decision-log.md) | ADR 一行式摘要 | **高价值索引** |
+| [decision-log.md](decision-log.md) | 当前架构决定摘要 | **高价值索引** |
 | [conventions.md](conventions.md) | 提交/检查最短清单 | 指针 |
 | [task-recipes.md](task-recipes.md) | 高频任务 SOP 清单 | 指针 |
 | [workspace-state.md](workspace-state.md) | 当前分支 / WIP / 已知坏点 | **动态，agent 可写** |
@@ -37,7 +37,7 @@
 
 ## 维护纪律
 
-- **改动代码前**：先读 `architecture-redlines.md`，再读 `docs/02-concepts/` 相关概念。
+- **改动代码前**：先读 `architecture-redlines.md`，再读 `docs/current-snapshot.md`；涉及云存储、多设备或本地应用时再读 `docs/shared-cloud-runtime-plan.md`。
 - **任务结束后**：顺手在 `workspace-state.md` 更新一行。
 - **不要复制 docs**：需要引用时写指针（相对链接）。
 - **不要放密钥**：`.env*`、凭据、API key 一律不进本目录。

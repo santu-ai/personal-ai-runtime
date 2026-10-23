@@ -2,7 +2,7 @@
 """Layer dependency guard — Runtime / Product / Store / API import edges.
 
 Complements ``check_boundary.py`` (storage GOLDEN RULE). This script enforces
-*responsibility* edges from docs/02-concepts/architecture-principles.md:
+*responsibility* edges recorded in docs/current-snapshot.md:
 
   R1  core/runtime  ─X→  app.product          (mechanism must not call domain)
   R2  store         ─X→  app.core.runtime     (storage must not assemble Runtime)

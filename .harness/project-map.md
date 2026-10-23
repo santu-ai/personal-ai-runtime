@@ -35,9 +35,8 @@
 
 | 想了解 | 读 |
 |---|---|
-| 整体架构 | `docs/01-overview/architecture.md` |
-| 当前尝试 / 半开收回 / 单次交付成本 | `docs/02-concepts/execution-model.md` |
-| 六原语 / 概念压缩 | `docs/02-concepts/runtime-algebra.md` |
-| 工程操作 | `docs/05-engineering/` |
+| 当前实现与执行模型 | `docs/current-snapshot.md` |
+| 共享云数据、多设备 claim 与应用连接 | `docs/shared-cloud-runtime-plan.md` |
+| 当前表模型 | `docs/04-data/data-model.md` |
 | API / Makefile / 工具目录 | `docs/06-reference/`（`api-endpoints` / `makefile-targets` / `tool-catalog`，均可 `make docs-gen`） |
-| ADR | `docs/07-adr/`（摘要：[decision-log.md](decision-log.md)） |
+| 当前架构决定摘要 | [decision-log.md](decision-log.md) |

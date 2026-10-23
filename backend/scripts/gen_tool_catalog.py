@@ -6,8 +6,8 @@ Sources of truth:
   - backend/mcp_registry.json
   - backend/mcp_config.json
 
-Writes docs/06-reference/tool-catalog.md (auto-generated). Narrative docs such as
-docs/03-subsystems/mcp-harness.md should link here instead of duplicating tables.
+Writes docs/06-reference/tool-catalog.md (auto-generated). The current snapshot
+links here instead of duplicating generated tables.
 
 Usage:
     cd backend && python -m scripts.gen_tool_catalog
@@ -111,7 +111,7 @@ def render() -> str:
         parts.append(f"| {name} | `{cat}` | {desc} | {install} |\n")
 
     parts.append(
-        "\n叙事与集成细节见 [mcp-harness.md](../03-subsystems/mcp-harness.md)。\n"
+        "\n当前集成边界见 [当前实现快照](../current-snapshot.md)。\n"
     )
     return "".join(parts)
 

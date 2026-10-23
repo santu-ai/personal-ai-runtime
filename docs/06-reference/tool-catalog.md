@@ -34,4 +34,4 @@
 | tavily | `search` | Tavily AI 搜索 — 深度网页检索与内容提取 | `npx -y tavily-mcp@0.2.21` |
 | notion | `productivity` | Notion 集成 — 搜索与读取 Notion 页面 | `npx -y @notionhq/notion-mcp-server` |
 
-叙事与集成细节见 [mcp-harness.md](../03-subsystems/mcp-harness.md)。
+当前集成边界见 [当前实现快照](../current-snapshot.md)。

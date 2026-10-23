@@ -10,10 +10,8 @@ on:
       - "frontend/**"
       - ".github/workflows/desktop-windows.yml"
       - ".github/workflows/release.yml"
-      - "docs/upgrade-plan.md"
-      - "docs/05-engineering/deployment.md"
-      - "docs/05-engineering/ci-cd.md"
-      - "docs/03-subsystems/desktop.md"
+      - "docs/current-snapshot.md"
+      - "docs/shared-cloud-runtime-plan.md"
       - "docs/README.md"
 
 permissions:

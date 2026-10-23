@@ -86,8 +86,9 @@ def main() -> int:
         for v in violations:
             print(f"  {v}", file=sys.stderr)
         print(
-            "\nDistributed lease / multi-worker Scheduler is a Non-goal. "
-            "See docs/02-concepts/execution-model.md",
+            "\nEach device must keep one in-process control plane. "
+            "Shared claims belong in the Runtime Scheduler; see "
+            "docs/shared-cloud-runtime-plan.md.",
             file=sys.stderr,
         )
         return 1

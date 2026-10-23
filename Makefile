@@ -189,7 +189,7 @@ execution-ownership-inventory:
 execution-ownership-strict:
 	cd $(BACKEND_DIR) && python3 -m scripts.check_execution_ownership --strict
 
-# Architecture Contract — enforces runtime-algebra.md §5.2 (Concept Compression)
+# Architecture Contract — enforces the current snapshot concept baseline
 architecture-check:
 	cd $(BACKEND_DIR) && python3 -m scripts.check_concept_growth
 

@@ -3,7 +3,7 @@
 这里独占存储访问。User Space（agents、workflows、APIs、UI）只能经由本
 ABI，绝不直接读写数据库。
 
-实现 docs/01-overview/architecture.md 中的核心 P0 ABI：
+实现 docs/current-snapshot.md 中的当前 Kernel ABI：
     emit_event / read_events / subscribe_events / query_state
 
 模块划分：

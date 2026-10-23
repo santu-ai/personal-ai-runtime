@@ -1,6 +1,6 @@
 # 工程约定
 
-> 权威细节在 [`docs/05-engineering/`](../docs/05-engineering/)（development / testing / ci-cd）。本文件只保留 agent 高频约束，避免第二套 SSOT。
+> 当前实现和目标架构分别见 [`current-snapshot.md`](../docs/current-snapshot.md) 与 [`shared-cloud-runtime-plan.md`](../docs/shared-cloud-runtime-plan.md)。本文件只保留 agent 高频约束。
 
 ## 提交（commit-msg 钩子强制）
 
@@ -34,7 +34,7 @@
 
 - `TimerFired` 默认 `ExecutionPolicy` **timeout=30s**（`policy_for_event` 仅对 `ChatRequested` 加长）。
 - 凡在 timer handler 里做网络抓取、IMAP、批量外呼等可能 >数秒的工作：**禁止在 `_TIMER_HANDLERS` 里直接 await 完整 I/O**。
-- 既有样板：`inbox_poll`（emit 事件交给独立 WorkItem）、`url_monitor`（`asyncio.create_task` fire-and-forget + 强引用集合）。cron 路径再加**每 tick 上限**，避免 backlog 一次打满。
+- 当前 `inbox_poll` 通过事件交给独立 WorkItem；`url_monitor` 的 fire-and-forget 是待重构遗留，不能作为共享执行模板。长 I/O 应由持久 execution 承接，cron 路径加每 tick 上限。
 - 手动 HTTP「立即执行」端点同样要 cap（或异步化），否则会挂死请求。
 
 ## APP_STORAGE 共享 JSON 配置
@@ -51,7 +51,7 @@
 
 ## God 文件与概念压缩
 
-- `query_builder` / `main` / `mcp_mesh` / `agent_scheduler` 等受 `runtime_files` / 概念压缩零和约束（见 [decision-log.md](decision-log.md) R012）。
+- `query_builder` / `main` / `mcp_mesh` / `agent_scheduler` 等仍受 `runtime_files` / 概念增长守卫约束。
 - 优化时优先**单文件内**抽 helper；拆文件必须同变更删除等价概念，并按 [task-recipes.md](task-recipes.md) §7 `--ratchet --yes`。
 
 ## 工具索引滞后陷阱（本次实测两次）
@@ -60,4 +60,4 @@
 - **裁决以磁盘为准**：搜到可疑残留时，先用 `Test-Path` / `cmd /c dir /b <dir>` 核实文件真实存在，再决定是否动手。避免基于 stale 索引做"删除/修复"导致白改或误删。
 - 同理，重命名/删除类全仓清理后，验证也要用磁盘扫描（`Get-ChildItem ... | Select-String`）而不是 grep 结果作为"清零"证据。
 
-文档语言与交叉引用纪律见 [`docs/05-engineering/development.md`](../docs/05-engineering/development.md)。
+文档使用中文叙述，代码标识、路径和命令保留英文原文；当前事实和目标设计不得混写。

@@ -1,12 +1,12 @@
 # 红线与不可侵犯区域
 
-> **改代码前必读。** 完整论证见 `docs/02-concepts/architecture-principles.md`、`docs/02-concepts/kernel-abi.md`、`backend/prompts/coding_rules.md`。此处是浓缩版。
+> **改代码前必读。** 当前实现见 `docs/current-snapshot.md`，目标重构见 `docs/shared-cloud-runtime-plan.md`，操作规则见 `backend/prompts/coding_rules.md`。
 
 ## 1. Protected 路径（agent 不可写）
 
 | 路径 | 原因 |
 |---|---|
-| `backend/app/core/runtime/kernel/` | Kernel 是冻结 ABI，改动需专门审批流程 |
+| `backend/app/core/runtime/kernel/` | 当前业务扩展不得随意改；实施已确认的共享存储方案时可连同守卫、测试和文档一起重构 |
 | `backend/scripts/check_boundary.py` | 边界守卫本身不可被弱化 |
 | `backend/capability_policy.json` | 治理策略权威 |
 | `backend/app/core/runtime/taint.py` | taint 追踪核心 |
@@ -16,8 +16,8 @@
 
 ## 2. Kernel ABI 冻结
 
-- **新能力默认不得修改 Kernel。** 若必须改，PR 需说明为何不能用 `read_ports` / `harness` / `handlers` / `projectors` 表达。
-- 冻结公开方法清单见 `docs/02-concepts/kernel-abi.md`（`emit_event`、`query_state`、`invoke_capability`、`request_approval`、`snapshot/restore/erase` 等）。
+- **普通产品能力默认不得修改 Kernel。** 目标方案列出了共享存储、账号内事件顺序、设备身份和 fencing 的必要重构；本文档 Review 不等于这些改造已经实施。实际实施时同步守卫、调用方和测试。
+- 当前公开入口包括 `emit_event`、`query_state`、`invoke_capability`、`request_approval` 和 sovereignty 操作；修改时必须同步调用方与边界测试。
 - 在 Kernel 包内、非 `projectors_*.py` / 主权重建路径，**禁止**对 GOVERNED 表做 DML（`check_boundary.py` 扫描）。
 
 ## 3. 层依赖规则（CI 阻断新增边）
@@ -35,6 +35,7 @@
 ## 4. 概念纪律（Concept Compression）
 
 - 核心概念数单调不增：新增模块 / 事件类型 / Fragment / governed 表 / `query_state` selector，**必须在同变更中删除等价旧概念**。
+- 当前基线继续约束现有实现；目标方案引入设备/连接/命令回执时，应明确替代项并更新指标与守卫，不能为了维持数字把权威状态伪装为缓存。本次 Review 不调整代码基线。
 - 真正的复杂度是概念增长，不是文件体积。
 - Forbidden 抽象：Framework/Platform/Orchestration 层、Manager/Service/Helper/Utils 上帝模块、第二套 Event/Task/Job 总线、把 Transport 内容写入 `event_log`、Adapter 森林。
 
@@ -61,7 +62,7 @@
 
 ## 8. 文档同步纪律
 
-- `docs/` 是活事实库，**改架构/行为必须同步 docs**，否则 `docs-*` CI 失败。
+- `docs/current-snapshot.md` 是当前事实快照，`docs/shared-cloud-runtime-plan.md` 是目标方案；改架构/行为必须同步对应文件。
 - docs 内叙述用中文、代码标识符/路径/命令保留英文原文。
 
 ## 9. Agent 操作红线（来自 `backend/prompts/coding_rules.md`）
