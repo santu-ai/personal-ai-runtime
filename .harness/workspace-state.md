@@ -5,6 +5,8 @@
 
 ## 当前状态
 
+- 2026-11-02：把 Dependabot #451–#462 收成一条依赖升级。后端 fastapi 0.162.0、openai 3.37.0、mcp 2.3.0、sqlalchemy 2.1.6、pypdf 6.21.2，并重生带哈希的 lock。前端 react-query 5.104.5、react-syntax-highlighter 16.1.2、zustand 5.0.16、typescript-eslint 8.72.0、vitest 5.0.5。桌面 electron 45.0.0、electron-builder 26.18.0。未关原来的 Dependabot PR。未改 Kernel。
+
 - 2026-10-23：合并所有 Dependabot 依赖分支（包含 actions/download-artifact 8、actions/upload-artifact 7、electron 44.9.1、eslint 10.13.0、jsdom 30.1.3、playwright 1.64.1、react/react-dom 19.3.1、cryptography 50.0.2、openai 3.35.1、pydantic 2.14.1、pydantic-settings 2.16.0、pypdf 6.21.1）到 main 并同步 requirements.lock 哈希。清理远端已合并分支。未改 Kernel。
 
 - 2026-10-23：合并 Dependabot 批量升级分支（cursor/dependabot-lockfile-24e4，包含 Dependabot #424–#437 及 get-pip.py sha256 修复）到 main。未改 Kernel。
