@@ -14,7 +14,7 @@ const EMBED_ZIP_SHA256 = {
 };
 
 const GET_PIP_URL = "https://bootstrap.pypa.io/get-pip.py";
-const GET_PIP_SHA256 = "f4448a01e3ab2914c65f4ca59d4cacba6b2dbde19a483fbac46587f8bbaff424";
+const GET_PIP_SHA256 = "356e0d0de21cdc348c3394084d90939b85e4246c4d14c76aee6ca4f46646ea98";
 
 function sha256File(filePath) {
   const hash = crypto.createHash("sha256");
