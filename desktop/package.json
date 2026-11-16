@@ -13,12 +13,12 @@
     "postinstall": "node postinstall.js"
   },
   "dependencies": {
-    "ws": "^8.22.0"
+    "ws": "^8.22.1"
   },
   "devDependencies": {
-    "electron": "^45.0.0",
+    "electron": "^45.2.3",
     "electron-builder": "^26.18.0",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "build": {
     "appId": "com.personalairuntime.desktop",
